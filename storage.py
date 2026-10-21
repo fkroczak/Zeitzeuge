@@ -16,7 +16,8 @@ from PyQt5.QtCore import QStandardPaths
 
 APP = "Zeitzeuge"
 # Was zu den Daten gehört (wird beim Umziehen mitgenommen)
-DATA_ITEMS = ["zeitzeuge_config.json", "anrufe.json", "aktivitaet"]
+DATA_ITEMS = ["zeitzeuge_config.json", "anrufe.json", "anrufe_stand.json",
+              "personalzeiten.json", "aktivitaet"]
 
 
 def _pointer_file():

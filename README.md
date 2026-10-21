@@ -14,6 +14,9 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
   - RDP-, SSH-, VPN-, FTP- und Website-Verbindungen mit Beginn und Ende.
   - Angezeigte Passwörter, Benutzernamen und Einmal-Passwörter (OTP).
 - **Telefonate aus 3CX:** Zeitzeuge liest die Anrufliste selbst aus dem 3CX-Webclient, ohne API und ohne dass du die Webseite offen haben musst. Alternativ geht es über ein Tampermonkey-Skript in Chrome (siehe unten).
+  - Alle gelesenen Anrufe landen in `anrufe.json`. So entsteht eine eigene Anrufliste, die auch offline bleibt.
+  - Beim ersten Lauf scrollt Zeitzeuge die Liste 14 Tage zurück. Blätterst du in Zeitzeuge auf einen älteren Tag, liest es automatisch bis dorthin nach.
+- **Personalzeiten aus der ITM-Zeiterfassung:** Zeitzeuge liest deine gestempelten Zeiten und hebt sie in der Timeline als Arbeitszeit hervor. Pausen sind abgedunkelt. Die Statuszeile zeigt die gewertete Zeit und die Sollzeit.
 - **Aktivitätsprotokoll:** Alle 5 Sekunden merkt sich Zeitzeuge das aktive Fenster, zum Beispiel eine RDP-Sitzung, einen Browser-Tab, Outlook oder PuTTY.
   - Es erscheint als farbiges Band „PC“ oben in der Timeline, eine Farbe pro Programm.
   - Mit **PC-Verlauf in Liste** stehen die Fenster auch in der Tagesliste.
@@ -104,6 +107,8 @@ Standardpfade:
 
 Die Anmeldung bleibt gespeichert (`%LOCALAPPDATA%\Zeitzeuge\3cx_profil`). Läuft sie ab, meldet sich Zeitzeuge im Infobereich. Ein Klick auf die Meldung öffnet die Anmeldung. Ton, Mikrofon und Benachrichtigungen sind gesperrt, dort klingelt also nichts. Für 3CX zählt Zeitzeuge aber als zusätzlich angemeldeter Webclient.
 
+Beim ersten Lauf scrollt Zeitzeuge die Anrufliste 14 Tage zurück. Bis zu welchem Tag die Anrufe vollständig sind, merkt es sich in `anrufe_stand.json`. Zeigst du einen älteren Tag an, scrollt Zeitzeuge im Hintergrund bis dorthin weiter. Das geht nur so weit zurück, wie 3CX die Anrufe selbst noch anzeigt.
+
 **Variante 2: über Chrome und Tampermonkey.** Das ist sinnvoll, wenn du die 3CX-Webseite ohnehin offen hast. Am einfachsten über **Einstellungen ▾ → 3CX über Chrome/Tampermonkey einrichten …**. Der Assistent öffnet nacheinander die richtigen Seiten in Chrome, und du bestätigst jeweils mit einem Klick:
 
 1. Tampermonkey im Chrome Web Store hinzufügen.
@@ -121,7 +126,7 @@ So läuft die Übertragung:
 
 Wenn Tampermonkey beim ersten Senden fragt, erlaube den Zugriff auf `127.0.0.1` mit „Immer erlauben“.
 
-Solange die Anrufliste offen ist, wird sie jede Minute übertragen. Unten rechts auf der Seite gibt es außerdem den Knopf **„→ Zeitzeuge“** zum Senden von Hand. Der Server nimmt nur Verbindungen vom eigenen Rechner an, und doppelte Anrufe werden aussortiert.
+Solange die Anrufliste offen ist, wird sie jede Minute übertragen. Unten rechts auf der Seite gibt es außerdem den Knopf **„→ Zeitzeuge“** zum Senden von Hand. Der Server nimmt nur Verbindungen vom eigenen Rechner und nur JSON an. So können fremde Webseiten keine Anrufe einschleusen. Doppelte Anrufe werden aussortiert.
 
 Die Einstellungen für Telefonate stehen in `zeitzeuge_config.json`:
 
@@ -133,6 +138,16 @@ Die Einstellungen für Telefonate stehen in `zeitzeuge_config.json`:
 | `calls_min_duration` | `0` | Kürzere Anrufe ausblenden (in Sekunden) |
 | `calls_3cx_url` | `https://voice.visaas.de:5001` | Adresse des 3CX-Webclients |
 | `pbx_reader_enabled` | `false` | Variante 1: Zeitzeuge liest 3CX selbst |
+
+### Personalzeiten aus der ITM-Zeiterfassung
+
+Zeitzeuge öffnet die Tagesübersicht der ITM-Zeiterfassung unsichtbar mit Edge, genauso wie bei 3CX. Es merkt sich die Daten, die die Seite dabei lädt. Heute wird alle 5 Minuten gelesen, andere Tage einmal, sobald du sie in Zeitzeuge anzeigst.
+
+1. **Einstellungen ▾ → ITM-Personalzeiten …** öffnen.
+2. Adresse prüfen (`https://app.itm-gruppe.com`) und **Bei ITM anmelden …** klicken.
+3. Im Edge-Fenster anmelden und das Fenster schließen.
+
+Die Anmeldung liegt in `%LOCALAPPDATA%\Zeitzeuge\itm_profil`, die gelesenen Tage in `personalzeiten.json` im Datenordner. Die Timeline zeigt dann deine gestempelte Zeit hell und alles andere, auch die Pausen, abgedunkelt. Ohne Personalzeiten gilt wie bisher die Arbeitszeit aus den Einstellungen.
 
 ### Speicherort
 
@@ -184,10 +199,11 @@ Läuft RDM auf einem Server, kann Zeitzeuge dessen Log auch über das Netzwerk l
 | `log_parsers.py` | Einlesen der TeamViewer- und RDM-Logs |
 | `call_import.py` | Empfang der 3CX-Anrufe, Auslieferung des Browser-Skripts |
 | `activity_tracker.py` | Aktivitätsprotokoll (aktives Fenster, Leerlauf) |
-| `pbx_reader.py` | 3CX direkt auslesen (Edge im Hintergrund, DevTools-Protokoll) |
+| `pbx_reader.py` | Edge im Hintergrund steuern (DevTools-Protokoll), 3CX direkt auslesen |
+| `itm_reader.py` | Personalzeiten aus der ITM-Zeiterfassung lesen |
 | `storage.py` | Speicherort der Daten |
 | `browser_setup.py` | Einrichtungsassistent für Tampermonkey |
-| `tests/` | Tests, laufen bei jedem Build: Start, 3CX mit nachgebauter Seite, Fensterabfrage |
+| `tests/` | Tests, laufen bei jedem Build: Start, 3CX und ITM mit nachgebauten Seiten, Fensterabfrage, Anrufliste |
 | `settings_dialogs.py` | Dialoge für Logpfade und Aktivitätstypen |
 | `zeitzeuge_anrufe.user.js` | Tampermonkey-Skript für den 3CX-Webclient |
 | `ZeitZeuge.spec` | Build-Datei für PyInstaller |
@@ -198,7 +214,7 @@ Läuft RDM auf einem Server, kann Zeitzeuge dessen Log auch über das Netzwerk l
 
 Zeitzeuge arbeitet nur auf deinem eigenen Rechner. Es liest lokale Logdateien und nimmt Anrufe nur über `127.0.0.1` entgegen. Es werden keine Daten an fremde Server gesendet.
 
-Das Aktivitätsprotokoll speichert Fenstertitel. Darin können Kundennamen, Betreffzeilen von Mails oder Dateinamen stehen. Die Dateien in `aktivitaet/` gehören deshalb nur auf deinen PC. Im Ordner `3cx_profil` liegt deine 3CX-Anmeldung. Er ist zu schützen wie ein Browserprofil. Alle diese Dateien stehen in `.gitignore`, genauso wie `anrufe.json` und die persönliche `zeitzeuge_config.json`.
+Das Aktivitätsprotokoll speichert Fenstertitel. Darin können Kundennamen, Betreffzeilen von Mails oder Dateinamen stehen. Die Dateien in `aktivitaet/` gehören deshalb nur auf deinen PC. In den Ordnern `3cx_profil` und `itm_profil` liegen deine Anmeldungen bei 3CX und ITM. Sie sind zu schützen wie ein Browserprofil. Alle diese Dateien stehen in `.gitignore`, genauso wie `anrufe.json`, `personalzeiten.json` und die persönliche `zeitzeuge_config.json`.
 
 
 ## Lizenz

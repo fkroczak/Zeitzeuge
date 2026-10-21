@@ -35,7 +35,7 @@ def merge_calls(path, new_calls):
             except Exception as e:
                 print(f"anrufe.json nicht lesbar, wird neu angelegt: {e}")
 
-        added = 0
+        added = changed = 0
         for c in new_calls:
             try:
                 datetime.strptime(c["start"], TIME_FMT)
@@ -44,9 +44,11 @@ def merge_calls(path, new_calls):
             k = _key(c)
             if k not in calls:
                 added += 1
+            if calls.get(k) != c:
+                changed += 1
             calls[k] = c  # neuere Daten (z. B. Name aus CRM) gewinnen
 
-        if added:
+        if changed:
             tmp = path + ".tmp"
             with open(tmp, "w", encoding="utf-8") as f:
                 json.dump(sorted(calls.values(), key=lambda c: c["start"]),
@@ -58,8 +60,8 @@ def merge_calls(path, new_calls):
 _file_cache = {"mtime": None, "calls": []}
 
 
-def load_call_suggestions(path, ignore_missed=True, min_seconds=0):
-    """Anrufe aus anrufe.json als Timeline-Vorschläge (gleiches Format wie TeamViewer/RDM)."""
+def load_call_suggestions(path, date_str, ignore_missed=True, min_seconds=0):
+    """Anrufe eines Tages (YYYY-MM-DD) aus anrufe.json als Timeline-Vorschläge."""
     if not os.path.exists(path):
         return []
     mtime = os.path.getmtime(path)
@@ -74,6 +76,8 @@ def load_call_suggestions(path, ignore_missed=True, min_seconds=0):
 
     result = []
     for c in _file_cache["calls"]:
+        if not c.get("start", "").startswith(date_str):
+            continue
         seconds = int(c.get("duration_s") or 0)
         if seconds == 0 and ignore_missed:
             continue
@@ -131,6 +135,11 @@ def start_call_server(path, port=8765, on_update=None, script_provider=None):
         def do_POST(self):
             if self.path != "/anrufe":
                 self.send_error(404)
+                return
+            # Nur JSON annehmen: Fremde Webseiten dürfen das nur nach einer
+            # CORS-Rückfrage senden, die dieser Server nie beantwortet.
+            if not self.headers.get("Content-Type", "").startswith("application/json"):
+                self.send_error(415)
                 return
             try:
                 length = int(self.headers.get("Content-Length", 0))

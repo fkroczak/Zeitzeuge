@@ -222,6 +222,8 @@ dialogs = {
 }
 if hasattr(window, "build_pbx_dialog"):
     dialogs["3CX direkt"] = window.build_pbx_dialog()
+if hasattr(window, "build_itm_dialog"):
+    dialogs["ITM-Personalzeiten"] = window.build_itm_dialog()
 for area, dialog in dialogs.items():
     dialog.show()
     QTest.qWait(50)

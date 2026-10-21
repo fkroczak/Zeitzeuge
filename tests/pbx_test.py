@@ -76,6 +76,41 @@ run("http://127.0.0.1:8812/?login=1", lambda r: len(calls()) >= 8, "8 Anrufe gel
 os.remove(calls_file)
 run("http://127.0.0.1:8812", lambda r: len(calls()) >= 8, "Anmeldung nach Neustart erhalten")
 
+# 4. Erster Lauf liest 14 Tage zurück, Blättern auf ältere Tage liest nach
+from datetime import date, timedelta
+
+
+def days_back(n):
+    return (date.today() - timedelta(days=n)).isoformat()
+
+
+def has_call(n):
+    return any(c["name"] == "Alt Kunde" and c["start"].startswith(days_back(n)) for c in calls())
+
+
+state = os.path.join(tmp, "anrufe_stand.json")
+for path in (calls_file, state):  # Stand der Schritte 1–3 verwerfen
+    if os.path.exists(path):
+        os.remove(path)
+run("http://127.0.0.1:8812", lambda r: has_call(15) and os.path.exists(state),
+    "14 Tage zurück gelesen")
+assert not has_call(25), "zu weit gelesen"
+assert json.load(open(state))["vollstaendig_ab"] == days_back(14)
+
+
+def want(n):
+    def until(reader):
+        reader.want(days_back(n))
+        return has_call(n + 1)
+    return until
+
+
+run("http://127.0.0.1:8812", want(25), "beim Blättern auf 25 Tage zurück nachgelesen")
+assert json.load(open(state))["vollstaendig_ab"] == days_back(25)
+run("http://127.0.0.1:8812",
+    lambda r: (r.want(days_back(60)), json.load(open(state))["vollstaendig_ab"] == days_back(40))[1],
+    "Listenende erkannt")
+
 names = {c["name"] for c in calls()}
 assert {"Sara Beispiel", "Hanna Dr. Kurz", "ABC GmbH", "015100000001"} <= names, names
 # Dauer, Richtung und "via" müssen stimmen, auch wenn der Trennpunkt nur per CSS da ist
@@ -86,7 +121,7 @@ checks = [
     (by_name["Hanna Dr. Kurz"]["via"], "Carla Test 702"),
     (by_name["Info Cafeteria"]["direction"], "Ausgehend"),
     (by_name["Carla Test"]["direction"], "Verpasst"),
-    (sum(1 for c in calls() if c["duration_s"] > 0), 7),
+    (sum(1 for c in calls() if c["duration_s"] > 0 and c["name"] != "Alt Kunde"), 7),
 ]
 for got, want in checks:
     if got != want:
