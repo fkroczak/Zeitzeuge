@@ -1,0 +1,27 @@
+<!doctype html><html><head><meta charset="utf-8"></head><body>
+<div id="app"></div>
+<script>
+function item(ini, crm, name, nr, icon, tag, zeit, dauer, via) {
+  return `<app-call-history-item data-qa="call-history-item"><div class="avatar"><span>${ini}</span>${crm?'<span class="badge">CRM</span>':''}</div>
+  <div class="info"><div><span class="name">${name}</span> <span class="nr">${nr}</span></div>
+  <div class="meta"><svg class="icon call-${icon}"></svg><span>${tag} ${zeit}</span>${dauer?`<span> • </span><span>${dauer}</span>`:''}${via?`<span> • </span><span>via ${via}</span>`:''}</div></div>
+  <button>...</button></app-call-history-item>`;
+}
+function render() {
+  if (!localStorage.getItem("token")) {
+    document.getElementById("app").innerHTML = '<form onsubmit="localStorage.setItem(\'token\',1);render();return false"><input name="u"><input type="password"><button>Login</button></form>';
+    return;
+  }
+  document.getElementById("app").innerHTML = '<app-impersonation-banner></app-impersonation-banner><div id="scrollBox">' + [
+    item("SB",0,"Sara Beispiel","701","incoming","Heute","10:55","9:12",""),
+    item("GB",1,"Gustav Bauer","0049251000000001","incoming","Heute","09:50","0:19",""),
+    item("IC",1,"Info Cafeteria","0251000000002","outgoing","Heute","09:18","3:11",""),
+    item("HD",1,"Hanna Dr. Kurz","0251000000003","incoming","Gestern","15:37","3:50","Carla Test 702"),
+    item("",0,"015100000001","","incoming","Gestern","15:29","0:50","Carla Test 702"),
+    item("CT",0,"Carla Test","702","missed","Gestern","14:19","",""),
+    item("AG",0,"ABC GmbH","0251000000004","outgoing","Mo","08:01","1:02:03",""),
+    item("",0,"Max Muster","0170 0000005","incoming","12.10.2026","11:00","5:00",""),
+  ].join("") + '</div>';
+}
+render();
+</script></body></html>

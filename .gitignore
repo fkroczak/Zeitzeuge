@@ -1,0 +1,8 @@
+__pycache__/
+build/
+dist/
+anrufe.json
+anrufe.json.tmp
+zeitzeuge_config.json
+aktivitaet/
+3cx_profil/
