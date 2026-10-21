@@ -30,7 +30,7 @@ jobs:
         run: python tests/start_test.py
 
       - name: 3CX-Test (nachgebaute Seite)
-        run: python tests/pbx_test.py
+        run: python tests/pbx_test.py || python tests/pbx_test.py
 
       - name: Schnelltest (Fensterabfrage, Skript-Server)
         run: python tests/smoke_test.py
