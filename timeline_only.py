@@ -134,6 +134,9 @@ class TimelineView(QGraphicsView):
         self._rdm_index = None
 
         self.zoom_level = 1.0
+        self.fit_day = True        # ganzen Tag ins Fenster einpassen
+        self._drag_start = None    # Mausposition beim Drücken (Bereich ziehen)
+        self._drag_item = None     # markierter Bereich während des Ziehens
         self.dark_mode = self.config.get("dark_mode", False)
 
         self.setRenderHint(QPainter.Antialiasing)
@@ -284,7 +287,11 @@ class TimelineView(QGraphicsView):
             center_min = (center_x - self.LEFT) / self._ppm
 
         self.current_date = date
+        if self.fit_day:
+            self.zoom_level = self._fit_ppm() / self.BASE_PX_PER_MIN
+            center_min = None
         self._ppm = self.BASE_PX_PER_MIN * self.zoom_level
+        self._drag_item = None
         self.scene.clear()
         self.activity_rects.clear()
         self.tooltip.hide()
@@ -406,7 +413,10 @@ class TimelineView(QGraphicsView):
 
         self.setSceneRect(0, 0, width, height)
 
-        if self._first_draw:
+        if self.fit_day:
+            self.horizontalScrollBar().setValue(0)
+            self._first_draw = False
+        elif self._first_draw:
             center = (work_start + work_end) / 2 if work_end > work_start else 12.5 * 60
             self.centerOn(self._x(center), 0)
             self._first_draw = False
@@ -417,14 +427,51 @@ class TimelineView(QGraphicsView):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        # Höhe der Fläche an das Fenster anpassen
-        if self._ppm and abs(self.sceneRect().height() - self.viewport().height()) > 30:
+        # Ganzer Tag: Breite mitziehen; sonst Höhe der Fläche an das Fenster anpassen
+        if self._ppm and (
+            (self.fit_day and abs(self._ppm - self._fit_ppm()) > 0.01)
+            or abs(self.sceneRect().height() - self.viewport().height()) > 30
+        ):
             self.draw_timeline(self.current_date)
 
-    # ----------------------------- Maus / Zoom / Tooltip ----------------------
+    # ----------------------------- Ansicht / Zoom -----------------------------
+
+    def _fit_ppm(self):
+        """Pixel pro Minute, damit 0–24 Uhr genau ins Fenster passt."""
+        width = self.maximumViewportSize().width() - 2 * self.LEFT - 4
+        return max(0.2, width / (24 * 60))
+
+    def show_whole_day(self):
+        self.fit_day = True
+        self.draw_timeline(self.current_date)
+
+    def show_range(self, start_min, end_min):
+        """Zeitraum (Minuten seit 0 Uhr) genau ins Fenster einpassen."""
+        start_min, end_min = max(0, min(start_min, end_min)), min(24 * 60, max(start_min, end_min))
+        if end_min - start_min < 5:
+            return
+        width = self.maximumViewportSize().width() - 2 * self.LEFT - 4
+        self.fit_day = False
+        self.zoom_level = max(1.0, width / (end_min - start_min)) / self.BASE_PX_PER_MIN
+        self.zoom_level = min(self.zoom_level, 30.0)
+        self._first_draw = False
+        self.draw_timeline(self.current_date)
+        self.horizontalScrollBar().setValue(int(self._x(start_min) - self.LEFT))
+
+    def show_work_time(self):
+        start, end = self._work_minutes(self.current_date)
+        if end > start:
+            self.show_range(start - 30, end + 30)
+        else:
+            self.show_whole_day()
 
     def set_zoom(self, level, anchor_viewport_x=None):
-        level = max(0.5, min(level, 12.0))
+        fit_level = self._fit_ppm() / self.BASE_PX_PER_MIN
+        if level <= fit_level * 1.01:  # weiter raus als "ganzer Tag" geht nicht
+            self.show_whole_day()
+            return
+        level = min(level, 30.0)
+        self.fit_day = False
         if anchor_viewport_x is None:
             self.zoom_level = level
             self.draw_timeline(self.current_date)
@@ -456,7 +503,31 @@ class TimelineView(QGraphicsView):
                 return self.activity_rects[item]
         return None
 
+    def _minute_at(self, viewport_x):
+        return (self.mapToScene(int(viewport_x), 0).x() - self.LEFT) / self._ppm
+
     def mouseMoveEvent(self, event):
+        # Klicken und ziehen: Bereich markieren
+        if self._drag_start is not None and abs(event.pos().x() - self._drag_start.x()) > 5:
+            self.tooltip.hide()
+            x1 = self.mapToScene(self._drag_start).x()
+            x2 = self.mapToScene(event.pos()).x()
+            rect = self.sceneRect()
+            if self._drag_item is None:
+                color = QColor("#0078D7")
+                color.setAlpha(50)
+                self._drag_item = self.scene.addRect(0, 0, 0, 0, QPen(QColor("#0078D7"), 1), QBrush(color))
+                self._drag_item.setZValue(100)
+            self._drag_item.setRect(min(x1, x2), 0, abs(x2 - x1), rect.height())
+            a, b = sorted((self._minute_at(self._drag_start.x()), self._minute_at(event.pos().x())))
+            a, b = max(0, int(a)), min(24 * 60, int(b))
+            self.tooltip.setText(f"{a // 60:02d}:{a % 60:02d} – {b // 60:02d}:{b % 60:02d}")
+            self.tooltip.adjustSize()
+            gp = self.mapToGlobal(event.pos())
+            self.tooltip.move(gp.x() + 15, gp.y() + 15)
+            self.tooltip.show()
+            return
+
         a = self._activity_at(event.pos())
         if a:
             start, end = parse_time(a["start"]), parse_time(a["end"])
@@ -482,9 +553,28 @@ class TimelineView(QGraphicsView):
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
-            a = self._activity_at(event.pos())
+            self._drag_start = event.pos()
+            return
+        super().mousePressEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.LeftButton and self._drag_start is not None:
+            start, self._drag_start = self._drag_start, None
+            if self._drag_item is not None:  # Bereich gezogen -> diesen Bereich zeigen
+                self.scene.removeItem(self._drag_item)
+                self._drag_item = None
+                self.tooltip.hide()
+                self.show_range(self._minute_at(start.x()), self._minute_at(event.pos().x()))
+                return
+            a = self._activity_at(event.pos())  # einfacher Klick -> Details
             if a:
                 self.tooltip.hide()
                 ActivityViewDialog(a, self).exec_()
-                return
-        super().mousePressEvent(event)
+            return
+        super().mouseReleaseEvent(event)
+
+    def mouseDoubleClickEvent(self, event):
+        if event.button() == Qt.LeftButton and not self._activity_at(event.pos()):
+            self.show_whole_day()
+            return
+        super().mouseDoubleClickEvent(event)

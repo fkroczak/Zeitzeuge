@@ -26,7 +26,10 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
 - **Immer aktuell:** Die Logs werden alle 2 Minuten geprüft. Mit F5 liest du sie sofort neu ein. Gelesen werden nur Dateien, die sich geändert haben.
 - **Bedienung:**
   - Die rote Linie zeigt die aktuelle Uhrzeit, die Arbeitszeit aus den Einstellungen ist hervorgehoben.
-  - Zoom nur in der Breite, mit STRG + Mausrad an der Mausposition. Das Mausrad allein blättert durch den Tag.
+  - Die Timeline zeigt zuerst den ganzen Tag (0–24 Uhr) ohne Scrollen.
+  - Mit **Klicken und Ziehen** markierst du einen Zeitraum. Beim Loslassen wird genau dieser Zeitraum angezeigt.
+  - Ein Doppelklick auf eine freie Stelle oder **Ganzer Tag** führt zurück zur Tagesansicht. **Arbeitszeit** zeigt die Arbeitszeit des Tages.
+  - STRG + Mausrad zoomt an der Mausposition, das Mausrad allein blättert durch den Tag.
   - Dunkles und helles Design, eigene Aktivitätstypen mit frei wählbaren Farben.
 
 ### Tastenkürzel
@@ -37,7 +40,8 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
 | STRG + T | Heute |
 | F5 | Logs neu einlesen |
 | STRG + `+` / `-` | Zoom |
-| STRG + 0 | Zoom zurücksetzen, Arbeitszeit zeigen |
+| STRG + 0 | Ganzen Tag zeigen |
+| STRG + 9 | Arbeitszeit zeigen |
 | STRG + C | Markierte Zeilen der Tagesliste kopieren |
 
 ## Voraussetzungen

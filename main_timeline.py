@@ -425,8 +425,10 @@ class TimelineApp(QMainWindow):
         tb.addSeparator()
         tb.addAction(self._action("−", self.zoom_out, "Ctrl+-", "Verkleinern"))
         tb.addAction(self._action("+", self.zoom_in, ["Ctrl++", "Ctrl+="], "Vergrößern"))
-        tb.addAction(self._action("Arbeitszeit", self.reset_zoom, "Ctrl+0",
-                                  "Zoom zurücksetzen und auf Arbeitszeit springen"))
+        tb.addAction(self._action("Ganzer Tag", self.timeline_whole_day, "Ctrl+0",
+                                  "Ganzen Tag zeigen (oder Doppelklick in die Timeline)"))
+        tb.addAction(self._action("Arbeitszeit", self.timeline_work_time, "Ctrl+9",
+                                  "Arbeitszeit des Tages zeigen"))
 
         spacer = QWidget(self)
         spacer.setSizePolicy(spacer.sizePolicy().Expanding, spacer.sizePolicy().Preferred)
@@ -808,10 +810,11 @@ class TimelineApp(QMainWindow):
     def zoom_out(self):
         self.timeline.set_zoom(self.timeline.zoom_level / 1.25)
 
-    def reset_zoom(self):
-        self.timeline.zoom_level = 1.0
-        self.timeline._first_draw = True  # wieder auf Arbeitszeit zentrieren
-        self.timeline.draw_timeline(self.current_date)
+    def timeline_whole_day(self):
+        self.timeline.show_whole_day()
+
+    def timeline_work_time(self):
+        self.timeline.show_work_time()
 
     def toggle_dark_mode(self, enabled: bool):
         self.dark_mode = enabled
