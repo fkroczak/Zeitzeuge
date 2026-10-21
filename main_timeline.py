@@ -23,7 +23,7 @@ from call_import import start_call_server
 from pbx_reader import PbxReader, find_browser
 import storage
 from settings_dialogs import (ActivityTypeSettingsDialog,
-                              ConnectionSettingsDialog)
+                              ConnectionSettingsDialog, WorkHoursDialog)
 from timeline_only import (ActivityViewDialog, TimelineView, format_duration,
                            parse_time)
 
@@ -169,6 +169,11 @@ def load_config_with_defaults():
     # Defaults mergen
     for k, v in defaults.items():
         cfg.setdefault(k, v)
+    # Arbeitszeiten pro Wochentag (aus work_start/work_end übernommen)
+    if "work_days" not in cfg:
+        span = f"{cfg['work_start']}-{cfg['work_end']}"
+        cfg["work_days"] = {d: (span if i < 5 else "")
+                            for i, d in enumerate(["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"])}
     cfg["type_colors"].setdefault("Telefonat", "#27AE60")
     if "Telefonat" not in cfg["activity_types"]:
         cfg["activity_types"].append("Telefonat")
@@ -443,6 +448,8 @@ class TimelineApp(QMainWindow):
         tb.addAction(self.dark_action)
 
         menu = QMenu(self)
+        menu.addAction("Arbeitszeiten …", self.edit_work_hours)
+        menu.addSeparator()
         menu.addAction("TeamViewer-Logs …", self.edit_teamviewer_settings)
         menu.addAction("RDM-Logs …", self.edit_rdm_settings)
         menu.addAction("Aktivitätstypen und Farben …", self.edit_activity_types)
@@ -855,6 +862,14 @@ class TimelineApp(QMainWindow):
             "rdm", r"%LOCALAPPDATA%\Devolutions\RemoteDesktopManager\Connections.log",
             "RDM-Logeinstellungen",
         )
+
+    def edit_work_hours(self):
+        dialog = WorkHoursDialog(self.config, self)
+        if dialog.exec_() == dialog.Accepted:
+            self.config["work_days"] = dialog.get_work_days()
+            save_config(self.config)
+            self.timeline._first_draw = True  # auf die neue Arbeitszeit springen
+            self.timeline.draw_timeline(self.current_date)
 
     def edit_activity_types(self):
         dialog = ActivityTypeSettingsDialog(self.config, self)

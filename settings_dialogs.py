@@ -1,6 +1,6 @@
 import os
 
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QTime
 from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import *
 
@@ -250,3 +250,84 @@ class TapiSettingsDialog(QDialog):
             'tapi_min_duration': self.min_duration.value(),
             'tapi_poll_interval': self.poll_interval.value()
         }
+
+class WorkHoursDialog(QDialog):
+    """Arbeitszeiten pro Wochentag festlegen."""
+
+    DAY_NAMES = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]
+
+    def __init__(self, config, parent=None):
+        super().__init__(parent)
+        from timeline_only import WEEKDAYS, work_hours
+        self.weekdays = WEEKDAYS
+        self.setWindowTitle("Arbeitszeiten")
+        layout = QVBoxLayout(self)
+
+        hint = QLabel("Die Arbeitszeit wird in der Timeline hervorgehoben. "
+                      "Freie Tage sind komplett abgedunkelt.")
+        hint.setWordWrap(True)
+        layout.addWidget(hint)
+
+        grid = QGridLayout()
+        grid.addWidget(QLabel("<b>Tag</b>"), 0, 0)
+        grid.addWidget(QLabel("<b>von</b>"), 0, 1)
+        grid.addWidget(QLabel("<b>bis</b>"), 0, 2)
+        grid.addWidget(QLabel("<b>Stunden</b>"), 0, 3)
+        self.rows = []
+        for i, name in enumerate(self.DAY_NAMES):
+            hours = work_hours(config, i)
+            active = QCheckBox(name)
+            active.setChecked(hours is not None)
+            start, end = hours or (8 * 60, 17 * 60)
+            t_from = QTimeEdit(QTime(start // 60, start % 60))
+            t_to = QTimeEdit(QTime(end // 60, end % 60))
+            for t in (t_from, t_to):
+                t.setDisplayFormat("HH:mm")
+            total = QLabel()
+            for w in (active, t_from, t_to):
+                (w.toggled if w is active else w.timeChanged).connect(self.update_totals)
+            grid.addWidget(active, i + 1, 0)
+            grid.addWidget(t_from, i + 1, 1)
+            grid.addWidget(t_to, i + 1, 2)
+            grid.addWidget(total, i + 1, 3)
+            self.rows.append((active, t_from, t_to, total))
+        layout.addLayout(grid)
+
+        self.week_total = QLabel()
+        layout.addWidget(self.week_total)
+
+        copy_btn = QPushButton("Montag auf alle Arbeitstage übertragen")
+        copy_btn.clicked.connect(self.copy_monday)
+        layout.addWidget(copy_btn)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+        self.update_totals()
+
+    def copy_monday(self):
+        _, mo_from, mo_to, _ = self.rows[0]
+        for active, t_from, t_to, _ in self.rows[1:]:
+            if active.isChecked():
+                t_from.setTime(mo_from.time())
+                t_to.setTime(mo_to.time())
+
+    def update_totals(self):
+        week = 0
+        for active, t_from, t_to, total in self.rows:
+            t_from.setEnabled(active.isChecked())
+            t_to.setEnabled(active.isChecked())
+            minutes = max(0, t_from.time().secsTo(t_to.time()) // 60) if active.isChecked() else 0
+            week += minutes
+            total.setText(f"{minutes // 60}:{minutes % 60:02d} h" if minutes else "frei")
+        self.week_total.setText(f"Pro Woche: <b>{week // 60}:{week % 60:02d} h</b>")
+
+    def get_work_days(self):
+        result = {}
+        for key, (active, t_from, t_to, _) in zip(self.weekdays, self.rows):
+            if active.isChecked() and t_from.time() < t_to.time():
+                result[key] = f"{t_from.time().toString('HH:mm')}-{t_to.time().toString('HH:mm')}"
+            else:
+                result[key] = ""
+        return result

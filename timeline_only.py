@@ -20,6 +20,31 @@ def parse_time(text):
     return datetime.strptime(text, TIME_FMT)
 
 
+WEEKDAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
+
+
+def _to_min(text):
+    h, m = text.strip().split(":")
+    return int(h) * 60 + int(m)
+
+
+def work_hours(config, weekday):
+    """Arbeitszeit (Start, Ende) in Minuten für einen Wochentag (0 = Montag), None = frei."""
+    days = config.get("work_days")
+    try:
+        if days is None:  # alte Config: work_start/work_end für Mo–Fr
+            if weekday >= 5:
+                return None
+            return _to_min(config.get("work_start", "08:00")), _to_min(config.get("work_end", "17:00"))
+        text = days.get(WEEKDAYS[weekday], "")
+        if not text:
+            return None
+        start, end = text.split("-")
+        return _to_min(start), _to_min(end)
+    except (AttributeError, ValueError):
+        return None
+
+
 def format_duration(seconds):
     minutes = int(round(seconds / 60))
     if minutes < 1:
@@ -246,15 +271,10 @@ class TimelineView(QGraphicsView):
     def _x(self, minutes):
         return self.LEFT + minutes * self._ppm
 
-    def _work_minutes(self):
-        def to_min(text, default):
-            try:
-                h, m = text.split(":")
-                return int(h) * 60 + int(m)
-            except (AttributeError, ValueError):
-                return default
-        return (to_min(self.config.get("work_start"), 8 * 60),
-                to_min(self.config.get("work_end"), 17 * 60))
+    def _work_minutes(self, date: QDate):
+        """Arbeitszeit des Tages; an freien Tagen ist der ganze Tag abgedunkelt."""
+        hours = work_hours(self.config, date.dayOfWeek() - 1)
+        return hours if hours else (12 * 60, 12 * 60)
 
     def draw_timeline(self, date: QDate):
         # Mittelpunkt merken, damit Zoom/Neuzeichnen die Ansicht nicht verschiebt
@@ -305,7 +325,7 @@ class TimelineView(QGraphicsView):
         width = self._x(24 * 60) + self.LEFT
 
         # Außerhalb der Arbeitszeit abdunkeln
-        work_start, work_end = self._work_minutes()
+        work_start, work_end = self._work_minutes(date)
         no_pen = QPen(Qt.NoPen)
         self.scene.addRect(self._x(0), 0, self._x(work_start) - self._x(0), height,
                            no_pen, QBrush(self.non_work_color))
@@ -387,7 +407,8 @@ class TimelineView(QGraphicsView):
         self.setSceneRect(0, 0, width, height)
 
         if self._first_draw:
-            self.centerOn(self._x((work_start + work_end) / 2), 0)
+            center = (work_start + work_end) / 2 if work_end > work_start else 12.5 * 60
+            self.centerOn(self._x(center), 0)
             self._first_draw = False
         elif center_min is not None:
             self.centerOn(self._x(center_min), self.mapToScene(0, 0).y())

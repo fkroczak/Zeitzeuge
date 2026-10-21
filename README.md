@@ -165,7 +165,7 @@ Läuft RDM auf einem Server, kann Zeitzeuge dessen Log auch über das Netzwerk l
 
 | Schlüssel | Bedeutung |
 |---|---|
-| `work_start`, `work_end` | Arbeitszeit, z. B. `"08:00"` und `"17:00"` |
+| `work_days` | Arbeitszeit pro Wochentag, z. B. `"Fr": "08:00-13:00"`, leer = frei. Einstellbar unter **Einstellungen ▾ → Arbeitszeiten …** |
 | `dark_mode` | Dunkles Design |
 | `activity_types`, `type_colors` | Aktivitätstypen und ihre Farben |
 
