@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Zeitzeuge – Anrufliste übertragen
 // @namespace    zeitzeuge
-// @version      1.2
+// @version      1.3
 // @description  Liest die Anrufliste im 3CX-Webclient aus und schickt sie an Zeitzeuge (127.0.0.1:8765)
 // @include      https://voice.visaas.de:5001/*
 // @grant        GM_xmlhttpRequest
@@ -11,11 +11,9 @@
 (function () {
   "use strict";
 
-  const ZEITZEUGE = "http://127.0.0.1:8765";
-  const ZEITZEUGE_URL = ZEITZEUGE + "/anrufe";
-  const INTERVALL_MS = 60 * 1000; // jede Minute
+  // ---- ANRUFLISTE LESEN: START ----
+  // Dieser Teil wird auch von Zeitzeuge selbst benutzt (eingebauter Browser).
   const WOCHENTAGE = ["sonntag", "montag", "dienstag", "mittwoch", "donnerstag", "freitag", "samstag"];
-
   const pad = (n) => String(n).padStart(2, "0");
   const fmt = (d) =>
     `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:00`;
@@ -24,15 +22,15 @@
   function parseTag(text) {
     const heute = new Date();
     heute.setHours(0, 0, 0, 0);
-    const t = text.trim().toLowerCase();
+    const t = text.trim().toLowerCase().replace(/\.$/, "");
     if (t === "heute") return heute;
     if (t === "gestern") return new Date(heute.getTime() - 864e5);
-    const wt = WOCHENTAGE.findIndex((w) => w === t || w.slice(0, 2) === t.replace(".", ""));
+    const wt = WOCHENTAGE.findIndex((w) => w === t || w.slice(0, 2) === t);
     if (wt >= 0) {
-      let diff = (heute.getDay() - wt + 7) % 7 || 7;
+      const diff = (heute.getDay() - wt + 7) % 7 || 7;
       return new Date(heute.getTime() - diff * 864e5);
     }
-    const m = t.match(/^(\d{1,2})\.(\d{1,2})\.(\d{2,4})?$/);
+    const m = text.trim().match(/^(\d{1,2})\.(\d{1,2})\.(\d{2,4})?$/);
     if (m) {
       let jahr = m[3] ? Number(m[3]) : heute.getFullYear();
       if (jahr < 100) jahr += 2000;
@@ -48,7 +46,7 @@
   }
 
   function richtung(item) {
-    // Richtung steckt im Icon (Klasse/Name/aria-label). Rote Icons = verpasst.
+    // Richtung steckt im Icon (Klasse/Name/aria-label)
     const icon = item.querySelector("svg, i, img, [class*='icon']");
     const info = icon
       ? (icon.outerHTML.slice(0, 400) + " " + (icon.getAttribute("aria-label") || "")).toLowerCase()
@@ -59,37 +57,53 @@
     return "Anruf";
   }
 
-  function leseEintrag(item) {
-    const zeilen = item.innerText
-      .split("\n")
-      .map((z) => z.trim())
-      .filter((z) => z && z !== "CRM" && !/^[A-ZÄÖÜ]{1,3}$/.test(z)); // Avatar-Initialen weg
+  // Alle Texte eines Eintrags, unabhängig vom Layout (funktioniert auch unsichtbar)
+  function texte(item) {
+    const walker = document.createTreeWalker(item, NodeFilter.SHOW_TEXT);
+    const result = [];
+    while (walker.nextNode()) {
+      const el = walker.currentNode.parentElement;
+      if (el && el.closest("button, [role='button'], script, style")) continue; // Knöpfe wie "…"
+      const t = walker.currentNode.nodeValue.replace(/\s+/g, " ").trim();
+      if (t) result.push(t);
+    }
+    return result;
+  }
 
-    // Zeile mit Datum: "Heute 10:55 • 9:12 • via Max Muster 700"
-    const metaIdx = zeilen.findIndex((z) => /^\S+\s+\d{1,2}:\d{2}\b/.test(z) && parseTag(z.split(/\s+/)[0]));
-    if (metaIdx < 0) return null;
-    const teile = zeilen[metaIdx].split("•").map((t) => t.trim());
-    const [tagText, uhrzeit] = teile[0].split(/\s+/);
-    const tag = parseTag(tagText);
-    const [hh, mm] = uhrzeit.split(":").map(Number);
+  const TAG = "(?:heute|gestern|montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag|mo|di|mi|do|fr|sa|so)\\.?|\\d{1,2}\\.\\d{1,2}\\.(?:\\d{2,4})?";
+  const META = new RegExp(
+    `(?:^|\\s)(${TAG})\\s+(\\d{1,2}:\\d{2})(?:\\s*•\\s*(\\d+:\\d{2}(?::\\d{2})?))?(?:\\s*•\\s*via\\s+([^•]+?))?\\s*(?:\\.{3}|…)?\\s*$`, "i");
+
+  function leseEintrag(item) {
+    const voll = texte(item).join(" ").replace(/\s*•\s*/g, " • ").trim();
+    const m = voll.match(META);
+    if (!m) return null;
+    const tag = parseTag(m[1]);
+    if (!tag) return null;
+    const [hh, mm] = m[2].split(":").map(Number);
     tag.setHours(hh, mm, 0, 0);
 
-    const dauerText = teile.slice(1).find((t) => /^\d+:\d{2}(:\d{2})?$/.test(t));
-    const viaText = teile.slice(1).find((t) => t.startsWith("via "));
-
-    // Name + Nummer stehen vor der Datumszeile (eine oder zwei Zeilen)
-    const kopf = zeilen.slice(0, metaIdx).join(" ").trim();
+    // Kopf: Avatar-Initialen und "CRM" entfernen, dann Name + Nummer
+    let woerter = voll.slice(0, m.index).split(" ").filter((w) => w && w !== "CRM");
+    const initialen = woerter[0];
+    if (initialen && /^[A-ZÄÖÜ]{1,3}$/.test(initialen)) {
+      const rest = woerter.slice(1);
+      const ersteBuchstaben = rest.slice(0, initialen.length).map((w) => w[0]).join("").toUpperCase();
+      const vorUndNach = rest.length > 1 ? (rest[0][0] + rest[rest.length - 2][0]).toUpperCase() : "";
+      if (initialen === ersteBuchstaben || initialen === vorUndNach) woerter = rest;
+    }
+    const kopf = woerter.join(" ");
     const nr = kopf.match(/(\+?\d[\d ]{2,})$/);
     const nummer = nr ? nr[1].replace(/\s/g, "") : "";
     const name = (nr ? kopf.slice(0, nr.index) : kopf).trim() || nummer;
 
     return {
       start: fmt(tag),
-      duration_s: parseDauer(dauerText),
+      duration_s: parseDauer(m[3]),
       name,
       number: nummer,
-      direction: dauerText ? richtung(item) : "Verpasst",
-      via: viaText ? viaText.slice(4) : "",
+      direction: m[3] ? richtung(item) : "Verpasst",
+      via: m[4] ? m[4].trim() : "",
     };
   }
 
@@ -100,13 +114,18 @@
       try {
         const a = leseEintrag(it);
         if (a) anrufe.push(a);
-        else console.debug("[Zeitzeuge] Eintrag nicht erkannt:", it.innerText);
+        else console.debug("[Zeitzeuge] Eintrag nicht erkannt:", texte(it).join(" | "));
       } catch (e) {
-        console.debug("[Zeitzeuge] Fehler:", e, it.innerText);
+        console.debug("[Zeitzeuge] Fehler:", e);
       }
     });
     return anrufe;
   }
+  // ---- ANRUFLISTE LESEN: ENDE ----
+
+  const ZEITZEUGE = "http://127.0.0.1:8765";
+  const ZEITZEUGE_URL = ZEITZEUGE + "/anrufe";
+  const INTERVALL_MS = 60 * 1000; // jede Minute
 
   // Als TK-Admin "als Benutzer angemeldet": 3CX zeigt dann einen Banner an.
   // Das Element gibt es immer, sichtbar/gefüllt ist es nur bei fremder Nebenstelle.

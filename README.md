@@ -13,7 +13,7 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
 - **Remote Desktop Manager (Devolutions):** liest `Connections.log`.
   - RDP-, SSH-, VPN-, FTP- und Website-Verbindungen mit Beginn und Ende.
   - Angezeigte Passwörter, Benutzernamen und Einmal-Passwörter (OTP).
-- **Telefonate aus 3CX:** Ein Browser-Skript überträgt die Anrufliste aus dem 3CX-Webclient, ohne dass eine API nötig ist. Ein Assistent richtet es mit wenigen Klicks ein (siehe unten).
+- **Telefonate aus 3CX:** Zeitzeuge liest die Anrufliste selbst aus dem 3CX-Webclient, ohne API und ohne dass du die Webseite offen haben musst. Alternativ geht es über ein Tampermonkey-Skript in Chrome (siehe unten).
 - **Aktivitätsprotokoll:** Alle 5 Sekunden merkt sich Zeitzeuge das aktive Fenster, zum Beispiel eine RDP-Sitzung, einen Browser-Tab, Outlook oder PuTTY.
   - Es erscheint als farbiges Band „PC“ oben in der Timeline, eine Farbe pro Programm.
   - Mit **PC-Verlauf in Liste** stehen die Fenster auch in der Tagesliste.
@@ -90,7 +90,15 @@ Standardpfade:
 
 ### Telefonate aus 3CX
 
-Am einfachsten über **Einstellungen ▾ → Browser-Anbindung (3CX) einrichten …**. Der Assistent öffnet nacheinander die richtigen Seiten in Chrome, und du bestätigst jeweils mit einem Klick:
+**Variante 1: Zeitzeuge liest selbst (empfohlen).** Zeitzeuge öffnet den 3CX-Webclient in einem eingebauten, unsichtbaren Browser und liest jede Minute die Anrufliste. Es ist egal, ob du sonst den 3CX-Client, die Webseite oder das Tischtelefon benutzt.
+
+1. **Einstellungen ▾ → 3CX direkt auslesen …** öffnen.
+2. 3CX-Adresse prüfen und **Bei 3CX anmelden / ansehen** klicken.
+3. Im Fenster ganz normal bei 3CX anmelden und das Fenster schließen.
+
+Die Anmeldung bleibt wie in einem Browser gespeichert (Ordner `3cx_profil`). Läuft sie ab, meldet sich Zeitzeuge im Infobereich. Ein Klick auf die Meldung öffnet die Anmeldung. Im eingebauten Browser sind Ton, Mikrofon, Kamera und Benachrichtigungen gesperrt, dort klingelt also nichts. Für 3CX zählt er aber als zusätzlich angemeldeter Webclient.
+
+**Variante 2: über Chrome und Tampermonkey.** Das ist sinnvoll, wenn du die 3CX-Webseite ohnehin offen hast. Am einfachsten über **Einstellungen ▾ → Browser-Anbindung (3CX) einrichten …**. Der Assistent öffnet nacheinander die richtigen Seiten in Chrome, und du bestätigst jeweils mit einem Klick:
 
 1. Tampermonkey im Chrome Web Store hinzufügen.
 2. Bei Tampermonkey den Schalter „Nutzerskripte zulassen“ einschalten (ab Chrome 138 nötig).
@@ -118,6 +126,7 @@ Die Einstellungen für Telefonate stehen in `zeitzeuge_config.json`:
 | `calls_ignore_missed` | `true` | Verpasste Anrufe ausblenden |
 | `calls_min_duration` | `0` | Kürzere Anrufe ausblenden (in Sekunden) |
 | `calls_3cx_url` | `https://voice.visaas.de:5001` | Adresse des 3CX-Webclients |
+| `pbx_reader_enabled` | `false` | Variante 1: Zeitzeuge liest 3CX selbst |
 
 ### Aktivitätsprotokoll
 
@@ -160,8 +169,9 @@ Läuft RDM auf einem Server, kann Zeitzeuge dessen Log auch über das Netzwerk l
 | `log_parsers.py` | Einlesen der TeamViewer- und RDM-Logs |
 | `call_import.py` | Empfang der 3CX-Anrufe, Auslieferung des Browser-Skripts |
 | `activity_tracker.py` | Aktivitätsprotokoll (aktives Fenster, Leerlauf) |
+| `pbx_reader.py` | 3CX direkt auslesen (eingebauter Browser) |
 | `browser_setup.py` | Einrichtungsassistent für Tampermonkey |
-| `tests/smoke_test.py` | Schnelltest, läuft bei jedem Build |
+| `tests/` | Tests, laufen bei jedem Build: Start, 3CX mit nachgebauter Seite, Fensterabfrage |
 | `settings_dialogs.py` | Dialoge für Logpfade und Aktivitätstypen |
 | `zeitzeuge_anrufe.user.js` | Tampermonkey-Skript für den 3CX-Webclient |
 | `ZeitZeuge.spec` | Build-Datei für PyInstaller |
@@ -172,7 +182,7 @@ Läuft RDM auf einem Server, kann Zeitzeuge dessen Log auch über das Netzwerk l
 
 Zeitzeuge arbeitet nur auf deinem eigenen Rechner. Es liest lokale Logdateien und nimmt Anrufe nur über `127.0.0.1` entgegen. Es werden keine Daten an fremde Server gesendet.
 
-Das Aktivitätsprotokoll speichert Fenstertitel. Darin können Kundennamen, Betreffzeilen von Mails oder Dateinamen stehen. Die Dateien in `aktivitaet/` gehören deshalb nur auf deinen PC. Sie stehen in `.gitignore`, genauso wie `anrufe.json` und die persönliche `zeitzeuge_config.json`.
+Das Aktivitätsprotokoll speichert Fenstertitel. Darin können Kundennamen, Betreffzeilen von Mails oder Dateinamen stehen. Die Dateien in `aktivitaet/` gehören deshalb nur auf deinen PC. Im Ordner `3cx_profil/` liegt deine 3CX-Anmeldung. Er ist zu schützen wie ein Browserprofil. Alle diese Dateien stehen in `.gitignore`, genauso wie `anrufe.json` und die persönliche `zeitzeuge_config.json`.
 
 
 ## Lizenz

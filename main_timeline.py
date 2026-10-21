@@ -5,13 +5,23 @@ import warnings
 
 from datetime import datetime
 
+# Eingebauter Browser für das direkte Auslesen von 3CX (optional).
+# Muss vor dem Erzeugen der QApplication geladen werden.
+try:
+    from pbx_reader import PbxReader
+except Exception as e:  # z. B. PyQtWebEngine nicht installiert
+    print(f"3CX-Direktauslesen nicht verfügbar: {e}")
+    PbxReader = None
+
 from PyQt5.QtCore import QDate, QLocale, QObject, QSize, Qt, QTimer, pyqtSignal
 from PyQt5.QtGui import QColor, QIcon, QKeySequence, QPalette, QPixmap
 from PyQt5.QtWidgets import (QAbstractItemView, QAction, QApplication,
-                             QDateEdit, QHeaderView, QLabel, QMainWindow,
-                             QMenu, QMessageBox, QShortcut, QSplitter,
-                             QSystemTrayIcon, QTableWidget, QTableWidgetItem,
-                             QToolBar, QToolButton, QWidget)
+                             QCheckBox, QDateEdit, QDialog, QDialogButtonBox,
+                             QFormLayout, QHeaderView, QLabel, QLineEdit,
+                             QMainWindow, QMenu, QMessageBox, QPushButton,
+                             QSplitter, QSystemTrayIcon, QTableWidget,
+                             QTableWidgetItem, QToolBar, QToolButton,
+                             QVBoxLayout, QWidget)
 
 from activity_tracker import ActivityTracker
 from browser_setup import BrowserSetupDialog, build_userscript
@@ -42,6 +52,7 @@ else:
 CONFIG_FILE = os.path.join(BASE_DIR, "zeitzeuge_config.json")
 CALLS_FILE = os.path.join(BASE_DIR, "anrufe.json")
 ACTIVITY_DIR = os.path.join(BASE_DIR, "aktivitaet")
+PBX_PROFILE_DIR = os.path.join(BASE_DIR, "3cx_profil")
 
 
 class CallSignal(QObject):
@@ -144,6 +155,7 @@ def load_config_with_defaults():
         "tracking_ignore": ["KeePass", "Bitwarden", "1Password", "Online-Banking"],
         "show_pc_in_list": False,
 
+        "pbx_reader_enabled": False,  # 3CX direkt im eingebauten Browser lesen
         "close_to_tray": True,
     }
     if os.path.exists(CONFIG_FILE):
@@ -360,6 +372,12 @@ class TimelineApp(QMainWindow):
         self.refresh_timer.start(2 * 60 * 1000)
 
         self._build_tray()
+
+        # 3CX direkt auslesen (eingebauter Browser)
+        self.pbx_reader = None
+        if self.config.get("pbx_reader_enabled", False):
+            self.start_pbx_reader()
+
         self.apply_style()  # zeichnet die Timeline
         self.timeline.setFocus()
 
@@ -425,7 +443,8 @@ class TimelineApp(QMainWindow):
         menu.addAction("RDM-Logs …", self.edit_rdm_settings)
         menu.addAction("Aktivitätstypen und Farben …", self.edit_activity_types)
         menu.addSeparator()
-        menu.addAction("Browser-Anbindung (3CX) einrichten …", self.open_browser_setup)
+        menu.addAction("3CX direkt auslesen …", self.open_pbx_settings)
+        menu.addAction("3CX über Chrome/Tampermonkey einrichten …", self.open_browser_setup)
         self.tracking_action = menu.addAction("Aktive Fenster aufzeichnen")
         self.tracking_action.setCheckable(True)
         self.tracking_action.setChecked(self.config.get("tracking_enabled", True))
@@ -586,6 +605,98 @@ class TimelineApp(QMainWindow):
         BrowserSetupDialog(self.config, self.config.get("calls_port", 8765),
                            save_config, self).exec_()
 
+    # ---------------------- 3CX direkt auslesen -------------------------------
+
+    def start_pbx_reader(self):
+        if self.pbx_reader or PbxReader is None:
+            return
+        self.pbx_reader = PbxReader(
+            self.config.get("calls_3cx_url", ""), CALLS_FILE, PBX_PROFILE_DIR,
+            open(resource_path("zeitzeuge_anrufe.user.js"), encoding="utf-8").read(), self,
+        )
+        self.pbx_reader.status_changed.connect(self.calls_label.setText)
+        self.pbx_reader.calls_added.connect(
+            lambda _n: self.timeline.draw_timeline(self.current_date)
+        )
+        self.pbx_reader.login_required.connect(self.on_pbx_login_required)
+        self.pbx_reader.start()
+        self.calls_label.setText("3CX: wird geladen …")
+
+    def stop_pbx_reader(self):
+        if self.pbx_reader:
+            self.pbx_reader.stop()
+            self.pbx_reader.deleteLater()
+            self.pbx_reader = None
+
+    def on_pbx_login_required(self):
+        if self.tray:
+            self.tray.showMessage(
+                "3CX-Anmeldung nötig",
+                "Zeitzeuge kann die Anrufliste nicht lesen. Klick hier, um dich anzumelden.",
+                QSystemTrayIcon.Warning, 8000,
+            )
+
+    def show_pbx_login(self):
+        if not self.pbx_reader:
+            self.start_pbx_reader()
+        if self.pbx_reader:
+            self.pbx_reader.show_login(self)
+
+    def open_pbx_settings(self):
+        if PbxReader is None:
+            QMessageBox.warning(
+                self, "3CX direkt auslesen",
+                "Der eingebaute Browser fehlt (Paket PyQtWebEngine). "
+                "Bitte die aktuelle EXE von GitHub verwenden.",
+            )
+            return
+        dialog = QDialog(self)
+        dialog.setWindowTitle("3CX direkt auslesen")
+        dialog.setMinimumWidth(520)
+        layout = QVBoxLayout(dialog)
+        info = QLabel(
+            "Zeitzeuge öffnet den 3CX-Webclient in einem eingebauten, unsichtbaren Browser "
+            "und liest jede Minute die Anrufliste. Chrome und Tampermonkey werden dafür "
+            "nicht gebraucht. Beim ersten Mal meldest du dich einmal an, die Anmeldung "
+            "bleibt gespeichert. Ton und Mikrofon sind dort gesperrt."
+        )
+        info.setWordWrap(True)
+        layout.addWidget(info)
+
+        form = QFormLayout()
+        url_edit = QLineEdit(self.config.get("calls_3cx_url", ""))
+        form.addRow("3CX-Adresse:", url_edit)
+        enabled = QCheckBox("Anrufliste automatisch im Hintergrund lesen")
+        enabled.setChecked(self.config.get("pbx_reader_enabled", False))
+        form.addRow("", enabled)
+        layout.addLayout(form)
+
+        status = QLabel(self.pbx_reader.status if self.pbx_reader else "Aus")
+        status.setStyleSheet("color: gray;")
+        layout.addWidget(status)
+
+        def apply():
+            url = url_edit.text().strip().rstrip("/")
+            changed = url != self.config.get("calls_3cx_url")
+            self.config["calls_3cx_url"] = url
+            self.config["pbx_reader_enabled"] = enabled.isChecked()
+            save_config(self.config)
+            if changed or not enabled.isChecked():
+                self.stop_pbx_reader()
+            if enabled.isChecked():
+                self.start_pbx_reader()
+            return self.pbx_reader
+
+        login_btn = QPushButton("Bei 3CX anmelden / ansehen")
+        login_btn.clicked.connect(lambda: (enabled.setChecked(True), apply(), self.show_pbx_login(),
+                                           status.setText(self.pbx_reader.status)))
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.addButton(login_btn, QDialogButtonBox.ActionRole)
+        buttons.accepted.connect(lambda: (apply(), dialog.accept()))
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        dialog.exec_()
+
     # ---------------------- Infobereich (Tray) --------------------------------
 
     def _build_tray(self):
@@ -599,6 +710,11 @@ class TimelineApp(QMainWindow):
         menu.addSeparator()
         menu.addAction("Beenden", self.quit_app)
         self.tray.setContextMenu(menu)
+        # Klick auf die Meldung "3CX-Anmeldung nötig" öffnet die Anmeldung
+        self.tray.messageClicked.connect(
+            lambda: self.show_pbx_login()
+            if self.pbx_reader and self.pbx_reader.needs_login else None
+        )
         self.tray.activated.connect(
             lambda reason: self.show_from_tray()
             if reason in (QSystemTrayIcon.Trigger, QSystemTrayIcon.DoubleClick) else None
@@ -615,6 +731,8 @@ class TimelineApp(QMainWindow):
         self._quitting = True
         if self.tracker:
             self.tracker.stop()
+        if self.pbx_reader:
+            self.pbx_reader.stop()
         QApplication.instance().quit()
 
     def closeEvent(self, event):
@@ -630,9 +748,7 @@ class TimelineApp(QMainWindow):
                     QSystemTrayIcon.Information, 4000,
                 )
             return
-        if self.tracker:
-            self.tracker.stop()
-        QApplication.instance().quit()
+        self.quit_app()
         super().closeEvent(event)
 
     # ---------------------- Zoom / Dark-Mode ----------------------------------
@@ -708,6 +824,7 @@ class TimelineApp(QMainWindow):
 
 if __name__ == "__main__":
     QLocale.setDefault(GERMAN)
+    QApplication.setAttribute(Qt.AA_ShareOpenGLContexts)  # nötig für den eingebauten Browser
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
     app.setQuitOnLastWindowClosed(False)

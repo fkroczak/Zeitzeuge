@@ -27,7 +27,10 @@ jobs:
       - name: Starttest (Fenster öffnen und schließen)
         env:
           QT_QPA_PLATFORM: offscreen
-        run: python -c "import sys; from PyQt5.QtCore import QTimer; from PyQt5.QtWidgets import QApplication; app = QApplication(sys.argv); import main_timeline; w = main_timeline.TimelineApp(); w.show(); QTimer.singleShot(1000, app.quit); app.exec_(); print('Start ok')"
+        run: python tests/start_test.py
+
+      - name: 3CX-Test (nachgebaute Seite)
+        run: python tests/pbx_test.py
 
       - name: Schnelltest (Fensterabfrage, Skript-Server)
         run: python tests/smoke_test.py
