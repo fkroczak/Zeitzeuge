@@ -33,18 +33,27 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
 ```bash
 git clone https://github.com/fkroczak/Zeitzeuge.git
 cd zeitzeuge
-pip install PyQt5
+pip install -r requirements.txt
 python main_timeline.py
 ```
 
-### EXE bauen
+### EXE herunterladen
+
+GitHub baut die EXE bei jeder Änderung automatisch:
+
+- **Neuester Stand:** Öffne im Repository den Reiter **Actions**, dann den obersten Lauf „EXE bauen“. Unter **Artifacts** liegt die `ZeitZeuge.exe` als ZIP.
+- **Feste Version:** Bei einem Tag wie `v3.3` entsteht ein Eintrag unter **Releases**, mit der EXE als Download.
+
+### EXE selbst bauen
+
+Doppelklick auf `build.bat`. Alternativ in der Kommandozeile:
 
 ```bash
-pip install pyinstaller
-pyinstaller ZeitZeuge.spec
+pip install -r requirements.txt
+pyinstaller --noconfirm --clean ZeitZeuge.spec
 ```
 
-Die fertige `ZeitZeuge.exe` liegt danach in `dist/`. Die Einstellungsdatei `zeitzeuge_config.json` legt Zeitzeuge neben der EXE an.
+Die fertige `ZeitZeuge.exe` liegt danach in `dist/`. Die Einstellungsdatei `zeitzeuge_config.json` legt Zeitzeuge beim ersten Start neben der EXE an.
 
 ## Einrichtung
 
@@ -103,6 +112,8 @@ Die Einstellungen für Telefonate stehen in `zeitzeuge_config.json`:
 | `settings_dialogs.py` | Dialoge für Logpfade und Aktivitätstypen |
 | `zeitzeuge_anrufe.user.js` | Tampermonkey-Skript für den 3CX-Webclient |
 | `ZeitZeuge.spec` | Build-Datei für PyInstaller |
+| `build.bat` | EXE auf dem eigenen PC bauen |
+| `.github/workflows/build.yml` | Automatischer EXE-Build auf GitHub |
 
 ## Datenschutz
 
