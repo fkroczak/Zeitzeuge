@@ -5,7 +5,7 @@ a = Analysis(
     ['main_timeline.py'],
     pathex=[],
     binaries=[],
-    datas=[('zeitzeuge.png', '.'), ('zeitzeuge.ico', '.')],
+    datas=[('zeitzeuge.png', '.'), ('zeitzeuge.ico', '.'), ('zeitzeuge_anrufe.user.js', '.')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

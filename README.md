@@ -1,6 +1,6 @@
 # Zeitzeuge
 
-**Zeitzeuge zeigt dir auf einer Tages-Timeline, woran du gearbeitet hast.** Das Programm liest die Spuren, die deine Werkzeuge ohnehin hinterlassen: TeamViewer-Verbindungen, Sitzungen aus dem Remote Desktop Manager und Telefonate aus 3CX. So musst du am Ende des Tages nicht mehr raten, wann du bei welchem Kunden warst.
+**Zeitzeuge zeigt dir auf einer Tages-Timeline, woran du gearbeitet hast.** Das Programm liest die Spuren, die deine Werkzeuge ohnehin hinterlassen: TeamViewer-Verbindungen, Sitzungen aus dem Remote Desktop Manager und Telefonate aus 3CX. Dazu merkt es sich, welches Fenster gerade aktiv war. So kannst du Tickets lückenlos schreiben und musst nicht mehr raten, wann du bei welchem Kunden warst.
 
 Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträglich erfassen oder abrechnen.
 
@@ -13,7 +13,12 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
 - **Remote Desktop Manager (Devolutions):** liest `Connections.log`.
   - RDP-, SSH-, VPN-, FTP- und Website-Verbindungen mit Beginn und Ende.
   - Angezeigte Passwörter, Benutzernamen und Einmal-Passwörter (OTP).
-- **Telefonate aus 3CX:** Ein Browser-Skript überträgt die Anrufliste aus dem 3CX-Webclient, ohne dass eine API nötig ist (siehe unten).
+- **Telefonate aus 3CX:** Ein Browser-Skript überträgt die Anrufliste aus dem 3CX-Webclient, ohne dass eine API nötig ist. Ein Assistent richtet es mit wenigen Klicks ein (siehe unten).
+- **Aktivitätsprotokoll:** Alle 5 Sekunden merkt sich Zeitzeuge das aktive Fenster, zum Beispiel eine RDP-Sitzung, einen Browser-Tab, Outlook oder PuTTY.
+  - Es erscheint als farbiges Band „PC“ oben in der Timeline, eine Farbe pro Programm.
+  - Mit **PC-Verlauf in Liste** stehen die Fenster auch in der Tagesliste.
+  - Nach 5 Minuten ohne Maus und Tastatur oder bei gesperrtem PC wird nichts aufgezeichnet.
+  - Fenster mit bestimmten Wörtern im Titel werden nur als „(ausgeblendet)“ gespeichert, zum Beispiel Passwortmanager.
 - **Tagesliste** unter der Timeline mit Von, Bis, Dauer, Typ, Kunde und Details.
   - Die Statuszeile zeigt die belegte Zeit des Tages. Überschneidungen werden nicht doppelt gezählt.
   - Markierte Zeilen kopierst du mit STRG + C, zum Beispiel für die Ticket-Dokumentation.
@@ -85,15 +90,22 @@ Standardpfade:
 
 ### Telefonate aus 3CX
 
+Am einfachsten über **Einstellungen ▾ → Browser-Anbindung (3CX) einrichten …**. Der Assistent öffnet nacheinander die richtigen Seiten in Chrome, und du bestätigst jeweils mit einem Klick:
+
+1. Tampermonkey im Chrome Web Store hinzufügen.
+2. Bei Tampermonkey den Schalter „Nutzerskripte zulassen“ einschalten (ab Chrome 138 nötig).
+3. 3CX-Adresse eintragen, **Skript installieren** klicken und in Tampermonkey bestätigen.
+4. Anrufliste öffnen. Sobald sich das Skript meldet, zeigt der Assistent einen Haken.
+
+Eine vollautomatische Installation ohne Klick lässt Chrome aus Sicherheitsgründen nicht zu. Updates des Skripts holt sich Tampermonkey danach selbst von Zeitzeuge.
+
+So läuft die Übertragung:
+
 ```
 3CX-Webclient (Browser) ──Tampermonkey-Skript──▶ Zeitzeuge (127.0.0.1:8765) ──▶ anrufe.json ──▶ Timeline
 ```
 
-1. Installiere in Chrome die Erweiterung [Tampermonkey](https://www.tampermonkey.net/).
-2. Lege dort ein neues Skript an und füge den Inhalt von `zeitzeuge_anrufe.user.js` ein.
-3. Trag in der Zeile `@match` die Adresse deiner 3CX-Anlage ein.
-4. Starte Zeitzeuge und öffne im Browser die Anrufliste.
-5. Wenn Tampermonkey fragt, erlaube den Zugriff auf `127.0.0.1` mit „Immer erlauben“.
+Wenn Tampermonkey beim ersten Senden fragt, erlaube den Zugriff auf `127.0.0.1` mit „Immer erlauben“.
 
 Solange die Anrufliste offen ist, wird sie jede Minute übertragen. Unten rechts auf der Seite gibt es außerdem den Knopf **„→ Zeitzeuge“** zum Senden von Hand. Der Server nimmt nur Verbindungen vom eigenen Rechner an, und doppelte Anrufe werden aussortiert.
 
@@ -105,6 +117,31 @@ Die Einstellungen für Telefonate stehen in `zeitzeuge_config.json`:
 | `calls_port` | `8765` | Port, er muss zum Skript passen |
 | `calls_ignore_missed` | `true` | Verpasste Anrufe ausblenden |
 | `calls_min_duration` | `0` | Kürzere Anrufe ausblenden (in Sekunden) |
+| `calls_3cx_url` | `https://voice.visaas.de:5001` | Adresse des 3CX-Webclients |
+
+### Aktivitätsprotokoll
+
+Ein- und ausschalten über **Einstellungen ▾ → Aktive Fenster aufzeichnen**. Die Daten liegen pro Tag in `aktivitaet/JJJJ-MM-TT.jsonl` neben der EXE.
+
+| Schlüssel | Standard | Bedeutung |
+|---|---|---|
+| `tracking_enabled` | `true` | Aufzeichnung an oder aus |
+| `tracking_idle_minutes` | `5` | Ab so vielen Minuten ohne Eingabe gilt der PC als verlassen |
+| `tracking_ignore` | `["KeePass", "Bitwarden", …]` | Fenster mit diesen Wörtern werden nur als „(ausgeblendet)“ gespeichert |
+
+### Im Hintergrund laufen
+
+Aufgezeichnet wird nur, solange Zeitzeuge läuft. Schließt du das Fenster, läuft Zeitzeuge im Infobereich weiter (Symbol neben der Uhr). Richtig beenden geht über Rechtsklick auf das Symbol → **Beenden**.
+
+Damit Zeitzeuge mit Windows startet:
+
+1. Drück `Win + R`, gib `shell:startup` ein und drück Enter.
+2. Leg in dem Ordner eine Verknüpfung zu `ZeitZeuge.exe` an.
+3. Häng in den Eigenschaften der Verknüpfung unter **Ziel** ` --minimized` an. Dann startet Zeitzeuge direkt im Infobereich.
+
+### RDM im Rechenzentrum
+
+Läuft RDM auf einem Server, kann Zeitzeuge dessen Log auch über das Netzwerk lesen. Trag unter **Einstellungen ▾ → RDM-Logs …** den Netzwerkpfad ein, zum Beispiel `\\server\c$\Users\<name>\AppData\Local\Devolutions\RemoteDesktopManager\Connections.log`. Weicht die Zeitzone des Servers ab, gleichst du das dort mit der Zeitzonenkorrektur aus.
 
 ### Weitere Einstellungen
 
@@ -121,7 +158,10 @@ Die Einstellungen für Telefonate stehen in `zeitzeuge_config.json`:
 | `main_timeline.py` | Hauptfenster, Werkzeugleiste, Einstellungen, Design |
 | `timeline_only.py` | Zeichnen der Timeline, Tooltips, Zoom |
 | `log_parsers.py` | Einlesen der TeamViewer- und RDM-Logs |
-| `call_import.py` | Empfang und Speicherung der 3CX-Anrufe |
+| `call_import.py` | Empfang der 3CX-Anrufe, Auslieferung des Browser-Skripts |
+| `activity_tracker.py` | Aktivitätsprotokoll (aktives Fenster, Leerlauf) |
+| `browser_setup.py` | Einrichtungsassistent für Tampermonkey |
+| `tests/smoke_test.py` | Schnelltest, läuft bei jedem Build |
 | `settings_dialogs.py` | Dialoge für Logpfade und Aktivitätstypen |
 | `zeitzeuge_anrufe.user.js` | Tampermonkey-Skript für den 3CX-Webclient |
 | `ZeitZeuge.spec` | Build-Datei für PyInstaller |
@@ -130,7 +170,9 @@ Die Einstellungen für Telefonate stehen in `zeitzeuge_config.json`:
 
 ## Datenschutz
 
-Zeitzeuge arbeitet nur auf deinem eigenen Rechner. Es liest lokale Logdateien und nimmt Anrufe nur über `127.0.0.1` entgegen. Es werden keine Daten an fremde Server gesendet. Die Datei `anrufe.json` enthält Namen und Telefonnummern. Sie steht deshalb in `.gitignore`, genauso wie die persönliche `zeitzeuge_config.json`.
+Zeitzeuge arbeitet nur auf deinem eigenen Rechner. Es liest lokale Logdateien und nimmt Anrufe nur über `127.0.0.1` entgegen. Es werden keine Daten an fremde Server gesendet.
+
+Das Aktivitätsprotokoll speichert Fenstertitel. Darin können Kundennamen, Betreffzeilen von Mails oder Dateinamen stehen. Die Dateien in `aktivitaet/` gehören deshalb nur auf deinen PC. Sie stehen in `.gitignore`, genauso wie `anrufe.json` und die persönliche `zeitzeuge_config.json`.
 
 
 ## Lizenz

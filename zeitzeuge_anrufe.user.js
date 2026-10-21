@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         Zeitzeuge – Anrufliste übertragen
 // @namespace    zeitzeuge
-// @version      1.1
+// @version      1.2
 // @description  Liest die Anrufliste im 3CX-Webclient aus und schickt sie an Zeitzeuge (127.0.0.1:8765)
-// @match        https://voice.visaas.de:5001/*
+// @include      https://voice.visaas.de:5001/*
 // @grant        GM_xmlhttpRequest
 // @connect      127.0.0.1
 // ==/UserScript==
@@ -11,7 +11,8 @@
 (function () {
   "use strict";
 
-  const ZEITZEUGE_URL = "http://127.0.0.1:8765/anrufe";
+  const ZEITZEUGE = "http://127.0.0.1:8765";
+  const ZEITZEUGE_URL = ZEITZEUGE + "/anrufe";
   const INTERVALL_MS = 60 * 1000; // jede Minute
   const WOCHENTAGE = ["sonntag", "montag", "dienstag", "mittwoch", "donnerstag", "freitag", "samstag"];
 
@@ -150,6 +151,9 @@
   });
   knopf.onclick = () => senden(true);
   document.body.appendChild(knopf);
+
+  // Bei Zeitzeuge melden (für die Statusanzeige im Einrichtungsassistenten)
+  GM_xmlhttpRequest({ method: "GET", url: `${ZEITZEUGE}/ping?v=${GM_info.script.version}` });
 
   setTimeout(() => senden(false), 5000);
   setInterval(() => senden(false), INTERVALL_MS);

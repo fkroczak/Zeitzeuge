@@ -8,6 +8,7 @@ from PyQt5.QtWidgets import (QDialog, QDialogButtonBox, QFormLayout,
                              QGraphicsRectItem, QGraphicsScene, QGraphicsView,
                              QLabel, QLineEdit, QTextEdit, QVBoxLayout)
 
+from activity_tracker import app_label, merge_segments
 from call_import import load_call_suggestions
 from log_parsers import ConnectionIndex, RdmParser, TeamViewerParser
 
@@ -71,11 +72,15 @@ class ActivityViewDialog(QDialog):
 
 
 class TimelineView(QGraphicsView):
-    # Liefert nach jedem Zeichnen alle Einträge des Tages (für die Tagesliste)
-    day_loaded = pyqtSignal(list)
+    # Nach jedem Zeichnen: Einträge des Tages und PC-Aktivität (für die Tagesliste)
+    day_loaded = pyqtSignal(list, list)
+
+    APP_COLORS = ["#5B8DEF", "#E67E22", "#27AE60", "#9B59B6", "#E84393",
+                  "#16A085", "#C0392B", "#F1C40F", "#2C3E50", "#7F8C8D"]
 
     LEFT = 20          # Rand links in Pixeln
     AXIS_H = 26        # Höhe der Stundenleiste oben
+    PC_BAND_H = 14     # Band für die PC-Aktivität
     LANE_H = 26        # Höhe eines Eintrags
     LANE_GAP = 6
     MIN_LANES = 4
@@ -95,6 +100,7 @@ class TimelineView(QGraphicsView):
         self.remote_suggestions = []
         self.current_date = QDate.currentDate()
         self.calls_file = None  # wird vom Hauptfenster gesetzt (anrufe.json)
+        self.tracker = None     # Aktivitätsprotokoll, vom Hauptfenster gesetzt
 
         self._remote_cache = {}  # date_str -> list[conn]
         self._tv_parser = TeamViewerParser(debug=DEBUG)
@@ -216,6 +222,25 @@ class TimelineView(QGraphicsView):
         valid.sort(key=lambda a: a["start"])
         return valid
 
+    def pc_entries_for(self, date: QDate, min_seconds=30, max_gap=60):
+        """Aktive Fenster des Tages als Einträge (für Band und Tagesliste)."""
+        if not self.tracker:
+            return []
+        segments = self.tracker.segments_for(date.toString("yyyy-MM-dd"))
+        result = []
+        for seg in merge_segments(segments, min_seconds=min_seconds, max_gap=max_gap):
+            result.append({
+                "start": seg["start"], "end": seg["end"],
+                "type": f"PC: {app_label(seg['app'])}",
+                "customer_name": seg["title"] or app_label(seg["app"]),
+                "details": seg["app"], "app": seg["app"],
+                "is_suggestion": True,
+            })
+        return result
+
+    def app_color(self, app):
+        return QColor(self.APP_COLORS[sum(map(ord, app.lower())) % len(self.APP_COLORS)])
+
     # ----------------------------- Zeichnen ----------------------------------
 
     def _x(self, minutes):
@@ -266,8 +291,10 @@ class TimelineView(QGraphicsView):
                     idx = len(lanes_end) - 1
             placed.append((a, start, end, idx))
 
+        pc_band = self.pc_entries_for(date, min_seconds=5, max_gap=15)
         n_lanes = max(self.MIN_LANES, len(lanes_end))
-        top = self.AXIS_H + 8
+        band_y = self.AXIS_H + 6
+        top = band_y + (self.PC_BAND_H + 10 if self.tracker else 2)
         content_h = top + n_lanes * (self.LANE_H + self.LANE_GAP) + 8
         # Platz für die horizontale Scrollleiste lassen, sonst erscheint eine senkrechte
         free_h = self.maximumViewportSize().height() - self.horizontalScrollBar().sizeHint().height()
@@ -335,6 +362,22 @@ class TimelineView(QGraphicsView):
                 item.setPos(x1 + 2, y + (self.LANE_H - item.boundingRect().height()) / 2)
                 item.setAcceptedMouseButtons(Qt.NoButton)
 
+        # PC-Aktivität als schmales Band
+        if self.tracker:
+            for p in pc_band:
+                start, end = parse_time(p["start"]), parse_time(p["end"])
+                x1 = self._x(start.hour * 60 + start.minute + start.second / 60)
+                x2 = self._x(end.hour * 60 + end.minute + end.second / 60)
+                color = self.app_color(p["app"])
+                fill = QColor(color)
+                fill.setAlpha(200)
+                rect = self.scene.addRect(x1, band_y, max(1.5, x2 - x1), self.PC_BAND_H,
+                                          QPen(Qt.NoPen), QBrush(fill))
+                self.activity_rects[rect] = p
+            label = self.scene.addText("PC", QFont("Segoe UI", 7))
+            label.setDefaultTextColor(self.muted_text)
+            label.setPos(self._x(0) - 18, band_y - 3)
+
         # Jetzt-Linie
         if date == QDate.currentDate():
             now = QDateTime.currentDateTime().time()
@@ -349,7 +392,7 @@ class TimelineView(QGraphicsView):
         elif center_min is not None:
             self.centerOn(self._x(center_min), self.mapToScene(0, 0).y())
 
-        self.day_loaded.emit(activities)
+        self.day_loaded.emit(activities, self.pc_entries_for(date))
 
     def resizeEvent(self, event):
         super().resizeEvent(event)

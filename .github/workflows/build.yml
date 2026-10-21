@@ -29,6 +29,9 @@ jobs:
           QT_QPA_PLATFORM: offscreen
         run: python -c "import sys; from PyQt5.QtCore import QTimer; from PyQt5.QtWidgets import QApplication; app = QApplication(sys.argv); import main_timeline; w = main_timeline.TimelineApp(); w.show(); QTimer.singleShot(1000, app.quit); app.exec_(); print('Start ok')"
 
+      - name: Schnelltest (Fensterabfrage, Skript-Server)
+        run: python tests/smoke_test.py
+
       - name: EXE bauen
         run: pyinstaller --noconfirm --clean ZeitZeuge.spec
 

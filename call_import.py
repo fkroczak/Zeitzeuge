@@ -15,6 +15,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 TIME_FMT = "%Y-%m-%d %H:%M:%S"
 _lock = threading.Lock()
 
+# Zuletzt gesehen: für die Statusanzeige im Einrichtungsassistenten
+status = {"last_ping": None, "script_version": None, "last_post": None, "last_count": 0}
+
 
 def _key(call):
     # Gleicher Anruf = gleiche Startminute + gleiche Nummer/Name
@@ -97,10 +100,34 @@ def load_call_suggestions(path, ignore_missed=True, min_seconds=0):
     return result
 
 
-def start_call_server(path, port=8765, on_update=None):
-    """Startet den Empfangsserver im Hintergrund. on_update() wird nach neuen Anrufen aufgerufen."""
+def start_call_server(path, port=8765, on_update=None, script_provider=None):
+    """Startet den Empfangsserver im Hintergrund.
+
+    on_update(): wird nach neuen Anrufen aufgerufen.
+    script_provider(): liefert den Text des Tampermonkey-Skripts (zum Installieren).
+    """
 
     class Handler(BaseHTTPRequestHandler):
+        def _send(self, code, body, content_type):
+            data = body.encode("utf-8")
+            self.send_response(code)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(data)
+
+        def do_GET(self):
+            route, _, query = self.path.partition("?")
+            if route == "/zeitzeuge_anrufe.user.js" and script_provider:
+                self._send(200, script_provider(), "text/javascript; charset=utf-8")
+            elif route == "/ping":
+                status["last_ping"] = datetime.now()
+                status["script_version"] = query.replace("v=", "") or None
+                self._send(200, "ok", "text/plain")
+            else:
+                self.send_error(404)
+
         def do_POST(self):
             if self.path != "/anrufe":
                 self.send_error(404)
@@ -112,12 +139,9 @@ def start_call_server(path, port=8765, on_update=None):
             except Exception as e:
                 self.send_error(400, str(e))
                 return
-            body = json.dumps({"neu": added}).encode()
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
+            status["last_post"] = datetime.now()
+            status["last_count"] = len(calls)
+            self._send(200, json.dumps({"neu": added}), "application/json")
             if added and on_update:
                 on_update()
 

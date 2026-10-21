@@ -10,9 +10,11 @@ from PyQt5.QtGui import QColor, QIcon, QKeySequence, QPalette, QPixmap
 from PyQt5.QtWidgets import (QAbstractItemView, QAction, QApplication,
                              QDateEdit, QHeaderView, QLabel, QMainWindow,
                              QMenu, QMessageBox, QShortcut, QSplitter,
-                             QTableWidget, QTableWidgetItem, QToolBar,
-                             QToolButton, QWidget)
+                             QSystemTrayIcon, QTableWidget, QTableWidgetItem,
+                             QToolBar, QToolButton, QWidget)
 
+from activity_tracker import ActivityTracker
+from browser_setup import BrowserSetupDialog, build_userscript
 from call_import import start_call_server
 from settings_dialogs import (ActivityTypeSettingsDialog,
                               ConnectionSettingsDialog)
@@ -39,6 +41,7 @@ else:
 
 CONFIG_FILE = os.path.join(BASE_DIR, "zeitzeuge_config.json")
 CALLS_FILE = os.path.join(BASE_DIR, "anrufe.json")
+ACTIVITY_DIR = os.path.join(BASE_DIR, "aktivitaet")
 
 
 class CallSignal(QObject):
@@ -133,6 +136,15 @@ def load_config_with_defaults():
         "calls_port": 8765,
         "calls_ignore_missed": True,
         "calls_min_duration": 0,
+        "calls_3cx_url": "https://voice.visaas.de:5001",
+
+        # Aktivitätsprotokoll (aktives Fenster)
+        "tracking_enabled": True,
+        "tracking_idle_minutes": 5,
+        "tracking_ignore": ["KeePass", "Bitwarden", "1Password", "Online-Banking"],
+        "show_pc_in_list": False,
+
+        "close_to_tray": True,
     }
     if os.path.exists(CONFIG_FILE):
             try:
@@ -266,12 +278,21 @@ class TimelineApp(QMainWindow):
         self.current_date = QDate.currentDate()
         self.activities = []
         self.day_activities = []
+        self.pc_activities = []
+        self.list_entries = []
+        self._quitting = False
 
         self._build_toolbar()
 
         # Timeline oben, Tagesliste unten
         self.timeline = TimelineView(self.activities, self.config, parent=self)
         self.timeline.day_loaded.connect(self.update_day_list)
+
+        # Aktivitätsprotokoll: alle 5 Sekunden aktives Fenster abfragen
+        self.tracker = None
+        self.track_timer = QTimer(self)
+        self.track_timer.timeout.connect(self.track_sample)
+        self.set_tracking(self.config.get("tracking_enabled", True))
 
         self.table = QTableWidget(0, len(self.COLUMNS), self)
         self.table.setHorizontalHeaderLabels(self.COLUMNS)
@@ -290,7 +311,7 @@ class TimelineApp(QMainWindow):
         header.resizeSection(4, 300)
         header.setStretchLastSection(True)
         self.table.cellDoubleClicked.connect(
-            lambda row, _col: ActivityViewDialog(self.day_activities[row], self).exec_()
+            lambda row, _col: ActivityViewDialog(self.list_entries[row], self).exec_()
         )
         copy_action = QAction("Kopieren", self.table)
         copy_action.setShortcut(QKeySequence.Copy)
@@ -325,7 +346,8 @@ class TimelineApp(QMainWindow):
             )
             port = self.config.get("calls_port", 8765)
             self.call_server = start_call_server(
-                CALLS_FILE, port=port, on_update=self.call_signal.updated.emit
+                CALLS_FILE, port=port, on_update=self.call_signal.updated.emit,
+                script_provider=self.userscript_text,
             )
             self.calls_label.setText(
                 f"Anrufempfang aktiv (Port {port})" if self.call_server
@@ -337,6 +359,7 @@ class TimelineApp(QMainWindow):
         self.refresh_timer.timeout.connect(self.auto_refresh)
         self.refresh_timer.start(2 * 60 * 1000)
 
+        self._build_tray()
         self.apply_style()  # zeichnet die Timeline
         self.timeline.setFocus()
 
@@ -383,6 +406,13 @@ class TimelineApp(QMainWindow):
         spacer.setStyleSheet("background: transparent;")
         tb.addWidget(spacer)
 
+        self.pc_list_action = QAction("PC-Verlauf in Liste", self)
+        self.pc_list_action.setCheckable(True)
+        self.pc_list_action.setChecked(self.config.get("show_pc_in_list", False))
+        self.pc_list_action.setToolTip("Aktive Fenster in der Tagesliste anzeigen")
+        self.pc_list_action.toggled.connect(self.toggle_pc_list)
+        tb.addAction(self.pc_list_action)
+
         self.dark_action = QAction("Dunkel", self)
         self.dark_action.setCheckable(True)
         self.dark_action.setChecked(self.dark_mode)
@@ -394,6 +424,12 @@ class TimelineApp(QMainWindow):
         menu.addAction("TeamViewer-Logs …", self.edit_teamviewer_settings)
         menu.addAction("RDM-Logs …", self.edit_rdm_settings)
         menu.addAction("Aktivitätstypen und Farben …", self.edit_activity_types)
+        menu.addSeparator()
+        menu.addAction("Browser-Anbindung (3CX) einrichten …", self.open_browser_setup)
+        self.tracking_action = menu.addAction("Aktive Fenster aufzeichnen")
+        self.tracking_action.setCheckable(True)
+        self.tracking_action.setChecked(self.config.get("tracking_enabled", True))
+        self.tracking_action.toggled.connect(self.toggle_tracking)
         menu.addSeparator()
         menu.addAction("Über Zeitzeuge", self.show_about)
         settings_btn = QToolButton(self)
@@ -418,14 +454,24 @@ class TimelineApp(QMainWindow):
 
     # ---------------------- Tagesliste ----------------------------------------
 
-    def update_day_list(self, activities):
+    def update_day_list(self, activities, pc_activities=None):
         self.day_activities = activities
+        self.pc_activities = pc_activities or []
+        entries = list(activities)
+        if self.config.get("show_pc_in_list", False):
+            entries += self.pc_activities
+        entries.sort(key=lambda a: a["start"])
+        self.list_entries = entries
+
         colors = self.config.get("type_colors", {})
-        self.table.setRowCount(len(activities))
-        for row, a in enumerate(activities):
+        self.table.setRowCount(len(entries))
+        for row, a in enumerate(entries):
             start, end = parse_time(a["start"]), parse_time(a["end"])
             pix = QPixmap(10, 10)
-            pix.fill(QColor(colors.get(a["type"], "#4682B4")))
+            if "app" in a:
+                pix.fill(self.timeline.app_color(a["app"]))
+            else:
+                pix.fill(QColor(colors.get(a["type"], "#4682B4")))
             type_item = QTableWidgetItem(QIcon(pix), a["type"])
             values = [
                 QTableWidgetItem(f"{start:%H:%M}"),
@@ -453,12 +499,16 @@ class TimelineApp(QMainWindow):
 
     def update_status_text(self):
         day = GERMAN.toString(self.current_date, "dddd, dd.MM.yyyy")
+        parts = [day]
         n = len(self.day_activities)
         if n:
-            total = format_duration(merged_seconds(self.day_activities))
-            self.info_label.setText(f"{day}   ·   {n} Einträge   ·   belegt {total}")
+            parts.append(f"{n} Einträge")
+            parts.append(f"belegt {format_duration(merged_seconds(self.day_activities))}")
         else:
-            self.info_label.setText(f"{day}   ·   keine Einträge")
+            parts.append("keine Einträge")
+        if self.pc_activities:
+            parts.append(f"am PC aktiv {format_duration(merged_seconds(self.pc_activities))}")
+        self.info_label.setText("   ·   ".join(parts))
 
     # ---------------------- Datum / Navigation --------------------------------
 
@@ -482,6 +532,108 @@ class TimelineApp(QMainWindow):
     def auto_refresh(self):
         if self.current_date == QDate.currentDate():
             self.timeline.refresh()
+
+    # ---------------------- Aktivitätsprotokoll -------------------------------
+
+    def set_tracking(self, enabled):
+        if enabled and not self.tracker:
+            self.tracker = ActivityTracker(
+                ACTIVITY_DIR,
+                idle_limit=self.config.get("tracking_idle_minutes", 5) * 60,
+                ignore=self.config.get("tracking_ignore", []),
+            )
+            self.track_timer.start(5000)
+        elif not enabled and self.tracker:
+            self.track_timer.stop()
+            self.tracker.stop()
+            self.tracker = None
+        self.timeline.tracker = self.tracker
+
+    def track_sample(self):
+        if self.tracker and self.tracker.sample():
+            # Ansicht höchstens alle 30 s neu zeichnen, und nur, wenn heute angezeigt wird
+            now = datetime.now()
+            last = getattr(self, "_last_track_draw", None)
+            if (self.current_date == QDate.currentDate() and self.isVisible()
+                    and (last is None or (now - last).total_seconds() > 30)):
+                self._last_track_draw = now
+                self.timeline.draw_timeline(self.current_date)
+
+    def toggle_tracking(self, enabled):
+        self.config["tracking_enabled"] = enabled
+        save_config(self.config)
+        self.set_tracking(enabled)
+        self.timeline.draw_timeline(self.current_date)
+
+    def toggle_pc_list(self, enabled):
+        self.config["show_pc_in_list"] = enabled
+        save_config(self.config)
+        self.update_day_list(self.day_activities, self.pc_activities)
+
+    # ---------------------- Browser-Anbindung ---------------------------------
+
+    def userscript_text(self):
+        with open(resource_path("zeitzeuge_anrufe.user.js"), "r", encoding="utf-8") as f:
+            template = f.read()
+        return build_userscript(template, self.config.get("calls_3cx_url", ""),
+                                self.config.get("calls_port", 8765))
+
+    def open_browser_setup(self):
+        if not self.call_server:
+            QMessageBox.warning(self, "Browser-Anbindung",
+                                "Der Anrufempfang läuft nicht (Port belegt oder ausgeschaltet).")
+            return
+        BrowserSetupDialog(self.config, self.config.get("calls_port", 8765),
+                           save_config, self).exec_()
+
+    # ---------------------- Infobereich (Tray) --------------------------------
+
+    def _build_tray(self):
+        self.tray = None
+        if not QSystemTrayIcon.isSystemTrayAvailable():
+            return
+        self.tray = QSystemTrayIcon(self.windowIcon(), self)
+        self.tray.setToolTip("Zeitzeuge")
+        menu = QMenu(self)
+        menu.addAction("Öffnen", self.show_from_tray)
+        menu.addSeparator()
+        menu.addAction("Beenden", self.quit_app)
+        self.tray.setContextMenu(menu)
+        self.tray.activated.connect(
+            lambda reason: self.show_from_tray()
+            if reason in (QSystemTrayIcon.Trigger, QSystemTrayIcon.DoubleClick) else None
+        )
+        self.tray.show()
+
+    def show_from_tray(self):
+        self.showNormal()
+        self.raise_()
+        self.activateWindow()
+        self.timeline.draw_timeline(self.current_date)
+
+    def quit_app(self):
+        self._quitting = True
+        if self.tracker:
+            self.tracker.stop()
+        QApplication.instance().quit()
+
+    def closeEvent(self, event):
+        if self.tray and self.config.get("close_to_tray", True) and not self._quitting:
+            event.ignore()
+            self.hide()
+            if not getattr(self, "_tray_hint_shown", False):
+                self._tray_hint_shown = True
+                self.tray.showMessage(
+                    "Zeitzeuge läuft weiter",
+                    "Zeitzeuge zeichnet im Hintergrund weiter auf. "
+                    "Beenden über das Symbol im Infobereich.",
+                    QSystemTrayIcon.Information, 4000,
+                )
+            return
+        if self.tracker:
+            self.tracker.stop()
+        QApplication.instance().quit()
+        super().closeEvent(event)
 
     # ---------------------- Zoom / Dark-Mode ----------------------------------
 
@@ -558,6 +710,11 @@ if __name__ == "__main__":
     QLocale.setDefault(GERMAN)
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
+    app.setQuitOnLastWindowClosed(False)
     window = TimelineApp()
-    window.show()
+    if "--minimized" in sys.argv or window.config.get("start_minimized", False):
+        if not window.tray:
+            window.showMinimized()
+    else:
+        window.show()
     sys.exit(app.exec_())
