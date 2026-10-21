@@ -9,7 +9,8 @@ from PyQt5.QtCore import (QDate, QLocale, QObject, QProcess, QSize, Qt, QTimer,
                           QUrl, pyqtSignal)
 from PyQt5.QtGui import (QColor, QDesktopServices, QIcon, QKeySequence, QPalette,
                          QPixmap)
-from PyQt5.QtWidgets import (QAbstractItemView, QAction, QApplication,
+from PyQt5.QtWidgets import (QAbstractItemView, QAction, QApplication, QProxyStyle,
+                             QStyle, QStyleFactory,
                              QCheckBox, QDateEdit, QDialog, QDialogButtonBox,
                              QFileDialog, QFormLayout, QHeaderView, QLabel, QLineEdit,
                              QMainWindow, QMenu, QMessageBox, QPushButton,
@@ -28,6 +29,13 @@ from timeline_only import (ActivityViewDialog, TimelineView, format_duration,
                            parse_time)
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
+
+# Oberfläche mit der Windows-Anzeigegröße (125 %, 150 %, 200 %) mitskalieren.
+# Muss vor dem Start der QApplication gesetzt werden.
+QApplication.setAttribute(Qt.AA_EnableHighDpiScaling)
+QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps)
+QApplication.setHighDpiScaleFactorRoundingPolicy(
+    Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
 
 
 def resource_path(relative_path: str) -> str:
@@ -52,6 +60,22 @@ CALLS_FILE = os.path.join(DATA_DIR, "anrufe.json")
 ACTIVITY_DIR = os.path.join(DATA_DIR, "aktivitaet")
 # 3CX-Anmeldung immer lokal (nicht in OneDrive-synchronisierten Dokumenten)
 PBX_PROFILE_DIR = os.path.join(storage.local_dir(), "3cx_profil")
+
+
+class AppStyle(QProxyStyle):
+    """Fusion mit gut sichtbarem Knopf für ausgeblendete Werkzeugleisten-Befehle.
+
+    Ist das Fenster schmal (z. B. Laptop mit 200 % Anzeige), rutschen Knöpfe wie
+    "Einstellungen" in diesen Knopf. Standard sind nur 12 px ohne erkennbares Symbol.
+    """
+
+    def __init__(self):
+        super().__init__(QStyleFactory.create("Fusion"))
+
+    def pixelMetric(self, metric, option=None, widget=None):
+        if metric == QStyle.PM_ToolBarExtensionExtent:
+            return 26
+        return super().pixelMetric(metric, option, widget)
 
 
 class CallSignal(QObject):
@@ -205,7 +229,7 @@ THEMES = {
     "light": {
         "bg": "#F3F4F6", "surface": "#FFFFFF", "bar": "#FFFFFF",
         "border": "#D5D9DE", "text": "#222222", "muted": "#666666",
-        "accent": "#0078D7", "hover": "#E8EBEF", "pressed": "#DADEE3",
+        "accent": "#0067C0", "hover": "#E8EBEF", "pressed": "#DADEE3",
         "alt": "#F8F9FA", "handle": "#C2C7CD",
     },
 }
@@ -232,6 +256,17 @@ QDateEdit { min-width: 105px; }
 QPushButton { background-color: $hover; color: $text; border: 1px solid $border;
               border-radius: 4px; padding: 6px 12px; min-width: 80px; }
 QPushButton:hover { background-color: $pressed; }
+QToolButton:focus, QPushButton:focus { border: 2px solid $accent; }
+QToolButton:focus { padding: 3px 7px; }
+QPushButton:focus { padding: 5px 11px; }
+QDateEdit:focus, QTimeEdit:focus, QLineEdit:focus, QTextEdit:focus, QComboBox:focus,
+QSpinBox:focus, QListWidget:focus, QTableWidget:focus, QGraphicsView:focus {
+    border: 1px solid $accent; }
+QToolButton#qt_toolbar_ext_button { border: 1px solid $border; background-color: $hover; }
+QLabel#hint { color: $muted; }
+QPushButton:disabled, QToolButton:disabled, QLineEdit:disabled, QDateEdit:disabled,
+QTimeEdit:disabled, QSpinBox:disabled, QCheckBox:disabled { color: $muted; }
+QPushButton:disabled { background-color: $surface; }
 QGroupBox { border: 1px solid $border; border-radius: 6px; margin-top: 1em;
             padding-top: 12px; background-color: $surface; }
 QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 6px; }
@@ -331,15 +366,23 @@ class TimelineApp(QMainWindow):
         header.setSectionResizeMode(4, QHeaderView.Interactive)
         header.resizeSection(4, 300)
         header.setStretchLastSection(True)
-        self.table.cellDoubleClicked.connect(
-            lambda row, _col: ActivityViewDialog(self.list_entries[row], self).exec_()
-        )
+        self.table.setAccessibleName("Tagesliste")
+        self.table.cellDoubleClicked.connect(lambda row, _col: self.open_details(row))
+        details_action = QAction("Details öffnen", self.table)
+        details_action.setShortcuts([QKeySequence(Qt.Key_Return), QKeySequence(Qt.Key_Enter)])
+        details_action.setShortcutContext(Qt.WidgetShortcut)
+        details_action.triggered.connect(lambda: self.open_details(self.table.currentRow()))
+        self.table.addAction(details_action)
         copy_action = QAction("Kopieren", self.table)
         copy_action.setShortcut(QKeySequence.Copy)
         copy_action.setShortcutContext(Qt.WidgetShortcut)
         copy_action.triggered.connect(self.copy_selection)
         self.table.addAction(copy_action)
         self.table.setContextMenuPolicy(Qt.ActionsContextMenu)
+
+        self.timeline.setAccessibleName("Timeline des Tages")
+        self.timeline.setAccessibleDescription(
+            "Grafische Tagesübersicht. Dieselben Einträge stehen in der Tagesliste darunter.")
 
         splitter = QSplitter(Qt.Vertical, self)
         splitter.addWidget(self.timeline)
@@ -413,6 +456,7 @@ class TimelineApp(QMainWindow):
 
         tb.addAction(self._action("◀", self.show_previous_day, "Ctrl+Left", "Vorheriger Tag"))
         self.date_edit = QDateEdit(self.current_date, self)
+        self.date_edit.setAccessibleName("Datum")
         self.date_edit.setLocale(GERMAN)
         self.date_edit.setDisplayFormat("ddd dd.MM.yyyy")
         self.date_edit.setCalendarPopup(True)
@@ -449,29 +493,45 @@ class TimelineApp(QMainWindow):
         self.dark_action.toggled.connect(self.toggle_dark_mode)
         tb.addAction(self.dark_action)
 
+        # Gruppen: Anzeige | Datenquellen | Aufzeichnung | Speicher | Info
         menu = QMenu(self)
-        menu.addAction("Arbeitszeiten …", self.edit_work_hours)
+        menu.addAction("&Arbeitszeiten …", self.edit_work_hours)
+        menu.addAction("Aktivitäts&typen und Farben …", self.edit_activity_types)
         menu.addSeparator()
-        menu.addAction("TeamViewer-Logs …", self.edit_teamviewer_settings)
-        menu.addAction("RDM-Logs …", self.edit_rdm_settings)
-        menu.addAction("Aktivitätstypen und Farben …", self.edit_activity_types)
+        menu.addAction("Team&Viewer-Logs …", self.edit_teamviewer_settings)
+        menu.addAction("&RDM-Logs …", self.edit_rdm_settings)
+        menu.addAction("3CX &direkt auslesen …", self.open_pbx_settings)
+        menu.addAction("3CX über &Chrome/Tampermonkey einrichten …", self.open_browser_setup)
         menu.addSeparator()
-        menu.addAction("3CX direkt auslesen …", self.open_pbx_settings)
-        menu.addAction("Speicherort ändern …", self.change_data_dir)
-        menu.addAction("Datenordner öffnen",
-                       lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(DATA_DIR)))
-        menu.addAction("3CX über Chrome/Tampermonkey einrichten …", self.open_browser_setup)
-        self.tracking_action = menu.addAction("Aktive Fenster aufzeichnen")
+        self.tracking_action = menu.addAction("Aktive &Fenster aufzeichnen")
         self.tracking_action.setCheckable(True)
         self.tracking_action.setChecked(self.config.get("tracking_enabled", True))
         self.tracking_action.toggled.connect(self.toggle_tracking)
         menu.addSeparator()
-        menu.addAction("Über Zeitzeuge", self.show_about)
+        menu.addAction("&Speicherort ändern …", self.change_data_dir)
+        menu.addAction("Daten&ordner öffnen",
+                       lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(DATA_DIR)))
+        menu.addSeparator()
+        menu.addAction("Ü&ber Zeitzeuge", self.show_about)
         settings_btn = QToolButton(self)
-        settings_btn.setText("Einstellungen ▾")
+        settings_btn.setText("&Einstellungen ▾")
+        settings_btn.setAccessibleName("Einstellungen")
         settings_btn.setMenu(menu)
         settings_btn.setPopupMode(QToolButton.InstantPopup)
         tb.addWidget(settings_btn)
+
+        # Screenreader lesen sonst nur "◀", "+" usw. vor
+        for action in tb.actions():
+            button = tb.widgetForAction(action)
+            if isinstance(button, QToolButton) and not button.accessibleName():
+                button.setAccessibleName(action.toolTip().split(" (")[0] or action.text())
+        # Überlauf-Knopf, wenn das Fenster schmal ist (z. B. bei 200 % Anzeige)
+        ext = tb.findChild(QToolButton, "qt_toolbar_ext_button")
+        if ext:
+            ext.setAccessibleName("Weitere Befehle")
+            ext.setToolTip("Weitere Befehle")
+            ext.setText("»")
+            ext.setToolButtonStyle(Qt.ToolButtonTextOnly)
 
     def show_about(self):
         icon_path = resource_path("zeitzeuge.png")
@@ -521,6 +581,10 @@ class TimelineApp(QMainWindow):
                 self.table.setItem(row, col, item)
         self.update_status_text()
 
+    def open_details(self, row):
+        if 0 <= row < len(self.list_entries):
+            ActivityViewDialog(self.list_entries[row], self).exec_()
+
     def copy_selection(self):
         rows = sorted({i.row() for i in self.table.selectedIndexes()})
         if not rows:
@@ -541,6 +605,10 @@ class TimelineApp(QMainWindow):
             parts.append(f"belegt {format_duration(merged_seconds(self.day_activities))}")
         else:
             parts.append("keine Einträge")
+            missing = self.timeline.missing_sources()
+            if missing:
+                parts.append(f"keine Logdatei gefunden: {', '.join(missing)} "
+                             "(Pfade unter Einstellungen ▾)")
         if self.pc_activities:
             parts.append(f"am PC aktiv {format_duration(merged_seconds(self.pc_activities))}")
         self.info_label.setText("   ·   ".join(parts))
@@ -665,6 +733,9 @@ class TimelineApp(QMainWindow):
                 "Microsoft Edge oder Google Chrome wurde nicht gefunden.",
             )
             return
+        self.build_pbx_dialog().exec_()
+
+    def build_pbx_dialog(self):
         dialog = QDialog(self)
         dialog.setWindowTitle("3CX direkt auslesen")
         dialog.setMinimumWidth(520)
@@ -687,7 +758,7 @@ class TimelineApp(QMainWindow):
         layout.addLayout(form)
 
         status = QLabel(self.pbx_reader.status if self.pbx_reader else "Aus")
-        status.setStyleSheet("color: gray;")
+        status.setObjectName("hint")
         layout.addWidget(status)
 
         def apply():
@@ -717,7 +788,7 @@ class TimelineApp(QMainWindow):
         buttons.accepted.connect(lambda: (apply(), dialog.accept()))
         buttons.rejected.connect(dialog.reject)
         layout.addWidget(buttons)
-        dialog.exec_()
+        return dialog
 
     # ---------------------- Speicherort ----------------------------------------
 
@@ -764,9 +835,9 @@ class TimelineApp(QMainWindow):
         self.tray = QSystemTrayIcon(self.windowIcon(), self)
         self.tray.setToolTip("Zeitzeuge")
         menu = QMenu(self)
-        menu.addAction("Öffnen", self.show_from_tray)
+        menu.addAction("Ö&ffnen", self.show_from_tray)
         menu.addSeparator()
-        menu.addAction("Beenden", self.quit_app)
+        menu.addAction("&Beenden", self.quit_app)
         self.tray.setContextMenu(menu)
         # Klick auf die Meldung "3CX-Anmeldung nötig" öffnet die Anmeldung
         self.tray.messageClicked.connect(
@@ -892,7 +963,7 @@ class TimelineApp(QMainWindow):
 if __name__ == "__main__":
     QLocale.setDefault(GERMAN)
     app = QApplication(sys.argv)
-    app.setStyle("Fusion")
+    app.setStyle(AppStyle())
     app.setQuitOnLastWindowClosed(False)
     window = TimelineApp()
     if "--minimized" in sys.argv or window.config.get("start_minimized", False):

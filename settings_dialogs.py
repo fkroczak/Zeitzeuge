@@ -25,16 +25,20 @@ class ConnectionSettingsDialog(QDialog):
         path_layout = QVBoxLayout()
         
         self.path_list = QListWidget()
+        self.path_list.setAccessibleName("Logdatei-Pfade")
         # Lade gespeicherte Pfade oder Standardpfade
         saved_paths = self.config.get(f'{self.config_key}_paths', self.default_paths)
         self.path_list.addItems(saved_paths)
         path_layout.addWidget(self.path_list)
         
         btn_layout = QHBoxLayout()
-        add_btn = QPushButton("Hinzufügen")
+        add_btn = QPushButton("&Hinzufügen …")
         add_btn.clicked.connect(self.add_path)
-        remove_btn = QPushButton("Entfernen")
+        remove_btn = QPushButton("&Entfernen")
         remove_btn.clicked.connect(self.remove_path)
+        remove_btn.setEnabled(False)
+        self.path_list.currentItemChanged.connect(
+            lambda item, _old: remove_btn.setEnabled(item is not None))
         
         btn_layout.addWidget(add_btn)
         btn_layout.addWidget(remove_btn)
@@ -72,9 +76,12 @@ class ConnectionSettingsDialog(QDialog):
         return self.tz_spinbox.value()
     
     def add_path(self):
-        text, ok = QInputDialog.getText(self, 'Neuer Pfad', 'Logdatei-Pfad:')
-        if ok and text:
-            self.path_list.addItem(text)
+        # Datei auswählen statt Pfad abtippen (vermeidet Tippfehler)
+        start = os.path.dirname(os.path.expandvars(self.default_paths[0])) if self.default_paths else ""
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Logdatei auswählen", start, "Logdateien (*.txt *.log);;Alle Dateien (*)")
+        if path:
+            self.path_list.addItem(os.path.normpath(path))
     
     def remove_path(self):
         if self.path_list.currentItem():
@@ -96,14 +103,18 @@ class ActivityTypeSettingsDialog(QDialog):
         type_layout = QVBoxLayout()
         
         self.type_list = QListWidget()
+        self.type_list.setAccessibleName("Aktivitätstypen")
         self.type_list.addItems(self.config.get('activity_types', []))
         type_layout.addWidget(self.type_list)
         
         btn_layout = QHBoxLayout()
-        add_btn = QPushButton("Hinzufügen")
+        add_btn = QPushButton("&Hinzufügen …")
         add_btn.clicked.connect(self.add_type)
-        remove_btn = QPushButton("Entfernen")
+        remove_btn = QPushButton("&Entfernen")
         remove_btn.clicked.connect(self.remove_type)
+        remove_btn.setEnabled(False)
+        self.type_list.currentItemChanged.connect(
+            lambda item, _old: remove_btn.setEnabled(item is not None))
         
         btn_layout.addWidget(add_btn)
         btn_layout.addWidget(remove_btn)
@@ -115,7 +126,7 @@ class ActivityTypeSettingsDialog(QDialog):
         color_group = QGroupBox("Farbzuordnung")
         color_layout = QFormLayout()
         
-        self.color_btn = QPushButton("Farbe wählen")
+        self.color_btn = QPushButton("Erst oben einen Typ wählen")
         self.color_btn.clicked.connect(self.choose_color)
         self.type_list.currentItemChanged.connect(self.update_color_button)
         color_layout.addRow("Aktueller Typ:", self.color_btn)
@@ -158,11 +169,14 @@ class ActivityTypeSettingsDialog(QDialog):
                 self.update_color_button()
     
     def update_color_button(self):
+        self.color_btn.setEnabled(self.type_list.currentItem() is not None)
         if self.type_list.currentItem():
             type_name = self.type_list.currentItem().text()
             color = self.config['type_colors'].get(type_name, "#FFFFFF")
-            self.color_btn.setStyleSheet(f"background-color: {color};")
-            self.color_btn.setText(type_name)
+            # Schrift schwarz oder weiß, je nachdem was auf der Farbe lesbar ist
+            text = "#000000" if QColor(color).lightness() > 140 else "#FFFFFF"
+            self.color_btn.setStyleSheet(f"background-color: {color}; color: {text};")
+            self.color_btn.setText(f"{type_name}: Farbe ändern …")
     
     def get_types(self):
         return [self.type_list.item(i).text() for i in range(self.type_list.count())]
@@ -283,6 +297,8 @@ class WorkHoursDialog(QDialog):
             t_to = QTimeEdit(QTime(end // 60, end % 60))
             for t in (t_from, t_to):
                 t.setDisplayFormat("HH:mm")
+            t_from.setAccessibleName(f"{name} von")
+            t_to.setAccessibleName(f"{name} bis")
             total = QLabel()
             for w in (active, t_from, t_to):
                 (w.toggled if w is active else w.timeChanged).connect(self.update_totals)
@@ -304,6 +320,7 @@ class WorkHoursDialog(QDialog):
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+        self.ok_button = buttons.button(QDialogButtonBox.Ok)
         self.update_totals()
 
     def copy_monday(self):
@@ -314,14 +331,21 @@ class WorkHoursDialog(QDialog):
                 t_to.setTime(mo_to.time())
 
     def update_totals(self):
-        week = 0
+        week, errors = 0, 0
         for active, t_from, t_to, total in self.rows:
             t_from.setEnabled(active.isChecked())
             t_to.setEnabled(active.isChecked())
-            minutes = max(0, t_from.time().secsTo(t_to.time()) // 60) if active.isChecked() else 0
+            if active.isChecked() and t_from.time() >= t_to.time():
+                # Fehler direkt neben dem Tag zeigen, nicht stumm als "frei" speichern
+                errors += 1
+                total.setText("⚠ Ende vor Beginn")
+                continue
+            minutes = t_from.time().secsTo(t_to.time()) // 60 if active.isChecked() else 0
             week += minutes
             total.setText(f"{minutes // 60}:{minutes % 60:02d} h" if minutes else "frei")
         self.week_total.setText(f"Pro Woche: <b>{week // 60}:{week % 60:02d} h</b>")
+        if hasattr(self, "ok_button"):
+            self.ok_button.setEnabled(errors == 0)
 
     def get_work_days(self):
         result = {}

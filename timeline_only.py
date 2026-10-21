@@ -88,7 +88,9 @@ class ActivityViewDialog(QDialog):
             details = QTextEdit(activity["details"])
             details.setReadOnly(True)
             details.setMaximumHeight(90)
-            layout.addWidget(QLabel("Details:"))
+            label = QLabel("Details:")
+            label.setBuddy(details)
+            layout.addWidget(label)
             layout.addWidget(details)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Close)
@@ -265,6 +267,11 @@ class TimelineView(QGraphicsView):
                 "is_suggestion": True,
             })
         return result
+
+    def missing_sources(self):
+        """Quellen, für die keine einzige Logdatei gelesen werden konnte."""
+        return [name for name, parser in [("TeamViewer", self._tv_parser), ("RDM", self._rdm_parser)]
+                if parser.files_read == 0]
 
     def app_color(self, app):
         return QColor(self.APP_COLORS[sum(map(ord, app.lower())) % len(self.APP_COLORS)])

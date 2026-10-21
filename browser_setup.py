@@ -117,6 +117,7 @@ class BrowserSetupDialog(QDialog):
                          "und in Tampermonkey bestätigen.")
         pbx_row.setWordWrap(True)
         self.pbx_edit = QLineEdit(self.config.get("calls_3cx_url", "https://voice.visaas.de:5001"))
+        self.pbx_edit.setAccessibleName("3CX-Adresse")
         install = QPushButton("Skript installieren")
         install.clicked.connect(self.install_script)
         state = QLabel("")
@@ -164,10 +165,11 @@ class BrowserSetupDialog(QDialog):
         post = call_import.status["last_post"]
         script_ok = ping is not None
 
-        self.status_labels[0].setText(ok if tm or script_ok else "❌")
-        self.status_labels[1].setText(ok if script_ok else unknown)
-        self.status_labels[2].setText(ok if script_ok else unknown)
-        self.status_labels[3].setText(ok if script_ok else unknown)
+        states = [ok if tm or script_ok else "❌"] + [ok if script_ok else unknown] * 3
+        names = {ok: "erledigt", "❌": "fehlt", unknown: "noch offen"}
+        for label, state in zip(self.status_labels, states):
+            label.setText(state)
+            label.setAccessibleName(names[state])  # Symbole allein liest kein Screenreader sinnvoll
 
         if script_ok:
             text = (f"Skript Version {call_import.status['script_version'] or '?'} "

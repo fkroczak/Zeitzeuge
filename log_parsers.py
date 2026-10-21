@@ -16,6 +16,7 @@ class BaseConnectionParser(ABC):
         self.DEBUG = debug
         # Cache: (path, tz) -> (mtime, [connections])
         self._cache = {}
+        self.files_read = None  # None = noch nicht gelesen
 
     def get_config_values(self, config_key):
         app = QApplication.instance()
@@ -46,6 +47,7 @@ class BaseConnectionParser(ABC):
         connections = []
         config_key = self.__class__.__name__.replace("Parser", "").lower()
         log_paths, tz_correction = self.get_config_values(config_key)
+        self.files_read = 0  # für den Hinweis "keine Logdatei gefunden"
 
         if DEBUG:
             print(f"\n{self.__class__.__name__} sucht in Pfaden: {log_paths}")
@@ -94,6 +96,7 @@ class BaseConnectionParser(ABC):
                         )
 
                 connections.extend(file_connections)
+                self.files_read += 1
 
             except Exception as e:
                 print(f"Fehler beim Lesen der Logdatei {expanded_path}: {str(e)}")
@@ -211,6 +214,7 @@ class RdmParser(BaseConnectionParser):
         connections = []
         config_key = self.__class__.__name__.replace("Parser", "").lower()
         log_paths, tz_correction = self.get_config_values(config_key)
+        self.files_read = 0
 
         for log_path in log_paths:
             expanded_path = os.path.expandvars(log_path)
@@ -241,6 +245,7 @@ class RdmParser(BaseConnectionParser):
                     self._cache[cache_key] = (mtime, file_connections)
 
                 connections.extend(file_connections)
+                self.files_read += 1
 
             except Exception as e:
                 print(f"Fehler beim Lesen der RDM-Logdatei {expanded_path}: {str(e)}")
