@@ -30,18 +30,37 @@ script = open(os.path.join(ROOT, "zeitzeuge_anrufe.user.js"), encoding="utf-8").
 reader = PbxReader("http://127.0.0.1:8812", calls_file, os.path.join(tmp, "profil"), script)
 reader.open_call_list()
 
-result = {"login": False}
+result = {"login": False, "phase": "login", "since": 0}
 reader.login_required.connect(lambda: result.update(login=True))
-steps = iter([
-    reader.read,                                                               # Login-Seite
-    lambda: reader.page.runJavaScript("document.querySelector('form button').click()"),
-    reader.read,                                                               # Anrufliste
-    app.quit,
-])
+
+
+def calls_count():
+    try:
+        return len(json.load(open(calls_file, encoding="utf-8")))
+    except (OSError, ValueError):
+        return 0
+
+
+def tick():
+    # Geduldig abfragen statt fester Wartezeiten (Build-Rechner sind unterschiedlich schnell)
+    result["since"] += 1
+    if result["phase"] == "login":
+        if result["login"]:
+            reader.page.runJavaScript("document.querySelector('form button').click()")
+            result["phase"] = "liste"
+        else:
+            reader.read()
+    elif result["phase"] == "liste":
+        if calls_count() >= 8:
+            app.quit()
+        else:
+            reader.read()
+
+
 timer = QTimer()
-timer.timeout.connect(lambda: next(steps)())
-timer.start(3000)
-QTimer.singleShot(60000, app.quit)  # Notbremse
+timer.timeout.connect(tick)
+timer.start(1500)
+QTimer.singleShot(90000, app.quit)  # Notbremse
 app.exec_()
 
 assert result["login"], "Anmeldeseite nicht erkannt"
