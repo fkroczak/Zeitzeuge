@@ -25,7 +25,7 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
 - **Tagesliste** unter der Timeline mit Von, Bis, Dauer, Typ, Kunde und Details.
   - Die Statuszeile zeigt die belegte Zeit des Tages. Überschneidungen werden nicht doppelt gezählt.
   - Markierte Zeilen kopierst du mit STRG + C, zum Beispiel für die Ticket-Dokumentation.
-- **Details per Maus:** Fährst du über einen Eintrag, siehst du Kunde, Zeitraum und Dauer. Ein Klick oder ein Doppelklick in der Liste öffnet die Details.
+- **Details:** Fährst du über einen Eintrag, siehst du Kunde, Zeitraum und Dauer. Ein Klick in der Timeline, ein Doppelklick oder **Enter** in der Liste öffnet die Details.
 - **Immer aktuell:** Die Logs werden alle 2 Minuten geprüft. Mit F5 liest du sie sofort neu ein. Gelesen werden nur Dateien, die sich geändert haben.
 - **Bedienung:**
   - Die rote Linie zeigt die aktuelle Uhrzeit, die Arbeitszeit aus den Einstellungen ist hervorgehoben.
@@ -46,6 +46,8 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
 | STRG + 0 | Ganzen Tag zeigen |
 | STRG + 9 | Arbeitszeit zeigen |
 | STRG + C | Markierte Zeilen der Tagesliste kopieren |
+| Enter | Details zur markierten Zeile der Tagesliste |
+| ALT + E | Menü Einstellungen öffnen |
 
 ## Voraussetzungen
 
@@ -107,7 +109,7 @@ Die Anmeldung bleibt gespeichert (`%LOCALAPPDATA%\Zeitzeuge\3cx_profil`). Läuft
 
 Beim ersten Lauf scrollt Zeitzeuge die Anrufliste 14 Tage zurück. Bis zu welchem Tag die Anrufe vollständig sind, merkt es sich in `anrufe_stand.json`. Zeigst du einen älteren Tag an, scrollt Zeitzeuge im Hintergrund bis dorthin weiter. Das geht nur so weit zurück, wie 3CX die Anrufe selbst noch anzeigt.
 
-**Variante 2: über Chrome und Tampermonkey.** Das ist sinnvoll, wenn du die 3CX-Webseite ohnehin offen hast. Am einfachsten über **Einstellungen ▾ → Browser-Anbindung (3CX) einrichten …**. Der Assistent öffnet nacheinander die richtigen Seiten in Chrome, und du bestätigst jeweils mit einem Klick:
+**Variante 2: über Chrome und Tampermonkey.** Das ist sinnvoll, wenn du die 3CX-Webseite ohnehin offen hast. Am einfachsten über **Einstellungen ▾ → 3CX über Chrome/Tampermonkey einrichten …**. Der Assistent öffnet nacheinander die richtigen Seiten in Chrome, und du bestätigst jeweils mit einem Klick:
 
 1. Tampermonkey im Chrome Web Store hinzufügen.
 2. Bei Tampermonkey den Schalter „Nutzerskripte zulassen“ einschalten (ab Chrome 138 nötig).

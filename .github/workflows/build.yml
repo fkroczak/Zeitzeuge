@@ -29,6 +29,14 @@ jobs:
           QT_QPA_PLATFORM: offscreen
         run: python tests/start_test.py
 
+      - name: Bedienbarkeit (Screenreader-Namen, Kontrast, Fokus, Tastatur)
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python tests/ui_audit_test.py
+
+      - name: Lesbarkeit (nur Hinweis)
+        run: python tests/readability_check.py
+
       - name: 3CX-Test (Edge gegen nachgebaute Seite)
         run: python tests/pbx_test.py
 
