@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Zeitzeuge – Anrufliste übertragen
 // @namespace    zeitzeuge
-// @version      1.3
+// @version      1.4
 // @description  Liest die Anrufliste im 3CX-Webclient aus und schickt sie an Zeitzeuge (127.0.0.1:8765)
 // @include      https://voice.visaas.de:5001/*
 // @grant        GM_xmlhttpRequest
@@ -71,11 +71,14 @@
   }
 
   const TAG = "(?:heute|gestern|montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag|mo|di|mi|do|fr|sa|so)\\.?|\\d{1,2}\\.\\d{1,2}\\.(?:\\d{2,4})?";
+  // Trenner zwischen Uhrzeit, Dauer und "via": "•" oder nur Leerraum (wenn 3CX den Punkt
+  // per CSS zeichnet, steht er nicht im Text)
+  const SEP = "(?:\\s*[•·|]\\s*|\\s+)";
   const META = new RegExp(
-    `(?:^|\\s)(${TAG})\\s+(\\d{1,2}:\\d{2})(?:\\s*•\\s*(\\d+:\\d{2}(?::\\d{2})?))?(?:\\s*•\\s*via\\s+([^•]+?))?\\s*(?:\\.{3}|…)?\\s*$`, "i");
+    `(?:^|\\s)(${TAG})\\s+(\\d{1,2}:\\d{2})(?:${SEP}(\\d+:\\d{2}(?::\\d{2})?))?(?:${SEP}via\\s+([^•·|]+?))?\\s*(?:\\.{3}|…)?\\s*$`, "i");
 
   function leseEintrag(item) {
-    const voll = texte(item).join(" ").replace(/\s*•\s*/g, " • ").trim();
+    const voll = texte(item).join(" ").trim();
     const m = voll.match(META);
     if (!m) return null;
     const tag = parseTag(m[1]);

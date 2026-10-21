@@ -180,7 +180,7 @@ def login_window_open(profile_dir):
     procs = profile_processes(profile_dir)
     if sys.platform != "win32":
         # Hauptprozess (ohne --type=…) ohne --headless = sichtbares Fenster
-        return any("--headless" not in cmd and "--type=" not in cmd
+        return any("--headless" not in cmd and "--type=" not in cmd and "-32000" not in cmd
                    for cmd in (" ".join(p.info["cmdline"] or []) for p in procs))
     import ctypes
     from ctypes import wintypes
@@ -192,7 +192,9 @@ def login_window_open(profile_dir):
 
     @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
     def check(hwnd, _):
-        if user32.IsWindowVisible(hwnd) and user32.GetWindowTextLengthW(hwnd):
+        rect = wintypes.RECT()
+        user32.GetWindowRect(hwnd, ctypes.byref(rect))
+        if rect.left > -10000 and user32.IsWindowVisible(hwnd) and user32.GetWindowTextLengthW(hwnd):
             pid = wintypes.DWORD()
             user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
             if pid.value in pids:
@@ -289,7 +291,9 @@ class BrowserReader(QObject):
 
     # ------------------------------------------------------------ Browser
 
-    def _browser_args(self, headless):
+    def _browser_args(self, mode):
+        """mode: "headless" (unsichtbar), "hidden" (Fenster außerhalb des Bildschirms),
+        "login" (normales Fenster zum Anmelden)."""
         exe = find_browser()
         if not exe:
             raise RuntimeError("Microsoft Edge oder Google Chrome nicht gefunden")
@@ -304,17 +308,13 @@ class BrowserReader(QObject):
             "--disable-notifications",
         ]
         args += shlex.split(os.environ.get("ZEITZEUGE_BROWSER_ARGS", ""))
-        if headless:
-            args += [
-                "--headless=new",
-                "--remote-debugging-port=0",
-                "--remote-allow-origins=*",
-                "--window-size=1100,2400",
-                "about:blank",
-            ]
-        else:
-            args += [f"--app={self.start_url()}", "--window-size=1100,800"]
-        return args
+        if mode == "login":
+            return args + [f"--app={self.start_url()}", "--window-size=1100,800"]
+        args += ["--remote-debugging-port=0", "--remote-allow-origins=*", "--window-size=1100,2400"]
+        if mode == "headless":
+            return args + ["--headless=new", "about:blank"]
+        # Ersatz, falls der unsichtbare Modus gesperrt ist: Fenster weit außerhalb des Bildschirms
+        return args + ["--window-position=-32000,-32000", "--app=about:blank"]
 
     def _popen(self, args):
         flags = 0x08000000 if sys.platform == "win32" else 0  # CREATE_NO_WINDOW
@@ -333,25 +333,17 @@ class BrowserReader(QObject):
             kill_profile_processes(self.profile_dir)
         if not self._wait_profile_free(10):
             raise RuntimeError(f"ein Edge-Fenster mit dem {self.NAME}-Profil ist noch offen")
-        port_file = os.path.join(self.profile_dir, "DevToolsActivePort")
-        if os.path.exists(port_file):
-            os.remove(port_file)
-        self._proc = self._popen(self._browser_args(headless=True))
-
-        # Edge schreibt seinen Port in DevToolsActivePort
-        port = None
-        for _ in range(100):
-            if self._proc.poll() is not None:
-                raise RuntimeError("Browser wurde sofort beendet")
-            if os.path.exists(port_file):
-                with open(port_file, encoding="utf-8") as f:
-                    first = f.readline().strip()
-                if first.isdigit():
-                    port = int(first)
-                    break
-            time.sleep(0.2)
-        if not port:
-            raise RuntimeError("Browser antwortet nicht")
+        mode = getattr(self, "_mode", "headless")
+        try:
+            port = self._launch(mode)
+        except RuntimeError as e:
+            if mode != "headless":
+                raise
+            # Unsichtbarer Modus klappt nicht (z. B. per Richtlinie gesperrt): Ersatzmodus
+            self._set_status(f"{self.NAME}: unsichtbarer Modus geht nicht ({e}), nehme Ersatz")
+            kill_profile_processes(self.profile_dir)
+            self._mode = "hidden"
+            port = self._launch("hidden")
 
         pages = json.load(urllib.request.urlopen(f"http://127.0.0.1:{port}/json/list", timeout=10))
         page = next(p for p in pages if p.get("type") == "page")
@@ -363,6 +355,30 @@ class BrowserReader(QObject):
         if agent:
             self._tools.call("Network.setUserAgentOverride", userAgent=agent)
         self._on_browser_started()
+
+    def _launch(self, mode):
+        """Edge starten und warten, bis er seine DevTools-Schnittstelle meldet. Gibt den Port zurück."""
+        port_file = os.path.join(self.profile_dir, "DevToolsActivePort")
+        if os.path.exists(port_file):
+            os.remove(port_file)
+        self._proc = self._popen(self._browser_args(mode))
+
+        # Edge schreibt seinen Port in DevToolsActivePort. Er gibt beim Start oft an einen
+        # anderen Prozess ab, darum zählt die Datei, nicht der gestartete Prozess.
+        deadline = time.time() + 20
+        while time.time() < deadline:
+            if os.path.exists(port_file):
+                with open(port_file, encoding="utf-8") as f:
+                    first = f.readline().strip()
+                if first.isdigit():
+                    return int(first)
+            code = self._proc.poll()
+            if code is not None and not profile_processes(self.profile_dir):
+                raise RuntimeError(f"Edge hat sich beendet, Code {code}")
+            time.sleep(0.2)
+        code = self._proc.poll()
+        kill_profile_processes(self.profile_dir)
+        raise RuntimeError("Edge antwortet nicht" + (f", Code {code}" if code is not None else ""))
 
     def _on_browser_started(self):
         self._tools.call("Page.navigate", url=self.start_url())
@@ -377,6 +393,8 @@ class BrowserReader(QObject):
                 self._proc.wait(timeout=10)
             except subprocess.TimeoutExpired:
                 self._proc.kill()
+        if self._proc:
+            kill_profile_processes(self.profile_dir)  # falls Edge an einen anderen Prozess abgab
         self._proc = None
 
     def _login_window(self):
@@ -386,7 +404,7 @@ class BrowserReader(QObject):
                 self._close_browser()  # unsichtbaren Edge beenden, Profil freigeben
                 kill_profile_processes(self.profile_dir)  # Reste, an die Edge sonst weiterleitet
                 self._wait_profile_free(15)
-                self._popen(self._browser_args(headless=False))
+                self._popen(self._browser_args("login"))
                 # Warten, bis du das Fenster schließt. Edge gibt beim Start an einen anderen
                 # Prozess ab, darum zählt ein sichtbares Fenster mit unserem Profil.
                 started = time.time()
@@ -555,10 +573,15 @@ class PbxReader(BrowserReader):
             return False
         self.needs_login = False
 
+        # Nur die Ansicht "Alle Anrufe" enthält alles (3CX springt sonst z. B. auf "verpasst")
+        if not data["url"].rstrip("/").endswith("#/call_history/all"):
+            if self._tools:
+                self._tools.call("Runtime.evaluate", expression="location.hash = '#/call_history/all'")
+            self._set_status("3CX: wechsle zu „Alle Anrufe“ …")
+            return False
+
         calls = data["calls"]
         if not calls:
-            if "call_history" not in data["url"] and self._tools:
-                self._tools.call("Page.navigate", url=self.call_list_url())
             self._set_status("3CX: noch keine Anrufe gelesen")
             return False
 

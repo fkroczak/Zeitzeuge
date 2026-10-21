@@ -1,16 +1,23 @@
-<!doctype html><html><head><meta charset="utf-8"></head><body>
+<!doctype html><html><head><meta charset="utf-8"><style>.dot::before{content:"•";margin:0 4px}</style></head><body>
 <div id="app"></div>
 <script>
+let n = 0;
+// Trennpunkt abwechselnd als Text und nur per CSS (wie in manchen 3CX-Versionen)
+function sep() { return (n++ % 2) ? '<span> • </span>' : '<span class="dot"></span>'; }
 function item(ini, crm, name, nr, icon, tag, zeit, dauer, via) {
   return `<app-call-history-item data-qa="call-history-item"><div class="avatar"><span>${ini}</span>${crm?'<span class="badge">CRM</span>':''}</div>
   <div class="info"><div><span class="name">${name}</span> <span class="nr">${nr}</span></div>
-  <div class="meta"><svg class="icon call-${icon}"></svg><span>${tag} ${zeit}</span>${dauer?`<span> • </span><span>${dauer}</span>`:''}${via?`<span> • </span><span>via ${via}</span>`:''}</div></div>
+  <div class="meta"><svg class="icon call-${icon}"></svg><span>${tag} ${zeit}</span>${dauer?`${sep()}<span>${dauer}</span>`:''}${via?`${sep()}<span>via ${via}</span>`:''}</div></div>
   <button>...</button></app-call-history-item>`;
 }
 if (location.search.includes("login")) localStorage.setItem("token", 1);  // Anmeldung simulieren
 function render() {
   if (!localStorage.getItem("token")) {
     document.getElementById("app").innerHTML = '<form onsubmit="localStorage.setItem(\'token\',1);render();return false"><input name="u"><input type="password"><button>Login</button></form>';
+    return;
+  }
+  if (!location.hash.endsWith("/all")) {  // Ansicht "verpasst": nur verpasste Anrufe
+    document.getElementById("app").innerHTML = '<div id="scrollBox">' + item("CT",0,"Carla Test","702","missed","Gestern","14:19","","") + '</div>';
     return;
   }
   document.getElementById("app").innerHTML = '<app-impersonation-banner></app-impersonation-banner><div id="scrollBox" style="height:300px;overflow-y:auto">' + [
@@ -44,4 +51,9 @@ function nachladen() {
   }, 200);
 }
 render();
+// Wie 3CX: nach dem Laden auf "verpasste Anrufe" springen; nur bei #/call_history/all alles zeigen
+if (location.hash !== "#/call_history/missed" && !sessionStorage.getItem("umgeleitet")) {
+  sessionStorage.setItem("umgeleitet", 1); location.hash = "#/call_history/missed";
+}
+window.addEventListener("hashchange", render);
 </script></body></html>
