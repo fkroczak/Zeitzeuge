@@ -63,12 +63,23 @@ timer.start(1500)
 QTimer.singleShot(90000, app.quit)  # Notbremse
 app.exec_()
 
-assert result["login"], "Anmeldeseite nicht erkannt"
-calls = json.load(open(calls_file, encoding="utf-8"))
+calls = []
+if os.path.exists(calls_file):
+    calls = json.load(open(calls_file, encoding="utf-8"))
+names = {c["name"] for c in calls}
+problem = None
+if not result["login"]:
+    problem = "Anmeldeseite nicht erkannt"
+elif len(calls) != 8:
+    problem = f"{len(calls)} statt 8 Anrufe"
+elif not {"Sara Beispiel", "Hanna Dr. Kurz", "ABC GmbH", "015100000001"} <= names:
+    problem = f"Namen falsch: {sorted(names)}"
+if problem:
+    # Als GitHub-Annotation ausgeben, damit der Grund ohne Log sichtbar ist
+    print(f"::error title=3CX-Test::{problem} | Phase {result['phase']} | Status: {reader.status}"
+          f" | Anrufe: {calls}")
+    sys.exit(1)
 print(f"{len(calls)} Anrufe gelesen")
 for c in calls:
     print(" ", c)
-assert len(calls) == 8, "Es sollten 8 Anrufe sein"
-names = {c["name"] for c in calls}
-assert {"Sara Beispiel", "Hanna Dr. Kurz", "ABC GmbH", "015100000001"} <= names, names
 print("3CX-Test ok")
