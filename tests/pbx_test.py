@@ -78,4 +78,18 @@ run("http://127.0.0.1:8812", lambda r: len(calls()) >= 8, "Anmeldung nach Neusta
 
 names = {c["name"] for c in calls()}
 assert {"Sara Beispiel", "Hanna Dr. Kurz", "ABC GmbH", "015100000001"} <= names, names
+# Dauer, Richtung und "via" müssen stimmen, auch wenn der Trennpunkt nur per CSS da ist
+by_name = {c["name"]: c for c in calls()}
+checks = [
+    (by_name["Sara Beispiel"]["duration_s"], 552),
+    (by_name["ABC GmbH"]["duration_s"], 3723),
+    (by_name["Hanna Dr. Kurz"]["via"], "Carla Test 702"),
+    (by_name["Info Cafeteria"]["direction"], "Ausgehend"),
+    (by_name["Carla Test"]["direction"], "Verpasst"),
+    (sum(1 for c in calls() if c["duration_s"] > 0), 7),
+]
+for got, want in checks:
+    if got != want:
+        print(f"::error title=3CX-Test::erwartet {want!r}, gelesen {got!r}")
+        sys.exit(1)
 print("3CX-Test ok")

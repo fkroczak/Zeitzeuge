@@ -431,10 +431,15 @@ class PbxReader(QObject):
             return
         self.needs_login = False
 
+        # Nur die Ansicht "Alle Anrufe" enthält alles (3CX springt sonst z. B. auf "verpasst")
+        if not data["url"].rstrip("/").endswith("#/call_history/all"):
+            if self._tools:
+                self._tools.call("Runtime.evaluate", expression="location.hash = '#/call_history/all'")
+            self._set_status("3CX: wechsle zu „Alle Anrufe“ …")
+            return
+
         calls = data["calls"]
         if not calls:
-            if "call_history" not in data["url"] and self._tools:
-                self._tools.call("Page.navigate", url=self.call_list_url())
             self._set_status("3CX: noch keine Anrufe gelesen")
             return
 
