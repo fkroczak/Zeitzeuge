@@ -67,6 +67,7 @@ class PbxReader(QObject):
         self.last_read = None
         self.last_count = 0
         self.status = "Startet …"
+        self._unanswered = 0  # Abfragen ohne Antwort vom Browser
 
         self.profile = QWebEngineProfile("zeitzeuge-3cx", self)
         self.profile.setPersistentStoragePath(profile_dir)
@@ -77,6 +78,11 @@ class PbxReader(QObject):
         self.view.setAttribute(Qt.WA_DontShowOnScreen)  # "sichtbar", aber nicht auf dem Bildschirm
         self.page = _QuietPage(self.profile, self.view)
         self.view.setPage(self.page)
+        # Absturz der Seite: nach kurzer Pause neu laden
+        self.page.renderProcessTerminated.connect(
+            lambda *_: (self._set_status("3CX: Browser abgestürzt, lade neu"),
+                        QTimer.singleShot(3000, self.open_call_list))
+        )
         self.view.resize(1100, 2400)  # hoch, damit viele Einträge geladen werden
         self.view.show()
 
@@ -106,6 +112,14 @@ class PbxReader(QObject):
         self.page.setUrl(QUrl(self.call_list_url()))
 
     def read(self):
+        # Antwortet der Browser mehrmals nicht, Seite neu laden
+        if self._unanswered >= 3:
+            self._unanswered = 0
+            self._set_status("3CX: Browser reagiert nicht, lade neu")
+            self.page.triggerAction(QWebEnginePage.Stop)
+            self.open_call_list()
+            return
+        self._unanswered += 1
         self.page.runJavaScript(self.js, self._on_result)
 
     def _set_status(self, text):
@@ -113,6 +127,7 @@ class PbxReader(QObject):
         self.status_changed.emit(text)
 
     def _on_result(self, raw):
+        self._unanswered = 0
         try:
             data = json.loads(raw) if raw else None
         except (TypeError, ValueError):
