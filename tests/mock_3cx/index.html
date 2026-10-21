@@ -13,7 +13,7 @@ function render() {
     document.getElementById("app").innerHTML = '<form onsubmit="localStorage.setItem(\'token\',1);render();return false"><input name="u"><input type="password"><button>Login</button></form>';
     return;
   }
-  document.getElementById("app").innerHTML = '<app-impersonation-banner></app-impersonation-banner><div id="scrollBox">' + [
+  document.getElementById("app").innerHTML = '<app-impersonation-banner></app-impersonation-banner><div id="scrollBox" style="height:300px;overflow-y:auto">' + [
     item("SB",0,"Sara Beispiel","701","incoming","Heute","10:55","9:12",""),
     item("GB",1,"Gustav Bauer","0049251000000001","incoming","Heute","09:50","0:19",""),
     item("IC",1,"Info Cafeteria","0251000000002","outgoing","Heute","09:18","3:11",""),
@@ -23,6 +23,25 @@ function render() {
     item("AG",0,"ABC GmbH","0251000000004","outgoing","Mo","08:01","1:02:03",""),
     item("",0,"Max Muster","0170 0000005","incoming","12.10.2026","11:00","5:00",""),
   ].join("") + '</div>';
+  const box = document.getElementById("scrollBox");
+  box.addEventListener("scroll", nachladen);
+}
+// Wie 3CX: ältere Anrufe (10 bis 40 Tage zurück, einer pro Tag) erst beim Scrollen nachladen
+let tageZurueck = 10, laedt = false;
+function nachladen() {
+  const box = document.getElementById("scrollBox");
+  if (laedt || tageZurueck > 40 || box.scrollTop + box.clientHeight < box.scrollHeight - 20) return;
+  laedt = true;
+  setTimeout(() => {
+    let html = "";
+    for (let i = 0; i < 5 && tageZurueck <= 40; i++, tageZurueck++) {
+      const d = new Date(); d.setDate(d.getDate() - tageZurueck);
+      const tag = `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}.${d.getFullYear()}`;
+      html += item("AK", 0, "Alt Kunde", "02510000" + (100 + tageZurueck), "incoming", tag, "10:00", "2:00", "");
+    }
+    box.insertAdjacentHTML("beforeend", html);
+    laedt = false;
+  }, 200);
 }
 render();
 </script></body></html>

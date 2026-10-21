@@ -32,6 +32,9 @@ jobs:
       - name: 3CX-Test (Edge gegen nachgebaute Seite)
         run: python tests/pbx_test.py
 
+      - name: ITM-Test (Edge gegen nachgebaute Zeiterfassung)
+        run: python tests/itm_test.py
+
       - name: Schnelltest (Fensterabfrage, Skript-Server)
         run: python tests/smoke_test.py
 

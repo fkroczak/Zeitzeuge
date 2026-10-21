@@ -1,0 +1,20 @@
+<!doctype html><html><head><meta charset="utf-8"></head><body>
+<div id="app">Lädt …</div>
+<script>
+// Nachbau der ITM-Tagesübersicht: Daten kommen per XHR (wie Angular) oder fetch
+if (location.pathname.startsWith("/ok/")) localStorage.setItem("token", 1);  // Anmeldung simulieren
+const datum = new URLSearchParams(location.search).get("date");
+const app = document.getElementById("app");
+if (!localStorage.getItem("token")) {
+  app.innerHTML = '<form><input name="u"><input type="password"><button>Login</button></form>';
+} else if (Number(datum.slice(-2)) % 2) {
+  const xhr = new XMLHttpRequest();
+  xhr.open("GET", "/api/tag?d=" + datum);
+  xhr.responseType = "text";
+  xhr.onload = () => { app.textContent = "Personalzeit " + JSON.parse(xhr.responseText).personalzeiten.length; };
+  setTimeout(() => xhr.send(), 300);
+} else {
+  setTimeout(() => fetch("/api/tag?d=" + datum).then((r) => r.json())
+    .then((d) => { app.textContent = "Personalzeit " + d.personalzeiten.length; }), 300);
+}
+</script></body></html>

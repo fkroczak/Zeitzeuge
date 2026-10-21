@@ -20,6 +20,7 @@ from PyQt5.QtWidgets import (QAbstractItemView, QAction, QApplication,
 from activity_tracker import ActivityTracker
 from browser_setup import BrowserSetupDialog, build_userscript
 from call_import import start_call_server
+from itm_reader import ItmReader
 from pbx_reader import PbxReader, find_browser
 import storage
 from settings_dialogs import (ActivityTypeSettingsDialog,
@@ -52,6 +53,8 @@ CALLS_FILE = os.path.join(DATA_DIR, "anrufe.json")
 ACTIVITY_DIR = os.path.join(DATA_DIR, "aktivitaet")
 # 3CX-Anmeldung immer lokal (nicht in OneDrive-synchronisierten Dokumenten)
 PBX_PROFILE_DIR = os.path.join(storage.local_dir(), "3cx_profil")
+ITM_FILE = os.path.join(DATA_DIR, "personalzeiten.json")
+ITM_PROFILE_DIR = os.path.join(storage.local_dir(), "itm_profil")
 
 
 class CallSignal(QObject):
@@ -155,6 +158,8 @@ def load_config_with_defaults():
         "show_pc_in_list": False,
 
         "pbx_reader_enabled": False,  # 3CX direkt über Edge im Hintergrund lesen
+        "itm_url": "https://app.itm-gruppe.com",
+        "itm_reader_enabled": False,  # Personalzeiten aus der ITM-Zeiterfassung lesen
         "close_to_tray": True,
     }
     if os.path.exists(CONFIG_FILE):
@@ -387,6 +392,11 @@ class TimelineApp(QMainWindow):
         if self.config.get("pbx_reader_enabled", False):
             self.start_pbx_reader()
 
+        # Personalzeiten aus der ITM-Zeiterfassung (Edge im Hintergrund)
+        self.itm_reader = None
+        if self.config.get("itm_reader_enabled", False):
+            self.start_itm_reader()
+
         self.apply_style()  # zeichnet die Timeline
         self.timeline.setFocus()
 
@@ -457,6 +467,7 @@ class TimelineApp(QMainWindow):
         menu.addAction("Aktivitätstypen und Farben …", self.edit_activity_types)
         menu.addSeparator()
         menu.addAction("3CX direkt auslesen …", self.open_pbx_settings)
+        menu.addAction("ITM-Personalzeiten …", self.open_itm_settings)
         menu.addAction("Speicherort ändern …", self.change_data_dir)
         menu.addAction("Datenordner öffnen",
                        lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(DATA_DIR)))
@@ -543,6 +554,12 @@ class TimelineApp(QMainWindow):
             parts.append("keine Einträge")
         if self.pc_activities:
             parts.append(f"am PC aktiv {format_duration(merged_seconds(self.pc_activities))}")
+        itm_day = self.itm_reader.day(self.current_date.toString("yyyy-MM-dd")) if self.itm_reader else None
+        if itm_day and itm_day.get("gewertet") is not None:
+            text = f"Personalzeit {format_duration(itm_day['gewertet'] * 60)}"
+            if itm_day.get("soll"):
+                text += f" (Soll {format_duration(itm_day['soll'] * 60)})"
+            parts.append(text)
         self.info_label.setText("   ·   ".join(parts))
 
     # ---------------------- Datum / Navigation --------------------------------
@@ -550,6 +567,10 @@ class TimelineApp(QMainWindow):
     def date_changed(self, date: QDate):
         self.current_date = date
         self.timeline.draw_timeline(self.current_date)
+        # Fehlende Daten für diesen Tag im Hintergrund nachlesen
+        for reader in (self.pbx_reader, self.itm_reader):
+            if reader:
+                reader.want(date.toString("yyyy-MM-dd"))
 
     def show_previous_day(self):
         self.date_edit.setDate(self.current_date.addDays(-1))
@@ -659,58 +680,115 @@ class TimelineApp(QMainWindow):
             self.pbx_reader.show_login(self)
 
     def open_pbx_settings(self):
+        self._reader_settings(
+            "3CX direkt auslesen",
+            "Zeitzeuge öffnet den 3CX-Webclient unsichtbar mit Microsoft Edge (eigenes Profil) "
+            "und liest jede Minute die Anrufliste. Beim ersten Mal liest es 14 Tage zurück, "
+            "ältere Tage beim Blättern. Tampermonkey wird dafür nicht gebraucht.\n\n"
+            "Zum Anmelden öffnet sich ein Edge-Fenster: anmelden und das Fenster schließen. "
+            "Die Anmeldung bleibt gespeichert. Ton, Mikrofon und Benachrichtigungen sind gesperrt.",
+            "3CX-Adresse:", "calls_3cx_url", "pbx_reader_enabled",
+            "Anrufliste automatisch im Hintergrund lesen", "Bei 3CX anmelden …",
+            "pbx_reader", self.start_pbx_reader, self.stop_pbx_reader,
+        )
+
+    def open_itm_settings(self):
+        self._reader_settings(
+            "ITM-Personalzeiten",
+            "Zeitzeuge öffnet die ITM-Zeiterfassung unsichtbar mit Microsoft Edge (eigenes Profil) "
+            "und liest deine Personalzeiten: heute alle 5 Minuten, andere Tage beim Blättern. "
+            "Die Timeline hebt dann deine gestempelte Arbeitszeit hervor, Pausen sind abgedunkelt.\n\n"
+            "Zum Anmelden öffnet sich ein Edge-Fenster: anmelden und das Fenster schließen.",
+            "ITM-Adresse:", "itm_url", "itm_reader_enabled",
+            "Personalzeiten automatisch im Hintergrund lesen", "Bei ITM anmelden …",
+            "itm_reader", self.start_itm_reader, self.stop_itm_reader,
+        )
+
+    def _reader_settings(self, title, text, url_label, url_key, enabled_key, enabled_text,
+                         login_text, attr, start, stop):
+        """Einstellungen für einen Hintergrund-Leser (3CX oder ITM)."""
         if not find_browser():
-            QMessageBox.warning(
-                self, "3CX direkt auslesen",
-                "Microsoft Edge oder Google Chrome wurde nicht gefunden.",
-            )
+            QMessageBox.warning(self, title, "Microsoft Edge oder Google Chrome wurde nicht gefunden.")
             return
         dialog = QDialog(self)
-        dialog.setWindowTitle("3CX direkt auslesen")
+        dialog.setWindowTitle(title)
         dialog.setMinimumWidth(520)
         layout = QVBoxLayout(dialog)
-        info = QLabel(
-            "Zeitzeuge öffnet den 3CX-Webclient unsichtbar mit Microsoft Edge (eigenes Profil) "
-            "und liest jede Minute die Anrufliste. Tampermonkey wird dafür nicht gebraucht.\n\n"
-            "Zum Anmelden öffnet sich ein Edge-Fenster: anmelden und das Fenster schließen. "
-            "Die Anmeldung bleibt gespeichert. Ton, Mikrofon und Benachrichtigungen sind gesperrt."
-        )
+        info = QLabel(text)
         info.setWordWrap(True)
         layout.addWidget(info)
 
         form = QFormLayout()
-        url_edit = QLineEdit(self.config.get("calls_3cx_url", ""))
-        form.addRow("3CX-Adresse:", url_edit)
-        enabled = QCheckBox("Anrufliste automatisch im Hintergrund lesen")
-        enabled.setChecked(self.config.get("pbx_reader_enabled", False))
+        url_edit = QLineEdit(self.config.get(url_key, ""))
+        form.addRow(url_label, url_edit)
+        enabled = QCheckBox(enabled_text)
+        enabled.setChecked(self.config.get(enabled_key, False))
         form.addRow("", enabled)
         layout.addLayout(form)
 
-        status = QLabel(self.pbx_reader.status if self.pbx_reader else "Aus")
+        reader = getattr(self, attr)
+        status = QLabel(reader.status if reader else "Aus")
         status.setStyleSheet("color: gray;")
         layout.addWidget(status)
 
         def apply():
             url = url_edit.text().strip().rstrip("/")
-            changed = url != self.config.get("calls_3cx_url")
-            self.config["calls_3cx_url"] = url
-            self.config["pbx_reader_enabled"] = enabled.isChecked()
+            changed = url != self.config.get(url_key)
+            self.config[url_key] = url
+            self.config[enabled_key] = enabled.isChecked()
             save_config(self.config)
             if changed or not enabled.isChecked():
-                self.stop_pbx_reader()
+                stop()
             if enabled.isChecked():
-                self.start_pbx_reader()
-            return self.pbx_reader
+                start()
+            return getattr(self, attr)
 
-        login_btn = QPushButton("Bei 3CX anmelden …")
-        login_btn.clicked.connect(lambda: (enabled.setChecked(True), apply(), self.show_pbx_login(),
-                                           status.setText(self.pbx_reader.status)))
+        def login():
+            enabled.setChecked(True)
+            reader = apply()
+            if reader:
+                reader.show_login(self)
+                status.setText(reader.status)
+
+        login_btn = QPushButton(login_text)
+        login_btn.clicked.connect(login)
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.addButton(login_btn, QDialogButtonBox.ActionRole)
         buttons.accepted.connect(lambda: (apply(), dialog.accept()))
         buttons.rejected.connect(dialog.reject)
         layout.addWidget(buttons)
         dialog.exec_()
+
+    # ---------------------- ITM-Personalzeiten --------------------------------
+
+    def start_itm_reader(self):
+        if self.itm_reader:
+            return
+        self.itm_reader = ItmReader(self.config.get("itm_url", ""), ITM_FILE, ITM_PROFILE_DIR, self)
+        self.itm_reader.status_changed.connect(
+            lambda text: self.statusBar().showMessage(text, 5000)
+        )
+        self.itm_reader.day_read.connect(
+            lambda d: self.timeline.draw_timeline(self.current_date)
+            if d == self.current_date.toString("yyyy-MM-dd") else None
+        )
+        self.itm_reader.login_required.connect(
+            lambda: self.tray and self.tray.showMessage(
+                "ITM-Anmeldung nötig",
+                "Zeitzeuge kann die Personalzeiten nicht lesen. Klick hier, um dich anzumelden.",
+                QSystemTrayIcon.Warning, 8000,
+            )
+        )
+        self.timeline.personal_day = self.itm_reader.day
+        self.itm_reader.start()
+        self.itm_reader.want(self.current_date.toString("yyyy-MM-dd"))
+
+    def stop_itm_reader(self):
+        if self.itm_reader:
+            self.itm_reader.stop()
+            self.itm_reader.deleteLater()
+            self.itm_reader = None
+            self.timeline.personal_day = None
 
     # ---------------------- Speicherort ----------------------------------------
 
@@ -730,8 +808,9 @@ class TimelineApp(QMainWindow):
         # Erst alles anhalten, was in die Dateien schreibt
         if self.tracker:
             self.tracker.stop()
-        if self.pbx_reader:
-            self.pbx_reader.stop()
+        for reader in (self.pbx_reader, self.itm_reader):
+            if reader:
+                reader.stop()
         save_config(self.config)
         try:
             storage.move_data(DATA_DIR, new_dir)
@@ -762,15 +841,19 @@ class TimelineApp(QMainWindow):
         menu.addAction("Beenden", self.quit_app)
         self.tray.setContextMenu(menu)
         # Klick auf die Meldung "3CX-Anmeldung nötig" öffnet die Anmeldung
-        self.tray.messageClicked.connect(
-            lambda: self.show_pbx_login()
-            if self.pbx_reader and self.pbx_reader.needs_login else None
-        )
+        self.tray.messageClicked.connect(self.on_tray_message_clicked)
         self.tray.activated.connect(
             lambda reason: self.show_from_tray()
             if reason in (QSystemTrayIcon.Trigger, QSystemTrayIcon.DoubleClick) else None
         )
         self.tray.show()
+
+    def on_tray_message_clicked(self):
+        """Klick auf "Anmeldung nötig" öffnet die passende Anmeldung."""
+        if self.pbx_reader and self.pbx_reader.needs_login:
+            self.show_pbx_login()
+        elif self.itm_reader and self.itm_reader.needs_login:
+            self.itm_reader.show_login(self)
 
     def show_from_tray(self):
         self.showNormal()
@@ -782,8 +865,9 @@ class TimelineApp(QMainWindow):
         self._quitting = True
         if self.tracker:
             self.tracker.stop()
-        if self.pbx_reader:
-            self.pbx_reader.stop()
+        for reader in (self.pbx_reader, self.itm_reader):
+            if reader:
+                reader.stop()
         QApplication.instance().quit()
 
     def closeEvent(self, event):

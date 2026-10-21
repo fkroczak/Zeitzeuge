@@ -126,6 +126,7 @@ class TimelineView(QGraphicsView):
         self.current_date = QDate.currentDate()
         self.calls_file = None  # wird vom Hauptfenster gesetzt (anrufe.json)
         self.tracker = None     # Aktivitätsprotokoll, vom Hauptfenster gesetzt
+        self.personal_day = None  # date_str -> Personalzeiten aus ITM, vom Hauptfenster gesetzt
 
         self._remote_cache = {}  # date_str -> list[conn]
         self._tv_parser = TeamViewerParser(debug=DEBUG)
@@ -227,14 +228,11 @@ class TimelineView(QGraphicsView):
         result = [a for a in self.activities if a.get("start", "").startswith(date_str)]
         result += [s for s in self.remote_suggestions if s.get("start", "").startswith(date_str)]
         if self.calls_file:
-            result += [
-                c for c in load_call_suggestions(
-                    self.calls_file,
-                    ignore_missed=self.config.get("calls_ignore_missed", True),
-                    min_seconds=self.config.get("calls_min_duration", 0),
-                )
-                if c["start"].startswith(date_str)
-            ]
+            result += load_call_suggestions(
+                self.calls_file, date_str,
+                ignore_missed=self.config.get("calls_ignore_missed", True),
+                min_seconds=self.config.get("calls_min_duration", 0),
+            )
 
         valid = []
         for a in result:
@@ -274,10 +272,26 @@ class TimelineView(QGraphicsView):
     def _x(self, minutes):
         return self.LEFT + minutes * self._ppm
 
-    def _work_minutes(self, date: QDate):
-        """Arbeitszeit des Tages; an freien Tagen ist der ganze Tag abgedunkelt."""
+    def _work_spans(self, date: QDate):
+        """Arbeitszeit als [(Start, Ende)] in Minuten: Personalzeiten aus ITM, sonst Einstellungen."""
+        day = self.personal_day(date.toString("yyyy-MM-dd")) if self.personal_day else None
+        if day and day.get("zeiten"):
+            spans = []
+            for t in day["zeiten"]:
+                start = parse_time(t["start"])
+                end = parse_time(t["end"]) if t["end"] else datetime.now()  # noch eingestempelt
+                end_min = end.hour * 60 + end.minute if end.date() == start.date() else 24 * 60
+                spans.append((start.hour * 60 + start.minute, end_min))
+            return spans
         hours = work_hours(self.config, date.dayOfWeek() - 1)
-        return hours if hours else (12 * 60, 12 * 60)
+        return [hours] if hours else []
+
+    def _work_minutes(self, date: QDate):
+        """Beginn und Ende der Arbeitszeit; an freien Tagen ist der ganze Tag abgedunkelt."""
+        spans = self._work_spans(date)
+        if not spans:
+            return 12 * 60, 12 * 60
+        return spans[0][0], max(end for _start, end in spans)
 
     def draw_timeline(self, date: QDate):
         # Mittelpunkt merken, damit Zoom/Neuzeichnen die Ansicht nicht verschiebt
@@ -331,13 +345,16 @@ class TimelineView(QGraphicsView):
         )
         width = self._x(24 * 60) + self.LEFT
 
-        # Außerhalb der Arbeitszeit abdunkeln
+        # Außerhalb der Arbeitszeit abdunkeln (mit ITM-Personalzeiten auch die Pausen)
+        spans = self._work_spans(date)
         work_start, work_end = self._work_minutes(date)
         no_pen = QPen(Qt.NoPen)
-        self.scene.addRect(self._x(0), 0, self._x(work_start) - self._x(0), height,
-                           no_pen, QBrush(self.non_work_color))
-        self.scene.addRect(self._x(work_end), 0, self._x(24 * 60) - self._x(work_end), height,
-                           no_pen, QBrush(self.non_work_color))
+        prev = 0
+        for span_start, span_end in spans + [(24 * 60, 24 * 60)]:
+            if span_start > prev:
+                self.scene.addRect(self._x(prev), 0, self._x(span_start) - self._x(prev), height,
+                                   no_pen, QBrush(self.non_work_color))
+            prev = max(prev, span_end)
 
         # Stundenleiste
         self.scene.addRect(0, 0, width, self.AXIS_H, no_pen, QBrush(self.axis_bg))
@@ -352,7 +369,7 @@ class TimelineView(QGraphicsView):
             if hour % step == 0 and hour < 24:
                 label = self.scene.addText(f"{hour:02d}:00", hour_font)
                 label.setDefaultTextColor(
-                    self.text_color if work_start <= hour * 60 < work_end else self.muted_text
+                    self.text_color if any(a <= hour * 60 < b for a, b in spans) else self.muted_text
                 )
                 label.setPos(x + 2, 3)
 
