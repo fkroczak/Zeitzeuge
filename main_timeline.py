@@ -26,8 +26,8 @@ from pbx_reader import PbxReader, find_browser
 import storage
 from settings_dialogs import (ActivityTypeSettingsDialog,
                               ConnectionSettingsDialog, WorkHoursDialog)
-from timeline_only import (ActivityViewDialog, TimelineView, format_duration,
-                           parse_time)
+from timeline_only import (ActivityViewDialog, TimelineView, entry_color,
+                           format_duration, parse_time, type_label)
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
@@ -569,7 +569,6 @@ class TimelineApp(QMainWindow):
         entries.sort(key=lambda a: a["start"])
         self.list_entries = entries
 
-        colors = self.config.get("type_colors", {})
         self.table.setRowCount(len(entries))
         for row, a in enumerate(entries):
             start, end = parse_time(a["start"]), parse_time(a["end"])
@@ -577,8 +576,8 @@ class TimelineApp(QMainWindow):
             if "app" in a:
                 pix.fill(self.timeline.app_color(a["app"]))
             else:
-                pix.fill(QColor(colors.get(a["type"], "#4682B4")))
-            type_item = QTableWidgetItem(QIcon(pix), a["type"])
+                pix.fill(entry_color(a, self.config))
+            type_item = QTableWidgetItem(QIcon(pix), type_label(a))
             values = [
                 QTableWidgetItem(f"{start:%H:%M}"),
                 QTableWidgetItem(f"{end:%H:%M}"),

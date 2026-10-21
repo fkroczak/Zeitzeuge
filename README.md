@@ -136,6 +136,7 @@ Die Einstellungen für Telefonate stehen in `zeitzeuge_config.json`:
 | `calls_port` | `8765` | Port, er muss zum Skript passen |
 | `calls_ignore_missed` | `true` | Verpasste Anrufe ausblenden |
 | `calls_min_duration` | `0` | Kürzere Anrufe ausblenden (in Sekunden) |
+| `call_colors` | blau / grün / rot | Farben für eingehende, ausgehende und verpasste Anrufe, z. B. `{"Eingehend": "#3D8BFD"}` |
 | `calls_3cx_url` | `https://voice.visaas.de:5001` | Adresse des 3CX-Webclients |
 | `pbx_reader_enabled` | `false` | Variante 1: Zeitzeuge liest 3CX selbst |
 

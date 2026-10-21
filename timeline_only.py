@@ -45,6 +45,28 @@ def work_hours(config, weekday):
         return None
 
 
+# Farben für Telefonate wie im 3CX-Client (in der Config unter "call_colors" änderbar)
+DEFAULT_CALL_COLORS = {"Eingehend": "#3D8BFD", "Ausgehend": "#27AE60", "Verpasst": "#E74C3C"}
+
+
+def entry_color(activity, config):
+    """Farbe eines Eintrags: Telefonate nach Richtung, sonst nach Aktivitätstyp."""
+    direction = activity.get("direction")
+    if direction:
+        colors = {**DEFAULT_CALL_COLORS, **config.get("call_colors", {})}
+        if direction in colors:
+            return QColor(colors[direction])
+    return QColor(config.get("type_colors", {}).get(activity.get("type"), "#4682B4"))
+
+
+def type_label(activity):
+    """Typ-Text für Liste und Details, bei Telefonaten mit Richtung."""
+    direction = activity.get("direction")
+    if direction and direction != "Anruf":
+        return f"{activity.get('type', '')} {direction.lower()}"
+    return activity.get("type", "")
+
+
 def format_duration(seconds):
     minutes = int(round(seconds / 60))
     if minutes < 1:
@@ -78,7 +100,7 @@ class ActivityViewDialog(QDialog):
         except (KeyError, ValueError):
             zeit = dauer = ""
 
-        form.addRow("Typ:", ro_field(activity.get("type", "")))
+        form.addRow("Typ:", ro_field(type_label(activity)))
         form.addRow("Kunde:", ro_field(activity.get("customer_name", "")))
         form.addRow("Zeit:", ro_field(zeit))
         form.addRow("Dauer:", ro_field(dauer))
@@ -319,7 +341,6 @@ class TimelineView(QGraphicsView):
         self.scene.setBackgroundBrush(self.background_color)
 
         activities = self.activities_for(date)
-        type_colors = self.config.get("type_colors", {})
 
         # Spuren verteilen: überlappende Einträge kommen in die nächste Zeile
         lanes_end = []
@@ -391,7 +412,7 @@ class TimelineView(QGraphicsView):
             w = max(4.0, x2 - x1)
             y = top + lane * (self.LANE_H + self.LANE_GAP)
 
-            base = QColor(type_colors.get(a["type"], "#4682B4"))
+            base = entry_color(a, self.config)
             fill = QColor(base)
             if a["is_suggestion"]:
                 fill.setAlpha(110 if self.dark_mode else 70)
@@ -556,7 +577,7 @@ class TimelineView(QGraphicsView):
         if a:
             start, end = parse_time(a["start"]), parse_time(a["end"])
             lines = [f"<b>{escape(a.get('customer_name') or a.get('type'))}</b>",
-                     escape(a.get("type", "")),
+                     escape(type_label(a)),
                      f"{start:%H:%M} – {end:%H:%M}  ({format_duration((end - start).total_seconds())})"]
             if a.get("details"):
                 lines.append(escape(a["details"]))
