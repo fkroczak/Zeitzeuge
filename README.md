@@ -14,13 +14,26 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
   - RDP-, SSH-, VPN-, FTP- und Website-Verbindungen mit Beginn und Ende.
   - Angezeigte Passwörter, Benutzernamen und Einmal-Passwörter (OTP).
 - **Telefonate aus 3CX:** Ein Browser-Skript überträgt die Anrufliste aus dem 3CX-Webclient, ohne dass eine API nötig ist (siehe unten).
-- **Details per Maus:** Fährst du über einen Eintrag, siehst du Typ, Kunde, Zeitraum und Dauer. Ein Klick öffnet die Details.
+- **Tagesliste** unter der Timeline mit Von, Bis, Dauer, Typ, Kunde und Details.
+  - Die Statuszeile zeigt die belegte Zeit des Tages. Überschneidungen werden nicht doppelt gezählt.
+  - Markierte Zeilen kopierst du mit STRG + C, zum Beispiel für die Ticket-Dokumentation.
+- **Details per Maus:** Fährst du über einen Eintrag, siehst du Kunde, Zeitraum und Dauer. Ein Klick oder ein Doppelklick in der Liste öffnet die Details.
+- **Immer aktuell:** Die Logs werden alle 2 Minuten geprüft. Mit F5 liest du sie sofort neu ein. Gelesen werden nur Dateien, die sich geändert haben.
 - **Bedienung:**
-  - Tag wechseln mit ◀ ▶, Kalender und „Heute“.
-  - Zoom per Knopf oder mit STRG + Mausrad.
-  - Dunkles und helles Design.
-  - Eigene Aktivitätstypen mit frei wählbaren Farben.
-- **Schnell:** Logdateien werden nur neu gelesen, wenn sie sich geändert haben.
+  - Die rote Linie zeigt die aktuelle Uhrzeit, die Arbeitszeit aus den Einstellungen ist hervorgehoben.
+  - Zoom nur in der Breite, mit STRG + Mausrad an der Mausposition. Das Mausrad allein blättert durch den Tag.
+  - Dunkles und helles Design, eigene Aktivitätstypen mit frei wählbaren Farben.
+
+### Tastenkürzel
+
+| Kürzel | Aktion |
+|---|---|
+| STRG + ← / → | Vorheriger / nächster Tag |
+| STRG + T | Heute |
+| F5 | Logs neu einlesen |
+| STRG + `+` / `-` | Zoom |
+| STRG + 0 | Zoom zurücksetzen, Arbeitszeit zeigen |
+| STRG + C | Markierte Zeilen der Tagesliste kopieren |
 
 ## Voraussetzungen
 

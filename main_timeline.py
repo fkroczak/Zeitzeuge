@@ -3,16 +3,21 @@ import os
 import sys
 import warnings
 
-from PyQt5.QtCore import QDate, QObject, QSize, Qt, pyqtSignal
-from PyQt5.QtGui import QColor, QIcon, QPalette
-from PyQt5.QtWidgets import (QAction, QApplication, QDateEdit, QLabel,
-                             QMainWindow, QMenu, QMessageBox, QToolBar,
-                             QVBoxLayout, QWidget)
+from datetime import datetime
+
+from PyQt5.QtCore import QDate, QLocale, QObject, QSize, Qt, QTimer, pyqtSignal
+from PyQt5.QtGui import QColor, QIcon, QKeySequence, QPalette, QPixmap
+from PyQt5.QtWidgets import (QAbstractItemView, QAction, QApplication,
+                             QDateEdit, QHeaderView, QLabel, QMainWindow,
+                             QMenu, QMessageBox, QShortcut, QSplitter,
+                             QTableWidget, QTableWidgetItem, QToolBar,
+                             QToolButton, QWidget)
 
 from call_import import start_call_server
 from settings_dialogs import (ActivityTypeSettingsDialog,
                               ConnectionSettingsDialog)
-from timeline_only import TimelineView
+from timeline_only import (ActivityViewDialog, TimelineView, format_duration,
+                           parse_time)
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
@@ -160,160 +165,306 @@ def save_config(config: dict):
         json.dump(config, f, indent=4, ensure_ascii=False)
 
 
+GERMAN = QLocale(QLocale.German, QLocale.Germany)
+
+THEMES = {
+    "dark": {
+        "bg": "#1E1E1E", "surface": "#252526", "bar": "#2D2D30",
+        "border": "#3C3C3C", "text": "#F3F3F3", "muted": "#A0A0A0",
+        "accent": "#007ACC", "hover": "#3A3D41", "pressed": "#33373B",
+        "alt": "#2A2A2B", "handle": "#5A5A5A",
+    },
+    "light": {
+        "bg": "#F3F4F6", "surface": "#FFFFFF", "bar": "#FFFFFF",
+        "border": "#D5D9DE", "text": "#222222", "muted": "#666666",
+        "accent": "#0078D7", "hover": "#E8EBEF", "pressed": "#DADEE3",
+        "alt": "#F8F9FA", "handle": "#C2C7CD",
+    },
+}
+
+STYLESHEET = """
+QWidget { background-color: $bg; color: $text; font-size: 12px;
+          font-family: "Segoe UI", Arial, sans-serif; }
+QToolBar { background-color: $bar; border: none; border-bottom: 1px solid $border;
+           padding: 4px; spacing: 4px; }
+QToolBar::separator { background: $border; width: 1px; margin: 4px 6px; }
+QToolButton { background: transparent; border: 1px solid transparent;
+              border-radius: 4px; padding: 4px 8px; }
+QToolButton:hover { background-color: $hover; border-color: $border; }
+QToolButton:pressed, QToolButton:checked { background-color: $pressed; border-color: $border; }
+QToolButton::menu-indicator { image: none; }
+QStatusBar { background-color: $bar; color: $muted; border-top: 1px solid $border; }
+QStatusBar QLabel { background: transparent; color: $muted; padding: 0 8px; }
+QStatusBar::item { border: none; }
+QDateEdit, QLineEdit, QTextEdit, QComboBox, QSpinBox, QListWidget {
+    background-color: $surface; color: $text; border: 1px solid $border;
+    border-radius: 4px; padding: 4px; selection-background-color: $accent;
+    selection-color: #FFFFFF; }
+QDateEdit { min-width: 105px; }
+QPushButton { background-color: $hover; color: $text; border: 1px solid $border;
+              border-radius: 4px; padding: 6px 12px; min-width: 80px; }
+QPushButton:hover { background-color: $pressed; }
+QGroupBox { border: 1px solid $border; border-radius: 6px; margin-top: 1em;
+            padding-top: 12px; background-color: $surface; }
+QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 6px; }
+QMenu { background-color: $surface; border: 1px solid $border; padding: 4px; }
+QMenu::item { padding: 5px 20px; border-radius: 3px; }
+QMenu::item:selected { background-color: $accent; color: #FFFFFF; }
+QGraphicsView { border: 1px solid $border; border-radius: 4px; }
+QTableWidget { background-color: $surface; alternate-background-color: $alt;
+               border: 1px solid $border; border-radius: 4px; gridline-color: transparent;
+               selection-background-color: $accent; selection-color: #FFFFFF; }
+QTableWidget::item { padding: 2px 6px; border: none; }
+QHeaderView::section { background-color: $bar; color: $muted; border: none;
+                       border-bottom: 1px solid $border; padding: 4px 6px; font-weight: 600; }
+QTableCornerButton::section { background-color: $bar; border: none; }
+QSplitter::handle { background: transparent; }
+QScrollBar:horizontal { height: 10px; background: transparent; margin: 0; }
+QScrollBar:vertical { width: 10px; background: transparent; margin: 0; }
+QScrollBar::handle { background: $handle; border-radius: 4px; min-width: 30px; min-height: 30px; }
+QScrollBar::handle:horizontal { margin: 2px 0; }
+QScrollBar::handle:vertical { margin: 0 2px; }
+QScrollBar::add-line, QScrollBar::sub-line { width: 0; height: 0; }
+QScrollBar::add-page, QScrollBar::sub-page { background: transparent; }
+QCalendarWidget QToolButton { color: $text; font-weight: bold; }
+QCalendarWidget QWidget#qt_calendar_navigationbar { background-color: $bar; }
+QCalendarWidget QAbstractItemView { background-color: $surface; color: $text;
+    selection-background-color: $accent; selection-color: #FFFFFF; }
+QCalendarWidget QAbstractItemView:disabled { color: $muted; }
+QToolTip { background-color: #2b2b2b; color: #f0f0f0; border: 1px solid #555; }
+"""
+
+
+def merged_seconds(activities):
+    """Gesamtzeit ohne doppelt gezählte Überschneidungen."""
+    total, cur_start, cur_end = 0, None, None
+    for a in sorted(activities, key=lambda a: a["start"]):
+        s, e = parse_time(a["start"]), parse_time(a["end"])
+        if cur_end is None or s > cur_end:
+            if cur_end is not None:
+                total += (cur_end - cur_start).total_seconds()
+            cur_start, cur_end = s, e
+        else:
+            cur_end = max(cur_end, e)
+    if cur_end is not None:
+        total += (cur_end - cur_start).total_seconds()
+    return total
+
+
 class TimelineApp(QMainWindow):
+    COLUMNS = ["Von", "Bis", "Dauer", "Typ", "Kunde / Verbindung", "Details"]
+
     def __init__(self):
         super().__init__()
 
         self.setWindowTitle("Zeitzeuge")
         self.setWindowIcon(QIcon(resource_path("zeitzeuge.ico")))
-        self.resize(1100, 550)
+        self.resize(1200, 720)
 
         self.config = load_config_with_defaults()
         self.dark_mode = self.config.get("dark_mode", False)
         self.current_date = QDate.currentDate()
         self.activities = []
+        self.day_activities = []
 
-        central = QWidget()
-        layout = QVBoxLayout(central)
+        self._build_toolbar()
 
-        # Toolbar
-        self.toolbar = QToolBar("Navigation", self)
-        self.toolbar.setIconSize(QSize(16, 16))
-        self.addToolBar(Qt.TopToolBarArea, self.toolbar)
+        # Timeline oben, Tagesliste unten
+        self.timeline = TimelineView(self.activities, self.config, parent=self)
+        self.timeline.day_loaded.connect(self.update_day_list)
 
-        prev_action = QAction("◀", self)
-        next_action = QAction("▶", self)
-        today_action = QAction("Heute", self)
+        self.table = QTableWidget(0, len(self.COLUMNS), self)
+        self.table.setHorizontalHeaderLabels(self.COLUMNS)
+        self.table.verticalHeader().setVisible(False)
+        self.table.setAlternatingRowColors(True)
+        self.table.setShowGrid(False)
+        self.table.setWordWrap(False)
+        self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.table.verticalHeader().setDefaultSectionSize(26)
+        header = self.table.horizontalHeader()
+        header.setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        for col in range(4):
+            header.setSectionResizeMode(col, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(4, QHeaderView.Interactive)
+        header.resizeSection(4, 300)
+        header.setStretchLastSection(True)
+        self.table.cellDoubleClicked.connect(
+            lambda row, _col: ActivityViewDialog(self.day_activities[row], self).exec_()
+        )
+        copy_action = QAction("Kopieren", self.table)
+        copy_action.setShortcut(QKeySequence.Copy)
+        copy_action.setShortcutContext(Qt.WidgetShortcut)
+        copy_action.triggered.connect(self.copy_selection)
+        self.table.addAction(copy_action)
+        self.table.setContextMenuPolicy(Qt.ActionsContextMenu)
 
-        prev_action.triggered.connect(self.show_previous_day)
-        next_action.triggered.connect(self.show_next_day)
-        today_action.triggered.connect(self.show_today)
-
-        self.date_edit = QDateEdit(self.current_date, self)
-        self.date_edit.setDisplayFormat("dd.MM.yyyy")
-        self.date_edit.setCalendarPopup(True)
-        self.date_edit.dateChanged.connect(self.date_changed)
-
-        zoom_in = QAction("Zoom +", self)
-        zoom_out = QAction("Zoom -", self)
-        zoom_reset = QAction("Reset", self)
-
-        self.dark_action = QAction("Dark", self)
-        self.dark_action.setCheckable(True)
-        self.dark_action.setChecked(self.dark_mode)
-        self.dark_action.toggled.connect(self.toggle_dark_mode)
-
-        zoom_in.triggered.connect(self.zoom_in)
-        zoom_out.triggered.connect(self.zoom_out)
-        zoom_reset.triggered.connect(self.reset_zoom)
-
-        self.toolbar.addAction(prev_action)
-        self.toolbar.addAction(next_action)
-        self.toolbar.addWidget(self.date_edit)
-        self.toolbar.addAction(today_action)
-        self.toolbar.addSeparator()
-        self.toolbar.addAction(zoom_in)
-        self.toolbar.addAction(zoom_out)
-        self.toolbar.addAction(zoom_reset)
-        self.toolbar.addSeparator()
-        self.toolbar.addAction(self.dark_action)
-
-        # Einstellungen direkt in der Toolbar
-        settings_tv = QAction("TeamViewer", self)
-        settings_rdm = QAction("RDM", self)
-        settings_types = QAction("Aktivitätstypen", self)
-
-        settings_tv.triggered.connect(self.edit_teamviewer_settings)
-        settings_rdm.triggered.connect(self.edit_rdm_settings)
-        settings_types.triggered.connect(self.edit_activity_types)
-
-        self.toolbar.addSeparator()
-        self.toolbar.addAction(settings_tv)
-        self.toolbar.addAction(settings_rdm)
-        self.toolbar.addAction(settings_types)
-        
-        about_action = QAction("?", self)
-        about_action.triggered.connect(self.show_about)
-
-        self.toolbar.addSeparator()
-        self.toolbar.addAction(about_action)
-
-
+        splitter = QSplitter(Qt.Vertical, self)
+        splitter.addWidget(self.timeline)
+        splitter.addWidget(self.table)
+        splitter.setStretchFactor(0, 1)
+        splitter.setStretchFactor(1, 2)
+        splitter.setSizes([260, 400])
+        splitter.setContentsMargins(8, 8, 8, 8)
+        self.setCentralWidget(splitter)
 
         # Statuszeile
-        self.info_label = QLabel("", self)
-        self.statusBar().addPermanentWidget(self.info_label)
-
-        # Timeline
-        self.timeline = TimelineView(self.activities, self.config, parent=self)
-        layout.addWidget(self.timeline)
-        self.setCentralWidget(central)
+        self.info_label = QLabel(self)
+        self.calls_label = QLabel(self)
+        self.statusBar().addWidget(self.info_label, 1)
+        self.statusBar().addPermanentWidget(self.calls_label)
+        self.statusBar().setSizeGripEnabled(False)
 
         # Anruf-Empfang für das Tampermonkey-Skript starten
         self.timeline.calls_file = CALLS_FILE
+        self.call_server = None
         if self.config.get("calls_enabled", True):
             self.call_signal = CallSignal()
             self.call_signal.updated.connect(
                 lambda: self.timeline.draw_timeline(self.current_date)
             )
+            port = self.config.get("calls_port", 8765)
             self.call_server = start_call_server(
-                CALLS_FILE,
-                port=self.config.get("calls_port", 8765),
-                on_update=self.call_signal.updated.emit,
+                CALLS_FILE, port=port, on_update=self.call_signal.updated.emit
+            )
+            self.calls_label.setText(
+                f"Anrufempfang aktiv (Port {port})" if self.call_server
+                else f"Anrufempfang: Port {port} belegt"
             )
 
-        #Menü "Datei -> Einstellungen"
-        #menubar = self.menuBar()
-        #file_menu = menubar.addMenu("Datei")
+        # Logs regelmäßig neu prüfen (nur geänderte Dateien werden gelesen)
+        self.refresh_timer = QTimer(self)
+        self.refresh_timer.timeout.connect(self.auto_refresh)
+        self.refresh_timer.start(2 * 60 * 1000)
 
-       # settings_menu = QMenu("Einstellungen", self)
-        #file_menu.addMenu(settings_menu)
+        self.apply_style()  # zeichnet die Timeline
+        self.timeline.setFocus()
 
-       # teamviewer_action = QAction("TeamViewer", self)
-       # rdm_action = QAction("RDM", self)
-       # types_action = QAction("Aktivitätstypen", self)
+    # ---------------------- Werkzeugleiste ------------------------------------
 
-        #teamviewer_action.triggered.connect(self.edit_teamviewer_settings)
-       # rdm_action.triggered.connect(self.edit_rdm_settings)
-       # types_action.triggered.connect(self.edit_activity_types)
+    def _action(self, text, slot, shortcut=None, tip=None):
+        action = QAction(text, self)
+        action.triggered.connect(slot)
+        if shortcut:
+            action.setShortcuts(shortcut if isinstance(shortcut, list) else [shortcut])
+        label = tip or text
+        if shortcut:
+            first = shortcut[0] if isinstance(shortcut, list) else shortcut
+            label += f" ({QKeySequence(first).toString(QKeySequence.NativeText)})"
+        action.setToolTip(label)
+        self.addAction(action)  # Tastenkürzel im ganzen Fenster
+        return action
 
-       # settings_menu.addAction(teamviewer_action)
-       # settings_menu.addAction(rdm_action)
-       # settings_menu.addSeparator()
-        #settings_menu.addAction(types_action)
+    def _build_toolbar(self):
+        tb = QToolBar("Navigation", self)
+        tb.setMovable(False)
+        tb.setIconSize(QSize(16, 16))
+        self.addToolBar(Qt.TopToolBarArea, tb)
 
-        self.apply_style()
-        self.timeline.draw_timeline(self.current_date)
-        self.update_status_text()
+        tb.addAction(self._action("◀", self.show_previous_day, "Ctrl+Left", "Vorheriger Tag"))
+        self.date_edit = QDateEdit(self.current_date, self)
+        self.date_edit.setLocale(GERMAN)
+        self.date_edit.setDisplayFormat("ddd dd.MM.yyyy")
+        self.date_edit.setCalendarPopup(True)
+        self.date_edit.dateChanged.connect(self.date_changed)
+        tb.addWidget(self.date_edit)
+        tb.addAction(self._action("▶", self.show_next_day, "Ctrl+Right", "Nächster Tag"))
+        tb.addAction(self._action("Heute", self.show_today, "Ctrl+T"))
+        tb.addSeparator()
+        tb.addAction(self._action("⟳ Aktualisieren", self.refresh, "F5", "Logs neu einlesen"))
+        tb.addSeparator()
+        tb.addAction(self._action("−", self.zoom_out, "Ctrl+-", "Verkleinern"))
+        tb.addAction(self._action("+", self.zoom_in, ["Ctrl++", "Ctrl+="], "Vergrößern"))
+        tb.addAction(self._action("Arbeitszeit", self.reset_zoom, "Ctrl+0",
+                                  "Zoom zurücksetzen und auf Arbeitszeit springen"))
+
+        spacer = QWidget(self)
+        spacer.setSizePolicy(spacer.sizePolicy().Expanding, spacer.sizePolicy().Preferred)
+        spacer.setStyleSheet("background: transparent;")
+        tb.addWidget(spacer)
+
+        self.dark_action = QAction("Dunkel", self)
+        self.dark_action.setCheckable(True)
+        self.dark_action.setChecked(self.dark_mode)
+        self.dark_action.setToolTip("Dunkles Design")
+        self.dark_action.toggled.connect(self.toggle_dark_mode)
+        tb.addAction(self.dark_action)
+
+        menu = QMenu(self)
+        menu.addAction("TeamViewer-Logs …", self.edit_teamviewer_settings)
+        menu.addAction("RDM-Logs …", self.edit_rdm_settings)
+        menu.addAction("Aktivitätstypen und Farben …", self.edit_activity_types)
+        menu.addSeparator()
+        menu.addAction("Über Zeitzeuge", self.show_about)
+        settings_btn = QToolButton(self)
+        settings_btn.setText("Einstellungen ▾")
+        settings_btn.setMenu(menu)
+        settings_btn.setPopupMode(QToolButton.InstantPopup)
+        tb.addWidget(settings_btn)
 
     def show_about(self):
         icon_path = resource_path("zeitzeuge.png")
-        text = (
-            "<b>Zeitzeuge</b><br>"
-            "Version 3.3<br>"
-            "27.11.2025<br><br>"
-        )
         msg = QMessageBox(self)
         msg.setWindowTitle("Über Zeitzeuge")
-        msg.setText(text)
         msg.setTextFormat(Qt.RichText)
+        msg.setText(
+            "<b>Zeitzeuge</b><br>Version 3.3<br><br>"
+            "<a href='https://github.com/fkroczak/Zeitzeuge'>github.com/fkroczak/Zeitzeuge</a>"
+        )
         msg.setStandardButtons(QMessageBox.Ok)
         if os.path.exists(icon_path):
-            msg.setWindowIcon(QIcon(icon_path))
             msg.setIconPixmap(QIcon(icon_path).pixmap(64, 64))
         msg.exec_()
 
+    # ---------------------- Tagesliste ----------------------------------------
 
+    def update_day_list(self, activities):
+        self.day_activities = activities
+        colors = self.config.get("type_colors", {})
+        self.table.setRowCount(len(activities))
+        for row, a in enumerate(activities):
+            start, end = parse_time(a["start"]), parse_time(a["end"])
+            pix = QPixmap(10, 10)
+            pix.fill(QColor(colors.get(a["type"], "#4682B4")))
+            type_item = QTableWidgetItem(QIcon(pix), a["type"])
+            values = [
+                QTableWidgetItem(f"{start:%H:%M}"),
+                QTableWidgetItem(f"{end:%H:%M}"),
+                QTableWidgetItem(format_duration((end - start).total_seconds())),
+                type_item,
+                QTableWidgetItem(a.get("customer_name", "")),
+                QTableWidgetItem(a.get("details", "")),
+            ]
+            for col, item in enumerate(values):
+                item.setToolTip(item.text())
+                self.table.setItem(row, col, item)
+        self.update_status_text()
 
-    # ---------------------- Datum / Navigation --------------------------------
+    def copy_selection(self):
+        rows = sorted({i.row() for i in self.table.selectedIndexes()})
+        if not rows:
+            rows = range(self.table.rowCount())
+        lines = []
+        for row in rows:
+            cells = [self.table.item(row, c).text() for c in range(self.table.columnCount())]
+            lines.append(f"{cells[0]}–{cells[1]}\t" + "\t".join(cells[2:]).rstrip())
+        QApplication.clipboard().setText("\n".join(lines))
+        self.statusBar().showMessage(f"{len(lines)} Zeile(n) kopiert", 3000)
 
     def update_status_text(self):
-        self.info_label.setText(self.current_date.toString("ddd, dd.MM.yyyy"))
+        day = GERMAN.toString(self.current_date, "dddd, dd.MM.yyyy")
+        n = len(self.day_activities)
+        if n:
+            total = format_duration(merged_seconds(self.day_activities))
+            self.info_label.setText(f"{day}   ·   {n} Einträge   ·   belegt {total}")
+        else:
+            self.info_label.setText(f"{day}   ·   keine Einträge")
+
+    # ---------------------- Datum / Navigation --------------------------------
 
     def date_changed(self, date: QDate):
         self.current_date = date
         self.timeline.draw_timeline(self.current_date)
-        self.update_status_text()
 
     def show_previous_day(self):
         self.date_edit.setDate(self.current_date.addDays(-1))
@@ -324,23 +475,26 @@ class TimelineApp(QMainWindow):
     def show_today(self):
         self.date_edit.setDate(QDate.currentDate())
 
+    def refresh(self):
+        self.timeline.refresh()
+        self.statusBar().showMessage("Logs neu eingelesen", 2000)
+
+    def auto_refresh(self):
+        if self.current_date == QDate.currentDate():
+            self.timeline.refresh()
+
     # ---------------------- Zoom / Dark-Mode ----------------------------------
 
     def zoom_in(self):
-        self.timeline.zoom_level *= 1.1
-        self.timeline.draw_timeline(self.current_date)
+        self.timeline.set_zoom(self.timeline.zoom_level * 1.25)
 
     def zoom_out(self):
-        self.timeline.zoom_level /= 1.1
-        self.timeline.draw_timeline(self.current_date)
+        self.timeline.set_zoom(self.timeline.zoom_level / 1.25)
 
     def reset_zoom(self):
-        # Zoom zurücksetzen
         self.timeline.zoom_level = 1.0
-        # aktuellen Tag neu zeichnen
         self.timeline._first_draw = True  # wieder auf Arbeitszeit zentrieren
         self.timeline.draw_timeline(self.current_date)
-
 
     def toggle_dark_mode(self, enabled: bool):
         self.dark_mode = enabled
@@ -348,43 +502,49 @@ class TimelineApp(QMainWindow):
         save_config(self.config)
         self.apply_style()
 
+    def apply_style(self):
+        theme = THEMES["dark" if self.dark_mode else "light"]
+        sheet = STYLESHEET
+        for key, value in theme.items():
+            sheet = sheet.replace(f"${key}", value)
+        # Palette passend setzen, sonst nutzen Tabellen/Scrollbars die Systemfarben
+        pal = QPalette()
+        for role, key in [(QPalette.Window, "bg"), (QPalette.WindowText, "text"),
+                          (QPalette.Base, "surface"), (QPalette.AlternateBase, "alt"),
+                          (QPalette.Text, "text"), (QPalette.Button, "bar"),
+                          (QPalette.ButtonText, "text"), (QPalette.Highlight, "accent"),
+                          (QPalette.ToolTipBase, "surface"), (QPalette.ToolTipText, "text"),
+                          (QPalette.PlaceholderText, "muted")]:
+            pal.setColor(role, QColor(theme[key]))
+        pal.setColor(QPalette.HighlightedText, QColor("#FFFFFF"))
+        self.setStyleSheet("")  # alte Farben vollständig entfernen
+        QApplication.instance().setPalette(pal)
+        self.setStyleSheet(sheet)
+        self.timeline.set_dark_mode(self.dark_mode)
+
     # ---------------------- Einstellungen / Dialoge ---------------------------
 
-    def edit_teamviewer_settings(self):
-        default_paths = [os.path.expandvars(r"%APPDATA%\TeamViewer\Connections.txt")]
+    def _edit_log_settings(self, key, default_path, title):
         dialog = ConnectionSettingsDialog(
-            self.config,
-            "teamviewer",
-            default_paths,
-            "TeamViewer-Logeinstellungen",
-            self,
+            self.config, key, [os.path.expandvars(default_path)], title, self
         )
         if dialog.exec_() == dialog.Accepted:
-            self.config["teamviewer_paths"] = dialog.get_paths()
-            self.config["teamviewer_timezone_correction"] = (
-                dialog.get_timezone_correction()
-            )
+            self.config[f"{key}_paths"] = dialog.get_paths()
+            self.config[f"{key}_timezone_correction"] = dialog.get_timezone_correction()
             save_config(self.config)
-            self.timeline.draw_timeline(self.current_date)
+            self.timeline.refresh()
+
+    def edit_teamviewer_settings(self):
+        self._edit_log_settings(
+            "teamviewer", r"%APPDATA%\TeamViewer\Connections.txt",
+            "TeamViewer-Logeinstellungen",
+        )
 
     def edit_rdm_settings(self):
-        default_paths = [
-            os.path.expandvars(
-                r"%LOCALAPPDATA%\Devolutions\RemoteDesktopManager\Connections.log"
-            )
-        ]
-        dialog = ConnectionSettingsDialog(
-            self.config,
-            "rdm",
-            default_paths,
+        self._edit_log_settings(
+            "rdm", r"%LOCALAPPDATA%\Devolutions\RemoteDesktopManager\Connections.log",
             "RDM-Logeinstellungen",
-            self,
         )
-        if dialog.exec_() == dialog.Accepted:
-            self.config["rdm_paths"] = dialog.get_paths()
-            self.config["rdm_timezone_correction"] = dialog.get_timezone_correction()
-            save_config(self.config)
-            self.timeline.draw_timeline(self.current_date)
 
     def edit_activity_types(self):
         dialog = ActivityTypeSettingsDialog(self.config, self)
@@ -393,271 +553,11 @@ class TimelineApp(QMainWindow):
             save_config(self.config)
             self.timeline.draw_timeline(self.current_date)
 
-    # ---------------------- Styles (Dark / Light) -----------------------------
-
-    def apply_style(self):
-        if self.dark_mode:
-            self.set_dark_style()
-        else:
-            self.set_light_style()
-        self.timeline.set_dark_mode(self.dark_mode)
-
-    def set_dark_style(self):
-        dark_palette = QPalette()
-        dark_palette.setColor(QPalette.Window, QColor(30, 30, 30))
-        dark_palette.setColor(QPalette.WindowText, QColor(243, 243, 243))
-        dark_palette.setColor(QPalette.Base, QColor(37, 37, 38))
-        dark_palette.setColor(QPalette.AlternateBase, QColor(45, 45, 48))
-        dark_palette.setColor(QPalette.ToolTipBase, QColor(60, 60, 60))
-        dark_palette.setColor(QPalette.ToolTipText, Qt.white)
-        dark_palette.setColor(QPalette.Text, QColor(243, 243, 243))
-        dark_palette.setColor(QPalette.Button, QColor(58, 61, 65))
-        dark_palette.setColor(QPalette.ButtonText, QColor(243, 243, 243))
-        dark_palette.setColor(QPalette.BrightText, Qt.red)
-        dark_palette.setColor(QPalette.Highlight, QColor(0, 122, 204))
-        dark_palette.setColor(QPalette.HighlightedText, Qt.white)
-
-        self.setPalette(dark_palette)
-        self.setStyleSheet(
-            """
-        QWidget {
-            background-color: #1E1E1E;
-            color: #F3F3F3;
-            font-size: 12px;
-            font-family: "Segoe UI", Arial, sans-serif;
-        }
-        QGroupBox {
-            border: 1px solid #3C3C3C;
-            border-radius: 6px;
-            margin-top: 1em;
-            padding-top: 12px;
-            background-color: #252526;
-        }
-        QGroupBox::title {
-            subcontrol-origin: margin;
-            left: 10px;
-            padding: 0 6px;
-        }
-        QTextEdit, QLineEdit, QComboBox {
-            background-color: #252526;
-            color: #F3F3F3;
-            border: 1px solid #3C3C3C;
-            border-radius: 4px;
-            padding: 4px;
-            selection-background-color: #007ACC;
-            selection-color: #FFFFFF;
-        }
-        QPushButton {
-            background-color: #3A3D41;
-            color: #F3F3F3;
-            border: 1px solid #3C3C3C;
-            border-radius: 4px;
-            padding: 6px 12px;
-            min-width: 80px;
-        }
-        QPushButton:hover {
-            background-color: #45494E;
-        }
-        QPushButton:pressed {
-            background-color: #33373B;
-        }
-        QDateEdit {
-            background-color: #252526;
-            color: #F3F3F3;
-            border-radius: 4px;
-            border: 1px solid #3C3C3C;
-            padding: 4px;
-            min-width: 110px;
-        }
-        QToolBar {
-            background-color: #2D2D30;
-            border-bottom: 1px solid #3C3C3C;
-        }
-        QStatusBar {
-            background-color: #2D2D30;
-            color: #C8C8C8;
-        }
-        QMenuBar {
-            background-color: #2D2D30;
-            color: #F3F3F3;
-        }
-        QMenuBar::item:selected {
-            background-color: #007ACC;
-            color: #FFFFFF;
-        }
-        QMenu {
-            background-color: #252526;
-            color: #F3F3F3;
-            border: 1px solid #3C3C3C;
-            border-radius: 4px;
-            padding: 4px;
-        }
-        QMenu::item:selected {
-            background-color: #007ACC;
-            color: #FFFFFF;
-        }
-        QGraphicsView {
-            border: 1px solid #3C3C3C;
-            border-radius: 4px;
-            background: #1E1E1E;
-        }
-        QDateEdit {
-            background-color: #252526;
-            color: #F3F3F3;
-            border-radius: 4px;
-            border: 1px solid #3C3C3C;
-            padding: 4px;
-            min-width: 110px;
-        }
-
-        /* Kalender-Popup im Dark-Mode */
-        QCalendarWidget {
-            background-color: #252526;
-            color: #F3F3F3;
-            border: 1px solid #3C3C3C;
-        }
-
-        /* Navigation (Monat/Jahr + Pfeile) */
-        QCalendarWidget QToolButton {
-            background-color: #2D2D30;
-            color: #F3F3F3;
-            border: none;
-            font-weight: bold;
-        }
-
-        /* Bereich für Wochentagszeile (Mo–So) */
-        QCalendarWidget QWidget#qt_calendar_navigationbar {
-            background-color: #2D2D30;
-        }
-
-        /* Tabellenbereich: Wochentage + Tage */
-        QCalendarWidget QTableView {
-            background-color: #1E1E1E;
-            color: #F3F3F3;                  /* Mo–Fr + alle Tage */
-            selection-background-color: #007ACC;
-            selection-color: #FFFFFF;
-            gridline-color: #3C3C3C;
-        }
-
-        /* Wochentagskürzel (Mo–So) explizit heller und fett */
-        QCalendarWidget QTableView QHeaderView::section {
-            background-color: #252526;
-            color: #FFFFFF;
-            font-weight: bold;
-        }
-
-        /* ausgegraute Tage aus Vormonat/Nachmonat */
-        QCalendarWidget QAbstractItemView:disabled {
-            color: #555555;
-        }
-        """
-        )
-
-    def set_light_style(self):
-        light_palette = QPalette()
-        light_palette.setColor(QPalette.Window, QColor(240, 242, 245))
-        light_palette.setColor(QPalette.WindowText, QColor(34, 34, 34))
-        light_palette.setColor(QPalette.Base, Qt.white)
-        light_palette.setColor(QPalette.AlternateBase, QColor(248, 248, 248))
-        light_palette.setColor(QPalette.ToolTipBase, Qt.white)
-        light_palette.setColor(QPalette.ToolTipText, QColor(34, 34, 34))
-        light_palette.setColor(QPalette.Text, QColor(34, 34, 34))
-        light_palette.setColor(QPalette.Button, QColor(225, 228, 232))
-        light_palette.setColor(QPalette.ButtonText, QColor(34, 34, 34))
-        light_palette.setColor(QPalette.BrightText, Qt.red)
-        light_palette.setColor(QPalette.Highlight, QColor(0, 120, 215))
-        light_palette.setColor(QPalette.HighlightedText, Qt.white)
-
-        self.setPalette(light_palette)
-        self.setStyleSheet(
-            """
-        QWidget {
-            background-color: #F0F2F5;
-            color: #222222;
-            font-size: 12px;
-            font-family: "Segoe UI", Arial, sans-serif;
-        }
-        QGroupBox {
-            border: 1px solid #CCCCCC;
-            border-radius: 6px;
-            margin-top: 1em;
-            padding-top: 12px;
-            background-color: #FFFFFF;
-        }
-        QGroupBox::title {
-            subcontrol-origin: margin;
-            left: 10px;
-            padding: 0 6px;
-        }
-        QTextEdit, QLineEdit, QComboBox {
-            background-color: #FFFFFF;
-            color: #222222;
-            border: 1px solid #BBBBBB;
-            border-radius: 4px;
-            padding: 4px;
-            selection-background-color: #0078D7;
-            selection-color: #FFFFFF;
-        }
-        QPushButton {
-            background-color: #E1E4E8;
-            color: #222222;
-            border: 1px solid #C0C4C8;
-            border-radius: 4px;
-            padding: 6px 12px;
-            min-width: 80px;
-        }
-        QPushButton:hover {
-            background-color: #D1D5D9;
-        }
-        QPushButton:pressed {
-            background-color: #C0C4C8;
-        }
-        QDateEdit {
-            background-color: #FFFFFF;
-            color: #222222;
-            border-radius: 4px;
-            border: 1px solid #BBBBBB;
-            padding: 4px;
-            min-width: 110px;
-        }
-        QToolBar {
-            background-color: #FFFFFF;
-            border-bottom: 1px solid #CCCCCC;
-        }
-        QStatusBar {
-            background-color: #FFFFFF;
-            color: #555555;
-        }
-        QMenuBar {
-            background-color: #FFFFFF;
-            color: #222222;
-        }
-        QMenuBar::item:selected {
-            background-color: #0078D7;
-            color: #FFFFFF;
-        }
-        QMenu {
-            background-color: #FFFFFF;
-            color: #222222;
-            border: 1px solid #CCCCCC;
-            border-radius: 4px;
-            padding: 4px;
-        }
-        QMenu::item:selected {
-            background-color: #0078D7;
-            color: #FFFFFF;
-        }
-        QGraphicsView {
-            border: 1px solid #CCCCCC;
-            border-radius: 4px;
-            background: #FFFFFF;
-        }
-        """
-        )
-
 
 if __name__ == "__main__":
+    QLocale.setDefault(GERMAN)
     app = QApplication(sys.argv)
+    app.setStyle("Fusion")
     window = TimelineApp()
     window.show()
     sys.exit(app.exec_())

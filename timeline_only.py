@@ -1,17 +1,31 @@
 # timeline_only.py
 from datetime import datetime
+from html import escape
 
-from PyQt5.QtCore import QDate, Qt, QTime, QTimer, pyqtSignal
-from PyQt5.QtGui import QBrush, QColor, QFont, QPainter, QPen
-from PyQt5.QtWidgets import (QDialog, QFormLayout, QGraphicsRectItem,
-                             QGraphicsScene, QGraphicsView, QLabel, QLineEdit,
-                             QPushButton, QTextEdit, QVBoxLayout)
+from PyQt5.QtCore import QDate, QDateTime, Qt, pyqtSignal
+from PyQt5.QtGui import QBrush, QColor, QFont, QFontMetrics, QPainter, QPen
+from PyQt5.QtWidgets import (QDialog, QDialogButtonBox, QFormLayout,
+                             QGraphicsRectItem, QGraphicsScene, QGraphicsView,
+                             QLabel, QLineEdit, QTextEdit, QVBoxLayout)
 
 from call_import import load_call_suggestions
-from log_parsers import (ConnectionIndex, RdmParser,  # neu: ConnectionIndex
-                         TeamViewerParser)
+from log_parsers import ConnectionIndex, RdmParser, TeamViewerParser
 
 DEBUG = False  # bei Bedarf auf True setzen
+TIME_FMT = "%Y-%m-%d %H:%M:%S"
+
+
+def parse_time(text):
+    return datetime.strptime(text, TIME_FMT)
+
+
+def format_duration(seconds):
+    minutes = int(round(seconds / 60))
+    if minutes < 1:
+        return "< 1 min"
+    if minutes < 60:
+        return f"{minutes} min"
+    return f"{minutes // 60}:{minutes % 60:02d} h"
 
 
 class ActivityViewDialog(QDialog):
@@ -19,12 +33,9 @@ class ActivityViewDialog(QDialog):
 
     def __init__(self, activity, parent=None):
         super().__init__(parent)
-        self.activity = activity
         self.setWindowTitle("Aktivitätsdetails")
-        self.setMinimumWidth(420)
-        self.init_ui()
+        self.setMinimumWidth(460)
 
-    def init_ui(self):
         layout = QVBoxLayout(self)
         form = QFormLayout()
 
@@ -33,88 +44,94 @@ class ActivityViewDialog(QDialog):
             w.setReadOnly(True)
             return w
 
-        form.addRow("Typ:", ro_field(self.activity.get("type", "")))
-        form.addRow("Kunde:", ro_field(self.activity.get("customer_name", "")))
-        form.addRow("Start:", ro_field(self.activity.get("start", "")))
-        form.addRow("Ende:", ro_field(self.activity.get("end", "")))
-
         try:
-            start = datetime.strptime(self.activity["start"], "%Y-%m-%d %H:%M:%S")
-            end = datetime.strptime(self.activity["end"], "%Y-%m-%d %H:%M:%S")
-            dur = end - start
-            dur_str = f"{dur.seconds // 60} min"
-        except Exception:
-            dur_str = ""
-        form.addRow("Dauer:", ro_field(dur_str))
+            start = parse_time(activity["start"])
+            end = parse_time(activity["end"])
+            zeit = f"{start:%d.%m.%Y}, {start:%H:%M} – {end:%H:%M}"
+            dauer = format_duration((end - start).total_seconds())
+        except (KeyError, ValueError):
+            zeit = dauer = ""
 
+        form.addRow("Typ:", ro_field(activity.get("type", "")))
+        form.addRow("Kunde:", ro_field(activity.get("customer_name", "")))
+        form.addRow("Zeit:", ro_field(zeit))
+        form.addRow("Dauer:", ro_field(dauer))
         layout.addLayout(form)
 
-        details = QTextEdit(self.activity.get("details", ""))
-        details.setReadOnly(True)
-        layout.addWidget(QLabel("Details:"))
-        layout.addWidget(details)
+        if activity.get("details"):
+            details = QTextEdit(activity["details"])
+            details.setReadOnly(True)
+            details.setMaximumHeight(90)
+            layout.addWidget(QLabel("Details:"))
+            layout.addWidget(details)
 
-        close_btn = QPushButton("Schließen")
-        close_btn.clicked.connect(self.accept)
-        layout.addWidget(close_btn)
+        buttons = QDialogButtonBox(QDialogButtonBox.Close)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
 
 
 class TimelineView(QGraphicsView):
-    time_selected = pyqtSignal(QTime, QTime)
+    # Liefert nach jedem Zeichnen alle Einträge des Tages (für die Tagesliste)
+    day_loaded = pyqtSignal(list)
+
+    LEFT = 20          # Rand links in Pixeln
+    AXIS_H = 26        # Höhe der Stundenleiste oben
+    LANE_H = 26        # Höhe eines Eintrags
+    LANE_GAP = 6
+    MIN_LANES = 4
+    MAX_LANES = 10
+    BASE_PX_PER_MIN = 1.2
 
     def __init__(self, activities, config, parent=None):
         super().__init__(parent)
-        self._remote_cache = {}  # date_str -> list[conn]
         self.activities = activities
         self.config = config or {}
         self.scene = QGraphicsScene(self)
         self.setScene(self.scene)
 
         self._first_draw = True
-        self.selection_start = None
-        self.selection_rect = None
+        self._ppm = None  # Pixel pro Minute beim letzten Zeichnen
         self.activity_rects = {}
         self.remote_suggestions = []
         self.current_date = QDate.currentDate()
+        self.calls_file = None  # wird vom Hauptfenster gesetzt (anrufe.json)
 
-        # Parser-Instanzen + Indexe zwischenspeichern
+        self._remote_cache = {}  # date_str -> list[conn]
         self._tv_parser = TeamViewerParser(debug=DEBUG)
         self._rdm_parser = RdmParser(debug=DEBUG)
         self._tv_index = None
         self._rdm_index = None
-        self.calls_file = None  # wird vom Hauptfenster gesetzt (anrufe.json)
 
-        self.TIME_AXIS_Y = 30
         self.zoom_level = 1.0
         self.dark_mode = self.config.get("dark_mode", False)
 
         self.setRenderHint(QPainter.Antialiasing)
-        self.setMinimumHeight(320)
-        self.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
-        self.setResizeAnchor(QGraphicsView.AnchorUnderMouse)
+        self.setMinimumHeight(200)
+        self.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+        self.setMouseTracking(True)
 
         self.init_timeline_colors()
         self.tooltip = self._create_tooltip()
-
-        #self.update_timer = QTimer(self)
-        #self.update_timer.timeout.connect(self.update_realtime_connections)
-        #self.update_timer.start(120000)
 
     # ----------------------------- Farben / Dark-Mode -------------------------
 
     def init_timeline_colors(self):
         if self.dark_mode:
-            self.background_color = QColor(46, 46, 46)
-            self.text_color = Qt.white
-            self.axis_color = QColor(200, 200, 200)
-            self.non_work_color = QColor(70, 70, 70)
-            self.work_area_color = QColor(90, 120, 160, 180)
+            self.background_color = QColor("#1E1E1E")
+            self.text_color = QColor("#E8E8E8")
+            self.muted_text = QColor("#9A9A9A")
+            self.hour_line = QColor(255, 255, 255, 28)
+            self.half_line = QColor(255, 255, 255, 12)
+            self.non_work_color = QColor(0, 0, 0, 70)
+            self.axis_bg = QColor("#252526")
         else:
-            self.background_color = Qt.white
-            self.text_color = Qt.black
-            self.axis_color = QColor(80, 80, 80)
-            self.non_work_color = QColor(240, 240, 240)
-            self.work_area_color = QColor(173, 216, 230, 160)
+            self.background_color = QColor("#FFFFFF")
+            self.text_color = QColor("#222222")
+            self.muted_text = QColor("#707070")
+            self.hour_line = QColor(0, 0, 0, 30)
+            self.half_line = QColor(0, 0, 0, 12)
+            self.non_work_color = QColor(0, 0, 0, 12)
+            self.axis_bg = QColor("#F5F6F8")
 
     def set_dark_mode(self, enabled: bool):
         self.dark_mode = enabled
@@ -126,108 +143,57 @@ class TimelineView(QGraphicsView):
     def _create_tooltip(self):
         tooltip = QLabel(self.parent(), Qt.ToolTip)
         tooltip.setStyleSheet(
-            """
-        QLabel {
-            background-color: #2b2b2b;
-            color: #f0f0f0;
-            border: 1px solid #555;
-            padding: 4px 6px;
-            border-radius: 3px;
-        }
-        """
+            "QLabel { background-color: #2b2b2b; color: #f0f0f0; "
+            "border: 1px solid #555; padding: 5px 8px; border-radius: 4px; }"
         )
         tooltip.hide()
         return tooltip
 
-    # ----------------------------- Parser / Logs ------------------------------
+    # ----------------------------- Daten laden --------------------------------
 
-    def update_realtime_connections(self):
-        if self.isVisible():
-            # Indexe neu aufbauen, falls sich Logs geändert haben könnten
-            self._tv_index = None
-            self._rdm_index = None
-            self.draw_timeline(self.current_date)
+    def refresh(self):
+        """Logdateien neu einlesen (nur geänderte Dateien werden wirklich gelesen)."""
+        self._tv_index = None
+        self._rdm_index = None
+        self._remote_cache.clear()
+        self.draw_timeline(self.current_date)
+
+    # Alter Name, falls noch irgendwo verwendet
+    update_realtime_connections = refresh
 
     def load_remote_connections(self, date: QDate):
         date_str = date.toString("yyyy-MM-dd")
-
-        # Cache-Hit?
         if date_str in self._remote_cache:
             self.remote_suggestions = self._remote_cache[date_str]
-            if DEBUG:
-                print(f"Remote-Suggestions Cache-Hit für {date_str}: "
-                    f"{len(self.remote_suggestions)} Einträge")
             return
 
-        self.remote_suggestions = []
-
-        # TeamViewer nur einmal einlesen und indizieren
         if self._tv_index is None:
             try:
-                tv_conns = self._tv_parser.parse_logs()
-                if DEBUG:
-                    print(f"TeamViewerParser: {len(tv_conns)} Verbindungen gesamt")
-                self._tv_index = ConnectionIndex(tv_conns)
+                self._tv_index = ConnectionIndex(self._tv_parser.parse_logs())
             except Exception as e:
                 print(f"Fehler im TeamViewerParser: {e}")
                 self._tv_index = ConnectionIndex([])
 
-        # RDM nur einmal einlesen und indizieren
         if self._rdm_index is None:
             try:
-                rdm_conns = self._rdm_parser.parse_logs()
-                if DEBUG:
-                    print(f"RdmParser: {len(rdm_conns)} Verbindungen gesamt")
-                self._rdm_index = ConnectionIndex(rdm_conns)
+                self._rdm_index = ConnectionIndex(self._rdm_parser.parse_logs())
             except Exception as e:
                 print(f"Fehler im RdmParser: {e}")
                 self._rdm_index = ConnectionIndex([])
 
-        day_tv = self._tv_index.get_for_date(date_str)
-        day_rdm = self._rdm_index.get_for_date(date_str)
-
-
-        for conn in day_tv + day_rdm:
+        day = self._tv_index.get_for_date(date_str) + self._rdm_index.get_for_date(date_str)
+        for conn in day:
             conn["is_suggestion"] = True
+        self.remote_suggestions = day
+        self._remote_cache[date_str] = day
 
-        self.remote_suggestions = day_tv + day_rdm
-        self._remote_cache[date_str] = self.remote_suggestions
-
-        if DEBUG:
-            print(
-                f"Remote-Suggestions für {date_str}: "
-                f"{len(self.remote_suggestions)}"
-            )
-
-    # ----------------------------- Zeichnen der Timeline ----------------------
-
-    def draw_timeline(self, date: QDate):
-        self.current_date = date
-        # Remote-Suggestions für diesen Draw zurücksetzen
-        self.remote_suggestions = []
-        self.scene.clear()
-        self.activity_rects.clear()
-        self.scene.setBackgroundBrush(self.background_color)
-
-        # Transform für Button-Zoom (nicht für STRG+Scroll) zurücksetzen
-        self.resetTransform()
-        self.scale(self.zoom_level, self.zoom_level)
-
-        if DEBUG:
-            print(f"\n=== Debug für {date.toString('dd.MM.yyyy')} ===")
-            print(f"Aktivitäten in Memory: {len(self.activities)}")
-
-        self.load_remote_connections(date)
-
+    def activities_for(self, date: QDate):
         date_str = date.toString("yyyy-MM-dd")
-        day_activities = [
-            a for a in self.activities if a.get("start", "").startswith(date_str)
-        ]
-        day_suggestions = [
-            s for s in self.remote_suggestions if s.get("start", "").startswith(date_str)
-        ]
+        self.load_remote_connections(date)
+        result = [a for a in self.activities if a.get("start", "").startswith(date_str)]
+        result += [s for s in self.remote_suggestions if s.get("start", "").startswith(date_str)]
         if self.calls_file:
-            day_suggestions += [
+            result += [
                 c for c in load_call_suggestions(
                     self.calls_file,
                     ignore_missed=self.config.get("calls_ignore_missed", True),
@@ -235,212 +201,215 @@ class TimelineView(QGraphicsView):
                 )
                 if c["start"].startswith(date_str)
             ]
-        all_activities = day_activities + day_suggestions
 
-        if DEBUG:
-            print(f"Lokale Aktivitäten: {len(day_activities)}")
-            print(f"Remote-Vorschläge: {len(day_suggestions)}")
-            print(f"Gesamtaktivitäten: {len(all_activities)}")
-            for i, act in enumerate(all_activities[:3], 1):
-                print(f"Aktivität {i}: {act['type']} {act['start']} - {act['end']}")
-
-        TIMELINE_HEIGHT = 220
-        TIME_AXIS_Y = 30
-        TIME_AXIS_HEIGHT = 200
-        ACTIVITY_HEIGHT = 20
-        ACTIVITY_Y_OFFSET = 50
-        MAX_LANES = 10
-
-        main_window = self.window()
-        type_colors = getattr(main_window, "config", {}).get("type_colors", {})
-
-        title = self.scene.addText(f"Aktivitäten am {date.toString('dd.MM.yyyy')}")
-        title.setDefaultTextColor(self.text_color)
-        title.setFont(QFont("Segoe UI", 10, QFont.Bold))
-        title.setPos(10, 8)
-
-        for hour in range(25):
-            x = 50 + hour * 60
-            self.scene.addLine(
-                x,
-                TIME_AXIS_Y,
-                x,
-                TIME_AXIS_Y + TIME_AXIS_HEIGHT,
-                QPen(self.axis_color, 1),
-            )
-            time_text = self.scene.addText(f"{hour:02d}:00")
-            time_text.setDefaultTextColor(self.text_color)
-            time_text.setFont(QFont("Segoe UI", 8))
-            time_text.setPos(x - 18, TIME_AXIS_Y + TIME_AXIS_HEIGHT + 5)
-
-            if hour < 24:
-                for minute in [15, 30, 45]:
-                    xm = x + minute
-                    self.scene.addLine(
-                        xm,
-                        TIME_AXIS_Y,
-                        xm,
-                        TIME_AXIS_Y + TIME_AXIS_HEIGHT / 2,
-                        QPen(QColor(190, 190, 190), 1),
-                    )
-
-        self.scene.addRect(
-            50,
-            TIME_AXIS_Y,
-            7 * 60,
-            TIME_AXIS_HEIGHT,
-            QPen(Qt.NoPen),
-            QBrush(self.non_work_color),
-        )
-        self.scene.addRect(
-            50 + 18 * 60,
-            TIME_AXIS_Y,
-            6 * 60,
-            TIME_AXIS_HEIGHT,
-            QPen(Qt.NoPen),
-            QBrush(self.non_work_color),
-        )
-
-        work_start = 8 * 60
-        work_end = 17 * 60
-        self.scene.addRect(
-            50 + work_start,
-            TIME_AXIS_Y + 2,
-            work_end - work_start,
-            10,
-            QPen(QColor(70, 130, 180)),
-            QBrush(self.work_area_color),
-        )
-
-        for activity in all_activities:
-            activity.setdefault("type", "Aktivität")
-            activity.setdefault("customer_name", "")
-            activity.setdefault("details", "")
-            activity.setdefault("is_suggestion", False)
-
-        all_activities.sort(key=lambda x: x["start"])
-        lanes = [[] for _ in range(MAX_LANES)]
-
-        for activity in all_activities:
+        valid = []
+        for a in result:
+            a.setdefault("type", "Aktivität")
+            a.setdefault("customer_name", "")
+            a.setdefault("details", "")
+            a.setdefault("is_suggestion", False)
             try:
-                start = datetime.strptime(activity["start"], "%Y-%m-%d %H:%M:%S")
-                end = datetime.strptime(activity["end"], "%Y-%m-%d %H:%M:%S")
-            except Exception as e:
-                if DEBUG:
-                    print(f"Fehler beim Parsen der Zeit in Activity: {activity} -> {e}")
+                parse_time(a["start"]), parse_time(a["end"])
+            except (KeyError, ValueError):
                 continue
+            valid.append(a)
+        valid.sort(key=lambda a: a["start"])
+        return valid
 
-            x_start = 50 + (start.hour * 60 + start.minute)
-            x_end = 50 + (end.hour * 60 + end.minute)
-            width = max(5, x_end - x_start)
+    # ----------------------------- Zeichnen ----------------------------------
 
-            for lane_idx in range(MAX_LANES):
-                overlap = False
-                for other in lanes[lane_idx]:
-                    o_start = datetime.strptime(other["start"], "%Y-%m-%d %H:%M:%S")
-                    o_end = datetime.strptime(other["end"], "%Y-%m-%d %H:%M:%S")
-                    if not (end <= o_start or start >= o_end):
-                        overlap = True
-                        break
-                if overlap:
-                    continue
+    def _x(self, minutes):
+        return self.LEFT + minutes * self._ppm
 
-                y = ACTIVITY_Y_OFFSET + lane_idx * ACTIVITY_HEIGHT
+    def _work_minutes(self):
+        def to_min(text, default):
+            try:
+                h, m = text.split(":")
+                return int(h) * 60 + int(m)
+            except (AttributeError, ValueError):
+                return default
+        return (to_min(self.config.get("work_start"), 8 * 60),
+                to_min(self.config.get("work_end"), 17 * 60))
 
-                atype = activity.get("type", "Aktivität")
-                color_hex = type_colors.get(atype, "#4682B4")
-                base_color = QColor(color_hex)
+    def draw_timeline(self, date: QDate):
+        # Mittelpunkt merken, damit Zoom/Neuzeichnen die Ansicht nicht verschiebt
+        center_min = None
+        if not self._first_draw and self._ppm:
+            center_x = self.mapToScene(self.viewport().rect().center()).x()
+            center_min = (center_x - self.LEFT) / self._ppm
 
-                if activity.get("is_suggestion", False):
-                    if self.dark_mode:
-                        color = base_color.lighter(130)
-                        pen = QPen(color, 1, Qt.DashLine)
-                        brush = QBrush(color.darker(150))
-                    else:
-                        color = base_color.lighter(150)
-                        pen = QPen(color, 1, Qt.DashLine)
-                        brush = QBrush(color.lighter(170))
+        self.current_date = date
+        self._ppm = self.BASE_PX_PER_MIN * self.zoom_level
+        self.scene.clear()
+        self.activity_rects.clear()
+        self.tooltip.hide()
+        self.scene.setBackgroundBrush(self.background_color)
+
+        activities = self.activities_for(date)
+        type_colors = self.config.get("type_colors", {})
+
+        # Spuren verteilen: überlappende Einträge kommen in die nächste Zeile
+        lanes_end = []
+        placed = []
+        for a in activities:
+            start, end = parse_time(a["start"]), parse_time(a["end"])
+            for idx, lane_end in enumerate(lanes_end):
+                if start >= lane_end:
+                    lanes_end[idx] = end
+                    break
+            else:
+                if len(lanes_end) >= self.MAX_LANES:
+                    idx = self.MAX_LANES - 1
+                    lanes_end[idx] = max(lanes_end[idx], end)
                 else:
-                    color = base_color
-                    pen = QPen(color.darker(120))
-                    brush = QBrush(color.lighter(130))
+                    lanes_end.append(end)
+                    idx = len(lanes_end) - 1
+            placed.append((a, start, end, idx))
 
-                rect = self.scene.addRect(x_start, y, width, ACTIVITY_HEIGHT, pen, brush)
-                rect.setData(0, activity)
-                self.activity_rects[rect] = activity
+        n_lanes = max(self.MIN_LANES, len(lanes_end))
+        top = self.AXIS_H + 8
+        content_h = top + n_lanes * (self.LANE_H + self.LANE_GAP) + 8
+        # Platz für die horizontale Scrollleiste lassen, sonst erscheint eine senkrechte
+        free_h = self.maximumViewportSize().height() - self.horizontalScrollBar().sizeHint().height()
+        height = max(content_h, free_h)
+        self.setVerticalScrollBarPolicy(
+            Qt.ScrollBarAsNeeded if content_h > free_h else Qt.ScrollBarAlwaysOff
+        )
+        width = self._x(24 * 60) + self.LEFT
 
-                if width > 30:
-                    label = f"{activity['customer_name']} ({activity['type']})"
-                    short_label = label[: int(width / 10)]
-                    text = self.scene.addText(short_label)
-                    text.setFont(QFont("Segoe UI", 8))
-                    text.setDefaultTextColor(
-                        Qt.white if self.dark_mode else Qt.black
-                    )
-                    text.setPos(x_start + 3, y)
+        # Außerhalb der Arbeitszeit abdunkeln
+        work_start, work_end = self._work_minutes()
+        no_pen = QPen(Qt.NoPen)
+        self.scene.addRect(self._x(0), 0, self._x(work_start) - self._x(0), height,
+                           no_pen, QBrush(self.non_work_color))
+        self.scene.addRect(self._x(work_end), 0, self._x(24 * 60) - self._x(work_end), height,
+                           no_pen, QBrush(self.non_work_color))
 
-                lanes[lane_idx].append(activity)
-                break
+        # Stundenleiste
+        self.scene.addRect(0, 0, width, self.AXIS_H, no_pen, QBrush(self.axis_bg))
+        hour_font = QFont("Segoe UI", 8)
+        step = 1 if self._ppm * 60 >= 45 else 2
+        for hour in range(25):
+            x = self._x(hour * 60)
+            self.scene.addLine(x, self.AXIS_H, x, height, QPen(self.hour_line, 1))
+            if hour < 24 and self._ppm * 60 >= 60:
+                xh = self._x(hour * 60 + 30)
+                self.scene.addLine(xh, self.AXIS_H, xh, height, QPen(self.half_line, 1))
+            if hour % step == 0 and hour < 24:
+                label = self.scene.addText(f"{hour:02d}:00", hour_font)
+                label.setDefaultTextColor(
+                    self.text_color if work_start <= hour * 60 < work_end else self.muted_text
+                )
+                label.setPos(x + 2, 3)
 
-        self.setSceneRect(0, 0, 50 + 24 * 60 + 100, TIMELINE_HEIGHT + 80)
+        # Einträge
+        label_font = QFont("Segoe UI", 8)
+        metrics = QFontMetrics(label_font)
+        for a, start, end, lane in placed:
+            x1 = self._x(start.hour * 60 + start.minute + start.second / 60)
+            x2 = self._x(end.hour * 60 + end.minute + end.second / 60)
+            if end.date() > start.date():  # über Mitternacht
+                x2 = self._x(24 * 60)
+            w = max(4.0, x2 - x1)
+            y = top + lane * (self.LANE_H + self.LANE_GAP)
+
+            base = QColor(type_colors.get(a["type"], "#4682B4"))
+            fill = QColor(base)
+            if a["is_suggestion"]:
+                fill.setAlpha(110 if self.dark_mode else 70)
+                pen = QPen(base, 1.5, Qt.DashLine)
+            else:
+                fill.setAlpha(220)
+                pen = QPen(base.darker(130), 1.5)
+
+            rect = self.scene.addRect(x1, y, w, self.LANE_H, pen, QBrush(fill))
+            rect.setData(0, a)
+            rect.setCursor(Qt.PointingHandCursor)
+            self.activity_rects[rect] = a
+
+            label_text = a["customer_name"] or a["type"]
+            if w > 28:
+                text = metrics.elidedText(label_text, Qt.ElideRight, int(w - 8))
+                item = self.scene.addText(text, label_font)
+                item.setDefaultTextColor(self.text_color)
+                item.setPos(x1 + 2, y + (self.LANE_H - item.boundingRect().height()) / 2)
+                item.setAcceptedMouseButtons(Qt.NoButton)
+
+        # Jetzt-Linie
+        if date == QDate.currentDate():
+            now = QDateTime.currentDateTime().time()
+            x = self._x(now.hour() * 60 + now.minute())
+            self.scene.addLine(x, 0, x, height, QPen(QColor("#E74C3C"), 1.5))
+
+        self.setSceneRect(0, 0, width, height)
+
         if self._first_draw:
-            view_x = 50 + 8 * 60
-            view_width = (17 - 8) * 60
-            self.centerOn(view_x + view_width / 2, TIMELINE_HEIGHT / 2)
+            self.centerOn(self._x((work_start + work_end) / 2), 0)
             self._first_draw = False
+        elif center_min is not None:
+            self.centerOn(self._x(center_min), self.mapToScene(0, 0).y())
+
+        self.day_loaded.emit(activities)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        # Höhe der Fläche an das Fenster anpassen
+        if self._ppm and abs(self.sceneRect().height() - self.viewport().height()) > 30:
+            self.draw_timeline(self.current_date)
 
     # ----------------------------- Maus / Zoom / Tooltip ----------------------
 
-    def wheelEvent(self, event):
-        """STRG + Mausrad: Zoom, sonst normales Scrollen."""
-        if event.modifiers() & Qt.ControlModifier:
-            zoom_factor = 1.15
-            if event.angleDelta().y() < 0:
-                zoom_factor = 1.0 / zoom_factor
+    def set_zoom(self, level, anchor_viewport_x=None):
+        level = max(0.5, min(level, 12.0))
+        if anchor_viewport_x is None:
+            self.zoom_level = level
+            self.draw_timeline(self.current_date)
+            return
+        # Zeitpunkt unter der Maus bleibt an derselben Stelle
+        scene_x = self.mapToScene(int(anchor_viewport_x), 0).x()
+        minute = (scene_x - self.LEFT) / self._ppm
+        self.zoom_level = level
+        self._first_draw = False
+        self.draw_timeline(self.current_date)
+        target = self._x(minute) - anchor_viewport_x
+        self.horizontalScrollBar().setValue(int(target))
 
-            self.zoom_level *= zoom_factor
-            self.scale(zoom_factor, zoom_factor)
+    def wheelEvent(self, event):
+        """STRG + Mausrad: Zoom, Mausrad: horizontal blättern."""
+        delta = event.angleDelta().y()
+        if event.modifiers() & Qt.ControlModifier:
+            factor = 1.15 if delta > 0 else 1 / 1.15
+            self.set_zoom(self.zoom_level * factor, event.pos().x())
+        elif delta:
+            bar = self.horizontalScrollBar()
+            bar.setValue(bar.value() - delta)
         else:
             super().wheelEvent(event)
 
-    def mouseMoveEvent(self, event):
-        pos = self.mapToScene(event.pos())
-        items = self.scene.items(pos)
-
-        found_activity = None
-        for item in items:
+    def _activity_at(self, pos):
+        for item in self.scene.items(self.mapToScene(pos)):
             if isinstance(item, QGraphicsRectItem) and item in self.activity_rects:
-                found_activity = self.activity_rects[item]
-                break
+                return self.activity_rects[item]
+        return None
 
-        if found_activity:
-            try:
-                start = datetime.strptime(found_activity["start"], "%Y-%m-%d %H:%M:%S")
-                end = datetime.strptime(found_activity["end"], "%Y-%m-%d %H:%M:%S")
-            except Exception:
-                start = end = None
-
-            lines = [f"Typ: {found_activity.get('type', '')}"]
-            if found_activity.get("customer_name"):
-                lines.append(f"Kunde: {found_activity.get('customer_name')}")
-            if start and end:
-                duration_h = (end - start).total_seconds() / 3600.0
-                lines.append(
-                    f"Zeit: {start.strftime('%H:%M')} - {end.strftime('%H:%M')} "
-                    f"({duration_h:.2f} h)"
-                )
-            if found_activity.get("details"):
-                lines.append(f"Details: {found_activity.get('details')}")
-
-            tooltip_text = "\n".join(lines)
-            self.tooltip.setText(tooltip_text)
+    def mouseMoveEvent(self, event):
+        a = self._activity_at(event.pos())
+        if a:
+            start, end = parse_time(a["start"]), parse_time(a["end"])
+            lines = [f"<b>{escape(a.get('customer_name') or a.get('type'))}</b>",
+                     escape(a.get("type", "")),
+                     f"{start:%H:%M} – {end:%H:%M}  ({format_duration((end - start).total_seconds())})"]
+            if a.get("details"):
+                lines.append(escape(a["details"]))
+            if a.get("is_suggestion"):
+                lines.append("<i>Vorschlag aus Log</i>")
+            self.tooltip.setText("<br>".join(lines))
             self.tooltip.adjustSize()
             global_pos = self.mapToGlobal(event.pos())
             self.tooltip.move(global_pos.x() + 15, global_pos.y() + 15)
             self.tooltip.show()
         else:
             self.tooltip.hide()
-
         super().mouseMoveEvent(event)
 
     def leaveEvent(self, event):
@@ -449,12 +418,9 @@ class TimelineView(QGraphicsView):
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
-            pos = self.mapToScene(event.pos())
-            items = self.scene.items(pos)
-            for item in items:
-                if isinstance(item, QGraphicsRectItem) and item in self.activity_rects:
-                    activity = self.activity_rects[item]
-                    dlg = ActivityViewDialog(activity, self)
-                    dlg.exec_()
-                    break
+            a = self._activity_at(event.pos())
+            if a:
+                self.tooltip.hide()
+                ActivityViewDialog(a, self).exec_()
+                return
         super().mousePressEvent(event)
