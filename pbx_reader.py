@@ -65,6 +65,35 @@ def find_browser():
     return None
 
 
+def profile_in_use(profile_dir):
+    """Ist das Edge-Profil gerade von einem Edge-Fenster belegt?
+
+    Edge hält die Datei "lockfile" offen, solange es läuft (Windows);
+    unter Linux/macOS gibt es den Verweis "SingletonLock".
+    """
+    if sys.platform == "win32":
+        lock = os.path.join(profile_dir, "lockfile")
+        if not os.path.exists(lock):
+            return False
+        try:
+            os.remove(lock)  # geht nur, wenn kein Edge sie offen hält
+            return False
+        except PermissionError:
+            return True
+        except OSError:
+            return False
+    lock = os.path.join(profile_dir, "SingletonLock")  # Verweis auf "rechner-pid"
+    if not os.path.islink(lock):
+        return False
+    try:
+        os.kill(int(os.readlink(lock).rsplit("-", 1)[1]), 0)
+        return True
+    except (ValueError, IndexError, ProcessLookupError):
+        return False
+    except PermissionError:
+        return True
+
+
 class _DevTools:
     """Minimaler Client für das DevTools-Protokoll einer Seite."""
 
@@ -115,6 +144,8 @@ class PbxReader(QObject):
         self._wake = threading.Event()
         self._login_open = False
         self._thread = None
+        # Nur ein Edge darf das Profil benutzen: Lesen und Anmelden wechseln sich ab
+        self._browser_lock = threading.Lock()
 
     def call_list_url(self):
         return f"{self.base_url}/#/call_history/all"
@@ -142,7 +173,6 @@ class PbxReader(QObject):
         if self._login_open:
             return
         self._login_open = True
-        self._close_browser()  # Profil darf nur von einem Edge benutzt werden
         self._set_status("3CX: Anmeldung im Edge-Fenster …")
         threading.Thread(target=self._login_window, daemon=True).start()
 
@@ -180,7 +210,15 @@ class PbxReader(QObject):
         return subprocess.Popen(args, creationflags=flags,
                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
+    def _wait_profile_free(self, seconds):
+        deadline = time.time() + seconds
+        while profile_in_use(self.profile_dir) and time.time() < deadline:
+            time.sleep(0.5)
+        return not profile_in_use(self.profile_dir)
+
     def _start_browser(self):
+        if not self._wait_profile_free(10):
+            raise RuntimeError("ein Edge-Fenster mit dem 3CX-Profil ist noch offen")
         port_file = os.path.join(self.profile_dir, "DevToolsActivePort")
         if os.path.exists(port_file):
             os.remove(port_file)
@@ -225,15 +263,27 @@ class PbxReader(QObject):
         self._proc = None
 
     def _login_window(self):
-        try:
-            proc = self._popen(self._browser_args(headless=False))
-            proc.wait()  # bis du das Fenster schließt
-        except Exception as e:
-            self._set_status(f"3CX: {e}")
-        finally:
-            self._login_open = False
-            self.needs_login = False
-            self._wake.set()
+        self._wake.set()  # Lese-Schleife aus dem Warten holen
+        with self._browser_lock:
+            try:
+                self._close_browser()  # unsichtbaren Edge beenden, Profil freigeben
+                self._wait_profile_free(15)
+                proc = self._popen(self._browser_args(headless=False))
+                # Warten, bis du das Fenster schließt. Edge gibt beim Start oft an einen
+                # anderen Prozess ab, darum zählt nicht der Prozess, sondern das Profil.
+                started = time.time()
+                while not self._stop.is_set():
+                    running = proc.poll() is None or profile_in_use(self.profile_dir)
+                    if not running and time.time() - started > 5:
+                        break
+                    time.sleep(1)
+                self._set_status("3CX: Anmeldefenster geschlossen, lese …")
+            except Exception as e:
+                self._set_status(f"3CX: {e}")
+            finally:
+                self._login_open = False
+                self.needs_login = False
+        self._wake.set()
 
     # ------------------------------------------------------------ Lesen
 
@@ -245,27 +295,31 @@ class PbxReader(QObject):
         last_load = 0
         while not self._stop.is_set():
             if not self._login_open:
-                try:
-                    if not self._tools:
-                        self._start_browser()
-                        last_load = time.time()
-                        self._set_status("3CX: Seite lädt …")
-                        self._wake.wait(10)  # Seite laden lassen
-                        self._wake.clear()
-                    elif time.time() - last_load > self.RELOAD_INTERVAL:
-                        self._tools.call("Page.navigate", url=self.call_list_url())
-                        last_load = time.time()
-                        self._wake.wait(10)
-                        self._wake.clear()
-                    if not self._login_open and not self._stop.is_set():
-                        self._read_once()
-                except Exception as e:
-                    if not self._login_open:  # beim Anmelden wird Edge absichtlich beendet
-                        self._set_status(f"3CX: Fehler ({e}), neuer Versuch")
-                    self._close_browser()
+                with self._browser_lock:
+                    last_load = self._step(last_load)
             self._wake.wait(self.READ_INTERVAL)
             self._wake.clear()
         self._close_browser()
+
+    def _step(self, last_load):
+        """Ein Durchlauf: Browser bei Bedarf starten, ggf. neu laden, Liste lesen."""
+        if self._login_open or self._stop.is_set():
+            return last_load
+        try:
+            if not self._tools:
+                self._start_browser()
+                last_load = time.time()
+                self._set_status("3CX: Seite lädt …")
+                time.sleep(10)  # Seite laden lassen
+            elif time.time() - last_load > self.RELOAD_INTERVAL:
+                self._tools.call("Page.navigate", url=self.call_list_url())
+                last_load = time.time()
+                time.sleep(10)
+            self._read_once()
+        except Exception as e:
+            self._set_status(f"3CX: Fehler ({e}), neuer Versuch")
+            self._close_browser()
+        return last_load
 
     def _read_once(self):
         result = self._tools.call("Runtime.evaluate", expression=self.js, returnByValue=True)

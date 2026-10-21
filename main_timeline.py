@@ -702,9 +702,16 @@ class TimelineApp(QMainWindow):
                 self.start_pbx_reader()
             return self.pbx_reader
 
+        def follow_status():
+            # Status im Dialog live mitlaufen lassen
+            if self.pbx_reader:
+                status.setText(self.pbx_reader.status)
+                self.pbx_reader.status_changed.connect(status.setText)
+
+        follow_status()
         login_btn = QPushButton("Bei 3CX anmelden …")
-        login_btn.clicked.connect(lambda: (enabled.setChecked(True), apply(), self.show_pbx_login(),
-                                           status.setText(self.pbx_reader.status)))
+        login_btn.clicked.connect(lambda: (enabled.setChecked(True), apply(),
+                                           follow_status(), self.show_pbx_login()))
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.addButton(login_btn, QDialogButtonBox.ActionRole)
         buttons.accepted.connect(lambda: (apply(), dialog.accept()))
