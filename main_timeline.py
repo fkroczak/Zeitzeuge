@@ -726,8 +726,7 @@ class TimelineApp(QMainWindow):
         form.addRow("", enabled)
         layout.addLayout(form)
 
-        reader = getattr(self, attr)
-        status = QLabel(reader.status if reader else "Aus")
+        status = QLabel("Aus")
         status.setStyleSheet("color: gray;")
         layout.addWidget(status)
 
@@ -743,12 +742,21 @@ class TimelineApp(QMainWindow):
                 start()
             return getattr(self, attr)
 
+        def follow_status():
+            # Status im Dialog live mitlaufen lassen
+            reader = getattr(self, attr)
+            if reader:
+                status.setText(reader.status)
+                reader.status_changed.connect(status.setText)
+
         def login():
             enabled.setChecked(True)
             reader = apply()
             if reader:
+                follow_status()
                 reader.show_login(self)
-                status.setText(reader.status)
+
+        follow_status()
 
         login_btn = QPushButton(login_text)
         login_btn.clicked.connect(login)

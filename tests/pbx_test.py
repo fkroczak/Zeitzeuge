@@ -17,7 +17,7 @@ sys.path.insert(0, ROOT)
 
 from PyQt5.QtCore import QCoreApplication
 
-from pbx_reader import PbxReader, find_browser
+from pbx_reader import PbxReader, find_browser, login_window_open, profile_in_use
 
 handler = functools.partial(http.server.SimpleHTTPRequestHandler,
                             directory=os.path.join(ROOT, "tests", "mock_3cx"))
@@ -49,8 +49,16 @@ def run(url, until, what):
     if not until(reader):
         fail(what, reader)
     print("ok:", what, "|", reader.status)
+    # Die Profil-Sperre muss erkannt werden (darauf wartet das Anmeldefenster)
+    if not profile_in_use(profile):
+        fail("Profil-Sperre bei laufendem Browser nicht erkannt", reader)
+    # Der unsichtbare Edge darf nicht als offenes Anmeldefenster gelten
+    if login_window_open(profile):
+        fail("Unsichtbarer Browser wird als Anmeldefenster erkannt", reader)
     reader.stop()
     time.sleep(2)  # Browser sauber beenden lassen (Profil freigeben)
+    if profile_in_use(profile):
+        fail("Profil nach dem Beenden noch gesperrt", reader)
 
 
 def calls():

@@ -12,6 +12,9 @@ eigenen Profil (Ordner 3cx_profil):
 
 Der installierte Edge ist immer aktuell, deshalb läuft auch der moderne
 3CX-Webclient darin.
+
+Die Edge-Steuerung steckt in BrowserReader und wird auch für die
+ITM-Personalzeiten benutzt (itm_reader.py).
 """
 
 import json
@@ -24,6 +27,7 @@ import time
 import urllib.request
 from datetime import date, datetime, timedelta
 
+import psutil
 import websocket  # Paket websocket-client
 from PyQt5.QtCore import QObject, pyqtSignal
 
@@ -109,6 +113,97 @@ def find_browser():
     return None
 
 
+def profile_in_use(profile_dir):
+    """Ist das Edge-Profil gerade von einem Edge-Fenster belegt?
+
+    Edge hält die Datei "lockfile" offen, solange es läuft (Windows);
+    unter Linux/macOS gibt es den Verweis "SingletonLock".
+    """
+    if sys.platform == "win32":
+        lock = os.path.join(profile_dir, "lockfile")
+        if not os.path.exists(lock):
+            return False
+        try:
+            os.remove(lock)  # geht nur, wenn kein Edge sie offen hält
+            return False
+        except PermissionError:
+            return True
+        except OSError:
+            return False
+    lock = os.path.join(profile_dir, "SingletonLock")  # Verweis auf "rechner-pid"
+    if not os.path.islink(lock):
+        return False
+    try:
+        os.kill(int(os.readlink(lock).rsplit("-", 1)[1]), 0)
+        return True
+    except (ValueError, IndexError, ProcessLookupError):
+        return False
+    except PermissionError:
+        return True
+
+
+def profile_processes(profile_dir):
+    """Alle Edge/Chrome-Prozesse, die mit genau diesem Profil laufen (nie dein normaler Edge)."""
+    wanted = os.path.normcase(os.path.abspath(profile_dir))
+    found = []
+    for proc in psutil.process_iter(["pid", "cmdline"]):
+        try:
+            for arg in proc.info["cmdline"] or []:
+                if arg.startswith("--user-data-dir=") and \
+                        os.path.normcase(os.path.abspath(arg.split("=", 1)[1].strip('"'))) == wanted:
+                    found.append(proc)
+                    break
+        except (psutil.NoSuchProcess, psutil.AccessDenied, ValueError):
+            continue
+    return found
+
+
+def kill_profile_processes(profile_dir):
+    """Übrig gebliebene Edge-Prozesse mit diesem Profil beenden (z. B. Hintergrundmodus)."""
+    procs = profile_processes(profile_dir)
+    for proc in procs:
+        try:
+            proc.terminate()
+        except psutil.Error:
+            pass
+    _, alive = psutil.wait_procs(procs, timeout=5)
+    for proc in alive:
+        try:
+            proc.kill()
+        except psutil.Error:
+            pass
+    return len(procs)
+
+
+def login_window_open(profile_dir):
+    """Ist ein sichtbares Edge-Fenster mit diesem Profil offen?"""
+    procs = profile_processes(profile_dir)
+    if sys.platform != "win32":
+        # Hauptprozess (ohne --type=…) ohne --headless = sichtbares Fenster
+        return any("--headless" not in cmd and "--type=" not in cmd
+                   for cmd in (" ".join(p.info["cmdline"] or []) for p in procs))
+    import ctypes
+    from ctypes import wintypes
+    pids = {p.pid for p in procs}
+    if not pids:
+        return False
+    user32 = ctypes.windll.user32
+    found = []
+
+    @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    def check(hwnd, _):
+        if user32.IsWindowVisible(hwnd) and user32.GetWindowTextLengthW(hwnd):
+            pid = wintypes.DWORD()
+            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+            if pid.value in pids:
+                found.append(hwnd)
+                return False
+        return True
+
+    user32.EnumWindows(check, 0)
+    return bool(found)
+
+
 class _DevTools:
     """Minimaler Client für das DevTools-Protokoll einer Seite."""
 
@@ -160,6 +255,8 @@ class BrowserReader(QObject):
         self._login_open = False
         self._started = False  # Browser frisch gestartet (Seite lädt noch)
         self._thread = None
+        # Nur ein Edge darf das Profil benutzen: Lesen und Anmelden wechseln sich ab
+        self._browser_lock = threading.Lock()
 
     def start_url(self):
         raise NotImplementedError
@@ -187,7 +284,6 @@ class BrowserReader(QObject):
         if self._login_open:
             return
         self._login_open = True
-        self._close_browser()  # Profil darf nur von einem Edge benutzt werden
         self._set_status(f"{self.NAME}: Anmeldung im Edge-Fenster …")
         threading.Thread(target=self._login_window, daemon=True).start()
 
@@ -225,7 +321,18 @@ class BrowserReader(QObject):
         return subprocess.Popen(args, creationflags=flags,
                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
+    def _wait_profile_free(self, seconds):
+        deadline = time.time() + seconds
+        while profile_in_use(self.profile_dir) and time.time() < deadline:
+            time.sleep(0.5)
+        return not profile_in_use(self.profile_dir)
+
     def _start_browser(self):
+        if profile_in_use(self.profile_dir) and not login_window_open(self.profile_dir):
+            # Unsichtbarer Rest (alter Lauf, Edge-Hintergrundmodus): beenden
+            kill_profile_processes(self.profile_dir)
+        if not self._wait_profile_free(10):
+            raise RuntimeError(f"ein Edge-Fenster mit dem {self.NAME}-Profil ist noch offen")
         port_file = os.path.join(self.profile_dir, "DevToolsActivePort")
         if os.path.exists(port_file):
             os.remove(port_file)
@@ -273,15 +380,31 @@ class BrowserReader(QObject):
         self._proc = None
 
     def _login_window(self):
-        try:
-            proc = self._popen(self._browser_args(headless=False))
-            proc.wait()  # bis du das Fenster schließt
-        except Exception as e:
-            self._set_status(f"{self.NAME}: {e}")
-        finally:
-            self._login_open = False
-            self.needs_login = False
-            self._wake.set()
+        self._wake.set()  # Lese-Schleife aus dem Warten holen
+        with self._browser_lock:
+            try:
+                self._close_browser()  # unsichtbaren Edge beenden, Profil freigeben
+                kill_profile_processes(self.profile_dir)  # Reste, an die Edge sonst weiterleitet
+                self._wait_profile_free(15)
+                self._popen(self._browser_args(headless=False))
+                # Warten, bis du das Fenster schließt. Edge gibt beim Start an einen anderen
+                # Prozess ab, darum zählt ein sichtbares Fenster mit unserem Profil.
+                started = time.time()
+                while not self._stop.is_set():
+                    if login_window_open(self.profile_dir):
+                        started = min(started, time.time() - 60)  # Fenster war schon da
+                    elif time.time() - started > 30:
+                        break  # Fenster zu (oder nach 30 s nie erschienen)
+                    time.sleep(1)
+                # Edge läuft nach dem Schließen oft im Hintergrund weiter: beenden
+                kill_profile_processes(self.profile_dir)
+                self._set_status(f"{self.NAME}: Anmeldefenster geschlossen, lese …")
+            except Exception as e:
+                self._set_status(f"{self.NAME}: {e}")
+            finally:
+                self._login_open = False
+                self.needs_login = False
+        self._wake.set()
 
     # ------------------------------------------------------------ Lesen
 
@@ -303,18 +426,24 @@ class BrowserReader(QObject):
     def _loop(self):
         while not self._stop.is_set():
             if not self._login_open:
-                try:
-                    if not self._tools:
-                        self._start_browser()
-                        self._started = True
-                    self._tick()
-                except Exception as e:
-                    if not self._login_open:  # beim Anmelden wird Edge absichtlich beendet
-                        self._set_status(f"{self.NAME}: Fehler ({e}), neuer Versuch")
-                    self._close_browser()
+                with self._browser_lock:
+                    self._step()
             self._wake.wait(self.READ_INTERVAL)
             self._wake.clear()
         self._close_browser()
+
+    def _step(self):
+        """Ein Durchlauf: Browser bei Bedarf starten, dann lesen."""
+        if self._login_open or self._stop.is_set():
+            return
+        try:
+            if not self._tools:
+                self._start_browser()
+                self._started = True
+            self._tick()
+        except Exception as e:
+            self._set_status(f"{self.NAME}: Fehler ({e}), neuer Versuch")
+            self._close_browser()
 
     def _tick(self):
         raise NotImplementedError
@@ -406,8 +535,7 @@ class PbxReader(BrowserReader):
             self.calls_added.emit(added)
 
     def _wait_load(self):
-        self._wake.wait(10)
-        self._wake.clear()
+        time.sleep(10)  # Seite laden lassen
 
     def _read_once(self):
         """Sichtbare Anrufliste lesen. True, wenn Anrufe gelesen wurden."""
