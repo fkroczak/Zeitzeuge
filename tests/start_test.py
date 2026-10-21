@@ -4,12 +4,10 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import main_timeline  # zuerst laden (eingebauter Browser muss vor QApplication kommen)
-from PyQt5.QtCore import Qt, QTimer
+import main_timeline
+from PyQt5.QtCore import QTimer
 from PyQt5.QtWidgets import QApplication
 
-assert main_timeline.PbxReader is not None, "Eingebauter Browser (PyQtWebEngine) fehlt"
-QApplication.setAttribute(Qt.AA_ShareOpenGLContexts)
 app = QApplication(sys.argv)
 window = main_timeline.TimelineApp()
 window.show()

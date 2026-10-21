@@ -1,26 +1,44 @@
 """
-3CX-Anrufliste direkt aus Zeitzeuge lesen (ohne Chrome/Tampermonkey).
+3CX-Anrufliste direkt aus Zeitzeuge lesen (ohne Tampermonkey).
 
-Zeitzeuge öffnet den 3CX-Webclient in einem eingebauten, unsichtbaren Browser.
-Beim ersten Mal meldest du dich in einem Zeitzeuge-Fenster an; die Anmeldung
-wird wie in einem normalen Browser gespeichert (Ordner 3cx_profil).
-Jede Minute wird die Anrufliste gelesen. Ton, Mikrofon, Kamera und
-Benachrichtigungen sind gesperrt, damit dort nichts klingelt.
+Zeitzeuge nutzt den installierten Microsoft Edge (oder Chrome) mit einem
+eigenen Profil (Ordner 3cx_profil):
+
+- Anmelden: Edge öffnet ein normales Fenster mit dem 3CX-Webclient.
+  Nach dem Anmelden schließt du es einfach.
+- Lesen: Derselbe Edge läuft unsichtbar im Hintergrund (stumm, ohne
+  Mikrofon/Benachrichtigungen). Zeitzeuge liest jede Minute die Anrufliste
+  über die Entwickler-Schnittstelle (DevTools-Protokoll) von Edge.
+
+Der installierte Edge ist immer aktuell, deshalb läuft auch der moderne
+3CX-Webclient darin.
 """
 
 import json
 import os
+import shlex
+import subprocess
+import sys
+import threading
+import time
+import urllib.request
 from datetime import datetime
 
-from PyQt5.QtCore import QObject, Qt, QTimer, QUrl, pyqtSignal
-from PyQt5.QtWidgets import QDialog, QLabel, QVBoxLayout
-from PyQt5.QtWebEngineWidgets import (QWebEnginePage, QWebEngineProfile,
-                                      QWebEngineView)
+import websocket  # Paket websocket-client
+from PyQt5.QtCore import QObject, pyqtSignal
 
 from call_import import merge_calls
 
 PARSER_START = "// ---- ANRUFLISTE LESEN: START ----"
 PARSER_END = "// ---- ANRUFLISTE LESEN: ENDE ----"
+
+BROWSER_PATHS = [
+    r"%PROGRAMFILES(X86)%\Microsoft\Edge\Application\msedge.exe",
+    r"%PROGRAMFILES%\Microsoft\Edge\Application\msedge.exe",
+    r"%PROGRAMFILES%\Google\Chrome\Application\chrome.exe",
+    r"%PROGRAMFILES(X86)%\Google\Chrome\Application\chrome.exe",
+    r"%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe",
+]
 
 
 def build_reader_js(userscript_text):
@@ -36,98 +54,225 @@ def build_reader_js(userscript_text):
     )
 
 
-class _QuietPage(QWebEnginePage):
-    """Seite ohne Ton und ohne Zugriff auf Mikrofon/Kamera/Benachrichtigungen."""
+def find_browser():
+    """Pfad zu Edge/Chrome. ZEITZEUGE_BROWSER überschreibt (z. B. für Tests)."""
+    if os.environ.get("ZEITZEUGE_BROWSER"):
+        return os.environ["ZEITZEUGE_BROWSER"]
+    for path in BROWSER_PATHS:
+        path = os.path.expandvars(path)
+        if os.path.exists(path):
+            return path
+    return None
 
-    def __init__(self, profile, parent=None):
-        super().__init__(profile, parent)
-        self.setAudioMuted(True)
-        self.featurePermissionRequested.connect(
-            lambda origin, feature: self.setFeaturePermission(
-                origin, feature, QWebEnginePage.PermissionDeniedByUser
-            )
-        )
 
-    def javaScriptConsoleMessage(self, level, message, line, source):
-        pass  # Konsole der 3CX-Seite nicht ausgeben
+class _DevTools:
+    """Minimaler Client für das DevTools-Protokoll einer Seite."""
+
+    def __init__(self, ws_url):
+        self.ws = websocket.create_connection(ws_url, timeout=15, suppress_origin=True)
+        self._id = 0
+
+    def call(self, method, **params):
+        self._id += 1
+        self.ws.send(json.dumps({"id": self._id, "method": method, "params": params}))
+        while True:
+            msg = json.loads(self.ws.recv())
+            if msg.get("id") == self._id:
+                if "error" in msg:
+                    raise RuntimeError(msg["error"].get("message"))
+                return msg.get("result", {})
+
+    def close(self):
+        try:
+            self.ws.close()
+        except Exception:
+            pass
 
 
 class PbxReader(QObject):
-    # Nach jedem Lesen: Status-Text, Anzahl neuer Anrufe
+    # Signale werden aus dem Hintergrund-Thread gesendet (Qt stellt sie zu)
     status_changed = pyqtSignal(str)
     calls_added = pyqtSignal(int)
     login_required = pyqtSignal()
+
+    READ_INTERVAL = 60       # Sekunden zwischen zwei Lesevorgängen
+    RELOAD_INTERVAL = 15 * 60
 
     def __init__(self, base_url, calls_file, profile_dir, userscript_text, parent=None):
         super().__init__(parent)
         self.base_url = base_url.strip().rstrip("/")
         self.calls_file = calls_file
+        self.profile_dir = profile_dir
         self.js = build_reader_js(userscript_text)
         self.needs_login = False
         self.last_read = None
         self.last_count = 0
         self.status = "Startet …"
-        self._unanswered = 0  # Abfragen ohne Antwort vom Browser
 
-        self.profile = QWebEngineProfile("zeitzeuge-3cx", self)
-        self.profile.setPersistentStoragePath(profile_dir)
-        self.profile.setCachePath(os.path.join(profile_dir, "cache"))
-        self.profile.setPersistentCookiesPolicy(QWebEngineProfile.ForcePersistentCookies)
-
-        self.view = QWebEngineView()
-        self.view.setAttribute(Qt.WA_DontShowOnScreen)  # "sichtbar", aber nicht auf dem Bildschirm
-        self.page = _QuietPage(self.profile, self.view)
-        self.view.setPage(self.page)
-        # Absturz der Seite: nach kurzer Pause neu laden
-        self.page.renderProcessTerminated.connect(
-            lambda *_: (self._set_status("3CX: Browser abgestürzt, lade neu"),
-                        QTimer.singleShot(3000, self.open_call_list))
-        )
-        self.view.resize(1100, 2400)  # hoch, damit viele Einträge geladen werden
-        self.view.show()
-
-        self.read_timer = QTimer(self)
-        self.read_timer.timeout.connect(self.read)
-        self.reload_timer = QTimer(self)
-        self.reload_timer.timeout.connect(self.open_call_list)
-        self._login_dialog = None
+        self._proc = None
+        self._tools = None
+        self._stop = threading.Event()
+        self._wake = threading.Event()
+        self._login_open = False
+        self._thread = None
 
     def call_list_url(self):
         return f"{self.base_url}/#/call_history/all"
 
+    # ------------------------------------------------------------ Steuerung
+
     def start(self):
-        self.open_call_list()
-        self.read_timer.start(60 * 1000)          # jede Minute lesen
-        self.reload_timer.start(15 * 60 * 1000)   # alle 15 Minuten neu laden
-        QTimer.singleShot(15 * 1000, self.read)   # erstes Lesen nach dem Laden
+        if self._thread and self._thread.is_alive():
+            return
+        self._stop.clear()
+        self._thread = threading.Thread(target=self._loop, daemon=True)
+        self._thread.start()
 
     def stop(self):
-        self.read_timer.stop()
-        self.reload_timer.stop()
-        self.page.setUrl(QUrl("about:blank"))
-
-    def open_call_list(self):
-        if self._login_dialog:  # während der Anmeldung nicht neu laden
-            return
-        self.page.setUrl(QUrl(self.call_list_url()))
+        self._stop.set()
+        self._wake.set()
+        self._close_browser()
 
     def read(self):
-        # Antwortet der Browser mehrmals nicht, Seite neu laden
-        if self._unanswered >= 3:
-            self._unanswered = 0
-            self._set_status("3CX: Browser reagiert nicht, lade neu")
-            self.page.triggerAction(QWebEnginePage.Stop)
-            self.open_call_list()
+        """Sofort lesen (statt auf den nächsten Durchlauf zu warten)."""
+        self._wake.set()
+
+    def show_login(self, parent=None):
+        """Edge-Fenster zum Anmelden öffnen. Nach dem Schließen wird weitergelesen."""
+        if self._login_open:
             return
-        self._unanswered += 1
-        self.page.runJavaScript(self.js, self._on_result)
+        self._login_open = True
+        self._close_browser()  # Profil darf nur von einem Edge benutzt werden
+        self._set_status("3CX: Anmeldung im Edge-Fenster …")
+        threading.Thread(target=self._login_window, daemon=True).start()
+
+    # ------------------------------------------------------------ Browser
+
+    def _browser_args(self, headless):
+        exe = find_browser()
+        if not exe:
+            raise RuntimeError("Microsoft Edge oder Google Chrome nicht gefunden")
+        os.makedirs(self.profile_dir, exist_ok=True)
+        args = [
+            exe,
+            f"--user-data-dir={self.profile_dir}",
+            "--no-first-run",
+            "--no-default-browser-check",
+            "--mute-audio",
+            "--deny-permission-prompts",
+            "--disable-notifications",
+        ]
+        args += shlex.split(os.environ.get("ZEITZEUGE_BROWSER_ARGS", ""))
+        if headless:
+            args += [
+                "--headless=new",
+                "--remote-debugging-port=0",
+                "--remote-allow-origins=*",
+                "--window-size=1100,2400",
+                "about:blank",
+            ]
+        else:
+            args += [f"--app={self.call_list_url()}", "--window-size=1100,800"]
+        return args
+
+    def _popen(self, args):
+        flags = 0x08000000 if sys.platform == "win32" else 0  # CREATE_NO_WINDOW
+        return subprocess.Popen(args, creationflags=flags,
+                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    def _start_browser(self):
+        port_file = os.path.join(self.profile_dir, "DevToolsActivePort")
+        if os.path.exists(port_file):
+            os.remove(port_file)
+        self._proc = self._popen(self._browser_args(headless=True))
+
+        # Edge schreibt seinen Port in DevToolsActivePort
+        port = None
+        for _ in range(100):
+            if self._proc.poll() is not None:
+                raise RuntimeError("Browser wurde sofort beendet")
+            if os.path.exists(port_file):
+                with open(port_file, encoding="utf-8") as f:
+                    first = f.readline().strip()
+                if first.isdigit():
+                    port = int(first)
+                    break
+            time.sleep(0.2)
+        if not port:
+            raise RuntimeError("Browser antwortet nicht")
+
+        pages = json.load(urllib.request.urlopen(f"http://127.0.0.1:{port}/json/list", timeout=10))
+        page = next(p for p in pages if p.get("type") == "page")
+        self._tools = _DevTools(page["webSocketDebuggerUrl"])
+
+        # Kein "HeadlessChrome" in der Kennung, sonst verhalten sich manche Seiten anders
+        version = json.load(urllib.request.urlopen(f"http://127.0.0.1:{port}/json/version", timeout=10))
+        agent = version.get("User-Agent", "").replace("HeadlessChrome", "Chrome")
+        if agent:
+            self._tools.call("Network.setUserAgentOverride", userAgent=agent)
+        self._tools.call("Page.navigate", url=self.call_list_url())
+
+    def _close_browser(self):
+        if self._tools:
+            self._tools.close()
+            self._tools = None
+        if self._proc and self._proc.poll() is None:
+            self._proc.terminate()
+            try:
+                self._proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                self._proc.kill()
+        self._proc = None
+
+    def _login_window(self):
+        try:
+            proc = self._popen(self._browser_args(headless=False))
+            proc.wait()  # bis du das Fenster schließt
+        except Exception as e:
+            self._set_status(f"3CX: {e}")
+        finally:
+            self._login_open = False
+            self.needs_login = False
+            self._wake.set()
+
+    # ------------------------------------------------------------ Lesen
 
     def _set_status(self, text):
         self.status = text
         self.status_changed.emit(text)
 
+    def _loop(self):
+        last_load = 0
+        while not self._stop.is_set():
+            if not self._login_open:
+                try:
+                    if not self._tools:
+                        self._start_browser()
+                        last_load = time.time()
+                        self._set_status("3CX: Seite lädt …")
+                        self._wake.wait(10)  # Seite laden lassen
+                        self._wake.clear()
+                    elif time.time() - last_load > self.RELOAD_INTERVAL:
+                        self._tools.call("Page.navigate", url=self.call_list_url())
+                        last_load = time.time()
+                        self._wake.wait(10)
+                        self._wake.clear()
+                    if not self._login_open and not self._stop.is_set():
+                        self._read_once()
+                except Exception as e:
+                    if not self._login_open:  # beim Anmelden wird Edge absichtlich beendet
+                        self._set_status(f"3CX: Fehler ({e}), neuer Versuch")
+                    self._close_browser()
+            self._wake.wait(self.READ_INTERVAL)
+            self._wake.clear()
+        self._close_browser()
+
+    def _read_once(self):
+        result = self._tools.call("Runtime.evaluate", expression=self.js, returnByValue=True)
+        raw = result.get("result", {}).get("value")
+        self._on_result(raw)
+
     def _on_result(self, raw):
-        self._unanswered = 0
         try:
             data = json.loads(raw) if raw else None
         except (TypeError, ValueError):
@@ -146,9 +291,9 @@ class PbxReader(QObject):
 
         calls = data["calls"]
         if not calls:
-            if "call_history" not in data["url"]:
-                self.open_call_list()
-            self._set_status("3CX: keine Anrufe gefunden")
+            if "call_history" not in data["url"] and self._tools:
+                self._tools.call("Page.navigate", url=self.call_list_url())
+            self._set_status("3CX: noch keine Anrufe gelesen")
             return
 
         added = merge_calls(self.calls_file, calls)
@@ -157,35 +302,3 @@ class PbxReader(QObject):
         self._set_status(f"3CX gelesen {self.last_read:%H:%M} ({len(calls)} Anrufe)")
         if added:
             self.calls_added.emit(added)
-
-    def show_login(self, parent=None):
-        """3CX im Fenster zeigen (zum Anmelden oder Nachsehen)."""
-        dialog = QDialog(parent)
-        dialog.setWindowTitle("3CX – Anmeldung für Zeitzeuge")
-        dialog.resize(1000, 760)
-        layout = QVBoxLayout(dialog)
-        hint = QLabel("Melde dich hier bei 3CX an. Danach kannst du das Fenster schließen – "
-                      "Zeitzeuge liest die Anrufliste im Hintergrund weiter.")
-        hint.setWordWrap(True)
-        layout.addWidget(hint)
-
-        self.view.hide()
-        self.view.setAttribute(Qt.WA_DontShowOnScreen, False)
-        self.view.setMinimumSize(0, 0)
-        layout.addWidget(self.view, 1)
-        self.view.show()
-        if self.page.url().isEmpty() or self.page.url().toString() == "about:blank":
-            self.open_call_list()
-
-        self._login_dialog = dialog
-        dialog.exec_()
-        self._login_dialog = None
-
-        # Browser wieder unsichtbar im Hintergrund weiterlaufen lassen
-        layout.removeWidget(self.view)
-        self.view.setParent(None)
-        self.view.setAttribute(Qt.WA_DontShowOnScreen)
-        self.view.resize(1100, 2400)
-        self.view.show()
-        self.open_call_list()
-        QTimer.singleShot(10 * 1000, self.read)

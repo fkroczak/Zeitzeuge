@@ -71,7 +71,7 @@ pip install -r requirements.txt
 pyinstaller --noconfirm --clean ZeitZeuge.spec
 ```
 
-Die fertige `ZeitZeuge.exe` liegt danach in `dist/`. Die Einstellungsdatei `zeitzeuge_config.json` legt Zeitzeuge beim ersten Start neben der EXE an.
+Die fertige `ZeitZeuge.exe` liegt danach in `dist/`. Die Einstellungsdatei `zeitzeuge_config.json` legt Zeitzeuge beim ersten Start unter `Dokumente\Zeitzeuge` an.
 
 ## Einrichtung
 
@@ -90,13 +90,13 @@ Standardpfade:
 
 ### Telefonate aus 3CX
 
-**Variante 1: Zeitzeuge liest selbst (empfohlen).** Zeitzeuge öffnet den 3CX-Webclient in einem eingebauten, unsichtbaren Browser und liest jede Minute die Anrufliste. Es ist egal, ob du sonst den 3CX-Client, die Webseite oder das Tischtelefon benutzt.
+**Variante 1: Zeitzeuge liest selbst (empfohlen).** Zeitzeuge öffnet den 3CX-Webclient unsichtbar mit dem installierten Microsoft Edge und liest jede Minute die Anrufliste. Gibt es kein Edge, nimmt es Chrome. Edge läuft dabei mit einem eigenen Profil, getrennt von deinem normalen Browser. Es ist egal, ob du sonst den 3CX-Client, die Webseite oder das Tischtelefon benutzt.
 
 1. **Einstellungen ▾ → 3CX direkt auslesen …** öffnen.
-2. 3CX-Adresse prüfen und **Bei 3CX anmelden / ansehen** klicken.
-3. Im Fenster ganz normal bei 3CX anmelden und das Fenster schließen.
+2. 3CX-Adresse prüfen und **Bei 3CX anmelden …** klicken.
+3. Im Edge-Fenster ganz normal bei 3CX anmelden und das Fenster schließen.
 
-Die Anmeldung bleibt wie in einem Browser gespeichert (Ordner `3cx_profil`). Läuft sie ab, meldet sich Zeitzeuge im Infobereich. Ein Klick auf die Meldung öffnet die Anmeldung. Im eingebauten Browser sind Ton, Mikrofon, Kamera und Benachrichtigungen gesperrt, dort klingelt also nichts. Für 3CX zählt er aber als zusätzlich angemeldeter Webclient.
+Die Anmeldung bleibt gespeichert (`%LOCALAPPDATA%\Zeitzeuge\3cx_profil`). Läuft sie ab, meldet sich Zeitzeuge im Infobereich. Ein Klick auf die Meldung öffnet die Anmeldung. Ton, Mikrofon und Benachrichtigungen sind gesperrt, dort klingelt also nichts. Für 3CX zählt Zeitzeuge aber als zusätzlich angemeldeter Webclient.
 
 **Variante 2: über Chrome und Tampermonkey.** Das ist sinnvoll, wenn du die 3CX-Webseite ohnehin offen hast. Am einfachsten über **Einstellungen ▾ → Browser-Anbindung (3CX) einrichten …**. Der Assistent öffnet nacheinander die richtigen Seiten in Chrome, und du bestätigst jeweils mit einem Klick:
 
@@ -128,9 +128,18 @@ Die Einstellungen für Telefonate stehen in `zeitzeuge_config.json`:
 | `calls_3cx_url` | `https://voice.visaas.de:5001` | Adresse des 3CX-Webclients |
 | `pbx_reader_enabled` | `false` | Variante 1: Zeitzeuge liest 3CX selbst |
 
+### Speicherort
+
+Zeitzeuge speichert Config, Anrufe und Aktivitätsprotokoll unter **Dokumente\Zeitzeuge**.
+
+- **Einstellungen ▾ → Speicherort ändern …** wählt einen anderen Ordner. Die Daten ziehen mit um, danach startet Zeitzeuge neu.
+- **Einstellungen ▾ → Datenordner öffnen** zeigt den Ordner im Explorer.
+- Daten aus älteren Versionen, die noch neben der EXE liegen, verschiebt Zeitzeuge beim ersten Start automatisch.
+- Die 3CX-Anmeldung liegt immer lokal unter `%LOCALAPPDATA%\Zeitzeuge`. Der Ordner „Dokumente“ wird oft mit OneDrive synchronisiert, und eine Browser-Anmeldung gehört nicht in die Cloud.
+
 ### Aktivitätsprotokoll
 
-Ein- und ausschalten über **Einstellungen ▾ → Aktive Fenster aufzeichnen**. Die Daten liegen pro Tag in `aktivitaet/JJJJ-MM-TT.jsonl` neben der EXE.
+Ein- und ausschalten über **Einstellungen ▾ → Aktive Fenster aufzeichnen**. Die Daten liegen pro Tag in `aktivitaet/JJJJ-MM-TT.jsonl` im Datenordner.
 
 | Schlüssel | Standard | Bedeutung |
 |---|---|---|
@@ -169,7 +178,8 @@ Läuft RDM auf einem Server, kann Zeitzeuge dessen Log auch über das Netzwerk l
 | `log_parsers.py` | Einlesen der TeamViewer- und RDM-Logs |
 | `call_import.py` | Empfang der 3CX-Anrufe, Auslieferung des Browser-Skripts |
 | `activity_tracker.py` | Aktivitätsprotokoll (aktives Fenster, Leerlauf) |
-| `pbx_reader.py` | 3CX direkt auslesen (eingebauter Browser) |
+| `pbx_reader.py` | 3CX direkt auslesen (Edge im Hintergrund, DevTools-Protokoll) |
+| `storage.py` | Speicherort der Daten |
 | `browser_setup.py` | Einrichtungsassistent für Tampermonkey |
 | `tests/` | Tests, laufen bei jedem Build: Start, 3CX mit nachgebauter Seite, Fensterabfrage |
 | `settings_dialogs.py` | Dialoge für Logpfade und Aktivitätstypen |
@@ -182,7 +192,7 @@ Läuft RDM auf einem Server, kann Zeitzeuge dessen Log auch über das Netzwerk l
 
 Zeitzeuge arbeitet nur auf deinem eigenen Rechner. Es liest lokale Logdateien und nimmt Anrufe nur über `127.0.0.1` entgegen. Es werden keine Daten an fremde Server gesendet.
 
-Das Aktivitätsprotokoll speichert Fenstertitel. Darin können Kundennamen, Betreffzeilen von Mails oder Dateinamen stehen. Die Dateien in `aktivitaet/` gehören deshalb nur auf deinen PC. Im Ordner `3cx_profil/` liegt deine 3CX-Anmeldung. Er ist zu schützen wie ein Browserprofil. Alle diese Dateien stehen in `.gitignore`, genauso wie `anrufe.json` und die persönliche `zeitzeuge_config.json`.
+Das Aktivitätsprotokoll speichert Fenstertitel. Darin können Kundennamen, Betreffzeilen von Mails oder Dateinamen stehen. Die Dateien in `aktivitaet/` gehören deshalb nur auf deinen PC. Im Ordner `3cx_profil` liegt deine 3CX-Anmeldung. Er ist zu schützen wie ein Browserprofil. Alle diese Dateien stehen in `.gitignore`, genauso wie `anrufe.json` und die persönliche `zeitzeuge_config.json`.
 
 
 ## Lizenz

@@ -5,19 +5,13 @@ import warnings
 
 from datetime import datetime
 
-# Eingebauter Browser für das direkte Auslesen von 3CX (optional).
-# Muss vor dem Erzeugen der QApplication geladen werden.
-try:
-    from pbx_reader import PbxReader
-except Exception as e:  # z. B. PyQtWebEngine nicht installiert
-    print(f"3CX-Direktauslesen nicht verfügbar: {e}")
-    PbxReader = None
-
-from PyQt5.QtCore import QDate, QLocale, QObject, QSize, Qt, QTimer, pyqtSignal
-from PyQt5.QtGui import QColor, QIcon, QKeySequence, QPalette, QPixmap
+from PyQt5.QtCore import (QDate, QLocale, QObject, QProcess, QSize, Qt, QTimer,
+                          QUrl, pyqtSignal)
+from PyQt5.QtGui import (QColor, QDesktopServices, QIcon, QKeySequence, QPalette,
+                         QPixmap)
 from PyQt5.QtWidgets import (QAbstractItemView, QAction, QApplication,
                              QCheckBox, QDateEdit, QDialog, QDialogButtonBox,
-                             QFormLayout, QHeaderView, QLabel, QLineEdit,
+                             QFileDialog, QFormLayout, QHeaderView, QLabel, QLineEdit,
                              QMainWindow, QMenu, QMessageBox, QPushButton,
                              QSplitter, QSystemTrayIcon, QTableWidget,
                              QTableWidgetItem, QToolBar, QToolButton,
@@ -26,6 +20,8 @@ from PyQt5.QtWidgets import (QAbstractItemView, QAction, QApplication,
 from activity_tracker import ActivityTracker
 from browser_setup import BrowserSetupDialog, build_userscript
 from call_import import start_call_server
+from pbx_reader import PbxReader, find_browser
+import storage
 from settings_dialogs import (ActivityTypeSettingsDialog,
                               ConnectionSettingsDialog)
 from timeline_only import (ActivityViewDialog, TimelineView, format_duration,
@@ -43,16 +39,19 @@ def resource_path(relative_path: str) -> str:
     return os.path.join(base_path, relative_path)
 
 
-# Basisverzeichnis: Ordner der EXE oder des Skripts
+# Ordner der EXE (bzw. des Skripts). Früher lagen die Daten hier.
 if hasattr(sys, "_MEIPASS"):
-    BASE_DIR = os.path.dirname(sys.executable)
+    APP_DIR = os.path.dirname(sys.executable)
 else:
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    APP_DIR = os.path.dirname(os.path.abspath(__file__))
 
-CONFIG_FILE = os.path.join(BASE_DIR, "zeitzeuge_config.json")
-CALLS_FILE = os.path.join(BASE_DIR, "anrufe.json")
-ACTIVITY_DIR = os.path.join(BASE_DIR, "aktivitaet")
-PBX_PROFILE_DIR = os.path.join(BASE_DIR, "3cx_profil")
+# Daten: standardmäßig Dokumente\Zeitzeuge (im Menü änderbar)
+DATA_DIR = storage.data_dir()
+CONFIG_FILE = os.path.join(DATA_DIR, "zeitzeuge_config.json")
+CALLS_FILE = os.path.join(DATA_DIR, "anrufe.json")
+ACTIVITY_DIR = os.path.join(DATA_DIR, "aktivitaet")
+# 3CX-Anmeldung immer lokal (nicht in OneDrive-synchronisierten Dokumenten)
+PBX_PROFILE_DIR = os.path.join(storage.local_dir(), "3cx_profil")
 
 
 class CallSignal(QObject):
@@ -155,7 +154,7 @@ def load_config_with_defaults():
         "tracking_ignore": ["KeePass", "Bitwarden", "1Password", "Online-Banking"],
         "show_pc_in_list": False,
 
-        "pbx_reader_enabled": False,  # 3CX direkt im eingebauten Browser lesen
+        "pbx_reader_enabled": False,  # 3CX direkt über Edge im Hintergrund lesen
         "close_to_tray": True,
     }
     if os.path.exists(CONFIG_FILE):
@@ -285,6 +284,11 @@ class TimelineApp(QMainWindow):
         self.setWindowIcon(QIcon(resource_path("zeitzeuge.ico")))
         self.resize(1200, 720)
 
+        # Daten, die noch neben der EXE liegen, in den Datenordner umziehen
+        moved = storage.move_data(APP_DIR, DATA_DIR)
+        if moved:
+            print(f"Nach {DATA_DIR} verschoben: {', '.join(moved)}")
+        os.makedirs(DATA_DIR, exist_ok=True)
         self.config = load_config_with_defaults()
         self.dark_mode = self.config.get("dark_mode", False)
         self.current_date = QDate.currentDate()
@@ -373,7 +377,7 @@ class TimelineApp(QMainWindow):
 
         self._build_tray()
 
-        # 3CX direkt auslesen (eingebauter Browser)
+        # 3CX direkt auslesen (Edge im Hintergrund)
         self.pbx_reader = None
         if self.config.get("pbx_reader_enabled", False):
             self.start_pbx_reader()
@@ -444,6 +448,9 @@ class TimelineApp(QMainWindow):
         menu.addAction("Aktivitätstypen und Farben …", self.edit_activity_types)
         menu.addSeparator()
         menu.addAction("3CX direkt auslesen …", self.open_pbx_settings)
+        menu.addAction("Speicherort ändern …", self.change_data_dir)
+        menu.addAction("Datenordner öffnen",
+                       lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(DATA_DIR)))
         menu.addAction("3CX über Chrome/Tampermonkey einrichten …", self.open_browser_setup)
         self.tracking_action = menu.addAction("Aktive Fenster aufzeichnen")
         self.tracking_action.setCheckable(True)
@@ -643,11 +650,10 @@ class TimelineApp(QMainWindow):
             self.pbx_reader.show_login(self)
 
     def open_pbx_settings(self):
-        if PbxReader is None:
+        if not find_browser():
             QMessageBox.warning(
                 self, "3CX direkt auslesen",
-                "Der eingebaute Browser fehlt (Paket PyQtWebEngine). "
-                "Bitte die aktuelle EXE von GitHub verwenden.",
+                "Microsoft Edge oder Google Chrome wurde nicht gefunden.",
             )
             return
         dialog = QDialog(self)
@@ -655,10 +661,10 @@ class TimelineApp(QMainWindow):
         dialog.setMinimumWidth(520)
         layout = QVBoxLayout(dialog)
         info = QLabel(
-            "Zeitzeuge öffnet den 3CX-Webclient in einem eingebauten, unsichtbaren Browser "
-            "und liest jede Minute die Anrufliste. Chrome und Tampermonkey werden dafür "
-            "nicht gebraucht. Beim ersten Mal meldest du dich einmal an, die Anmeldung "
-            "bleibt gespeichert. Ton und Mikrofon sind dort gesperrt."
+            "Zeitzeuge öffnet den 3CX-Webclient unsichtbar mit Microsoft Edge (eigenes Profil) "
+            "und liest jede Minute die Anrufliste. Tampermonkey wird dafür nicht gebraucht.\n\n"
+            "Zum Anmelden öffnet sich ein Edge-Fenster: anmelden und das Fenster schließen. "
+            "Die Anmeldung bleibt gespeichert. Ton, Mikrofon und Benachrichtigungen sind gesperrt."
         )
         info.setWordWrap(True)
         layout.addWidget(info)
@@ -687,7 +693,7 @@ class TimelineApp(QMainWindow):
                 self.start_pbx_reader()
             return self.pbx_reader
 
-        login_btn = QPushButton("Bei 3CX anmelden / ansehen")
+        login_btn = QPushButton("Bei 3CX anmelden …")
         login_btn.clicked.connect(lambda: (enabled.setChecked(True), apply(), self.show_pbx_login(),
                                            status.setText(self.pbx_reader.status)))
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -696,6 +702,42 @@ class TimelineApp(QMainWindow):
         buttons.rejected.connect(dialog.reject)
         layout.addWidget(buttons)
         dialog.exec_()
+
+    # ---------------------- Speicherort ----------------------------------------
+
+    def change_data_dir(self):
+        new_dir = QFileDialog.getExistingDirectory(
+            self, f"Speicherort wählen (bisher: {DATA_DIR})", DATA_DIR
+        )
+        if not new_dir or os.path.abspath(new_dir) == os.path.abspath(DATA_DIR):
+            return
+        answer = QMessageBox.question(
+            self, "Speicherort ändern",
+            f"Config, Anrufe und Aktivitätsprotokoll werden nach\n{new_dir}\n"
+            "verschoben. Zeitzeuge startet danach neu.",
+        )
+        if answer != QMessageBox.Yes:
+            return
+        # Erst alles anhalten, was in die Dateien schreibt
+        if self.tracker:
+            self.tracker.stop()
+        if self.pbx_reader:
+            self.pbx_reader.stop()
+        save_config(self.config)
+        try:
+            storage.move_data(DATA_DIR, new_dir)
+            storage.set_data_dir(new_dir)
+        except OSError as e:
+            QMessageBox.warning(self, "Speicherort ändern", f"Verschieben fehlgeschlagen:\n{e}")
+            return
+        self.restart()
+
+    def restart(self):
+        if hasattr(sys, "_MEIPASS"):
+            QProcess.startDetached(sys.executable, [])
+        else:
+            QProcess.startDetached(sys.executable, [os.path.abspath(__file__)])
+        self.quit_app()
 
     # ---------------------- Infobereich (Tray) --------------------------------
 
@@ -824,7 +866,6 @@ class TimelineApp(QMainWindow):
 
 if __name__ == "__main__":
     QLocale.setDefault(GERMAN)
-    QApplication.setAttribute(Qt.AA_ShareOpenGLContexts)  # nötig für den eingebauten Browser
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
     app.setQuitOnLastWindowClosed(False)
