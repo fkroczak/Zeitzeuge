@@ -24,6 +24,7 @@ import time
 import urllib.request
 from datetime import datetime
 
+import psutil
 import websocket  # Paket websocket-client
 from PyQt5.QtCore import QObject, pyqtSignal
 
@@ -92,6 +93,68 @@ def profile_in_use(profile_dir):
         return False
     except PermissionError:
         return True
+
+
+def profile_processes(profile_dir):
+    """Alle Edge/Chrome-Prozesse, die mit genau diesem Profil laufen (nie dein normaler Edge)."""
+    wanted = os.path.normcase(os.path.abspath(profile_dir))
+    found = []
+    for proc in psutil.process_iter(["pid", "cmdline"]):
+        try:
+            for arg in proc.info["cmdline"] or []:
+                if arg.startswith("--user-data-dir=") and \
+                        os.path.normcase(os.path.abspath(arg.split("=", 1)[1].strip('"'))) == wanted:
+                    found.append(proc)
+                    break
+        except (psutil.NoSuchProcess, psutil.AccessDenied, ValueError):
+            continue
+    return found
+
+
+def kill_profile_processes(profile_dir):
+    """Übrig gebliebene Edge-Prozesse mit dem 3CX-Profil beenden (z. B. Hintergrundmodus)."""
+    procs = profile_processes(profile_dir)
+    for proc in procs:
+        try:
+            proc.terminate()
+        except psutil.Error:
+            pass
+    _, alive = psutil.wait_procs(procs, timeout=5)
+    for proc in alive:
+        try:
+            proc.kill()
+        except psutil.Error:
+            pass
+    return len(procs)
+
+
+def login_window_open(profile_dir):
+    """Ist ein sichtbares Edge-Fenster mit dem 3CX-Profil offen?"""
+    procs = profile_processes(profile_dir)
+    if sys.platform != "win32":
+        # Hauptprozess (ohne --type=…) ohne --headless = sichtbares Fenster
+        return any("--headless" not in cmd and "--type=" not in cmd
+                   for cmd in (" ".join(p.info["cmdline"] or []) for p in procs))
+    import ctypes
+    from ctypes import wintypes
+    pids = {p.pid for p in procs}
+    if not pids:
+        return False
+    user32 = ctypes.windll.user32
+    found = []
+
+    @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    def check(hwnd, _):
+        if user32.IsWindowVisible(hwnd) and user32.GetWindowTextLengthW(hwnd):
+            pid = wintypes.DWORD()
+            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+            if pid.value in pids:
+                found.append(hwnd)
+                return False
+        return True
+
+    user32.EnumWindows(check, 0)
+    return bool(found)
 
 
 class _DevTools:
@@ -217,6 +280,9 @@ class PbxReader(QObject):
         return not profile_in_use(self.profile_dir)
 
     def _start_browser(self):
+        if profile_in_use(self.profile_dir) and not login_window_open(self.profile_dir):
+            # Unsichtbarer Rest (alter Lauf, Edge-Hintergrundmodus): beenden
+            kill_profile_processes(self.profile_dir)
         if not self._wait_profile_free(10):
             raise RuntimeError("ein Edge-Fenster mit dem 3CX-Profil ist noch offen")
         port_file = os.path.join(self.profile_dir, "DevToolsActivePort")
@@ -267,16 +333,20 @@ class PbxReader(QObject):
         with self._browser_lock:
             try:
                 self._close_browser()  # unsichtbaren Edge beenden, Profil freigeben
+                kill_profile_processes(self.profile_dir)  # Reste, an die Edge sonst weiterleitet
                 self._wait_profile_free(15)
-                proc = self._popen(self._browser_args(headless=False))
-                # Warten, bis du das Fenster schließt. Edge gibt beim Start oft an einen
-                # anderen Prozess ab, darum zählt nicht der Prozess, sondern das Profil.
+                self._popen(self._browser_args(headless=False))
+                # Warten, bis du das Fenster schließt. Edge gibt beim Start an einen anderen
+                # Prozess ab, darum zählt ein sichtbares Fenster mit unserem Profil.
                 started = time.time()
                 while not self._stop.is_set():
-                    running = proc.poll() is None or profile_in_use(self.profile_dir)
-                    if not running and time.time() - started > 5:
-                        break
+                    if login_window_open(self.profile_dir):
+                        started = min(started, time.time() - 60)  # Fenster war schon da
+                    elif time.time() - started > 30:
+                        break  # Fenster zu (oder nach 30 s nie erschienen)
                     time.sleep(1)
+                # Edge läuft nach dem Schließen oft im Hintergrund weiter: beenden
+                kill_profile_processes(self.profile_dir)
                 self._set_status("3CX: Anmeldefenster geschlossen, lese …")
             except Exception as e:
                 self._set_status(f"3CX: {e}")
