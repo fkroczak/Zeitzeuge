@@ -1,24 +1,28 @@
 # timeline_only.py
+import threading
 from datetime import datetime
 from html import escape
 
-from PyQt5.QtCore import QDate, QDateTime, Qt, pyqtSignal
+from PyQt5.QtCore import QDate, QDateTime, Qt, QTimer, pyqtSignal
 from PyQt5.QtGui import QBrush, QColor, QFont, QFontMetrics, QPainter, QPen
-from PyQt5.QtWidgets import (QDialog, QDialogButtonBox, QFormLayout,
+from PyQt5.QtWidgets import (QApplication, QDialog, QDialogButtonBox, QFormLayout,
                              QGraphicsRectItem, QGraphicsScene, QGraphicsView,
-                             QLabel, QLineEdit, QTextEdit, QVBoxLayout)
+                             QLabel, QLineEdit, QMenu, QTextEdit, QVBoxLayout)
 
-from activity_tracker import app_label, merge_segments
+from activity_tracker import app_label, merge_segments, read_segments
 from call_import import load_call_suggestions
 from grouping import format_tv_id, group_entries
 from log_parsers import ConnectionIndex, RdmParser, TeamViewerParser, VpnParser
+from vpn_reader import VpnReader
 
-DEBUG = False  # bei Bedarf auf True setzen
 TIME_FMT = "%Y-%m-%d %H:%M:%S"
 
 
 def parse_time(text):
-    return datetime.strptime(text, TIME_FMT)
+    """'JJJJ-MM-TT hh:mm:ss' -> datetime. Streng wie strptime, aber viel schneller."""
+    if len(text) != 19 or text[10] != " ":
+        raise ValueError(f"Ungültige Zeit: {text!r}")
+    return datetime.fromisoformat(text)
 
 
 WEEKDAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
@@ -60,8 +64,27 @@ def entry_color(activity, config):
     return QColor(config.get("type_colors", {}).get(activity.get("type"), "#4682B4"))
 
 
+# Eigene Zeile je Quelle (Kennung, Beschriftung links); nur RDM und der Rest teilen sich mehrere Spuren
+FIXED_ROWS = [("call", "Tel"), ("vpn", "VPN"), ("tv", "TV")]
+
+
+def row_kind(activity):
+    """Feste Zeile eines Eintrags ("call", "vpn", "tv") oder None für die freien Spuren."""
+    kind = activity.get("type", "")
+    if activity.get("direction") or kind == "Telefonat":
+        return "call"
+    if kind.startswith("VPN"):
+        return "vpn"
+    if kind.startswith("TeamViewer"):
+        return "tv"
+    return None
+
+
 def type_label(activity):
     """Typ-Text für Liste und Details, bei Telefonaten mit Richtung."""
+    if activity.get("ai"):
+        text = f"KI: {activity.get('category', '')}"
+        return text + " (übernommen)" if activity.get("status") == "übernommen" else text
     direction = activity.get("direction")
     if direction and direction != "Anruf":
         return f"{activity.get('type', '')} {direction.lower()}"
@@ -80,6 +103,14 @@ def format_duration(seconds):
     if minutes < 60:
         return f"{minutes} min"
     return f"{minutes // 60}:{minutes % 60:02d} h"
+
+
+def ai_copy_text(entry):
+    """KI-Vorschlag als Zeile fürs Ticket: Zeit, Kunde, Beschreibung."""
+    start, end = parse_time(entry["start"]), parse_time(entry["end"])
+    who = f"{entry['customer_name']}: " if entry.get("customer_name") else ""
+    return (f"{start:%H:%M}–{end:%H:%M} ({format_duration((end - start).total_seconds())})  "
+            f"{who}{entry.get('description', '')}")
 
 
 class ActivityViewDialog(QDialog):
@@ -118,6 +149,9 @@ class ActivityViewDialog(QDialog):
                      f"{p.get('customer_name', '')}" for p in activity["parts"]]
             text = (text + "\n\n" if text else "") + \
                 f"Enthält {len(lines)} Einträge:\n" + "\n".join(lines)
+        if activity.get("ai"):
+            text = activity.get("description", "")
+            form.addRow("Sicherheit:", ro_field(f"{round(activity.get('confidence', 0) * 100)} %"))
         if text:
             details = QTextEdit(text)
             details.setReadOnly(True)
@@ -135,16 +169,20 @@ class ActivityViewDialog(QDialog):
 class TimelineView(QGraphicsView):
     # Nach jedem Zeichnen: Einträge des Tages und PC-Aktivität (für die Tagesliste)
     day_loaded = pyqtSignal(list, list)
+    # Rechtsklick auf einen KI-Vorschlag: (Eintrag, "übernehmen" | "verwerfen")
+    ai_action = pyqtSignal(dict, str)
+    # Hintergrund-Thread hat TeamViewer- und RDM-Logs gelesen
+    logs_loaded = pyqtSignal(object, object, object)
 
     APP_COLORS = ["#5B8DEF", "#E67E22", "#27AE60", "#9B59B6", "#E84393",
                   "#16A085", "#C0392B", "#F1C40F", "#2C3E50", "#7F8C8D"]
 
-    LEFT = 20          # Rand links in Pixeln
+    LEFT = 30          # Rand links in Pixeln (Platz für die Zeilenbeschriftung)
     AXIS_H = 26        # Höhe der Stundenleiste oben
     PC_BAND_H = 14     # Band für die PC-Aktivität
     LANE_H = 26        # Höhe eines Eintrags
     LANE_GAP = 6
-    MIN_LANES = 4
+    MIN_LANES = 2      # freie Spuren unter den festen Zeilen (RDM, eigene Einträge)
     MAX_LANES = 10
     BASE_PX_PER_MIN = 1.2
 
@@ -162,15 +200,24 @@ class TimelineView(QGraphicsView):
         self.current_date = QDate.currentDate()
         self.calls_file = None  # wird vom Hauptfenster gesetzt (anrufe.json)
         self.tracker = None     # Aktivitätsprotokoll, vom Hauptfenster gesetzt
+        self.activity_dir = None  # Ordner des Protokolls (auch lesbar, wenn pausiert)
         self.personal_day = None  # date_str -> Personalzeiten aus ITM, vom Hauptfenster gesetzt
+        self.ai_entries = None    # date_str -> KI-Vorschläge, vom Hauptfenster gesetzt
 
         self._remote_cache = {}  # date_str -> list[conn]
-        self._tv_parser = TeamViewerParser(debug=DEBUG)
-        self._rdm_parser = RdmParser(debug=DEBUG)
-        self._vpn_parser = VpnParser(debug=DEBUG)
-        self._tv_index = None
+        self._tv_parser = TeamViewerParser(self.config)
+        self._rdm_parser = RdmParser(self.config)
+        self._vpn_parser = VpnParser(self.config)
+        self._tv_index = None   # None = Logs noch nicht gelesen
         self._rdm_index = None
+        self.vpn_reader = VpnReader()  # Sophos Connect/FortiClient; Archivdatei setzt das Hauptfenster
+        self._sophos_index = None
         self._vpn_index = None
+        self.loading = False    # Logs werden gerade im Hintergrund gelesen
+        self._reload = False    # während des Lesens erneut angefordert
+        self._thread = None
+        self._closing = False   # beim Beenden: Thread darf nichts mehr melden
+        self.logs_loaded.connect(self._on_logs_loaded)
 
         self.zoom_level = 1.0
         self.fit_day = True        # ganzen Tag ins Fenster einpassen
@@ -180,6 +227,7 @@ class TimelineView(QGraphicsView):
         self._hover_label = None   # Uhrzeit oben an der Linie
         self._day_entries = []     # gezeichnete Einträge (für die Linie)
         self._pc_band = []
+        self._ai_band = []
         self.dark_mode = self.config.get("dark_mode", False)
 
         self.setRenderHint(QPainter.Antialiasing)
@@ -213,7 +261,8 @@ class TimelineView(QGraphicsView):
     def set_dark_mode(self, enabled: bool):
         self.dark_mode = enabled
         self.init_timeline_colors()
-        self.draw_timeline(self.current_date)
+        if self._ppm:  # erst neu zeichnen, wenn schon einmal gezeichnet wurde
+            self.draw_timeline(self.current_date)
 
     # ----------------------------- Tooltip -----------------------------------
 
@@ -229,48 +278,81 @@ class TimelineView(QGraphicsView):
     # ----------------------------- Daten laden --------------------------------
 
     def refresh(self):
-        """Logdateien neu einlesen (nur geänderte Dateien werden wirklich gelesen)."""
-        self._tv_index = None
-        self._rdm_index = None
-        self._vpn_index = None
-        self._remote_cache.clear()
-        self.draw_timeline(self.current_date)
+        """Logdateien im Hintergrund neu einlesen (nur geänderte Dateien werden wirklich gelesen).
 
-    # Alter Name, falls noch irgendwo verwendet
-    update_realtime_connections = refresh
+        Große Logs oder Netzwerkpfade blockieren so weder den Start noch die Bedienung.
+        Danach wird die Timeline neu gezeichnet.
+        """
+        if self.loading:
+            self._reload = True
+            return
+        self.loading = True
+        self._thread = threading.Thread(target=self._load_logs, daemon=True)
+        self._thread.start()
+
+    def shutdown(self, timeout=3):
+        """Beim Beenden: laufendes Einlesen abwarten, danach meldet der Thread nichts mehr.
+
+        Sonst kann er nach dem Aufräumen ein Signal an die gelöschte Timeline senden
+        (Absturz beim Beenden unter Windows).
+        """
+        self._closing = True
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout)
+
+    def _start_first_load(self):
+        self.loading = False
+        self.refresh()
+
+    def _load_logs(self):
+        indexes = []
+        vpn_on = self.config.get("vpn_enabled", True)
+        for name, parser in (("TeamViewer", self._tv_parser), ("RDM", self._rdm_parser),
+                             ("VPN", self._vpn_parser)):
+            try:
+                skip = parser is self._vpn_parser and not vpn_on
+                indexes.append(ConnectionIndex([] if skip else parser.parse_logs()))
+            except Exception as e:
+                print(f"Fehler beim Lesen der {name}-Logs: {e}")
+                indexes.append(ConnectionIndex([]))
+        if not self._closing:
+            self.logs_loaded.emit(*indexes)  # Qt stellt das im GUI-Thread zu
+
+    def _on_logs_loaded(self, tv_index, rdm_index, vpn_index):
+        self._tv_index, self._rdm_index, self._vpn_index = tv_index, rdm_index, vpn_index
+        self._sophos_index = None  # Archiv der VPN-Aufzeichnung beim nächsten Zeichnen neu lesen
+        self._remote_cache.clear()
+        self.loading = False
+        if self._reload:
+            self._reload = False
+            self.refresh()
+        self.draw_timeline(self.current_date)
 
     def load_remote_connections(self, date: QDate):
         date_str = date.toString("yyyy-MM-dd")
         if date_str in self._remote_cache:
             self.remote_suggestions = self._remote_cache[date_str]
             return
-
-        if self._tv_index is None:
-            try:
-                self._tv_index = ConnectionIndex(self._tv_parser.parse_logs())
-            except Exception as e:
-                print(f"Fehler im TeamViewerParser: {e}")
-                self._tv_index = ConnectionIndex([])
-
-        if self._rdm_index is None:
-            try:
-                self._rdm_index = ConnectionIndex(self._rdm_parser.parse_logs())
-            except Exception as e:
-                print(f"Fehler im RdmParser: {e}")
-                self._rdm_index = ConnectionIndex([])
+        if self._tv_index is None:  # erster Start: ohne Logs zeichnen, sie kommen gleich nach
+            self.remote_suggestions = []
+            if not self.loading:
+                self.loading = True
+                # Erst lesen, wenn dieses Zeichnen fertig ist (sonst bremst der Thread es aus)
+                QTimer.singleShot(0, self._start_first_load)
+            return
 
         vpn_on = self.config.get("vpn_enabled", True)
-        if self._vpn_index is None:
+        if self._sophos_index is None:
             try:
-                self._vpn_index = ConnectionIndex(self._vpn_parser.parse_logs() if vpn_on else [])
+                self._sophos_index = ConnectionIndex(self.vpn_reader.connections() if vpn_on else [])
             except Exception as e:
-                print(f"Fehler im VpnParser: {e}")
-                self._vpn_index = ConnectionIndex([])
+                print(f"Fehler beim Lesen der VPN-Logs: {e}")
+                self._sophos_index = ConnectionIndex([])
 
         day = self._tv_index.get_for_date(date_str) + self._rdm_index.get_for_date(date_str)
         if not vpn_on:  # VPN abgeschaltet: auch die VPN-Einträge aus RDM weglassen
             day = [c for c in day if not c.get("type", "").startswith("VPN")]
-        day += self._vpn_index.get_for_date(date_str)
+        day += self._vpn_index.get_for_date(date_str) + self._sophos_index.get_for_date(date_str)
         for conn in day:
             conn["is_suggestion"] = True
         self.remote_suggestions = day
@@ -319,9 +401,13 @@ class TimelineView(QGraphicsView):
 
     def pc_entries_for(self, date: QDate, min_seconds=30, max_gap=60):
         """Aktive Fenster des Tages als Einträge (für Band und Tagesliste)."""
-        if not self.tracker:
+        date_str = date.toString("yyyy-MM-dd")
+        if self.tracker:
+            segments = self.tracker.segments_for(date_str)
+        elif self.activity_dir:  # pausiert: bisher Aufgezeichnetes trotzdem zeigen
+            segments = read_segments(self.activity_dir, date_str)
+        else:
             return []
-        segments = self.tracker.segments_for(date.toString("yyyy-MM-dd"))
         result = []
         for seg in merge_segments(segments, min_seconds=min_seconds, max_gap=max_gap):
             result.append({
@@ -411,11 +497,18 @@ class TimelineView(QGraphicsView):
 
         activities = self.view_entries(date)
 
-        # Spuren verteilen: überlappende Einträge kommen in die nächste Zeile
+        # Telefonate, VPN und TeamViewer je in eine feste Zeile; der Rest (v. a. RDM)
+        # wird auf Spuren verteilt: überlappende Einträge kommen in die nächste Spur
+        fixed_index = {kind: i for i, (kind, _label) in enumerate(FIXED_ROWS)}
+        n_fixed = len(FIXED_ROWS)
         lanes_end = []
         placed = []
         for a in activities:
             start, end = parse_time(a["start"]), parse_time(a["end"])
+            kind = row_kind(a)
+            if kind is not None:
+                placed.append((a, start, end, fixed_index[kind]))
+                continue
             for idx, lane_end in enumerate(lanes_end):
                 if start >= lane_end:
                     lanes_end[idx] = end
@@ -427,13 +520,20 @@ class TimelineView(QGraphicsView):
                 else:
                     lanes_end.append(end)
                     idx = len(lanes_end) - 1
-            placed.append((a, start, end, idx))
+            placed.append((a, start, end, n_fixed + idx))
 
         pc_band = self.pc_entries_for(date, min_seconds=5, max_gap=15)
+        ai_band = self.ai_entries(date.toString("yyyy-MM-dd")) if self.ai_entries else []
         n_lanes = max(self.MIN_LANES, len(lanes_end))
         band_y = self.AXIS_H + 6
-        top = band_y + (self.PC_BAND_H + 10 if self.tracker else 2)
-        content_h = top + n_lanes * (self.LANE_H + self.LANE_GAP) + 8
+        show_band = bool(self.tracker or pc_band)
+        top = band_y + (self.PC_BAND_H + 10 if show_band else 2)
+        ai_y = top
+        if ai_band:  # eigene Zeile für die KI-Vorschläge über den Einträgen
+            top += self.LANE_H + self.LANE_GAP + 4
+        row_h = self.LANE_H + self.LANE_GAP
+        free_top = top + n_fixed * row_h + 6  # kleiner Abstand vor den freien Spuren
+        content_h = free_top + n_lanes * row_h + 8
         # Platz für die horizontale Scrollleiste lassen, sonst erscheint eine senkrechte
         free_h = self.maximumViewportSize().height() - self.horizontalScrollBar().sizeHint().height()
         height = max(content_h, free_h)
@@ -479,6 +579,23 @@ class TimelineView(QGraphicsView):
             self.scene.addRect(self._x(span_start), self.AXIS_H - 3, self._x(span_end) - self._x(span_start),
                                3, no_pen, QBrush(work_color))
 
+        # Jede zweite Zeile leicht hinterlegt, damit die Zeilen unterscheidbar sind
+        stripe = QColor(255, 255, 255, 10) if self.dark_mode else QColor(0, 0, 0, 10)
+        row_tops = [top + i * row_h for i in range(n_fixed)]
+        row_tops += [free_top + i * row_h for i in range(n_lanes)]
+        for i, y in enumerate(row_tops):
+            if i % 2 == 0:
+                self.scene.addRect(0, y - self.LANE_GAP / 2, width, row_h, no_pen, QBrush(stripe))
+
+        # Beschriftung der festen Zeilen und Trennlinie zu den freien Spuren
+        row_font = QFont("Segoe UI", 7)
+        for i, (_kind, text) in enumerate(FIXED_ROWS):
+            label = self.scene.addText(text, row_font)
+            label.setDefaultTextColor(self.muted_text)
+            label.setPos(0, top + i * row_h + (self.LANE_H - label.boundingRect().height()) / 2)
+        sep_y = free_top - (6 + self.LANE_GAP) / 2
+        self.scene.addLine(0, sep_y, width, sep_y, QPen(self.hour_line, 1))
+
         # Einträge
         label_font = QFont("Segoe UI", 8)
         metrics = QFontMetrics(label_font)
@@ -488,13 +605,13 @@ class TimelineView(QGraphicsView):
             if end.date() > start.date():  # über Mitternacht
                 x2 = self._x(24 * 60)
             w = max(4.0, x2 - x1)
-            y = top + lane * (self.LANE_H + self.LANE_GAP)
+            y = top + lane * row_h + (6 if lane >= n_fixed else 0)
 
             base = entry_color(a, self.config)
             fill = QColor(base)
             if a["is_suggestion"]:
                 fill.setAlpha(110 if self.dark_mode else 70)
-                pen = QPen(base, 1.5, Qt.DashLine)
+                pen = QPen(base, 1.2)
             else:
                 fill.setAlpha(220)
                 pen = QPen(base.darker(130), 1.5)
@@ -512,8 +629,36 @@ class TimelineView(QGraphicsView):
                 item.setPos(x1 + 2, y + (self.LANE_H - item.boundingRect().height()) / 2)
                 item.setAcceptedMouseButtons(Qt.NoButton)
 
+        # KI-Vorschläge: gestrichelt, übernommene durchgezogen
+        for a in ai_band:
+            start, end = parse_time(a["start"]), parse_time(a["end"])
+            x1 = self._x(start.hour * 60 + start.minute)
+            w = max(4.0, self._x(end.hour * 60 + end.minute) - x1)
+            base = entry_color(a, self.config)
+            fill = QColor(base)
+            if a.get("status") == "übernommen":
+                fill.setAlpha(150 if self.dark_mode else 110)
+                pen = QPen(base.darker(130), 1.5)
+            else:
+                fill.setAlpha(110 if self.dark_mode else 70)
+                pen = QPen(base, 1.5, Qt.DotLine)
+            rect = self.scene.addRect(x1, ai_y, w, self.LANE_H, pen, QBrush(fill))
+            rect.setCursor(Qt.PointingHandCursor)
+            self.activity_rects[rect] = a
+            if w > 28:
+                label_text = " · ".join(t for t in (a.get("customer_name"), a.get("category")) if t)
+                item = self.scene.addText(metrics.elidedText(label_text, Qt.ElideRight, int(w - 8)),
+                                          label_font)
+                item.setDefaultTextColor(self.text_color)
+                item.setPos(x1 + 2, ai_y + (self.LANE_H - item.boundingRect().height()) / 2)
+                item.setAcceptedMouseButtons(Qt.NoButton)
+        if ai_band:
+            label = self.scene.addText("KI", QFont("Segoe UI", 7))
+            label.setDefaultTextColor(self.muted_text)
+            label.setPos(self._x(0) - 18, ai_y + 4)
+
         # PC-Aktivität als schmales Band
-        if self.tracker:
+        if show_band:
             for p in pc_band:
                 start, end = parse_time(p["start"]), parse_time(p["end"])
                 x1 = self._x(start.hour * 60 + start.minute + start.second / 60)
@@ -526,7 +671,7 @@ class TimelineView(QGraphicsView):
                 self.activity_rects[rect] = p
             label = self.scene.addText("PC", QFont("Segoe UI", 7))
             label.setDefaultTextColor(self.muted_text)
-            label.setPos(self._x(0) - 18, band_y - 3)
+            label.setPos(0, band_y - 3)
 
         # Jetzt-Linie
         if date == QDate.currentDate():
@@ -544,6 +689,7 @@ class TimelineView(QGraphicsView):
         self._hover_label.hide()
         self._day_entries = activities
         self._pc_band = pc_band
+        self._ai_band = ai_band
 
         self.setSceneRect(0, 0, width, height)
 
@@ -716,13 +862,17 @@ class TimelineView(QGraphicsView):
             lines += ["", f"<b>{escape(hovered.get('customer_name') or hovered.get('type'))}</b>",
                       escape(type_label(hovered)),
                       f"{start:%H:%M} – {end:%H:%M}  ({format_duration((end - start).total_seconds())})"]
-            if hovered.get("details"):
+            if hovered.get("ai"):
+                lines.append(escape(hovered.get("description", "")))
+                lines.append(f"<i>KI-Vorschlag, Sicherheit {round(hovered.get('confidence', 0) * 100)} %"
+                             " · Rechtsklick: übernehmen oder verwerfen</i>")
+            elif hovered.get("details"):
                 lines.append(escape(hovered["details"]))
-            if hovered.get("is_suggestion"):
+            if hovered.get("is_suggestion") and not hovered.get("ai"):
                 lines.append("<i>Vorschlag aus Log</i>")
 
         # Weitere Einträge, die zu dieser Minute liefen (Minute zählt, nicht die Sekunde)
-        others = [a for a in self._day_entries if a is not hovered
+        others = [a for a in self._ai_band + self._day_entries if a is not hovered
                   and parse_time(a["start"]).replace(second=0) <= moment < parse_time(a["end"])]
         if not any(p is hovered for p in self._pc_band):
             others += [p for p in self._pc_band
@@ -763,6 +913,27 @@ class TimelineView(QGraphicsView):
                 ActivityViewDialog(a, self).exec_()
             return
         super().mouseReleaseEvent(event)
+
+    def contextMenuEvent(self, event):
+        """Rechtsklick auf einen KI-Vorschlag: übernehmen, verwerfen, Text kopieren."""
+        a = self._activity_at(event.pos())
+        if not a or not a.get("ai"):
+            super().contextMenuEvent(event)
+            return
+        self._hide_hover()
+        menu = QMenu(self)
+        accept = menu.addAction("Vorschlag &übernehmen")
+        accept.setEnabled(a.get("status") != "übernommen")
+        reject = menu.addAction("Vorschlag &verwerfen")
+        menu.addSeparator()
+        copy = menu.addAction("Text &kopieren")
+        chosen = menu.exec_(event.globalPos())
+        if chosen is accept:
+            self.ai_action.emit(a, "übernehmen")
+        elif chosen is reject:
+            self.ai_action.emit(a, "verwerfen")
+        elif chosen is copy:
+            QApplication.clipboard().setText(ai_copy_text(a))
 
     def mouseDoubleClickEvent(self, event):
         if event.button() == Qt.LeftButton and not self._activity_at(event.pos()):

@@ -152,9 +152,9 @@ class ItmReader(BrowserReader):
         """Einen Tag lesen. False, wenn eine Anmeldung nötig ist."""
         self._set_status(f"ITM: lese {date_str} …")
         try:  # Daten der noch angezeigten Seite vergessen, damit nur die neue Seite zählt
-            self._evaluate("window.__zz = {}")
-        except RuntimeError:
-            pass
+            self._evaluate("window.__zz = {}", timeout=5)
+        except Exception:
+            pass  # z. B. leere Seite direkt nach dem Start
         self._tools.call("Page.navigate", url=self.day_url(date_str))
         js = STATE_JS % json.dumps(date_str)
         state = None

@@ -134,21 +134,27 @@ class ActivityTracker:
 
     def segments_for(self, date_str):
         """Alle Abschnitte eines Tages (inkl. des gerade laufenden)."""
-        result = []
-        path = os.path.join(self.folder, f"{date_str}.jsonl")
-        if os.path.exists(path):
-            with open(path, "r", encoding="utf-8", errors="ignore") as f:
-                for line in f:
-                    try:
-                        result.append(json.loads(line))
-                    except ValueError:
-                        continue
+        result = read_segments(self.folder, date_str)
         cur = self.current
         if cur and cur["start"].strftime("%Y-%m-%d") == date_str:
             result.append({"start": cur["start"].strftime(TIME_FMT),
                            "end": cur["last"].strftime(TIME_FMT),
                            "app": cur["app"], "title": cur["title"]})
         return result
+
+
+def read_segments(folder, date_str):
+    """Gespeicherte Abschnitte eines Tages, auch wenn die Aufzeichnung gerade pausiert ist."""
+    result = []
+    path = os.path.join(folder, f"{date_str}.jsonl")
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                try:
+                    result.append(json.loads(line))
+                except ValueError:
+                    continue
+    return result
 
 
 def merge_segments(segments, min_seconds=30, max_gap=60):
