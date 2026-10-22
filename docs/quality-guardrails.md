@@ -14,6 +14,7 @@ Qt-eigenen Mitteln.
 | Start des Hauptfensters | `tests/start_test.py` | Schritt „Starttest“ | blockiert |
 | Infobereich: Menü, Aufzeichnung pausieren/fortsetzen, Zustand überall gleich | `tests/tray_test.py` | Schritt „Infobereich …“ | blockiert |
 | TeamViewer-/RDM-Logs einlesen, Zeitformat streng | `tests/parser_test.py` | Schritt „Logs einlesen …“ | blockiert |
+| Robustheit: kaputte Dateien, große/UTF-16-Logs, offline, Leser-Absturz, Anmelde-Timeout, Fehler in Slots, eine Instanz | `tests/robustness_test.py` | Schritt „Robustheit …“ | blockiert |
 | Startzeit (Fenster sichtbar, Daten gezeichnet) | `tests/start_bench.py` | nein, von Hand | Messwert |
 
 `tests/ui_audit_test.py` öffnet Hauptfenster und alle Einstellungsdialoge ohne Bildschirm

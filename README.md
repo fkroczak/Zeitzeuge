@@ -218,9 +218,21 @@ Die Vorschläge liegen pro Tag in `ki_vorschlaege/JJJJ-MM-TT.json` im Datenordne
 | `ai_auto` | `false` | Vergangene Tage ohne Vorschläge beim Anzeigen automatisch einordnen |
 | `ai_categories` | Fernwartung, Telefonsupport, … | Kategorien, aus denen Claude wählt |
 
-### Wenn Zeitzeuge hängt
+### Wenn etwas schiefgeht
 
-Reagiert das Fenster länger als 2 Sekunden nicht, schreibt Zeitzeuge in `haenger.log` im Datenordner, an welcher Stelle im Programm es gerade hing. Diese Datei hilft, die Ursache zu finden. Sie enthält nur Programmzeilen, keine Daten aus deinen Logs.
+Zeitzeuge soll nie Daten verlieren und nie dauerhaft hängen. Das passiert bei Problemen:
+
+- **Kein Internet:** Zeitzeuge prüft kurz, ob der 3CX- oder ITM-Server erreichbar ist. Wenn nicht, startet es kein Edge. Die Statuszeile zeigt dann zum Beispiel „3CX: offline, nächster Versuch 10:42“. Nach jedem Fehlversuch wartet Zeitzeuge länger: 20 Sekunden, 40 Sekunden, 80 Sekunden und so weiter, höchstens 10 Minuten. Ist das Netz wieder da, liest es sofort weiter. Klappt es fünfmal hintereinander nicht, meldet sich Zeitzeuge einmal im Infobereich.
+- **Edge abgestürzt oder beendet:** Hast du Edge im Task-Manager beendet oder ist er abgestürzt, merkt Zeitzeuge das. Es räumt auf und startet Edge beim nächsten Durchlauf neu. Hängt ein Durchlauf länger als 15 Minuten, beendet Zeitzeuge Edge hart und fängt neu an. Jede Minute prüft ein Wächter, ob die Leser für 3CX und ITM noch laufen, und startet sie bei Bedarf neu.
+- **Anmeldefenster:** Meldest du dich 10 Minuten lang nicht an, schließt sich das Fenster von selbst. In der Statuszeile steht dann „Anmeldung abgebrochen (Zeitüberschreitung)“. Über die Meldung im Infobereich öffnest du es wieder. Schaltest du 3CX oder ITM unter **Datenquellen** aus, gehen auch ihr Edge und ihr Anmeldefenster zu.
+- **Edge-Reste:** Beim Start und beim Beenden schließt Zeitzeuge alle Edge-Fenster mit seinen eigenen Profilen (`3cx_profil`, `itm_profil`). Dein normaler Edge bleibt immer offen.
+- **Kaputte Dateien:** Ist eine Datei wie `zeitzeuge_config.json` oder `anrufe.json` beschädigt, überschreibt Zeitzeuge sie nicht. Es benennt sie um in `<Name>.defekt-<Datum>-<Uhrzeit>` und sagt dir das nach dem Start. Danach macht es mit Standardwerten weiter. Deine alten Daten stecken in der umbenannten Datei. Einzelne kaputte Einträge in einer sonst guten Datei überspringt Zeitzeuge einfach.
+- **Gesperrte Dateien:** Hält OneDrive oder ein Virenscanner eine Datei kurz fest, versucht Zeitzeuge es gleich noch einmal. Alle Dateien schreibt es so, dass bei einem Absturz die alte Fassung heil bleibt.
+- **Sehr große Logs:** Von Logdateien über 100 MB liest Zeitzeuge nur die letzten 20 MB und sagt dir das einmal. Logs in UTF-16 erkennt es von selbst. Kaputte Zeilen werden übersprungen.
+- **KI ohne Internet:** Statt einer langen Fehlermeldung steht dort „Keine Internetverbindung“.
+- **fehler.log:** Alle Fehler stehen mit Uhrzeit in `fehler.log` im Datenordner. Interne Fehler beenden Zeitzeuge nicht. Die Statuszeile zeigt höchstens einmal pro Minute einen Hinweis.
+- **Nur einmal starten:** Zeitzeuge läuft immer nur einmal. Startest du es ein zweites Mal, kommt ein kurzer Hinweis. Mit `--minimized` beendet sich der zweite Start still. Zwei Zeitzeugen würden sich sonst gegenseitig die Dateien überschreiben.
+- **Fenster hängt:** Reagiert das Fenster länger als 2 Sekunden nicht, schreibt Zeitzeuge in `haenger.log` im Datenordner, an welcher Stelle im Programm es gerade hing. Diese Datei hilft, die Ursache zu finden. Sie enthält nur Programmzeilen, keine Daten aus deinen Logs.
 
 ### Speicherort
 
@@ -288,6 +300,8 @@ Läuft RDM auf einem Server, kann Zeitzeuge dessen Log auch über das Netzwerk l
 | `request_recorder.py` | Mitschnitt der Abfragen einer Seite, mit Schwärzen von Geheimnissen |
 | `ai_classifier.py` | KI-Vorschläge über die Anthropic-API |
 | `storage.py` | Speicherort der Daten |
+| `safe_io.py` | Dateien sicher lesen und schreiben, kaputte Dateien beiseitelegen, große Logs nur am Ende lesen, `fehler.log` |
+| `net.py` | Prüfen, ob ein Server erreichbar ist, und Wartezeit nach Fehlern |
 | `tests/` | Tests, laufen bei jedem Build: Start, Bedienbarkeit, Infobereich, Log-Parser, VPN-Logs, 3CX und ITM mit nachgebauten Seiten, KI-Vorschläge mit nachgebauter API, Fensterabfrage, Anrufliste. Dazu `start_bench.py` (Startzeit messen) und `screenshots.sh` (Bildschirmfotos mit Demodaten) |
 | `settings_dialogs.py` | Dialoge für Logpfade und Aktivitätstypen |
 | `zeitzeuge_anrufe.user.js` | Liest die Anrufliste aus der 3CX-Webseite (für das Lesen über Edge) |
