@@ -8,7 +8,7 @@ Dialoge zum Eintragen von Tätigkeiten.
 
 from datetime import datetime, timedelta
 
-from PyQt5.QtCore import QDate, Qt, QTime, pyqtSignal
+from PyQt5.QtCore import QDate, QLocale, Qt, QTime, pyqtSignal
 from PyQt5.QtWidgets import (QCheckBox, QComboBox, QDateEdit, QDialog, QDialogButtonBox,
                              QFormLayout, QHBoxLayout, QLabel, QPlainTextEdit, QSpinBox,
                              QTimeEdit, QVBoxLayout, QWidget)
@@ -27,6 +27,7 @@ class _EntryForm(QWidget):
         form.setContentsMargins(0, 0, 0, 0)
 
         self.date_edit = QDateEdit(QDate(start.year, start.month, start.day))
+        self.date_edit.setLocale(QLocale(QLocale.German, QLocale.Germany))  # "Mi" statt "Wed"
         self.date_edit.setDisplayFormat("ddd dd.MM.yyyy")
         self.date_edit.setCalendarPopup(True)
         form.addRow("&Datum:", self.date_edit)
@@ -206,6 +207,7 @@ class PromptWindow(QDialog):
         layout.addWidget(buttons)
         self.form.validate_hook = self.save_btn.setEnabled
         self.form.validate()
+        self.form.text_edit.setFocus()  # gleich losschreiben
         self._done = False
 
     def set_pending(self, pending):
