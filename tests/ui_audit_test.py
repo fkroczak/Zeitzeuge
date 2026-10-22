@@ -141,8 +141,14 @@ window.activities.extend([
     {"start": f"{day} 10:15:00", "end": f"{day} 10:30:00", "type": "Anruf",
      "customer_name": "Max Muster", "details": "eingehend"},
 ])
+# KI-Vorschlag für die Zeile "KI" in der Timeline
+window.ai_store._cache[day] = {"items": [
+    {"von": "09:00", "bis": "09:45", "kunde": "Musterkunde GmbH", "kategorie": "Fernwartung",
+     "beschreibung": "Updates eingespielt", "sicherheit": 0.9}]}
 window.show()
 window.timeline.draw_timeline(window.current_date)
+if not window.timeline._ai_band:
+    problem("KI", "KI-Vorschläge erscheinen nicht in der Timeline")
 QTest.qWait(200)
 
 # 1. Namen im Hauptfenster
@@ -219,6 +225,7 @@ dialogs = {
     "Logeinstellungen": settings_dialogs.ConnectionSettingsDialog(config, "teamviewer", ["C:\\x"], "TV", window),
     "Aktivitätstypen": settings_dialogs.ActivityTypeSettingsDialog(config, window),
     "Browser-Anbindung": browser_setup.BrowserSetupDialog(config, 8765, lambda c: None, window),
+    "KI-Vorschläge": settings_dialogs.AiSettingsDialog(config, 0.0, window),
 }
 if hasattr(window, "build_pbx_dialog"):
     dialogs["3CX direkt"] = window.build_pbx_dialog()

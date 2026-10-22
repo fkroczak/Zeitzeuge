@@ -32,6 +32,11 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
     - **Arbeitsblöcke:** alles mit weniger als 10 Minuten Pause wird ein Block, zum Beispiel „01:18–02:05 · SSL VPN, EPM, OPNsense“. Praktisch fürs Ticket.
   - Die Details eines zusammengefassten Eintrags zeigen alle einzelnen Einträge.
   - Die Pausen stellst du in der `zeitzeuge_config.json` unter `merge_gap_minutes` und `block_gap_minutes` ein.
+- **KI-Vorschläge (Claude von Anthropic):** Auf Knopfdruck (F6) ordnet Claude die Spuren des Tages zu Tätigkeiten.
+  - Jeder Vorschlag hat Kunde, Kategorie (zum Beispiel Fernwartung oder Telefonsupport) und einen Satz fürs Ticket.
+  - Die Vorschläge stehen in der Timeline in einer eigenen Zeile „KI“, lila und gepunktet.
+  - Rechtsklick auf einen Vorschlag: **übernehmen** (dann durchgezogen), **verwerfen** oder **Text kopieren**.
+  - In der Tagesliste zeigt die Ansicht **KI-Vorschläge** alle Vorschläge. STRG + C kopiert sie als fertige Ticketzeilen.
 - **Zeitlinie unter der Maus:** Eine gestrichelte senkrechte Linie folgt der Maus, oben steht die genaue Uhrzeit. Der Hinweis daneben zeigt, ob du zu dieser Minute eingestempelt warst (Personalzeit oder Pause) und welche Einträge gerade liefen. Der grüne Streifen unter der Stundenleiste und der helle Hintergrund markieren die Personalzeit (ohne ITM die Arbeitszeit aus den Einstellungen).
 - **Details:** Fährst du über einen Eintrag, siehst du Kunde, Zeitraum und Dauer. Ein Klick in der Timeline, ein Doppelklick oder **Enter** in der Liste öffnet die Details.
 - **Immer aktuell:** Die Logs werden alle 2 Minuten geprüft. Mit F5 liest du sie sofort neu ein. Gelesen werden nur Dateien, die sich geändert haben.
@@ -50,6 +55,7 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
 | STRG + ← / → | Vorheriger / nächster Tag |
 | STRG + T | Heute |
 | F5 | Logs neu einlesen |
+| F6 | KI-Vorschläge für den Tag erstellen |
 | STRG + `+` / `-` | Zoom |
 | STRG + 0 | Ganzen Tag zeigen |
 | STRG + 9 | Arbeitszeit zeigen |
@@ -60,7 +66,7 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
 ## Voraussetzungen
 
 - Windows 10 oder 11
-- Python 3.9 oder neuer, wenn du das Programm aus dem Quellcode startest
+- Python 3.10 oder neuer, wenn du das Programm aus dem Quellcode startest
 - PyQt5
 
 ## Installation
@@ -159,6 +165,28 @@ Zeitzeuge öffnet die Tagesübersicht der ITM-Zeiterfassung unsichtbar mit Edge,
 
 Die Anmeldung liegt in `%LOCALAPPDATA%\Zeitzeuge\itm_profil`, die gelesenen Tage in `personalzeiten.json` im Datenordner. Die Timeline zeigt dann deine gestempelte Zeit hell und alles andere, auch die Pausen, abgedunkelt. Ohne Personalzeiten gilt wie bisher die Arbeitszeit aus den Einstellungen.
 
+### KI-Vorschläge
+
+Du brauchst einen API-Schlüssel von Anthropic (console.anthropic.com).
+
+1. **Einstellungen ▾ → KI-Vorschläge …** öffnen.
+2. Schlüssel eintragen (beginnt mit `sk-ant-`) und Modell wählen.
+3. Tag anzeigen und **✨ KI-Vorschläge** klicken oder F6 drücken.
+
+Der Schlüssel liegt nur auf deinem PC unter `%LOCALAPPDATA%\Zeitzeuge\anthropic_key.txt`, nicht im Datenordner. Alternativ liest Zeitzeuge die Umgebungsvariable `ANTHROPIC_API_KEY`.
+
+**Kosten:** Gesendet wird nur, wenn du es anstößt. Haben sich die Einträge des Tages nicht geändert, fragt Zeitzeuge vorher nach. Ein normaler Arbeitstag kostet mit Opus 5.5 meist 5 bis 15 Cent, mit Haiku 5.5 deutlich unter 1 Cent. Bei 100 $ Guthaben reicht das für viele Monate. Was bisher ausgegeben wurde, steht im Dialog.
+
+Die Vorschläge liegen pro Tag in `ki_vorschlaege/JJJJ-MM-TT.json` im Datenordner.
+
+| Schlüssel | Standard | Bedeutung |
+|---|---|---|
+| `ai_model` | `claude-opus-5-5` | Modell: `claude-opus-5-5`, `claude-sonnet-5-5` oder `claude-haiku-5-5` |
+| `ai_effort` | `low` | Wie gründlich Claude nachdenkt: `low`, `medium` oder `high` (höher = teurer) |
+| `ai_send_window_titles` | `true` | Fenstertitel aus dem Aktivitätsprotokoll mitsenden |
+| `ai_auto` | `false` | Vergangene Tage ohne Vorschläge beim Anzeigen automatisch einordnen |
+| `ai_categories` | Fernwartung, Telefonsupport, … | Kategorien, aus denen Claude wählt |
+
 ### Speicherort
 
 Zeitzeuge speichert Config, Anrufe und Aktivitätsprotokoll unter **Dokumente\Zeitzeuge**.
@@ -211,9 +239,10 @@ Läuft RDM auf einem Server, kann Zeitzeuge dessen Log auch über das Netzwerk l
 | `activity_tracker.py` | Aktivitätsprotokoll (aktives Fenster, Leerlauf) |
 | `pbx_reader.py` | Edge im Hintergrund steuern (DevTools-Protokoll), 3CX direkt auslesen |
 | `itm_reader.py` | Personalzeiten aus der ITM-Zeiterfassung lesen |
+| `ai_classifier.py` | KI-Vorschläge über die Anthropic-API |
 | `storage.py` | Speicherort der Daten |
 | `browser_setup.py` | Einrichtungsassistent für Tampermonkey |
-| `tests/` | Tests, laufen bei jedem Build: Start, 3CX und ITM mit nachgebauten Seiten, Fensterabfrage, Anrufliste |
+| `tests/` | Tests, laufen bei jedem Build: Start, 3CX und ITM mit nachgebauten Seiten, KI-Vorschläge mit nachgebauter API, Fensterabfrage, Anrufliste |
 | `settings_dialogs.py` | Dialoge für Logpfade und Aktivitätstypen |
 | `zeitzeuge_anrufe.user.js` | Tampermonkey-Skript für den 3CX-Webclient |
 | `ZeitZeuge.spec` | Build-Datei für PyInstaller |
@@ -222,9 +251,11 @@ Läuft RDM auf einem Server, kann Zeitzeuge dessen Log auch über das Netzwerk l
 
 ## Datenschutz
 
-Zeitzeuge arbeitet nur auf deinem eigenen Rechner. Es liest lokale Logdateien und nimmt Anrufe nur über `127.0.0.1` entgegen. Es werden keine Daten an fremde Server gesendet.
+Zeitzeuge arbeitet nur auf deinem eigenen Rechner. Es liest lokale Logdateien und nimmt Anrufe nur über `127.0.0.1` entgegen. Es werden keine Daten an fremde Server gesendet. Die einzige Ausnahme sind die KI-Vorschläge, und nur wenn du sie einrichtest und anstößt.
 
-Das Aktivitätsprotokoll speichert Fenstertitel. Darin können Kundennamen, Betreffzeilen von Mails oder Dateinamen stehen. Die Dateien in `aktivitaet/` gehören deshalb nur auf deinen PC. In den Ordnern `3cx_profil` und `itm_profil` liegen deine Anmeldungen bei 3CX und ITM. Sie sind zu schützen wie ein Browserprofil. Alle diese Dateien stehen in `.gitignore`, genauso wie `anrufe.json`, `personalzeiten.json` und die persönliche `zeitzeuge_config.json`.
+**KI-Vorschläge:** Dabei gehen die Einträge des Tages an Anthropic: Uhrzeiten, Kunden- und Verbindungsnamen, Anrufer und, wenn eingeschaltet, die Fenstertitel. Passwörter selbst stehen nicht in den Logs und werden nicht gesendet. Fenster aus `tracking_ignore` gehen nur als „(ausgeblendet)“ mit. Prüfe vorher, ob das zu deinen Verträgen mit Kunden passt. Wenn nicht: Fenstertitel ausschalten oder die Funktion nicht nutzen.
+
+Das Aktivitätsprotokoll speichert Fenstertitel. Darin können Kundennamen, Betreffzeilen von Mails oder Dateinamen stehen. Die Dateien in `aktivitaet/` gehören deshalb nur auf deinen PC. In den Ordnern `3cx_profil` und `itm_profil` liegen deine Anmeldungen bei 3CX und ITM. Sie sind zu schützen wie ein Browserprofil. Alle diese Dateien stehen in `.gitignore`, genauso wie `anrufe.json`, `personalzeiten.json`, `ki_vorschlaege/` und die persönliche `zeitzeuge_config.json`.
 
 
 ## Lizenz

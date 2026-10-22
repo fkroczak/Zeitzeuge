@@ -4,9 +4,9 @@ from html import escape
 
 from PyQt5.QtCore import QDate, QDateTime, Qt, pyqtSignal
 from PyQt5.QtGui import QBrush, QColor, QFont, QFontMetrics, QPainter, QPen
-from PyQt5.QtWidgets import (QDialog, QDialogButtonBox, QFormLayout,
+from PyQt5.QtWidgets import (QApplication, QDialog, QDialogButtonBox, QFormLayout,
                              QGraphicsRectItem, QGraphicsScene, QGraphicsView,
-                             QLabel, QLineEdit, QTextEdit, QVBoxLayout)
+                             QLabel, QLineEdit, QMenu, QTextEdit, QVBoxLayout)
 
 from activity_tracker import app_label, merge_segments
 from call_import import load_call_suggestions
@@ -62,6 +62,9 @@ def entry_color(activity, config):
 
 def type_label(activity):
     """Typ-Text für Liste und Details, bei Telefonaten mit Richtung."""
+    if activity.get("ai"):
+        text = f"KI: {activity.get('category', '')}"
+        return text + " (übernommen)" if activity.get("status") == "übernommen" else text
     direction = activity.get("direction")
     if direction and direction != "Anruf":
         return f"{activity.get('type', '')} {direction.lower()}"
@@ -80,6 +83,14 @@ def format_duration(seconds):
     if minutes < 60:
         return f"{minutes} min"
     return f"{minutes // 60}:{minutes % 60:02d} h"
+
+
+def ai_copy_text(entry):
+    """KI-Vorschlag als Zeile fürs Ticket: Zeit, Kunde, Beschreibung."""
+    start, end = parse_time(entry["start"]), parse_time(entry["end"])
+    who = f"{entry['customer_name']}: " if entry.get("customer_name") else ""
+    return (f"{start:%H:%M}–{end:%H:%M} ({format_duration((end - start).total_seconds())})  "
+            f"{who}{entry.get('description', '')}")
 
 
 class ActivityViewDialog(QDialog):
@@ -118,6 +129,9 @@ class ActivityViewDialog(QDialog):
                      f"{p.get('customer_name', '')}" for p in activity["parts"]]
             text = (text + "\n\n" if text else "") + \
                 f"Enthält {len(lines)} Einträge:\n" + "\n".join(lines)
+        if activity.get("ai"):
+            text = activity.get("description", "")
+            form.addRow("Sicherheit:", ro_field(f"{round(activity.get('confidence', 0) * 100)} %"))
         if text:
             details = QTextEdit(text)
             details.setReadOnly(True)
@@ -135,6 +149,8 @@ class ActivityViewDialog(QDialog):
 class TimelineView(QGraphicsView):
     # Nach jedem Zeichnen: Einträge des Tages und PC-Aktivität (für die Tagesliste)
     day_loaded = pyqtSignal(list, list)
+    # Rechtsklick auf einen KI-Vorschlag: (Eintrag, "übernehmen" | "verwerfen")
+    ai_action = pyqtSignal(dict, str)
 
     APP_COLORS = ["#5B8DEF", "#E67E22", "#27AE60", "#9B59B6", "#E84393",
                   "#16A085", "#C0392B", "#F1C40F", "#2C3E50", "#7F8C8D"]
@@ -163,6 +179,7 @@ class TimelineView(QGraphicsView):
         self.calls_file = None  # wird vom Hauptfenster gesetzt (anrufe.json)
         self.tracker = None     # Aktivitätsprotokoll, vom Hauptfenster gesetzt
         self.personal_day = None  # date_str -> Personalzeiten aus ITM, vom Hauptfenster gesetzt
+        self.ai_entries = None    # date_str -> KI-Vorschläge, vom Hauptfenster gesetzt
 
         self._remote_cache = {}  # date_str -> list[conn]
         self._tv_parser = TeamViewerParser(debug=DEBUG)
@@ -178,6 +195,7 @@ class TimelineView(QGraphicsView):
         self._hover_label = None   # Uhrzeit oben an der Linie
         self._day_entries = []     # gezeichnete Einträge (für die Linie)
         self._pc_band = []
+        self._ai_band = []
         self.dark_mode = self.config.get("dark_mode", False)
 
         self.setRenderHint(QPainter.Antialiasing)
@@ -416,9 +434,13 @@ class TimelineView(QGraphicsView):
             placed.append((a, start, end, idx))
 
         pc_band = self.pc_entries_for(date, min_seconds=5, max_gap=15)
+        ai_band = self.ai_entries(date.toString("yyyy-MM-dd")) if self.ai_entries else []
         n_lanes = max(self.MIN_LANES, len(lanes_end))
         band_y = self.AXIS_H + 6
         top = band_y + (self.PC_BAND_H + 10 if self.tracker else 2)
+        ai_y = top
+        if ai_band:  # eigene Zeile für die KI-Vorschläge über den Einträgen
+            top += self.LANE_H + self.LANE_GAP + 4
         content_h = top + n_lanes * (self.LANE_H + self.LANE_GAP) + 8
         # Platz für die horizontale Scrollleiste lassen, sonst erscheint eine senkrechte
         free_h = self.maximumViewportSize().height() - self.horizontalScrollBar().sizeHint().height()
@@ -498,6 +520,34 @@ class TimelineView(QGraphicsView):
                 item.setPos(x1 + 2, y + (self.LANE_H - item.boundingRect().height()) / 2)
                 item.setAcceptedMouseButtons(Qt.NoButton)
 
+        # KI-Vorschläge: gestrichelt, übernommene durchgezogen
+        for a in ai_band:
+            start, end = parse_time(a["start"]), parse_time(a["end"])
+            x1 = self._x(start.hour * 60 + start.minute)
+            w = max(4.0, self._x(end.hour * 60 + end.minute) - x1)
+            base = entry_color(a, self.config)
+            fill = QColor(base)
+            if a.get("status") == "übernommen":
+                fill.setAlpha(150 if self.dark_mode else 110)
+                pen = QPen(base.darker(130), 1.5)
+            else:
+                fill.setAlpha(110 if self.dark_mode else 70)
+                pen = QPen(base, 1.5, Qt.DotLine)
+            rect = self.scene.addRect(x1, ai_y, w, self.LANE_H, pen, QBrush(fill))
+            rect.setCursor(Qt.PointingHandCursor)
+            self.activity_rects[rect] = a
+            if w > 28:
+                label_text = " · ".join(t for t in (a.get("customer_name"), a.get("category")) if t)
+                item = self.scene.addText(metrics.elidedText(label_text, Qt.ElideRight, int(w - 8)),
+                                          label_font)
+                item.setDefaultTextColor(self.text_color)
+                item.setPos(x1 + 2, ai_y + (self.LANE_H - item.boundingRect().height()) / 2)
+                item.setAcceptedMouseButtons(Qt.NoButton)
+        if ai_band:
+            label = self.scene.addText("KI", QFont("Segoe UI", 7))
+            label.setDefaultTextColor(self.muted_text)
+            label.setPos(self._x(0) - 18, ai_y + 4)
+
         # PC-Aktivität als schmales Band
         if self.tracker:
             for p in pc_band:
@@ -530,6 +580,7 @@ class TimelineView(QGraphicsView):
         self._hover_label.hide()
         self._day_entries = activities
         self._pc_band = pc_band
+        self._ai_band = ai_band
 
         self.setSceneRect(0, 0, width, height)
 
@@ -702,13 +753,17 @@ class TimelineView(QGraphicsView):
             lines += ["", f"<b>{escape(hovered.get('customer_name') or hovered.get('type'))}</b>",
                       escape(type_label(hovered)),
                       f"{start:%H:%M} – {end:%H:%M}  ({format_duration((end - start).total_seconds())})"]
-            if hovered.get("details"):
+            if hovered.get("ai"):
+                lines.append(escape(hovered.get("description", "")))
+                lines.append(f"<i>KI-Vorschlag, Sicherheit {round(hovered.get('confidence', 0) * 100)} %"
+                             " · Rechtsklick: übernehmen oder verwerfen</i>")
+            elif hovered.get("details"):
                 lines.append(escape(hovered["details"]))
-            if hovered.get("is_suggestion"):
+            if hovered.get("is_suggestion") and not hovered.get("ai"):
                 lines.append("<i>Vorschlag aus Log</i>")
 
         # Weitere Einträge, die zu dieser Minute liefen (Minute zählt, nicht die Sekunde)
-        others = [a for a in self._day_entries if a is not hovered
+        others = [a for a in self._ai_band + self._day_entries if a is not hovered
                   and parse_time(a["start"]).replace(second=0) <= moment < parse_time(a["end"])]
         if not any(p is hovered for p in self._pc_band):
             others += [p for p in self._pc_band
@@ -749,6 +804,27 @@ class TimelineView(QGraphicsView):
                 ActivityViewDialog(a, self).exec_()
             return
         super().mouseReleaseEvent(event)
+
+    def contextMenuEvent(self, event):
+        """Rechtsklick auf einen KI-Vorschlag: übernehmen, verwerfen, Text kopieren."""
+        a = self._activity_at(event.pos())
+        if not a or not a.get("ai"):
+            super().contextMenuEvent(event)
+            return
+        self._hide_hover()
+        menu = QMenu(self)
+        accept = menu.addAction("Vorschlag &übernehmen")
+        accept.setEnabled(a.get("status") != "übernommen")
+        reject = menu.addAction("Vorschlag &verwerfen")
+        menu.addSeparator()
+        copy = menu.addAction("Text &kopieren")
+        chosen = menu.exec_(event.globalPos())
+        if chosen is accept:
+            self.ai_action.emit(a, "übernehmen")
+        elif chosen is reject:
+            self.ai_action.emit(a, "verwerfen")
+        elif chosen is copy:
+            QApplication.clipboard().setText(ai_copy_text(a))
 
     def mouseDoubleClickEvent(self, event):
         if event.button() == Qt.LeftButton and not self._activity_at(event.pos()):

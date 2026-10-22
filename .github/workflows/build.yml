@@ -39,6 +39,11 @@ jobs:
           QT_QPA_PLATFORM: offscreen
         run: python tests/grouping_test.py
 
+      - name: KI-Vorschläge (nachgebaute Anthropic-API)
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python tests/ai_test.py
+
       - name: Lesbarkeit (nur Hinweis)
         run: python tests/readability_check.py
 
