@@ -176,12 +176,12 @@ if sys.platform == "win32":
     import ctypes
     from ctypes import wintypes
 
-    class _ADAPTER(ctypes.Structure):
+    class _IpAdapterAddresses(ctypes.Structure):
         pass
 
-    _ADAPTER._fields_ = [
+    _IpAdapterAddresses._fields_ = [
         ("Length", wintypes.ULONG), ("IfIndex", wintypes.DWORD),
-        ("Next", ctypes.POINTER(_ADAPTER)), ("AdapterName", ctypes.c_char_p),
+        ("Next", ctypes.POINTER(_IpAdapterAddresses)), ("AdapterName", ctypes.c_char_p),
         ("FirstUnicastAddress", ctypes.c_void_p), ("FirstAnycastAddress", ctypes.c_void_p),
         ("FirstMulticastAddress", ctypes.c_void_p), ("FirstDnsServerAddress", ctypes.c_void_p),
         ("DnsSuffix", ctypes.c_wchar_p), ("Description", ctypes.c_wchar_p),
@@ -202,7 +202,7 @@ if sys.platform == "win32":
         if ret != 0:
             return []
         result = []
-        node = ctypes.cast(buf, ctypes.POINTER(_ADAPTER))
+        node = ctypes.cast(buf, ctypes.POINTER(_IpAdapterAddresses))
         while node:
             a = node.contents
             if a.OperStatus == 1:  # IfOperStatusUp
