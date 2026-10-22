@@ -88,6 +88,15 @@ assert journal.suggest_customer({"customer_name": "+49 711 1234"}) == ""
 assert journal.suggest_customer(tv, {"123456789": "Müller GmbH"}) == "Müller GmbH"
 print("Ablage ok")
 
+def flush_deletes():
+    """Gelöschte Fenster (deleteLater) jetzt wirklich löschen. In der App passiert das in der
+    Ereignisschleife; der Test läuft ohne app.exec_(), sonst geschähe es erst im nächsten Dialog."""
+    from PyQt5.QtCore import QCoreApplication, QEvent
+    print("lösche Fenster …")
+    QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+    print("gelöscht")
+
+
 def gui_test():
     # --------------------------------------------------------------- Oberfläche
 
@@ -134,6 +143,7 @@ def gui_test():
     # Später fragen: Fenster zu, vor Ablauf keine neue Nachfrage
     prompt.reject()
     QTest.qWait(600)
+    flush_deletes()
     assert window._prompt_window is None
     window.check_prompts()
     assert window._prompt_window is None, "trotz „Später“ sofort wieder gefragt"
@@ -146,6 +156,7 @@ def gui_test():
     prompt.form.text_edit.setPlainText("Outlook-Profil neu angelegt")
     prompt.save_btn.click()
     QTest.qWait(600)
+    flush_deletes()
     items = window.journal.items(now.strftime("%Y-%m-%d"))
     assert [i["text"] for i in items] == ["Outlook-Profil neu angelegt"], items
     assert items[0]["customer"] == "Beispiel AG" and items[0]["source"] == "TeamViewer"
