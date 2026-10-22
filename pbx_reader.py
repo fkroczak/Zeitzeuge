@@ -367,11 +367,14 @@ class BrowserReader(QObject):
         # anderen Prozess ab, darum zählt die Datei, nicht der gestartete Prozess.
         deadline = time.time() + 20
         while time.time() < deadline:
-            if os.path.exists(port_file):
+            first = ""
+            try:
                 with open(port_file, encoding="utf-8") as f:
                     first = f.readline().strip()
-                if first.isdigit():
-                    return int(first)
+            except OSError:
+                pass  # fehlt noch oder Edge schreibt gerade (unter Windows gesperrt)
+            if first.isdigit():
+                return int(first)
             code = self._proc.poll()
             if code is not None and not profile_processes(self.profile_dir):
                 raise RuntimeError(f"Edge hat sich beendet, Code {code}")
