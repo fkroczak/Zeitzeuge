@@ -60,6 +60,7 @@ else:
 DATA_DIR = storage.data_dir()
 CONFIG_FILE = os.path.join(DATA_DIR, "zeitzeuge_config.json")
 CALLS_FILE = os.path.join(DATA_DIR, "anrufe.json")
+VPN_FILE = os.path.join(DATA_DIR, "vpn_verbindungen.json")
 ACTIVITY_DIR = os.path.join(DATA_DIR, "aktivitaet")
 # 3CX-Anmeldung immer lokal (nicht in OneDrive-synchronisierten Dokumenten)
 PBX_PROFILE_DIR = os.path.join(storage.local_dir(), "3cx_profil")
@@ -168,6 +169,11 @@ def load_config_with_defaults():
             os.path.expandvars(
                 r"%LOCALAPPDATA%\Devolutions\RemoteDesktopManager\Connections.log"
             )
+        ],
+        # Sophos Connect (scvpn.log, scgui.log, charon.log – charon.log enthält auch FortiClient)
+        "sophos_connect_dirs": [
+            r"C:\Program Files (x86)\Sophos\Connect",
+            r"C:\Program Files\Sophos\Connect",
         ],
         # deine gewÃ¼nschten Zeitzonen
         "timezone_correction": 0,
@@ -433,6 +439,7 @@ class TimelineApp(QMainWindow):
 
         # Anruf-Empfang für das Tampermonkey-Skript starten
         self.timeline.calls_file = CALLS_FILE
+        self.timeline.vpn_reader.archive_file = VPN_FILE
         self.call_server = None
         if self.config.get("calls_enabled", True):
             self.call_signal = CallSignal()

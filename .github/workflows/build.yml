@@ -39,6 +39,9 @@ jobs:
           QT_QPA_PLATFORM: offscreen
         run: python tests/grouping_test.py
 
+      - name: VPN-Zeiten (Sophos Connect, FortiClient)
+        run: python tests/vpn_test.py
+
       - name: Lesbarkeit (nur Hinweis)
         run: python tests/readability_check.py
 

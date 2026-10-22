@@ -12,6 +12,7 @@ from activity_tracker import app_label, merge_segments
 from call_import import load_call_suggestions
 from grouping import format_tv_id, group_entries
 from log_parsers import ConnectionIndex, RdmParser, TeamViewerParser
+from vpn_reader import VpnReader
 
 DEBUG = False  # bei Bedarf auf True setzen
 TIME_FMT = "%Y-%m-%d %H:%M:%S"
@@ -169,6 +170,8 @@ class TimelineView(QGraphicsView):
         self._rdm_parser = RdmParser(debug=DEBUG)
         self._tv_index = None
         self._rdm_index = None
+        self.vpn_reader = VpnReader()  # Archivdatei setzt das Hauptfenster
+        self._vpn_index = None
 
         self.zoom_level = 1.0
         self.fit_day = True        # ganzen Tag ins Fenster einpassen
@@ -230,6 +233,7 @@ class TimelineView(QGraphicsView):
         """Logdateien neu einlesen (nur geänderte Dateien werden wirklich gelesen)."""
         self._tv_index = None
         self._rdm_index = None
+        self._vpn_index = None
         self._remote_cache.clear()
         self.draw_timeline(self.current_date)
 
@@ -256,7 +260,16 @@ class TimelineView(QGraphicsView):
                 print(f"Fehler im RdmParser: {e}")
                 self._rdm_index = ConnectionIndex([])
 
-        day = self._tv_index.get_for_date(date_str) + self._rdm_index.get_for_date(date_str)
+        if self._vpn_index is None:
+            try:
+                self.vpn_reader.dirs = self.config.get("sophos_connect_dirs") or self.vpn_reader.dirs
+                self._vpn_index = ConnectionIndex(self.vpn_reader.connections())
+            except Exception as e:
+                print(f"Fehler beim Lesen der VPN-Logs: {e}")
+                self._vpn_index = ConnectionIndex([])
+
+        day = (self._tv_index.get_for_date(date_str) + self._rdm_index.get_for_date(date_str)
+               + self._vpn_index.get_for_date(date_str))
         for conn in day:
             conn["is_suggestion"] = True
         self.remote_suggestions = day
