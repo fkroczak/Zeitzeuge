@@ -19,7 +19,7 @@ from PyQt5.QtWidgets import (QAbstractItemView, QAction, QApplication, QProxySty
                              QTableWidgetItem, QToolBar, QToolButton,
                              QVBoxLayout, QWidget)
 
-from activity_tracker import ActivityTracker
+from activity_tracker import ActivityTracker, tracking_filters
 from ai_classifier import AI_TYPE, AiClassifier, AiStore
 import icons
 import storage
@@ -27,6 +27,8 @@ from log_parsers import VpnParser
 from vpn_reader import vpn_sources
 from settings_dialogs import (ActivityTypeSettingsDialog, AiSettingsDialog,
                               ConnectionSettingsDialog, WorkHoursDialog)
+from settings_dialogs import RulesDialog, TrackingFilterDialog
+import rules
 from grouping import format_tv_id, group_entries, work_blocks
 from timeline_only import (ActivityViewDialog, TimelineView, ai_copy_text, entry_color,
                            format_duration, parse_time, type_label)
@@ -216,6 +218,15 @@ def load_config_with_defaults():
         "tracking_enabled": True,
         "tracking_idle_minutes": 5,
         "tracking_ignore": ["KeePass", "Bitwarden", "1Password", "Online-Banking"],
+        # Fenster-Filter: "blacklist" = alles außer Sperrliste, "whitelist" = nur tracking_allow
+        "tracking_mode": "blacklist",
+        "tracking_skip": [],               # gar nicht aufzeichnen (Lücke)
+        "tracking_allow": [],              # Erlaubt-Liste für den Whitelist-Modus
+        "tracking_whitelist_other": "mask",  # andere Fenster: "mask" = "(andere)", "skip" = Lücke
+        # Klassifizierung ohne KI (rules.py); Reihenfolge = Priorität
+        "rules": rules.default_rules(),
+        "rules_gap_minutes": 5,
+        "rules_min_minutes": 2,
         "show_pc_in_list": False,
 
         "pbx_reader_enabled": False,  # 3CX direkt über Edge im Hintergrund lesen
@@ -662,6 +673,10 @@ class TimelineApp(QMainWindow):
         self.tracking_action.setCheckable(True)
         self.tracking_action.setChecked(self.config.get("tracking_enabled", True))
         self.tracking_action.toggled.connect(self.toggle_tracking)
+        self._icon_actions += [
+            (menu.addAction("Fenster-F&ilter …", self.edit_tracking_filters), "filter"),
+            (menu.addAction("&Regeln (ohne KI) …", self.edit_rules), "rules"),
+        ]
         menu.addSeparator()
         self._icon_actions += [
             (menu.addAction("&Arbeitszeiten …", self.edit_work_hours), "clock"),
@@ -1010,7 +1025,7 @@ class TimelineApp(QMainWindow):
             self.tracker = ActivityTracker(
                 ACTIVITY_DIR,
                 idle_limit=self.config.get("tracking_idle_minutes", 5) * 60,
-                ignore=self.config.get("tracking_ignore", []),
+                **tracking_filters(self.config),
             )
             self.track_timer.start(5000)
         elif not enabled and self.tracker:
@@ -1028,6 +1043,22 @@ class TimelineApp(QMainWindow):
                     and (last is None or (now - last).total_seconds() > 30)):
                 self._last_track_draw = now
                 self.timeline.draw_timeline(self.current_date)
+
+    def edit_tracking_filters(self):
+        dialog = TrackingFilterDialog(self.config, ACTIVITY_DIR, self)
+        if dialog.exec_() == dialog.Accepted:
+            dialog.apply()
+            save_config(self.config)
+            if self.tracker:  # neue Regeln gelten sofort
+                self.tracker.set_filters(**tracking_filters(self.config))
+            self.timeline.draw_timeline(self.current_date)
+
+    def edit_rules(self):
+        dialog = RulesDialog(self.config, self)
+        if dialog.exec_() == dialog.Accepted:
+            dialog.apply()
+            save_config(self.config)
+            self.timeline.draw_timeline(self.current_date)
 
     def toggle_tracking(self, enabled):
         self.config["tracking_enabled"] = enabled

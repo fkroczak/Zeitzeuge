@@ -231,6 +231,8 @@ dialogs = {
     "Logeinstellungen": settings_dialogs.ConnectionSettingsDialog(config, "teamviewer", ["C:\\x"], "TV", window),
     "Aktivitätstypen": settings_dialogs.ActivityTypeSettingsDialog(config, window),
     "KI-Vorschläge": settings_dialogs.AiSettingsDialog(config, 0.0, window),
+    "Fenster-Filter": settings_dialogs.TrackingFilterDialog(config, main_timeline.ACTIVITY_DIR, window),
+    "Regeln": settings_dialogs.RulesDialog(config, window),
 }
 if hasattr(window, "build_pbx_dialog"):
     dialogs["3CX direkt"] = window.build_pbx_dialog()
@@ -250,6 +252,26 @@ t_from.setTime(t_from.time().fromString("17:00", "HH:mm"))
 t_to.setTime(t_to.time().fromString("08:00", "HH:mm"))
 if total.text() == "frei":
     problem("Arbeitszeiten", "Ende vor Beginn wird stumm als 'frei' angezeigt statt als Fehler")
+
+# Fenster-Filter und Regeln: ungültige Regex als Text neben dem Feld, OK gesperrt
+tf = dialogs["Fenster-Filter"]
+tf.show()
+tf.edits["tracking_skip"].setPlainText("steam\nre:(kaputt")
+label = tf.error_labels["tracking_skip"]
+if tf.ok_button.isEnabled() or not label.isVisible() or "Zeile 2" not in label.text():
+    problem("Fenster-Filter", "ungültige Regex wird nicht neben dem Feld gemeldet oder OK bleibt frei")
+tf.edits["tracking_skip"].setPlainText("steam")
+if not tf.ok_button.isEnabled():
+    problem("Fenster-Filter", "OK bleibt nach Korrektur gesperrt")
+tf.close()
+rd = dialogs["Regeln"]
+rd.show()
+rd.table.setCurrentCell(0, 1)
+rd.match_edit.setText("re:[")
+rd.match_edit.textEdited.emit("re:[")
+if rd.ok_button.isEnabled() or not rd.match_error.isVisible() or not rd.table_error.isVisible():
+    problem("Regeln", "ungültige Regex wird nicht neben dem Feld gemeldet oder OK bleibt frei")
+rd.close()
 
 # Fenster sehr schmal: wichtige Knöpfe bleiben erreichbar (Reflow)
 window.resize(640, 480)
