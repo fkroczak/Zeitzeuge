@@ -15,7 +15,7 @@ from PyQt5.QtWidgets import (QAbstractItemView, QAction, QApplication, QProxySty
                              QCheckBox, QComboBox, QDateEdit, QInputDialog, QDialog, QDialogButtonBox,
                              QFileDialog, QFormLayout, QHeaderView, QLabel, QLineEdit,
                              QMainWindow, QMenu, QMessageBox, QPushButton,
-                             QSplitter, QSystemTrayIcon, QTableWidget,
+                             QSpinBox, QSplitter, QSystemTrayIcon, QTableWidget,
                              QTableWidgetItem, QToolBar, QToolButton,
                              QVBoxLayout, QWidget)
 
@@ -195,6 +195,7 @@ def load_config_with_defaults():
         "calls_port": 8765,
         "calls_ignore_missed": True,
         "calls_min_duration": 0,
+        "calls_days_back": 14,  # 3CX: so viele Tage zurück lesen
         "calls_3cx_url": "https://voice.visaas.de:5001",
 
         # Aktivitätsprotokoll (aktives Fenster)
@@ -882,6 +883,7 @@ class TimelineApp(QMainWindow):
         self.pbx_reader = PbxReader(
             self.config.get("calls_3cx_url", ""), CALLS_FILE, PBX_PROFILE_DIR,
             open(resource_path("zeitzeuge_anrufe.user.js"), encoding="utf-8").read(), self,
+            days_back=self.config.get("calls_days_back", 14),
         )
         self.pbx_reader.status_changed.connect(self.calls_label.setText)
         self.pbx_reader.calls_added.connect(
@@ -916,7 +918,7 @@ class TimelineApp(QMainWindow):
         "pbx": dict(
             title="3CX direkt auslesen",
             text="Zeitzeuge öffnet den 3CX-Webclient unsichtbar mit Microsoft Edge (eigenes Profil) "
-                 "und liest jede Minute die Anrufliste. Beim ersten Mal liest es 14 Tage zurück, "
+                 "und liest jede Minute die Anrufliste. Es hält die eingestellten Tage vollständig, "
                  "ältere Tage beim Blättern. Tampermonkey wird dafür nicht gebraucht.\n\n"
                  "Zum Anmelden öffnet sich ein Edge-Fenster: anmelden und das Fenster schließen. "
                  "Die Anmeldung bleibt gespeichert. Ton, Mikrofon und Benachrichtigungen sind gesperrt.",
@@ -977,6 +979,14 @@ class TimelineApp(QMainWindow):
         enabled = QCheckBox(spec["enabled_text"])
         enabled.setChecked(self.config.get(enabled_key, False))
         form.addRow("", enabled)
+        days = None
+        if kind == "pbx":
+            days = QSpinBox()
+            days.setRange(1, 365)
+            days.setSuffix(" Tage")
+            days.setValue(self.config.get("calls_days_back", 14))
+            days.setToolTip("Ältere Tage liest Zeitzeuge nach, sobald du sie anzeigst.")
+            form.addRow("Anrufe zurück lesen:", days)
         layout.addLayout(form)
 
         status = QLabel("Aus")
@@ -986,6 +996,9 @@ class TimelineApp(QMainWindow):
         def apply():
             url = url_edit.text().strip().rstrip("/")
             changed = url != self.config.get(url_key)
+            if days and days.value() != self.config.get("calls_days_back", 14):
+                self.config["calls_days_back"] = days.value()
+                changed = True  # Leser mit der neuen Zahl neu starten
             self.config[url_key] = url
             self.config[enabled_key] = enabled.isChecked()
             save_config(self.config)

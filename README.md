@@ -16,7 +16,7 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
   - Angezeigte Passwörter, Benutzernamen und Einmal-Passwörter (OTP).
 - **Telefonate aus 3CX:** Zeitzeuge liest die Anrufliste selbst aus dem 3CX-Webclient, ohne API und ohne dass du die Webseite offen haben musst. Alternativ geht es über ein Tampermonkey-Skript in Chrome (siehe unten).
   - Alle gelesenen Anrufe landen in `anrufe.json`. So entsteht eine eigene Anrufliste, die auch offline bleibt.
-  - Beim ersten Lauf scrollt Zeitzeuge die Liste 14 Tage zurück. Blätterst du in Zeitzeuge auf einen älteren Tag, liest es automatisch bis dorthin nach.
+  - Zeitzeuge scrollt die Liste so viele Tage zurück, wie du einstellst (Standard 14). Blätterst du in Zeitzeuge auf einen älteren Tag, liest es automatisch bis dorthin nach.
 - **Personalzeiten aus der ITM-Zeiterfassung:** Zeitzeuge liest deine gestempelten Zeiten und hebt sie in der Timeline als Arbeitszeit hervor. Pausen sind abgedunkelt. Die Statuszeile zeigt die gewertete Zeit und die Sollzeit.
 - **Aktivitätsprotokoll:** Alle 5 Sekunden merkt sich Zeitzeuge das aktive Fenster, zum Beispiel eine RDP-Sitzung, einen Browser-Tab, Outlook oder PuTTY.
   - Es erscheint als farbiges Band „PC“ oben in der Timeline, eine Farbe pro Programm.
@@ -115,7 +115,7 @@ Standardpfade:
 
 Die Anmeldung bleibt gespeichert (`%LOCALAPPDATA%\Zeitzeuge\3cx_profil`). Läuft sie ab, meldet sich Zeitzeuge im Infobereich. Ein Klick auf die Meldung öffnet die Anmeldung. Ton, Mikrofon und Benachrichtigungen sind gesperrt, dort klingelt also nichts. Für 3CX zählt Zeitzeuge aber als zusätzlich angemeldeter Webclient.
 
-Beim ersten Lauf scrollt Zeitzeuge die Anrufliste 14 Tage zurück. Bis zu welchem Tag die Anrufe vollständig sind, merkt es sich in `anrufe_stand.json`. Zeigst du einen älteren Tag an, scrollt Zeitzeuge im Hintergrund bis dorthin weiter. Das geht nur so weit zurück, wie 3CX die Anrufe selbst noch anzeigt.
+Zeitzeuge scrollt die Anrufliste so viele Tage zurück, wie unter **Anrufe zurück lesen** im Dialog eingestellt ist (Standard 14, Schlüssel `calls_days_back`). Erhöhst du die Zahl, liest es die fehlenden Tage nach. Bis zu welchem Tag die Anrufe vollständig sind, merkt es sich in `anrufe_stand.json`. Zeigst du einen älteren Tag an, scrollt Zeitzeuge im Hintergrund bis dorthin weiter. Das geht nur so weit zurück, wie 3CX die Anrufe selbst noch anzeigt.
 
 **Variante 2: über Chrome und Tampermonkey.** Das ist sinnvoll, wenn du die 3CX-Webseite ohnehin offen hast. Am einfachsten über **Einstellungen → Datenquellen → 3CX über Chrome/Tampermonkey einrichten …**. Der Assistent öffnet nacheinander die richtigen Seiten in Chrome, und du bestätigst jeweils mit einem Klick:
 
@@ -147,6 +147,7 @@ Die Einstellungen für Telefonate stehen in `zeitzeuge_config.json`:
 | `call_colors` | blau / grün / rot | Farben für eingehende, ausgehende und verpasste Anrufe, z. B. `{"Eingehend": "#3D8BFD"}` |
 | `calls_3cx_url` | `https://voice.visaas.de:5001` | Adresse des 3CX-Webclients |
 | `pbx_reader_enabled` | `false` | Variante 1: Zeitzeuge liest 3CX selbst |
+| `calls_days_back` | `14` | Variante 1: so viele Tage liest Zeitzeuge zurück |
 
 ### Personalzeiten aus der ITM-Zeiterfassung
 
