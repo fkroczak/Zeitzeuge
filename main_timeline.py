@@ -560,9 +560,9 @@ class TimelineApp(QMainWindow):
         return action
 
     def _build_toolbar(self):
-        """Werkzeugleiste: links die Werkzeuge, rechts Tag wählen und Einstellungen.
+        """Werkzeugleiste: links Tag wählen, in der Mitte die Werkzeuge, rechts Einstellungen.
 
-        Der rechte Teil steht außerhalb des Überlaufs (»), Einstellungen verschwindet also
+        Tag und Einstellungen stehen außerhalb des Überlaufs (»), sie verschwinden also
         nie. Wird das Fenster schmal, zeigen zuerst "Ganzer Tag" und "Arbeitszeit" nur
         noch ihr Symbol, danach rutschen Werkzeuge in den Überlauf. Jeder Knopf hat einen
         Hinweis beim Darüberfahren.
@@ -579,7 +579,29 @@ class TimelineApp(QMainWindow):
         row.setSpacing(4)
         outer.addWidget(header)
 
-        # ---- links: Werkzeuge (dürfen im schmalen Fenster in den Überlauf)
+        # ---- links: Tag wählen (immer sichtbar)
+        days = QToolBar("Tag", header)
+        days.setObjectName("fixed")
+        days.setIconSize(QSize(18, 18))
+        days.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        prev_day = self._action("Vorheriger Tag", self.show_previous_day, "Ctrl+Left", icon_name="prev")
+        next_day = self._action("Nächster Tag", self.show_next_day, "Ctrl+Right", icon_name="next")
+        days.addAction(prev_day)
+        self.date_edit = QDateEdit(self.current_date, self)
+        self.date_edit.setAccessibleName("Datum")
+        self.date_edit.setToolTip("Tag wählen")
+        self.date_edit.setLocale(GERMAN)
+        self.date_edit.setDisplayFormat("ddd dd.MM.yyyy")
+        self.date_edit.setCalendarPopup(True)
+        self.date_edit.dateChanged.connect(self.date_changed)
+        days.addWidget(self.date_edit)
+        days.addAction(next_day)
+        days.addAction(self._action("Heute", self.show_today, "Ctrl+T", "Heute zeigen", "today"))
+        days.addSeparator()
+        days.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Preferred)
+        row.addWidget(days, 0)
+
+        # ---- Mitte: Werkzeuge (dürfen im schmalen Fenster in den Überlauf)
         tb = QToolBar("Werkzeuge", header)
         tb.setObjectName("tools")
         tb.setIconSize(QSize(18, 18))
@@ -636,30 +658,15 @@ class TimelineApp(QMainWindow):
         # Mit Text, solange Platz ist; im schmalen Fenster nur das Symbol
         self._adaptive_buttons = [tb.widgetForAction(whole_day), tb.widgetForAction(work_time)]
 
-        # ---- rechts: Tag wählen, ganz außen Einstellungen (immer sichtbar)
-        right = QToolBar("Tag und Einstellungen", header)
+        # ---- rechts: Einstellungen (immer sichtbar)
+        right = QToolBar("Einstellungen", header)
         right.setObjectName("fixed")
         right.setIconSize(QSize(18, 18))
-        right.setToolButtonStyle(Qt.ToolButtonIconOnly)
-        prev_day = self._action("Vorheriger Tag", self.show_previous_day, "Ctrl+Left", icon_name="prev")
-        next_day = self._action("Nächster Tag", self.show_next_day, "Ctrl+Right", icon_name="next")
-        right.addAction(prev_day)
-        self.date_edit = QDateEdit(self.current_date, self)
-        self.date_edit.setAccessibleName("Datum")
-        self.date_edit.setToolTip("Tag wählen")
-        self.date_edit.setLocale(GERMAN)
-        self.date_edit.setDisplayFormat("ddd dd.MM.yyyy")
-        self.date_edit.setCalendarPopup(True)
-        self.date_edit.dateChanged.connect(self.date_changed)
-        right.addWidget(self.date_edit)
-        right.addAction(next_day)
-        right.addAction(self._action("Heute", self.show_today, "Ctrl+T", "Heute zeigen", "today"))
-        right.addSeparator()
         right.addWidget(self._build_settings_button())
         right.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Preferred)
         row.addWidget(right, 0)
 
-        for bar in (tb, right):
+        for bar in (days, tb, right):
             # Screenreader lesen sonst nur das Symbol vor
             for action in bar.actions():
                 button = bar.widgetForAction(action)

@@ -111,8 +111,9 @@ Die fertige `ZeitZeuge.exe` liegt danach in `dist/`. Die Einstellungsdatei `zeit
 
 Die Werkzeugleiste ist so aufgeteilt:
 
-- **Links:** Aktualisieren, Ansicht der Tagesliste (Auge), PC-Verlauf (Bildschirm), KI-Vorschläge (Stern), Lupen, Ganzer Tag und Arbeitszeit.
-- **Rechts:** vorheriger Tag, Datum, nächster Tag, Heute und ganz außen **Einstellungen** (☰).
+- **Links:** vorheriger Tag, Datum, nächster Tag und Heute.
+- **Daneben:** Aktualisieren, Ansicht der Tagesliste (Auge), PC-Verlauf (Bildschirm), KI-Vorschläge (Stern), Lupen, Ganzer Tag und Arbeitszeit.
+- **Rechts:** **Einstellungen** (☰).
 
 Fährst du über einen Knopf, erklärt ein Hinweis, was er tut. Im schmalen Fenster zeigen „Ganzer Tag“ und „Arbeitszeit“ nur noch ihr Symbol, danach rutschen Werkzeuge in den Überlauf (»). Tag und Einstellungen bleiben immer sichtbar.
 
