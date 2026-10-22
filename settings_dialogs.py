@@ -1,12 +1,12 @@
 import os
 
-from PyQt5.QtCore import Qt, QTime
+from PyQt5.QtCore import QTime
 from PyQt5.QtGui import QColor
-from PyQt5.QtWidgets import *
+from PyQt5.QtWidgets import (QCheckBox, QColorDialog, QComboBox, QDialog, QDialogButtonBox,
+                             QFileDialog, QFormLayout, QGridLayout, QGroupBox,
+                             QHBoxLayout, QInputDialog, QLabel, QLineEdit, QListWidget,
+                             QPlainTextEdit, QPushButton, QSpinBox, QTimeEdit, QVBoxLayout)
 
-DEBUG = False
-
-# In settings_dialogs.py
 class ConnectionSettingsDialog(QDialog):
     def __init__(self, config, config_key, default_paths, title, parent=None,
                  enabled_text=None, folders=False, hint=None):
@@ -208,90 +208,6 @@ class ActivityTypeSettingsDialog(QDialog):
     def get_types(self):
         return [self.type_list.item(i).text() for i in range(self.type_list.count())]
 
-class TapiSettingsDialog(QDialog):
-    def __init__(self, config, parent=None):
-        super().__init__(parent)
-        self.config = config
-        self.setWindowTitle("Telefonie-Einstellungen")
-        self.setMinimumWidth(400)
-        self.init_ui()
-
-    def init_ui(self):
-        layout = QVBoxLayout()
-        
-        # Aktivierung
-        enable_group = QGroupBox("Telefonie-Integration")
-        enable_layout = QVBoxLayout()
-        self.enable_check = QCheckBox("Telefonie-Integration aktivieren")
-        self.enable_check.setChecked(self.config.get('tapi_enabled', True))
-        enable_layout.addWidget(self.enable_check)
-        enable_group.setLayout(enable_layout)
-        layout.addWidget(enable_group)
-        
-        # Automatische Übernahme
-        auto_add_group = QGroupBox("Anrufverarbeitung")
-        auto_add_layout = QVBoxLayout()  # Diese Variable wurde hinzugefügt
-        
-        self.auto_add_check = QCheckBox("Anrufe automatisch als Aktivitäten speichern")
-        self.auto_add_check.setChecked(self.config.get('tapi_auto_add', False))
-        auto_add_layout.addWidget(self.auto_add_check)
-        
-        self.ignore_missed = QCheckBox("Verpasste Anrufe ignorieren (kürzer als Mindestdauer)")
-        self.ignore_missed.setChecked(self.config.get('tapi_ignore_missed', True))
-        auto_add_layout.addWidget(self.ignore_missed)
-        
-        min_duration_layout = QHBoxLayout()
-        min_duration_layout.addWidget(QLabel("Minimale Anrufdauer (Sekunden):"))
-        self.min_duration = QSpinBox()
-        self.min_duration.setRange(0, 300)
-        self.min_duration.setValue(self.config.get('tapi_min_duration', 10))
-        min_duration_layout.addWidget(self.min_duration)
-        auto_add_layout.addLayout(min_duration_layout)
-        
-        auto_add_group.setLayout(auto_add_layout)
-        layout.addWidget(auto_add_group)
-
-        error_group = QGroupBox("Fehlerbehandlung")
-        error_layout = QFormLayout()
-
-        self.max_errors = QSpinBox()
-        self.max_errors.setRange(1, 100)
-        self.max_errors.setValue(self.config.get('tapi_max_errors', 5))
-        error_layout.addRow("Maximale Fehler vor Deaktivierung:", self.max_errors)
-
-        error_group.setLayout(error_layout)
-        layout.addWidget(error_group)
-        
-        # Polling-Einstellungen
-        polling_group = QGroupBox("Abfrageeinstellungen")
-        polling_layout = QFormLayout()
-        
-        self.poll_interval = QSpinBox()
-        self.poll_interval.setRange(1, 60)
-        self.poll_interval.setValue(self.config.get('tapi_poll_interval', 5))
-        self.poll_interval.setSuffix(" Sekunden")
-        polling_layout.addRow("Abfrageintervall:", self.poll_interval)
-        
-        polling_group.setLayout(polling_layout)
-        layout.addWidget(polling_group)
-        
-        # Buttons
-        button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        button_box.accepted.connect(self.accept)
-        button_box.rejected.connect(self.reject)
-        layout.addWidget(button_box)
-        
-        self.setLayout(layout)
-
-    def get_settings(self):
-        return {
-            'tapi_enabled': self.enable_check.isChecked(),
-            'tapi_auto_add': self.auto_add_check.isChecked(),
-            'tapi_ignore_missed': self.ignore_missed.isChecked(),
-            'tapi_min_duration': self.min_duration.value(),
-            'tapi_poll_interval': self.poll_interval.value()
-        }
-
 class WorkHoursDialog(QDialog):
     """Arbeitszeiten pro Wochentag festlegen."""
 
@@ -382,3 +298,79 @@ class WorkHoursDialog(QDialog):
             else:
                 result[key] = ""
         return result
+
+
+class AiSettingsDialog(QDialog):
+    """Einstellungen für die KI-Vorschläge (Anthropic-API)."""
+
+    def __init__(self, config, spent_usd=0.0, parent=None):
+        super().__init__(parent)
+        import ai_classifier as ai  # erst hier, damit der Dialog auch ohne Paket aufgeht
+        self.ai = ai
+        self.config = config
+        self.setWindowTitle("KI-Vorschläge")
+        self.setMinimumWidth(540)
+        layout = QVBoxLayout(self)
+
+        info = QLabel(
+            "Zeitzeuge schickt die Einträge eines Tages an Claude von Anthropic. Zurück kommen "
+            "Tätigkeiten mit Kunde, Kategorie und einem Satz fürs Ticket. Sie stehen in der "
+            "Timeline in der Zeile „KI“ und in der Tagesliste unter „KI-Vorschläge“.\n\n"
+            "Gesendet wird nur, wenn du es anstößt (F6), und nur, wenn sich der Tag geändert hat. "
+            "Ein Tag kostet meist wenige Cent.")
+        info.setWordWrap(True)
+        layout.addWidget(info)
+
+        form = QFormLayout()
+        self.key_edit = QLineEdit(ai.api_key())
+        self.key_edit.setEchoMode(QLineEdit.Password)
+        self.key_edit.setPlaceholderText("sk-ant-…")
+        if ai.key_from_env():
+            self.key_edit.setEnabled(False)
+            self.key_edit.setToolTip("Kommt aus der Umgebungsvariable ANTHROPIC_API_KEY")
+        form.addRow("API-Schlüssel:", self.key_edit)
+        key_hint = QLabel("Liegt nur auf diesem PC unter %LOCALAPPDATA%\\Zeitzeuge, "
+                          "nicht im Datenordner.")
+        key_hint.setObjectName("hint")
+        key_hint.setWordWrap(True)
+        form.addRow("", key_hint)
+
+        self.model_combo = QComboBox()
+        for mid, name, price_in, price_out in ai.MODELS:
+            self.model_combo.addItem(name, mid)
+        self.model_combo.setCurrentIndex(
+            max(0, self.model_combo.findData(config.get("ai_model", ai.DEFAULT_MODEL))))
+        form.addRow("Modell:", self.model_combo)
+
+        self.titles_check = QCheckBox("Fenstertitel mitsenden (genauere Vorschläge)")
+        self.titles_check.setChecked(config.get("ai_send_window_titles", True))
+        form.addRow("", self.titles_check)
+        self.auto_check = QCheckBox("Vergangene Tage beim Anzeigen automatisch einordnen")
+        self.auto_check.setChecked(config.get("ai_auto", False))
+        form.addRow("", self.auto_check)
+
+        self.categories_edit = QPlainTextEdit("\n".join(config.get("ai_categories")
+                                                       or ai.DEFAULT_CATEGORIES))
+        self.categories_edit.setAccessibleName("Kategorien, eine pro Zeile")
+        self.categories_edit.setMaximumHeight(150)
+        form.addRow("Kategorien\n(eine pro Zeile):", self.categories_edit)
+        layout.addLayout(form)
+
+        spent = QLabel(f"Bisher ausgegeben: ca. {spent_usd:.2f} $".replace(".", ","))
+        spent.setObjectName("hint")
+        layout.addWidget(spent)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def apply(self):
+        """Eingaben in die Config übernehmen und den Schlüssel lokal speichern."""
+        if not self.ai.key_from_env():
+            self.ai.save_api_key(self.key_edit.text().strip())
+        self.config["ai_model"] = self.model_combo.currentData()
+        self.config["ai_send_window_titles"] = self.titles_check.isChecked()
+        self.config["ai_auto"] = self.auto_check.isChecked()
+        cats = [c.strip() for c in self.categories_edit.toPlainText().splitlines() if c.strip()]
+        self.config["ai_categories"] = list(dict.fromkeys(cats)) or list(self.ai.DEFAULT_CATEGORIES)

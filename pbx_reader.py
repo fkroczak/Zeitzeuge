@@ -242,6 +242,7 @@ class BrowserReader(QObject):
     recording_done = pyqtSignal(str)  # Pfad der Mitschnitt-Datei, leer bei Fehler
 
     READ_INTERVAL = 60  # Sekunden zwischen zwei Durchläufen
+    RETRY_INTERVAL = 20  # nach einem Fehler früher neu versuchen
     NAME = "Seite"
 
     def __init__(self, base_url, profile_dir, parent=None):
@@ -257,6 +258,7 @@ class BrowserReader(QObject):
         self._wake = threading.Event()
         self._login_open = False
         self._started = False  # Browser frisch gestartet (Seite lädt noch)
+        self._failed = False   # letzter Durchlauf mit Fehler
         self._thread = None
         # Nur ein Edge darf das Profil benutzen: Lesen und Anmelden wechseln sich ab
         self._browser_lock = threading.Lock()
@@ -548,7 +550,8 @@ class BrowserReader(QObject):
             if not self._login_open:
                 with self._browser_lock:
                     self._step()
-            self._wake.wait(self.READ_INTERVAL)
+            self._wake.wait(min(self.RETRY_INTERVAL, self.READ_INTERVAL) if self._failed
+                            else self.READ_INTERVAL)
             self._wake.clear()
         self._close_browser()
 
@@ -561,7 +564,9 @@ class BrowserReader(QObject):
                 self._start_browser()
                 self._started = True
             self._tick()
+            self._failed = False
         except Exception as e:
+            self._failed = True
             self._set_status(f"{self.NAME}: Fehler ({e}), neuer Versuch")
             self._close_browser()
 
