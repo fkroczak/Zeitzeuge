@@ -2,10 +2,14 @@ import os
 
 from PyQt5.QtCore import QTime
 from PyQt5.QtGui import QColor
-from PyQt5.QtWidgets import (QCheckBox, QColorDialog, QComboBox, QDialog, QDialogButtonBox,
+from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import (QAbstractItemView, QButtonGroup, QCheckBox, QColorDialog,
+                             QComboBox, QDialog, QDialogButtonBox,
                              QFileDialog, QFormLayout, QGridLayout, QGroupBox,
-                             QHBoxLayout, QInputDialog, QLabel, QLineEdit, QListWidget,
-                             QPlainTextEdit, QPushButton, QSpinBox, QTimeEdit, QVBoxLayout)
+                             QHBoxLayout, QHeaderView, QInputDialog, QLabel, QLineEdit,
+                             QListWidget, QListWidgetItem, QMessageBox, QPlainTextEdit,
+                             QPushButton, QRadioButton, QSpinBox, QTableWidget,
+                             QTableWidgetItem, QTimeEdit, QVBoxLayout)
 
 class ConnectionSettingsDialog(QDialog):
     def __init__(self, config, config_key, default_paths, title, parent=None,
@@ -374,3 +378,386 @@ class AiSettingsDialog(QDialog):
         self.config["ai_auto"] = self.auto_check.isChecked()
         cats = [c.strip() for c in self.categories_edit.toPlainText().splitlines() if c.strip()]
         self.config["ai_categories"] = list(dict.fromkeys(cats)) or list(self.ai.DEFAULT_CATEGORIES)
+
+
+def _lines(edit):
+    return [line.strip() for line in edit.toPlainText().splitlines() if line.strip()]
+
+
+class TrackingFilterDialog(QDialog):
+    """Fenster-Filter fürs Aktivitätsprotokoll: Sperrliste (zwei Stufen) und Erlaubt-Liste."""
+
+    LISTS = [  # Config-Schlüssel, Beschriftung, Name für Screenreader
+        ("tracking_ignore", "Titel aus&blenden:", "Titel ausblenden, ein Eintrag pro Zeile"),
+        ("tracking_skip", "Gar nicht auf&zeichnen:", "Gar nicht aufzeichnen, ein Eintrag pro Zeile"),
+        ("tracking_allow", "Er&laubt (Whitelist):", "Erlaubte Fenster, ein Eintrag pro Zeile"),
+    ]
+
+    def __init__(self, config, activity_dir=None, parent=None):
+        super().__init__(parent)
+        import activity_tracker
+        self.at = activity_tracker
+        self.config = config
+        self.setWindowTitle("Fenster-Filter")
+        self.setMinimumWidth(560)
+        layout = QVBoxLayout(self)
+
+        hint = QLabel("Ein Eintrag pro Zeile. Er passt auf den Programmnamen (z. B. chrome.exe "
+                      "oder chrome) oder auf einen Teil des Fenstertitels. Groß und klein ist egal. "
+                      "Mit „re:“ davor ist der Eintrag ein regulärer Ausdruck.")
+        hint.setObjectName("hint")
+        hint.setWordWrap(True)
+        layout.addWidget(hint)
+
+        mode_box = QGroupBox("Was soll aufgezeichnet werden?")
+        mode_layout = QVBoxLayout(mode_box)
+        self.black_radio = QRadioButton("&Alles, außer der Sperrliste (Blacklist)")
+        self.white_radio = QRadioButton("Nur &Erlaubtes (Whitelist)")
+        self.mode_group = QButtonGroup(self)
+        for radio in (self.black_radio, self.white_radio):
+            self.mode_group.addButton(radio)
+            mode_layout.addWidget(radio)
+        (self.white_radio if config.get("tracking_mode") == "whitelist"
+         else self.black_radio).setChecked(True)
+        layout.addWidget(mode_box)
+
+        form = QFormLayout()
+        self.edits, self.error_labels = {}, {}
+        for key, label, name in self.LISTS:
+            edit = QPlainTextEdit("\n".join(config.get(key, [])))
+            edit.setAccessibleName(name)
+            edit.setMaximumHeight(90)
+            edit.setTabChangesFocus(True)
+            edit.textChanged.connect(self.validate)
+            error = QLabel()
+            error.setWordWrap(True)
+            error.setVisible(False)
+            form.addRow(label, edit)
+            form.addRow("", error)
+            self.edits[key], self.error_labels[key] = edit, error
+        stage_hint = QLabel("„Titel ausblenden“: Die Zeit zählt weiter, der Titel heißt „(ausgeblendet)“. "
+                            "„Gar nicht aufzeichnen“: Die Zeit bleibt leer, z. B. für private Programme. "
+                            "Die Sperrliste gilt auch im Whitelist-Modus.")
+        stage_hint.setObjectName("hint")
+        stage_hint.setWordWrap(True)
+        form.addRow("", stage_hint)
+        self.other_combo = QComboBox()
+        self.other_combo.addItem("als „(andere)“ zählen, Titel nicht speichern", "mask")
+        self.other_combo.addItem("gar nicht aufzeichnen", "skip")
+        self.other_combo.setCurrentIndex(
+            max(0, self.other_combo.findData(config.get("tracking_whitelist_other", "mask"))))
+        form.addRow("Andere &Fenster:", self.other_combo)
+        self.empty_hint = QLabel("Die Erlaubt-Liste ist leer. Dann wird kein Fenster mit Titel "
+                                 "aufgezeichnet.")
+        self.empty_hint.setObjectName("hint")
+        self.empty_hint.setWordWrap(True)
+        form.addRow("", self.empty_hint)
+        layout.addLayout(form)
+
+        # Häufige Programme der letzten 7 Tage zum schnellen Übernehmen
+        top_box = QGroupBox("Häufige Programme der letzten 7 Tage")
+        top_layout = QVBoxLayout(top_box)
+        self.top_list = QListWidget()
+        self.top_list.setAccessibleName("Häufige Programme der letzten 7 Tage")
+        self.top_list.setMaximumHeight(120)
+        for app, seconds in (activity_tracker.top_apps(activity_dir) if activity_dir else []):
+            minutes = int(seconds // 60)
+            item = QListWidgetItem(f"{app}  –  {minutes // 60}:{minutes % 60:02d} h")
+            item.setData(Qt.UserRole, app)
+            self.top_list.addItem(item)
+        if not self.top_list.count():
+            self.top_list.addItem("Noch nichts aufgezeichnet")
+            self.top_list.setEnabled(False)
+        top_layout.addWidget(self.top_list)
+        buttons_row = QHBoxLayout()
+        self.add_buttons = []
+        for text, key in [("&Titel ausblenden", "tracking_ignore"),
+                          ("&Nicht aufzeichnen", "tracking_skip"), ("E&rlauben", "tracking_allow")]:
+            btn = QPushButton(text)
+            btn.setToolTip("Gewähltes Programm in diese Liste übernehmen")
+            btn.clicked.connect(lambda _=False, k=key: self.add_selected(k))
+            btn.setEnabled(False)
+            buttons_row.addWidget(btn)
+            self.add_buttons.append(btn)
+        self.top_list.currentItemChanged.connect(self.update_add_buttons)
+        top_layout.addLayout(buttons_row)
+        layout.addWidget(top_box)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+        self.ok_button = buttons.button(QDialogButtonBox.Ok)
+        self.white_radio.toggled.connect(self.validate)
+        self.validate()
+
+    def update_add_buttons(self, item=None, _old=None):
+        for btn in self.add_buttons:
+            btn.setEnabled(item is not None and bool(item.data(Qt.UserRole)))
+
+    def add_selected(self, key):
+        item = self.top_list.currentItem()
+        app = item.data(Qt.UserRole) if item else None
+        if not app:
+            return
+        edit = self.edits[key]
+        if app.lower() not in (line.lower() for line in _lines(edit)):
+            edit.setPlainText("\n".join(_lines(edit) + [app]))
+
+    def errors(self):
+        """{Schlüssel: [(Zeile, Eintrag, Meldung)]} der ungültigen Einträge."""
+        result = {}
+        for key, edit in self.edits.items():
+            _, errs = self.at.compile_list(edit.toPlainText().splitlines())
+            if errs:
+                result[key] = errs
+        return result
+
+    def validate(self, *_):
+        """Fehler neben dem Feld zeigen und OK sperren, solange es welche gibt."""
+        whitelist = self.white_radio.isChecked()
+        self.edits["tracking_allow"].setEnabled(whitelist)
+        self.other_combo.setEnabled(whitelist)
+        self.empty_hint.setVisible(whitelist and not _lines(self.edits["tracking_allow"]))
+        errors = self.errors()
+        for key, label in self.error_labels.items():
+            errs = errors.get(key, [])
+            label.setText("\n".join(f"⚠ Zeile {no}: {msg}" for no, _item, msg in errs))
+            label.setVisible(bool(errs))
+        self.ok_button.setEnabled(not errors)
+        return not errors
+
+    def apply(self):
+        """Eingaben in die Config übernehmen."""
+        for key, edit in self.edits.items():
+            self.config[key] = list(dict.fromkeys(_lines(edit)))
+        self.config["tracking_mode"] = "whitelist" if self.white_radio.isChecked() else "blacklist"
+        self.config["tracking_whitelist_other"] = self.other_combo.currentData()
+
+
+class RulesDialog(QDialog):
+    """Regeln für die Klassifizierung ohne KI. Reihenfolge = Priorität."""
+
+    COLUMNS = ["An", "Name", "Feld", "Muster", "Kategorie", "Kunde"]
+
+    def __init__(self, config, parent=None):
+        super().__init__(parent)
+        import rules
+        self.rules_mod = rules
+        self.config = config
+        self.rules = [dict(r) for r in (config.get("rules") or []) if isinstance(r, dict)]
+        self._loading = True
+        self.setWindowTitle("Regeln (ohne KI)")
+        self.setMinimumWidth(720)
+        layout = QVBoxLayout(self)
+
+        hint = QLabel("Die Regeln ordnen Verbindungen, Telefonate und Fenster einer Kategorie und "
+                      "einem Kunden zu. Die erste passende Regel gewinnt, Wichtiges steht also oben. "
+                      "Verbindungen und Telefonate gehen immer vor PC-Fenstern.")
+        hint.setObjectName("hint")
+        hint.setWordWrap(True)
+        layout.addWidget(hint)
+
+        self.table = QTableWidget(0, len(self.COLUMNS))
+        self.table.setAccessibleName("Regeln, oberste zuerst")
+        self.table.setHorizontalHeaderLabels(self.COLUMNS)
+        self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.table.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.table.verticalHeader().setVisible(False)
+        header = self.table.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.Stretch)
+        self.table.setMinimumHeight(220)
+        self.table.currentCellChanged.connect(lambda row, *_: self.load_form(row))
+        self.table.itemChanged.connect(self.on_item_changed)
+        layout.addWidget(self.table)
+
+        self.table_error = QLabel()
+        self.table_error.setWordWrap(True)
+        self.table_error.setVisible(False)
+        layout.addWidget(self.table_error)
+
+        row = QHBoxLayout()
+        self.add_btn = QPushButton("&Hinzufügen")
+        self.remove_btn = QPushButton("&Entfernen")
+        self.up_btn = QPushButton("Nach &oben")
+        self.down_btn = QPushButton("Nach &unten")
+        self.reset_btn = QPushButton("&Standardregeln wiederherstellen …")
+        for btn, slot in [(self.add_btn, self.add_rule), (self.remove_btn, self.remove_rule),
+                          (self.up_btn, lambda: self.move_rule(-1)), (self.down_btn, lambda: self.move_rule(1)),
+                          (self.reset_btn, self.reset_rules)]:
+            btn.clicked.connect(slot)
+            row.addWidget(btn)
+        row.insertStretch(4)
+        layout.addLayout(row)
+
+        self.form_box = QGroupBox("Ausgewählte Regel")
+        form = QFormLayout(self.form_box)
+        self.enabled_check = QCheckBox("Regel &aktiv")
+        form.addRow("", self.enabled_check)
+        self.name_edit = QLineEdit()
+        form.addRow("&Name:", self.name_edit)
+        self.field_combo = QComboBox()
+        for key, label in rules.FIELDS.items():
+            self.field_combo.addItem(label, key)
+        form.addRow("&Feld:", self.field_combo)
+        self.match_edit = QLineEdit()
+        self.match_edit.setPlaceholderText("z. B. outlook  oder  re:^Ticket (\\d+)")
+        form.addRow("&Muster:", self.match_edit)
+        self.match_error = QLabel()
+        self.match_error.setWordWrap(True)
+        self.match_error.setVisible(False)
+        form.addRow("", self.match_error)
+        self.category_combo = QComboBox()
+        self.category_combo.setEditable(True)
+        self.category_combo.addItems(rules.categories(config))
+        self.category_combo.lineEdit().setAccessibleName("Kategorie")
+        form.addRow("&Kategorie:", self.category_combo)
+        self.customer_edit = QLineEdit()
+        self.customer_edit.setPlaceholderText("leer = Kunde vom Eintrag")
+        form.addRow("Kun&de:", self.customer_edit)
+        customer_hint = QLabel("Leer: Kunde vom Eintrag (bei Telefonaten der Anrufer). "
+                               "{1} setzt die erste Klammer aus dem regulären Ausdruck ein, "
+                               "z. B. den Kunden aus dem Fenstertitel.")
+        customer_hint.setObjectName("hint")
+        customer_hint.setWordWrap(True)
+        form.addRow("", customer_hint)
+        layout.addWidget(self.form_box)
+
+        self.enabled_check.toggled.connect(self.store_form)
+        self.name_edit.textEdited.connect(self.store_form)
+        self.field_combo.currentIndexChanged.connect(self.store_form)
+        self.match_edit.textEdited.connect(self.store_form)
+        self.category_combo.currentTextChanged.connect(self.store_form)
+        self.customer_edit.textEdited.connect(self.store_form)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+        self.ok_button = buttons.button(QDialogButtonBox.Ok)
+
+        self._loading = False
+        self.fill_table(0)
+
+    # ----------------------------------------------------------- Tabelle
+
+    def _row_texts(self, rule):
+        return ["", rule.get("name", ""), self.rules_mod.FIELDS.get(rule.get("field", "any"), "?"),
+                rule.get("match", ""), rule.get("category", ""),
+                rule.get("customer", "") or "(vom Eintrag)"]
+
+    def fill_table(self, select=-1):
+        self._loading = True
+        self.table.setRowCount(len(self.rules))
+        for r, rule in enumerate(self.rules):
+            self._set_row(r, rule)
+        self._loading = False
+        if 0 <= select < len(self.rules):
+            self.table.setCurrentCell(select, 1)
+        self.load_form(self.table.currentRow())
+
+    def _set_row(self, r, rule):
+        was, self._loading = self._loading, True
+        for c, text in enumerate(self._row_texts(rule)):
+            item = self.table.item(r, c)
+            if item is None:
+                item = QTableWidgetItem()
+                self.table.setItem(r, c, item)
+            item.setText(text)
+            if c == 0:
+                item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable | Qt.ItemIsUserCheckable)
+                item.setCheckState(Qt.Checked if rule.get("enabled", True) else Qt.Unchecked)
+                item.setToolTip("Regel an oder aus")
+        self._loading = was
+
+    def on_item_changed(self, item):
+        if self._loading or item.column() != 0 or item.row() >= len(self.rules):
+            return
+        self.rules[item.row()]["enabled"] = item.checkState() == Qt.Checked
+        if item.row() == self.table.currentRow():
+            self.load_form(item.row())
+        self.validate()
+
+    # ----------------------------------------------------------- Formular
+
+    def load_form(self, row):
+        has = 0 <= row < len(self.rules)
+        rule = self.rules[row] if has else {}
+        self._loading = True
+        self.form_box.setEnabled(has)
+        self.enabled_check.setChecked(rule.get("enabled", True))
+        self.name_edit.setText(rule.get("name", ""))
+        self.field_combo.setCurrentIndex(max(0, self.field_combo.findData(rule.get("field", "any"))))
+        self.match_edit.setText(rule.get("match", ""))
+        self.category_combo.setCurrentText(rule.get("category", ""))
+        self.customer_edit.setText(rule.get("customer", ""))
+        self._loading = False
+        self.remove_btn.setEnabled(has)
+        self.up_btn.setEnabled(has and row > 0)
+        self.down_btn.setEnabled(has and row < len(self.rules) - 1)
+        self.validate()
+
+    def store_form(self, *_):
+        row = self.table.currentRow()
+        if self._loading or not 0 <= row < len(self.rules):
+            return
+        self.rules[row].update({
+            "enabled": self.enabled_check.isChecked(),
+            "name": self.name_edit.text().strip(),
+            "field": self.field_combo.currentData(),
+            "match": self.match_edit.text().strip(),
+            "category": self.category_combo.currentText().strip(),
+            "customer": self.customer_edit.text().strip(),
+        })
+        self._set_row(row, self.rules[row])
+        self.validate()
+
+    def validate(self):
+        """Fehler neben dem Feld und unter der Tabelle als Text zeigen, OK sperren."""
+        errors = self.rules_mod.rule_errors(self.rules)
+        row = self.table.currentRow()
+        own = [msg for i, msg in errors if i == row]
+        self.match_error.setText(f"⚠ {own[0]}" if own else "")
+        self.match_error.setVisible(bool(own))
+        self.table_error.setText("\n".join(
+            f"⚠ Regel {i + 1} „{self.rules[i].get('name') or 'ohne Namen'}“: {msg}"
+            for i, msg in errors[:3]))
+        self.table_error.setVisible(bool(errors))
+        self.ok_button.setEnabled(not errors)
+        return not errors
+
+    # ----------------------------------------------------------- Knöpfe
+
+    def add_rule(self):
+        self.rules.append({"name": "Neue Regel", "field": "title", "match": "",
+                           "category": self.rules_mod.categories(self.config)[0],
+                           "customer": "", "enabled": True})
+        self.fill_table(len(self.rules) - 1)
+        self.match_edit.setFocus()
+
+    def remove_rule(self):
+        row = self.table.currentRow()
+        if 0 <= row < len(self.rules):
+            del self.rules[row]
+            self.fill_table(min(row, len(self.rules) - 1))
+
+    def move_rule(self, step):
+        row = self.table.currentRow()
+        new = row + step
+        if 0 <= row < len(self.rules) and 0 <= new < len(self.rules):
+            self.rules[row], self.rules[new] = self.rules[new], self.rules[row]
+            self.fill_table(new)
+
+    def reset_rules(self):
+        answer = QMessageBox.question(
+            self, "Standardregeln wiederherstellen",
+            "Alle Regeln durch die Standardregeln ersetzen? Eigene Regeln gehen dabei verloren.")
+        if answer == QMessageBox.Yes:
+            self.rules = self.rules_mod.default_rules()
+            self.fill_table(0)
+
+    def apply(self):
+        """Regeln in die Config übernehmen."""
+        self.config["rules"] = [dict(r) for r in self.rules]

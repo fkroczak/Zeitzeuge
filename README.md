@@ -33,6 +33,8 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
   - Mit **PC-Verlauf** in der Werkzeugleiste stehen die Fenster auch in der Tagesliste.
   - Nach 5 Minuten ohne Maus und Tastatur oder bei gesperrtem PC wird nichts aufgezeichnet.
   - Fenster mit bestimmten Wörtern im Titel werden nur als „(ausgeblendet)“ gespeichert, zum Beispiel Passwortmanager.
+  - Mit dem **Fenster-Filter** lässt du private Programme ganz weg oder zeichnest nur erlaubte Programme auf.
+- **Klassifizierung ohne KI:** Feste Regeln ordnen Verbindungen, Telefonate und Fenster einer Kategorie und einem Kunden zu, zum Beispiel Outlook als „E-Mail / Kommunikation“.
 - **Tagesliste** unter der Timeline mit Von, Bis, Dauer, Typ, Kunde und Details.
   - Die Statuszeile zeigt die belegte Zeit des Tages. Überschneidungen werden nicht doppelt gezählt.
   - Markierte Zeilen kopierst du mit STRG + C, zum Beispiel für die Ticket-Dokumentation.
@@ -245,6 +247,30 @@ Unter **Einstellungen → Nachfragen und Erinnerungen …** legst du fest, wann 
 
 Gefragt wird nur nach Tätigkeiten, die gerade erst geendet haben. Ältere offene Einträge stehen gestrichelt in der Zeile „Doku“, damit nichts verloren geht. Als dokumentiert gilt ein Eintrag, wenn mindestens die Hälfte seiner Zeit in deinen Tätigkeiten steckt.
 
+### Klassifizierung ohne KI (Regeln)
+
+Ohne KI und ohne Internet ordnet Zeitzeuge den Tag mit festen Regeln ein. Das kostet nichts, und kein Eintrag verlässt den PC.
+
+Eine Regel sagt: Wenn ein Feld dieses Muster enthält, gehört der Eintrag zu dieser Kategorie und diesem Kunden. Ein Beispiel: Programm enthält `outlook`, also Kategorie „E-Mail / Kommunikation“.
+
+- Du bearbeitest die Regeln unter **Einstellungen → Regeln (ohne KI) …**.
+- Die Felder sind Programm, Fenstertitel, Kunde, Typ, Details oder alle zusammen.
+- Ein Muster ist ein Textteil, groß und klein ist egal. Mit `re:` davor ist es ein regulärer Ausdruck.
+- Ist das Feld **Kunde** leer, gilt der Kunde vom Eintrag, bei Telefonaten der Anrufer. `{1}` setzt die erste Klammer aus dem regulären Ausdruck ein. So holst du den Kunden aus einem Fenstertitel wie „Ticket #123 – Müller GmbH“.
+- Die Reihenfolge zählt: Die erste passende Regel gewinnt. Mit **Nach oben** und **Nach unten** änderst du sie.
+- Verbindungen und Telefonate gehen immer vor PC-Fenstern. Ein Fenster während einer TeamViewer-Sitzung gehört also zur Sitzung.
+- Treffer mit gleicher Kategorie und gleichem Kunden werden ein Block, wenn die Pause kürzer als 5 Minuten ist. Blöcke unter 2 Minuten fallen weg. Blöcke überschneiden sich nie.
+- Eine ungültige Regel zeigt der Dialog als Fehler an. Speichern geht erst, wenn sie korrigiert ist.
+- **Standardregeln wiederherstellen** holt die mitgelieferten Regeln zurück: Fernwartung (TeamViewer, RDP, SSH, VPN, Remotedesktop-Fenster), Telefonsupport, Zugangsdaten, E-Mail, Microsoft 365 / Azure und Teams. Die Regel fürs Ticketsystem ist ein Muster zum Anpassen und erst einmal aus.
+
+| Schlüssel | Standard | Bedeutung |
+|---|---|---|
+| `rules` | Standardregeln | Liste der Regeln, oberste zuerst. Felder: `name`, `field` (`any`, `app`, `title`, `customer`, `type`, `details`), `match`, `category`, `customer`, `enabled` |
+| `rules_gap_minutes` | `5` | Kürzere Pausen werden im Block überbrückt |
+| `rules_min_minutes` | `2` | Kürzere Blöcke fallen weg |
+
+Die Kategorien sind dieselben wie bei den KI-Vorschlägen (`ai_categories`).
+
 ### Wenn Zeitzeuge hängt
 
 Reagiert das Fenster länger als 2 Sekunden nicht, schreibt Zeitzeuge in `haenger.log` im Datenordner, an welcher Stelle im Programm es gerade hing. Diese Datei hilft, die Ursache zu finden. Sie enthält nur Programmzeilen, keine Daten aus deinen Logs.
@@ -275,6 +301,23 @@ Im Infobereich zeigt das Logo den Zustand: blauer Ring mit rotem „Jetzt“-Pun
 | `tracking_enabled` | `true` | Aufzeichnung an oder aus |
 | `tracking_idle_minutes` | `5` | Ab so vielen Minuten ohne Eingabe gilt der PC als verlassen |
 | `tracking_ignore` | `["KeePass", "Bitwarden", …]` | Fenster mit diesen Wörtern werden nur als „(ausgeblendet)“ gespeichert |
+| `tracking_skip` | `[]` | Fenster mit diesen Wörtern werden gar nicht aufgezeichnet |
+| `tracking_mode` | `"blacklist"` | `blacklist`: alles außer der Sperrliste. `whitelist`: nur Fenster aus `tracking_allow` |
+| `tracking_allow` | `[]` | Erlaubt-Liste für den Whitelist-Modus |
+| `tracking_whitelist_other` | `"mask"` | Whitelist: andere Fenster als „(andere)“ zählen (`mask`) oder gar nicht aufzeichnen (`skip`) |
+
+#### Fenster-Filter: Sperrliste und Erlaubt-Liste
+
+Unter **Einstellungen → Fenster-Filter …** legst du fest, was aufgezeichnet wird.
+
+- **Alles, außer der Sperrliste** (Standard): Die Sperrliste hat zwei Stufen.
+  - **Titel ausblenden:** Das Programm und die Zeit bleiben, der Titel heißt „(ausgeblendet)“. Gut für Passwortmanager.
+  - **Gar nicht aufzeichnen:** Die Zeit bleibt leer, als wärst du nicht am PC. Gut für private Programme oder Spiele.
+- **Nur Erlaubtes:** Nur Fenster aus der Erlaubt-Liste werden mit Titel aufgezeichnet. Andere zählen als „(andere)“ ohne Titel, damit die Zeit am PC sichtbar bleibt. Du kannst sie auch ganz weglassen. Die Sperrliste gilt hier weiter.
+- Ein Eintrag pro Zeile. Er passt auf den Programmnamen (`chrome.exe` oder `chrome`) oder auf einen Teil des Fenstertitels. Groß und klein ist egal.
+- Mit `re:` davor ist der Eintrag ein regulärer Ausdruck, zum Beispiel `re:^Spiel`. Einen ungültigen Ausdruck zeigt der Dialog als Fehler.
+- Unten im Dialog stehen die Programme, die in den letzten 7 Tagen am längsten liefen. Ein Klick auf einen Knopf übernimmt das gewählte Programm in eine Liste.
+- Neue Filter gelten sofort, auch für das gerade aktive Fenster.
 
 ### Im Hintergrund laufen
 
@@ -316,9 +359,10 @@ Läuft RDM auf einem Server, kann Zeitzeuge dessen Log auch über das Netzwerk l
 | `ai_classifier.py` | KI-Vorschläge über die Anthropic-API |
 | `journal.py` | Eigene Tätigkeiten speichern, offene erkennen |
 | `journal_dialogs.py` | Dialoge zum Nachtragen, Nachfrage-Fenster, Einstellungen dazu |
+| `rules.py` | Klassifizierung ohne KI: Regeln, Blöcke bilden, Vorrang (ohne Qt) |
 | `storage.py` | Speicherort der Daten |
 | `tests/` | Tests, laufen bei jedem Build: Start, Bedienbarkeit, Infobereich, Log-Parser, VPN-Logs, 3CX und ITM mit nachgebauten Seiten, KI-Vorschläge mit nachgebauter API, Fensterabfrage, Anrufliste. Dazu `start_bench.py` (Startzeit messen) und `screenshots.sh` (Bildschirmfotos mit Demodaten) |
-| `settings_dialogs.py` | Dialoge für Logpfade und Aktivitätstypen |
+| `settings_dialogs.py` | Dialoge für Logpfade, Aktivitätstypen, Arbeitszeiten, KI, Fenster-Filter und Regeln |
 | `zeitzeuge_anrufe.user.js` | Liest die Anrufliste aus der 3CX-Webseite (für das Lesen über Edge) |
 | `pbx_direct.py` | 3CX direkt abfragen (Anmeldung, Protobuf) |
 | `ZeitZeuge.spec` | Build-Datei für PyInstaller |

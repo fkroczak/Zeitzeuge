@@ -63,6 +63,12 @@ jobs:
       - name: Logs einlesen (TeamViewer, RDM)
         run: python tests/parser_test.py
 
+      - name: Klassifizierung ohne KI (Regeln, Vorrang, Tempo)
+        run: python tests/rules_test.py
+
+      - name: Fenster-Filter (Black-/Whitelist, Schreibfehler)
+        run: python tests/tracking_filter_test.py
+
       - name: Lesbarkeit (nur Hinweis)
         run: python tests/readability_check.py
 
