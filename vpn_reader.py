@@ -15,11 +15,12 @@ Alle 30 Sekunden prüft es, ob ein VPN-Adapter (Sophos, Fortinet, ...) verbunden
 ist. So bleiben die Zeiten erhalten, auch wenn die Logs fehlen oder gelöscht sind.
 """
 
-import json
 import os
 import re
 import sys
 from datetime import datetime, timedelta
+
+import safe_io
 
 TIME_FMT = "%Y-%m-%d %H:%M:%S"
 TYPE = "VPN-Verbindung"
@@ -49,9 +50,9 @@ def _time(text):
 
 
 def _read(path):
+    """Zeilen einer Logdatei (UTF-16 erkannt, bei riesigen Dateien nur das Ende)."""
     try:
-        with open(path, "r", encoding="utf-8", errors="ignore") as f:
-            return f.read().splitlines()
+        return [line.rstrip("\r\n") for line in safe_io.log_lines(path)]
     except OSError:
         return []
 
@@ -86,7 +87,10 @@ def parse_sophos(scvpn_lines, scgui_lines, names=None, now=None):
         if m:
             up = _GUI_UP.match(m.group(2).strip())
             if up and not up.group(1).endswith(" wird"):
-                gui_up.append((_time(m.group(1)), up.group(1)))
+                try:
+                    gui_up.append((_time(m.group(1)), up.group(1)))
+                except ValueError:
+                    continue  # kaputte Zeile
 
     sessions, open_ = [], {}  # open_: ID -> Beginn
 
@@ -98,7 +102,10 @@ def parse_sophos(scvpn_lines, scgui_lines, names=None, now=None):
         m = _SCVPN.match(line)
         if not m:
             continue
-        t, msg = _time(m.group(1)), m.group(2).strip()
+        try:
+            t, msg = _time(m.group(1)), m.group(2).strip()
+        except ValueError:
+            continue  # kaputte Zeile
         state = re.match(r"^(.+) VPN state changed to (\w+)$", msg)
         if state:
             conn_id, new = state.groups()
@@ -143,7 +150,10 @@ def parse_fortinet(charon_lines, now=None):
         m = _CHARON.match(line)
         if not m:
             continue
-        t, msg = _time(m.group(1)), m.group(3).strip()
+        try:
+            t, msg = _time(m.group(1)), m.group(3).strip()
+        except ValueError:
+            continue  # kaputte Zeile
         if m.group(2) == "DMN" and (msg.startswith("Starting IKE service") or msg.startswith("service is stopping")):
             for adapter in list(open_):
                 close(adapter, t)
@@ -251,30 +261,29 @@ class VpnReader:
 
     def _archive(self):
         if self._data is None:
-            data = {}
+            data, locked = {}, False
             if self.archive_file:
-                try:
-                    with open(self.archive_file, "r", encoding="utf-8") as f:
-                        data = json.load(f)
-                except (OSError, ValueError):
-                    data = {}
-            if not isinstance(data, dict):
-                data = {}
-            self._data = {k: data.get(k, default) for k, default in
-                          (("connections", []), ("adapter", []), ("names", {}))}
+                try:  # kaputte Datei wird beiseitegelegt (safe_io), nicht überschrieben
+                    data = safe_io.read_json(self.archive_file, {}, expect=dict, raise_locked=True)
+                except safe_io.FileLocked:
+                    locked = True  # gesperrt: nichts speichern, sonst wäre das Archiv weg
+            parsed = {}
+            for k, default in (("connections", []), ("adapter", []), ("names", {})):
+                value = data.get(k, default)
+                if not isinstance(value, type(default)):
+                    value = default
+                if isinstance(value, list):  # einzelne kaputte Einträge überspringen
+                    value = [c for c in value if isinstance(c, dict) and _valid(c)]
+                parsed[k] = value
+            if locked:
+                return parsed  # beim nächsten Mal neu lesen
+            self._data = parsed
         return self._data
 
     def _save(self):
-        if not self.archive_file:
+        if not self.archive_file or self._data is None:
             return
-        try:
-            os.makedirs(os.path.dirname(self.archive_file) or ".", exist_ok=True)
-            tmp = self.archive_file + ".tmp"
-            with open(tmp, "w", encoding="utf-8") as f:
-                json.dump(self._data, f, ensure_ascii=False, indent=1)
-            os.replace(tmp, self.archive_file)
-        except OSError as e:
-            print(f"VPN-Verbindungen konnten nicht gespeichert werden: {e}")
+        safe_io.write_json(self.archive_file, self._data)
 
     # ------------------------------------------------------------ eigene Aufzeichnung
 
@@ -306,7 +315,7 @@ class VpnReader:
         for c in live:
             if not c.get("running"):
                 continue
-            if gap or c["vpn_id"] not in up:
+            if gap or c.get("vpn_id") not in up:
                 c["running"] = False
             else:
                 c["end"] = stamp
@@ -354,7 +363,7 @@ class VpnReader:
         stored = sorted(merged.values(), key=lambda c: c["start"])
         # Neu gelernte Namen auch für ältere Einträge übernehmen
         for c in stored:
-            if c.get("vpn_source") == "Sophos" and names.get(c.get("vpn_id")) not in (None, c["customer_name"]):
+            if c.get("vpn_source") == "Sophos" and names.get(c.get("vpn_id")) not in (None, c.get("customer_name")):
                 c["customer_name"] = names[c["vpn_id"]]
                 c["details"] = f"Sophos Connect: {c['customer_name']} ({c['vpn_id']})"
                 changed = True
@@ -384,3 +393,12 @@ class VpnReader:
 
 def _t(text):
     return datetime.strptime(text, TIME_FMT)
+
+
+def _valid(conn):
+    """Eintrag mit lesbarem Beginn und Ende (und den Feldern, die Zeitzeuge braucht)?"""
+    try:
+        _t(conn["start"]), _t(conn["end"])
+        return True
+    except (KeyError, TypeError, ValueError):
+        return False
