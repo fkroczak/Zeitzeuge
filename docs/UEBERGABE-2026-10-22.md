@@ -1,6 +1,7 @@
 # Übergabe 22.10.2026: Startzeit, Oberfläche, Menüs, Infobereich
 
-Branch: `claude/codebase-analysis-optimization-lnxdtt` (aus `main` @ `39abfb1`). Nichts ist nach
+Branch: `claude/codebase-analysis-optimization-lnxdtt` (aus `main` @ `39abfb1`, später aktueller
+`main` mit neuem Logo und PR #4 per Merge-Commit eingearbeitet, ohne Konflikte). Nichts ist nach
 `main` gemerged, es gibt noch keinen Pull Request. Keine Daten gelöscht, keine Zugangsdaten,
 externen Dienste oder Config-Formate angefasst.
 
@@ -32,6 +33,12 @@ externen Dienste oder Config-Formate angefasst.
 | Infobereich nur „Öffnen“ und „Beenden“, Aufzeichnung nur tief im Menü schaltbar. | Siehe unten. Eine gemeinsame `QAction` für Menü, Infobereich und Statuszeile, damit der Zustand nie auseinanderläuft. |
 | Architektur: flache Module nach Zuständigkeit (Parser, Tracker, Leser, Dialoge, Timeline, Hauptfenster). | **Kein Umbau.** Die Struktur passt zur Größe (~4.000 Zeilen). Nur die Kopplung Parser→Fenster gelöst. Weitere Aufteilung siehe offene Punkte. |
 
+**Neues Logo (kam während der Nacht über PR #3):** Statt eines zusätzlichen grünen Punkts zeigt
+das Logo selbst den Zustand: Original mit rotem „Jetzt“-Punkt = Aufzeichnung läuft, grauer Ring
+mit Pause-Zeichen = pausiert. So gibt es nur einen Farbcode, und der Zustand hängt an Farbe **und**
+Form. Statuszeile und Menü nutzen dieselben Farben. Falls Grün für „aktiv“ gewünscht ist:
+`ACTIVE_COLOR` in `icons.py`.
+
 **Annahmen:** Die Pause der Aufzeichnung bleibt nach einem Neustart erhalten (wie der bisherige
 Menüschalter, Config-Schlüssel `tracking_enabled`). Deutlich erkennbar über das graue Symbol.
 Die Größe „3 Jahre Logs“ (8 MB RDM, 1,2 MB TeamViewer) ist geschätzt; echte Logs können kleiner
@@ -44,7 +51,9 @@ oder größer sein.
 | `01a2940` | Messwerkzeuge und Vorher-Bilder | `tests/start_bench.py`, `tests/screenshots.py`, `tests/screenshots.sh`, `docs/screenshots/2026-10-22/vorher/` |
 | `dfee077` | Start: Fenster sofort, Logs im Hintergrund, schneller Parser | `log_parsers.py`, `timeline_only.py`, `main_timeline.py`, `grouping.py`, `settings_dialogs.py` (ungenutzten `TapiSettingsDialog` entfernt) |
 | `b39f394` | Oberfläche, Menü, Infobereich, PC-Band bei Pause, neue Tests | `icons.py` (neu), `main_timeline.py`, `timeline_only.py`, `activity_tracker.py`, `tests/tray_test.py` (neu), `tests/parser_test.py` (neu), `tests/ui_audit_test.py`, `.github/workflows/build.yml` |
-| `41b0103` | Doku, Screenshots, doppelter Aktivitätstyp, kaputte Umlaute in Kommentaren | `README.md`, `docs/…`, `main_timeline.py` |
+| `41b0103`, `936be8b` | Doku, Screenshots, doppelter Aktivitätstyp, kaputte Umlaute in Kommentaren | `README.md`, `docs/…`, `main_timeline.py` |
+| `8339294` | Merge von `main`: neues Logo (PR #3), 3CX-Tage einstellbar (PR #4) | `zeitzeuge.ico/.png/.svg`, `pbx_reader.py`, `main_timeline.py`, `README.md` |
+| `0f4c26c` | Neues Logo als Zustandsanzeige im Infobereich, Screenshots neu | `icons.py`, `main_timeline.py`, `ZeitZeuge.spec` (SVG in die EXE), `tests/ui_audit_test.py`, `docs/…` |
 
 ### Neue Bedienung im Überblick
 
@@ -83,6 +92,7 @@ Unter Windows ist alles langsamer (Virenscanner, EXE-Entpacken), das Verhältnis
 | Windows-CI (GitHub Actions, windows-latest): alle 15 Schritte inkl. neuer Tests, 3CX/ITM mit echtem Edge und EXE-Bau | grün (Lauf 33 und 34) |
 | Echtes Beenden (`Beenden` im Menü, 10× alt und 10× neu) | 0 Abstürze |
 | Sichtprüfung hell und dunkel per Screenshots | ok |
+| Unabhängiges Code-Review durch einen zweiten Agenten (Parser alt/neu mit je 20.000 Zufallszeilen inkl. ungültiger Daten, Stresstest Neu-Einlesen während Pfad- und Datumswechsel, Start/Beenden, Lazy Imports) | keine Fehler gefunden |
 
 ## Screenshots
 
@@ -109,6 +119,8 @@ Ordner [`docs/screenshots/2026-10-22/`](screenshots/2026-10-22/) mit Bildübersi
 - Deutsche Qt-Übersetzung in der EXE: Laut PyInstaller-Hook (6.11.1) werden die
   `qtbase`-Übersetzungen mit QtCore eingepackt. In der fertigen EXE selbst nicht ausprobiert.
   Falls sie fehlt, bleiben die Knöpfe englisch wie bisher, ohne Fehler.
+- `zeitzeuge.svg` liegt jetzt in der EXE (für das Tray-Symbol). Fehlt sie, zeigt der Infobereich
+  das normale Logo ohne Pause-Variante.
 - QtSvg kommt neu in die EXE (unter 1 MB), wird über `import` in `icons.py` sicher erkannt.
 - Zeit- und Zahlenfelder haben keine Pfeilknöpfe mehr (Tastatur/Mausrad gehen).
 - Das Screenshot-Skript beendet sich hart (`os._exit`), weil PyQt dort ohne Event-Loop beim
@@ -121,9 +133,10 @@ Ordner [`docs/screenshots/2026-10-22/`](screenshots/2026-10-22/) mit Bildübersi
 Alles liegt nur auf dem Branch. `main` ist unverändert.
 
 - **Alles verwerfen:** Branch nicht mergen (oder löschen). Lokal: `git checkout main`.
-- **Nach einem Merge alles zurück:** `git revert 41b0103 b39f394 dfee077 01a2940`
-  (neueste zuerst), dann pushen.
-- **Nur die Oberfläche zurück, Startzeit behalten:** `git revert 41b0103 b39f394`.
+- **Nach einem Merge alles zurück:** `git revert 0f4c26c 936be8b 41b0103 b39f394 dfee077 01a2940`
+  (neueste zuerst; den Merge-Commit `8339294` nicht zurücknehmen, er enthält nur Stand von `main`).
+- **Nur die Oberfläche zurück, Startzeit behalten:** `git revert 0f4c26c 936be8b 41b0103 b39f394`.
+- **Nur die Logo-Zustandsanzeige zurück:** `git revert 0f4c26c` (dann wieder grüner Extra-Punkt).
 - **Nur die Startzeit zurück:** `git revert dfee077` (Konflikte in `main_timeline.py`
   möglich, dann zuerst die Oberflächen-Commits zurücknehmen).
 - **Daten:** Es gibt keine Migration. Config, Anrufe und Aktivitätsprotokoll bleiben
