@@ -326,6 +326,12 @@ class ItmReader(BrowserReader):
             return None
         finally:
             if own:
+                # Sauber beenden: Hart beendet schreibt Edge die erneuerte Anmeldung
+                # (Cookies, Speicher der Seite) unter Windows nicht mehr ins Profil, und
+                # beim nächsten Erneuern hieße es "Anmeldung nötig"
+                port = getattr(self, "_port", None)
+                if port and self._tools:
+                    self._close_gracefully(port)
                 self._close_browser()
 
     # ---- über die Webseite (Rückfall)

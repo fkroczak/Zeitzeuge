@@ -443,6 +443,7 @@ class BrowserReader(QObject):
             self._mode = "hidden"
             port = self._launch("hidden")
 
+        self._port = port  # für ein sauberes Beenden (_close_gracefully)
         self._connect(port)
 
         # Kein "HeadlessChrome" in der Kennung, sonst verhalten sich manche Seiten anders
