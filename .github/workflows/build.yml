@@ -22,80 +22,18 @@ jobs:
           cache: pip
 
       - name: Abhängigkeiten installieren
-        run: pip install -r requirements.txt
-
-      - name: Starttest (Fenster öffnen und schließen)
-        env:
-          QT_QPA_PLATFORM: offscreen
-        run: python tests/start_test.py
-
-      - name: Bedienbarkeit (Screenreader-Namen, Kontrast, Fokus, Tastatur)
-        env:
-          QT_QPA_PLATFORM: offscreen
-        run: python tests/ui_audit_test.py
-
-      - name: VPN-Logs lesen (OpenVPN u. a.)
-        run: python tests/vpn_logs_test.py
-
-      - name: VPN-Zeiten (Sophos Connect, FortiClient)
-        run: python tests/vpn_test.py
-
-      - name: Tagesliste zusammenfassen
-        env:
-          QT_QPA_PLATFORM: offscreen
-        run: python tests/grouping_test.py
-
-      - name: KI-Vorschläge (nachgebaute Anthropic-API)
-        env:
-          QT_QPA_PLATFORM: offscreen
-        run: python tests/ai_test.py
-
-      - name: Infobereich und Fensteraufzeichnung ein/aus
-        env:
-          QT_QPA_PLATFORM: offscreen
-        run: python tests/tray_test.py
-
-      - name: Tätigkeiten nachtragen und Nachfragen
-        env:
-          QT_QPA_PLATFORM: offscreen
-        run: python tests/journal_test.py
-
-      - name: Logs einlesen (TeamViewer, RDM)
-        run: python tests/parser_test.py
-
-      - name: Klassifizierung ohne KI (Regeln, Vorrang, Tempo)
-        run: python tests/rules_test.py
-
-      - name: Fenster-Filter (Black-/Whitelist, Schreibfehler)
-        run: python tests/tracking_filter_test.py
-
-      - name: Robustheit (kaputte Dateien, ohne Internet, Absturz des Lesers)
-        env:
-          QT_QPA_PLATFORM: offscreen
-        run: python tests/robustness_test.py
+        run: pip install -r requirements.txt -r requirements-dev.txt
 
       - name: Lesbarkeit (nur Hinweis)
         run: python tests/readability_check.py
 
-      - name: 3CX-Test (Edge gegen nachgebaute Seite)
-        run: python tests/pbx_test.py
-
-      - name: ITM-Test (Edge gegen nachgebaute Zeiterfassung)
-        run: python tests/itm_test.py
-
-      - name: Tagesliste mit vollem PC-Verlauf schnell genug
+      # Alle Tests (pytest.ini, tests/conftest.py): Logik-Tests direkt, Tests mit Oberfläche,
+      # Browser (Edge) oder Prozessen je als eigener Python-Prozess. Fehler erscheinen als Annotation.
+      - name: Tests (pytest)
         env:
           QT_QPA_PLATFORM: offscreen
-        run: python tests/list_speed_test.py
-
-      - name: 3CX direkt abfragen (nachgebauter Server)
-        run: python tests/pbx_direct_test.py
-
-      - name: Mitschnitt der Abfragen (Schwärzen, Edge gegen nachgebaute Seite)
-        run: python tests/recorder_test.py
-
-      - name: Schnelltest (Fensterabfrage, Skript-Server)
-        run: python tests/smoke_test.py
+          PYTHONUTF8: "1"
+        run: python -m pytest -v -rs --durations=10
 
       - name: EXE bauen
         run: pyinstaller --noconfirm --clean ZeitZeuge.spec

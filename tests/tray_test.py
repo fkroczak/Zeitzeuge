@@ -62,6 +62,8 @@ assert window.tray_toggle_action.text().replace("&", "") == "Aufzeichnung pausie
 # Beenden, während die Logs noch gelesen werden: Thread wird abgewartet und meldet nichts mehr
 import time  # noqa: E402
 timeline = window.timeline
+for thread in list(timeline._threads):  # erstes Einlesen beim Start abschließen lassen
+    thread.join(10)
 app.processEvents()
 emitted = []
 timeline.logs_loaded.connect(lambda *_: emitted.append(1))
@@ -71,7 +73,7 @@ timeline.loading = False
 timeline.refresh()
 window.quit_app()
 app.processEvents()
-assert not timeline._thread.is_alive(), "Log-Thread läuft nach dem Beenden weiter"
+assert not any(t.is_alive() for t in timeline._threads), "Log-Thread läuft nach dem Beenden weiter"
 assert not emitted, "Log-Thread hat nach dem Beenden noch gemeldet"
 print("Tray ok")
 

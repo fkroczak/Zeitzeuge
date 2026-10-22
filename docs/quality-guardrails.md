@@ -8,15 +8,15 @@ Qt-eigenen Mitteln.
 
 | Prüfung | Datei | In CI | Wirkung |
 |---|---|---|---|
-| Bedienbarkeit (siehe unten) | `tests/ui_audit_test.py` | Schritt „Bedienbarkeit“ | **blockiert** den Build |
+| Bedienbarkeit (siehe unten) | `tests/ui_audit_test.py` | Schritt „Tests (pytest)“ | **blockiert** den Build |
 | Lesbarkeit README und UI-Texte | `tests/readability_check.py` | Schritt „Lesbarkeit“ | warnt nur |
-| Tagesliste zusammenfassen (keine Einträge gehen verloren) | `tests/grouping_test.py` | Schritt „Tagesliste zusammenfassen“ | blockiert |
-| Start des Hauptfensters | `tests/start_test.py` | Schritt „Starttest“ | blockiert |
-| Infobereich: Menü, Aufzeichnung pausieren/fortsetzen, Zustand überall gleich | `tests/tray_test.py` | Schritt „Infobereich …“ | blockiert |
-| TeamViewer-/RDM-Logs einlesen, Zeitformat streng | `tests/parser_test.py` | Schritt „Logs einlesen …“ | blockiert |
-| Klassifizierung ohne KI: Regeln, Vorrang, keine Überschneidung, Tempo | `tests/rules_test.py` | Schritt „Klassifizierung ohne KI …“ | blockiert |
-| Fenster-Filter (Black-/Whitelist), Schreibfehler im Aktivitätsprotokoll | `tests/tracking_filter_test.py` | Schritt „Fenster-Filter …“ | blockiert |
-| Robustheit: kaputte Dateien, große/UTF-16-Logs, offline, Leser-Absturz, Anmelde-Timeout, Fehler in Slots, eine Instanz | `tests/robustness_test.py` | Schritt „Robustheit …“ | blockiert |
+| Tagesliste zusammenfassen (keine Einträge gehen verloren) | `tests/grouping_test.py` | Schritt „Tests (pytest)“ | blockiert |
+| Start des Hauptfensters | `tests/start_test.py` | Schritt „Tests (pytest)“ | blockiert |
+| Infobereich: Menü, Aufzeichnung pausieren/fortsetzen, Zustand überall gleich | `tests/tray_test.py` | Schritt „Tests (pytest)“ | blockiert |
+| TeamViewer-/RDM-Logs einlesen, Zeitformat streng | `tests/parser_test.py` | Schritt „Tests (pytest)“ | blockiert |
+| Klassifizierung ohne KI: Regeln, Vorrang, keine Überschneidung, Tempo | `tests/rules_test.py` | Schritt „Tests (pytest)“ | blockiert |
+| Fenster-Filter (Black-/Whitelist), Schreibfehler im Aktivitätsprotokoll | `tests/tracking_filter_test.py` | Schritt „Tests (pytest)“ | blockiert |
+| Robustheit: kaputte Dateien, große/UTF-16-Logs, offline, Leser-Absturz, Anmelde-Timeout, Fehler in Slots, eine Instanz | `tests/robustness_test.py` | Schritt „Tests (pytest)“ | blockiert |
 | Startzeit (Fenster sichtbar, Daten gezeichnet) | `tests/start_bench.py` | nein, von Hand | Messwert |
 
 `tests/ui_audit_test.py` öffnet Hauptfenster und alle Einstellungsdialoge ohne Bildschirm

@@ -190,7 +190,8 @@ for taskbar in ("#F3F3F3", "#1F2329"):
         check_contrast("Infobereich", color, taskbar, minimum=3.0)
 
 # Graue Hinweistexte direkt im Code (nur Farbe "gray" ist auf hellem Grund zu blass)
-for path in ["main_timeline.py", "settings_dialogs.py", "timeline_only.py"]:
+for path in ["main_timeline.py", "theme.py", "app_menus.py", "app_daylist.py", "app_docs.py",
+             "app_readers.py", "app_tray.py", "settings_dialogs.py", "timeline_only.py"]:
     with open(os.path.join(ROOT, path), encoding="utf-8") as f:
         for no, line in enumerate(f, 1):
             if re.search(r"color:\s*(gray|grey|#999|#aaa)\b", line, re.I):
