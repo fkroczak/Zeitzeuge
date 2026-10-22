@@ -8,18 +8,32 @@ from PyQt5.QtWidgets import (QCheckBox, QColorDialog, QDialog, QDialogButtonBox,
                              QPushButton, QSpinBox, QTimeEdit, QVBoxLayout)
 
 class ConnectionSettingsDialog(QDialog):
-    def __init__(self, config, config_key, default_paths, title, parent=None):
+    def __init__(self, config, config_key, default_paths, title, parent=None,
+                 enabled_text=None, folders=False, hint=None):
         super().__init__(parent)
         self.config = config
         self.config_key = config_key
         self.default_paths = default_paths
+        self.enabled_text = enabled_text  # Schalter "auslesen ja/nein" (z. B. VPN)
+        self.folders = folders            # auch ganze Ordner als Pfad erlauben
+        self.hint = hint
+        self.enabled_box = None
         self.setWindowTitle(title)
         self.setMinimumWidth(400)
         self.init_ui()
     
     def init_ui(self):
         layout = QVBoxLayout()
-        
+
+        if self.enabled_text:
+            self.enabled_box = QCheckBox(self.enabled_text)
+            self.enabled_box.setChecked(self.config.get(f"{self.config_key}_enabled", True))
+            layout.addWidget(self.enabled_box)
+        if self.hint:
+            hint = QLabel(self.hint)
+            hint.setWordWrap(True)
+            layout.addWidget(hint)
+
         # Pfadeinstellungen
         path_group = QGroupBox("Logdatei-Pfade")
         path_layout = QVBoxLayout()
@@ -41,9 +55,16 @@ class ConnectionSettingsDialog(QDialog):
             lambda item, _old: remove_btn.setEnabled(item is not None))
         
         btn_layout.addWidget(add_btn)
+        if self.folders:
+            folder_btn = QPushButton("&Ordner hinzufügen …")
+            folder_btn.clicked.connect(self.add_folder)
+            btn_layout.addWidget(folder_btn)
         btn_layout.addWidget(remove_btn)
         path_layout.addLayout(btn_layout)
         path_group.setLayout(path_layout)
+        if self.enabled_box:
+            path_group.setEnabled(self.enabled_box.isChecked())
+            self.enabled_box.toggled.connect(path_group.setEnabled)
         layout.addWidget(path_group)
         
         # Zeitzonenkorrektur
@@ -83,6 +104,12 @@ class ConnectionSettingsDialog(QDialog):
         if path:
             self.path_list.addItem(os.path.normpath(path))
     
+    def add_folder(self):
+        start = os.path.expandvars(self.default_paths[0]) if self.default_paths else ""
+        path = QFileDialog.getExistingDirectory(self, "Ordner mit Logdateien auswählen", start)
+        if path:
+            self.path_list.addItem(os.path.normpath(path))
+
     def remove_path(self):
         if self.path_list.currentItem():
             self.path_list.takeItem(self.path_list.currentRow())

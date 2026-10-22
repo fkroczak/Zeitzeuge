@@ -34,6 +34,9 @@ jobs:
           QT_QPA_PLATFORM: offscreen
         run: python tests/ui_audit_test.py
 
+      - name: VPN-Logs lesen
+        run: python tests/vpn_test.py
+
       - name: Tagesliste zusammenfassen
         env:
           QT_QPA_PLATFORM: offscreen

@@ -12,7 +12,7 @@ from PyQt5.QtWidgets import (QDialog, QDialogButtonBox, QFormLayout,
 from activity_tracker import app_label, merge_segments, read_segments
 from call_import import load_call_suggestions
 from grouping import format_tv_id, group_entries
-from log_parsers import ConnectionIndex, RdmParser, TeamViewerParser
+from log_parsers import ConnectionIndex, RdmParser, TeamViewerParser, VpnParser
 
 TIME_FMT = "%Y-%m-%d %H:%M:%S"
 
@@ -63,12 +63,33 @@ def entry_color(activity, config):
     return QColor(config.get("type_colors", {}).get(activity.get("type"), "#4682B4"))
 
 
+# Eigene Zeile je Quelle (Kennung, Beschriftung links); nur RDM und der Rest teilen sich mehrere Spuren
+FIXED_ROWS = [("call", "Tel"), ("vpn", "VPN"), ("tv", "TV")]
+
+
+def row_kind(activity):
+    """Feste Zeile eines Eintrags ("call", "vpn", "tv") oder None für die freien Spuren."""
+    kind = activity.get("type", "")
+    if activity.get("direction") or kind == "Telefonat":
+        return "call"
+    if kind.startswith("VPN"):
+        return "vpn"
+    if kind.startswith("TeamViewer"):
+        return "tv"
+    return None
+
+
 def type_label(activity):
     """Typ-Text für Liste und Details, bei Telefonaten mit Richtung."""
     direction = activity.get("direction")
     if direction and direction != "Anruf":
         return f"{activity.get('type', '')} {direction.lower()}"
     return activity.get("type", "")
+
+
+def hhmm(minutes):
+    minutes = int(minutes)
+    return f"{minutes // 60:02d}:{minutes % 60:02d}"
 
 
 def format_duration(seconds):
@@ -134,17 +155,17 @@ class TimelineView(QGraphicsView):
     # Nach jedem Zeichnen: Einträge des Tages und PC-Aktivität (für die Tagesliste)
     day_loaded = pyqtSignal(list, list)
     # Hintergrund-Thread hat TeamViewer- und RDM-Logs gelesen
-    logs_loaded = pyqtSignal(object, object)
+    logs_loaded = pyqtSignal(object, object, object)
 
     APP_COLORS = ["#5B8DEF", "#E67E22", "#27AE60", "#9B59B6", "#E84393",
                   "#16A085", "#C0392B", "#F1C40F", "#2C3E50", "#7F8C8D"]
 
-    LEFT = 20          # Rand links in Pixeln
+    LEFT = 30          # Rand links in Pixeln (Platz für die Zeilenbeschriftung)
     AXIS_H = 26        # Höhe der Stundenleiste oben
     PC_BAND_H = 14     # Band für die PC-Aktivität
     LANE_H = 26        # Höhe eines Eintrags
     LANE_GAP = 6
-    MIN_LANES = 4
+    MIN_LANES = 2      # freie Spuren unter den festen Zeilen (RDM, eigene Einträge)
     MAX_LANES = 10
     BASE_PX_PER_MIN = 1.2
 
@@ -168,8 +189,10 @@ class TimelineView(QGraphicsView):
         self._remote_cache = {}  # date_str -> list[conn]
         self._tv_parser = TeamViewerParser(self.config)
         self._rdm_parser = RdmParser(self.config)
+        self._vpn_parser = VpnParser(self.config)
         self._tv_index = None   # None = Logs noch nicht gelesen
         self._rdm_index = None
+        self._vpn_index = None
         self.loading = False    # Logs werden gerade im Hintergrund gelesen
         self._reload = False    # während des Lesens erneut angefordert
         self._thread = None
@@ -180,6 +203,10 @@ class TimelineView(QGraphicsView):
         self.fit_day = True        # ganzen Tag ins Fenster einpassen
         self._drag_start = None    # Mausposition beim Drücken (Bereich ziehen)
         self._drag_item = None     # markierter Bereich während des Ziehens
+        self._hover_line = None    # senkrechte Linie unter der Maus
+        self._hover_label = None   # Uhrzeit oben an der Linie
+        self._day_entries = []     # gezeichnete Einträge (für die Linie)
+        self._pc_band = []
         self.dark_mode = self.config.get("dark_mode", False)
 
         self.setRenderHint(QPainter.Antialiasing)
@@ -258,17 +285,20 @@ class TimelineView(QGraphicsView):
 
     def _load_logs(self):
         indexes = []
-        for name, parser in (("TeamViewer", self._tv_parser), ("RDM", self._rdm_parser)):
+        vpn_on = self.config.get("vpn_enabled", True)
+        for name, parser in (("TeamViewer", self._tv_parser), ("RDM", self._rdm_parser),
+                             ("VPN", self._vpn_parser)):
             try:
-                indexes.append(ConnectionIndex(parser.parse_logs()))
+                skip = parser is self._vpn_parser and not vpn_on
+                indexes.append(ConnectionIndex([] if skip else parser.parse_logs()))
             except Exception as e:
                 print(f"Fehler beim Lesen der {name}-Logs: {e}")
                 indexes.append(ConnectionIndex([]))
         if not self._closing:
             self.logs_loaded.emit(*indexes)  # Qt stellt das im GUI-Thread zu
 
-    def _on_logs_loaded(self, tv_index, rdm_index):
-        self._tv_index, self._rdm_index = tv_index, rdm_index
+    def _on_logs_loaded(self, tv_index, rdm_index, vpn_index):
+        self._tv_index, self._rdm_index, self._vpn_index = tv_index, rdm_index, vpn_index
         self._remote_cache.clear()
         self.loading = False
         if self._reload:
@@ -290,6 +320,9 @@ class TimelineView(QGraphicsView):
             return
 
         day = self._tv_index.get_for_date(date_str) + self._rdm_index.get_for_date(date_str)
+        if not self.config.get("vpn_enabled", True):  # VPN abgeschaltet: auch die VPN-Einträge aus RDM weglassen
+            day = [c for c in day if not c.get("type", "").startswith("VPN")]
+        day += self._vpn_index.get_for_date(date_str)
         for conn in day:
             conn["is_suggestion"] = True
         self.remote_suggestions = day
@@ -371,17 +404,40 @@ class TimelineView(QGraphicsView):
 
     def _work_spans(self, date: QDate):
         """Arbeitszeit als [(Start, Ende)] in Minuten: Personalzeiten aus ITM, sonst Einstellungen."""
+        return self._work_info(date)[0]
+
+    def _work_info(self, date: QDate):
+        """([(Start, Ende)] in Minuten, aus ITM?, Index der noch offenen Buchung oder None)."""
         day = self.personal_day(date.toString("yyyy-MM-dd")) if self.personal_day else None
         if day and day.get("zeiten"):
-            spans = []
+            spans, open_idx = [], None
             for t in day["zeiten"]:
                 start = parse_time(t["start"])
+                if not t["end"]:
+                    open_idx = len(spans)
                 end = parse_time(t["end"]) if t["end"] else datetime.now()  # noch eingestempelt
                 end_min = end.hour * 60 + end.minute if end.date() == start.date() else 24 * 60
                 spans.append((start.hour * 60 + start.minute, end_min))
-            return spans
+            return spans, True, open_idx
         hours = work_hours(self.config, date.dayOfWeek() - 1)
-        return [hours] if hours else []
+        return ([hours] if hours else []), False, None
+
+    def _work_text(self, minute):
+        """Was zu dieser Minute laut Personalzeit/Arbeitszeit gilt (eine Zeile)."""
+        spans, from_itm, open_idx = self._work_info(self.current_date)
+        name = "Personalzeit" if from_itm else "Arbeitszeit"
+        if not spans:
+            return f"<i>Keine {name}</i>"
+        for i, (a, b) in enumerate(spans):
+            if a <= minute < b:
+                if i == open_idx:
+                    return f"<b>{name}</b> seit {hhmm(a)} (eingestempelt)"
+                return f"<b>{name}</b> {hhmm(a)} – {hhmm(b)}"
+        before = [b for _a, b in spans if b <= minute]
+        after = [a for a, _b in spans if a > minute]
+        if before and after:
+            return f"<b>Pause</b> {hhmm(max(before))} – {hhmm(min(after))}"
+        return f"<i>Außerhalb der {name}</i>"
 
     def _work_minutes(self, date: QDate):
         """Beginn und Ende der Arbeitszeit; an freien Tagen ist der ganze Tag abgedunkelt."""
@@ -404,17 +460,25 @@ class TimelineView(QGraphicsView):
         self._ppm = self.BASE_PX_PER_MIN * self.zoom_level
         self._drag_item = None
         self.scene.clear()
+        self._hover_line = self._hover_label = None  # mit der Szene gelöscht
         self.activity_rects.clear()
         self.tooltip.hide()
         self.scene.setBackgroundBrush(self.background_color)
 
         activities = self.view_entries(date)
 
-        # Spuren verteilen: überlappende Einträge kommen in die nächste Zeile
+        # Telefonate, VPN und TeamViewer je in eine feste Zeile; der Rest (v. a. RDM)
+        # wird auf Spuren verteilt: überlappende Einträge kommen in die nächste Spur
+        fixed_index = {kind: i for i, (kind, _label) in enumerate(FIXED_ROWS)}
+        n_fixed = len(FIXED_ROWS)
         lanes_end = []
         placed = []
         for a in activities:
             start, end = parse_time(a["start"]), parse_time(a["end"])
+            kind = row_kind(a)
+            if kind is not None:
+                placed.append((a, start, end, fixed_index[kind]))
+                continue
             for idx, lane_end in enumerate(lanes_end):
                 if start >= lane_end:
                     lanes_end[idx] = end
@@ -426,14 +490,16 @@ class TimelineView(QGraphicsView):
                 else:
                     lanes_end.append(end)
                     idx = len(lanes_end) - 1
-            placed.append((a, start, end, idx))
+            placed.append((a, start, end, n_fixed + idx))
 
         pc_band = self.pc_entries_for(date, min_seconds=5, max_gap=15)
         n_lanes = max(self.MIN_LANES, len(lanes_end))
         band_y = self.AXIS_H + 6
         show_band = bool(self.tracker or pc_band)
         top = band_y + (self.PC_BAND_H + 10 if show_band else 2)
-        content_h = top + n_lanes * (self.LANE_H + self.LANE_GAP) + 8
+        row_h = self.LANE_H + self.LANE_GAP
+        free_top = top + n_fixed * row_h + 6  # kleiner Abstand vor den freien Spuren
+        content_h = free_top + n_lanes * row_h + 8
         # Platz für die horizontale Scrollleiste lassen, sonst erscheint eine senkrechte
         free_h = self.maximumViewportSize().height() - self.horizontalScrollBar().sizeHint().height()
         height = max(content_h, free_h)
@@ -470,6 +536,32 @@ class TimelineView(QGraphicsView):
                 )
                 label.setPos(x + 2, 3)
 
+        # Personalzeit/Arbeitszeit als schmaler Streifen unter der Stundenleiste
+        work_color = QColor("#27AE60")
+        work_color.setAlpha(200)
+        for span_start, span_end in spans:
+            if span_end <= span_start:
+                continue
+            self.scene.addRect(self._x(span_start), self.AXIS_H - 3, self._x(span_end) - self._x(span_start),
+                               3, no_pen, QBrush(work_color))
+
+        # Jede zweite Zeile leicht hinterlegt, damit die Zeilen unterscheidbar sind
+        stripe = QColor(255, 255, 255, 10) if self.dark_mode else QColor(0, 0, 0, 10)
+        row_tops = [top + i * row_h for i in range(n_fixed)]
+        row_tops += [free_top + i * row_h for i in range(n_lanes)]
+        for i, y in enumerate(row_tops):
+            if i % 2 == 0:
+                self.scene.addRect(0, y - self.LANE_GAP / 2, width, row_h, no_pen, QBrush(stripe))
+
+        # Beschriftung der festen Zeilen und Trennlinie zu den freien Spuren
+        row_font = QFont("Segoe UI", 7)
+        for i, (_kind, text) in enumerate(FIXED_ROWS):
+            label = self.scene.addText(text, row_font)
+            label.setDefaultTextColor(self.muted_text)
+            label.setPos(0, top + i * row_h + (self.LANE_H - label.boundingRect().height()) / 2)
+        sep_y = free_top - (6 + self.LANE_GAP) / 2
+        self.scene.addLine(0, sep_y, width, sep_y, QPen(self.hour_line, 1))
+
         # Einträge
         label_font = QFont("Segoe UI", 8)
         metrics = QFontMetrics(label_font)
@@ -479,7 +571,7 @@ class TimelineView(QGraphicsView):
             if end.date() > start.date():  # über Mitternacht
                 x2 = self._x(24 * 60)
             w = max(4.0, x2 - x1)
-            y = top + lane * (self.LANE_H + self.LANE_GAP)
+            y = top + lane * row_h + (6 if lane >= n_fixed else 0)
 
             base = entry_color(a, self.config)
             fill = QColor(base)
@@ -517,13 +609,24 @@ class TimelineView(QGraphicsView):
                 self.activity_rects[rect] = p
             label = self.scene.addText("PC", QFont("Segoe UI", 7))
             label.setDefaultTextColor(self.muted_text)
-            label.setPos(self._x(0) - 18, band_y - 3)
+            label.setPos(0, band_y - 3)
 
         # Jetzt-Linie
         if date == QDate.currentDate():
             now = QDateTime.currentDateTime().time()
             x = self._x(now.hour() * 60 + now.minute())
             self.scene.addLine(x, 0, x, height, QPen(QColor("#E74C3C"), 1.5))
+
+        # Senkrechte Linie unter der Maus (erst bei Mausbewegung sichtbar)
+        self._hover_line = self.scene.addLine(0, 0, 0, height, QPen(self.text_color, 1, Qt.DashLine))
+        self._hover_line.setZValue(90)
+        self._hover_line.hide()
+        self._hover_label = self.scene.addText("", QFont("Segoe UI", 8, QFont.Bold))
+        self._hover_label.setDefaultTextColor(self.text_color)
+        self._hover_label.setZValue(91)
+        self._hover_label.hide()
+        self._day_entries = activities
+        self._pc_band = pc_band
 
         self.setSceneRect(0, 0, width, height)
 
@@ -623,7 +726,7 @@ class TimelineView(QGraphicsView):
     def mouseMoveEvent(self, event):
         # Klicken und ziehen: Bereich markieren
         if self._drag_start is not None and abs(event.pos().x() - self._drag_start.x()) > 5:
-            self.tooltip.hide()
+            self._hide_hover()
             x1 = self.mapToScene(self._drag_start).x()
             x2 = self.mapToScene(event.pos()).x()
             rect = self.sceneRect()
@@ -642,27 +745,84 @@ class TimelineView(QGraphicsView):
             self.tooltip.show()
             return
 
-        a = self._activity_at(event.pos())
-        if a:
-            start, end = parse_time(a["start"]), parse_time(a["end"])
-            lines = [f"<b>{escape(a.get('customer_name') or a.get('type'))}</b>",
-                     escape(type_label(a)),
-                     f"{start:%H:%M} – {end:%H:%M}  ({format_duration((end - start).total_seconds())})"]
-            if a.get("details"):
-                lines.append(escape(a["details"]))
-            if a.get("is_suggestion"):
-                lines.append("<i>Vorschlag aus Log</i>")
-            self.tooltip.setText("<br>".join(lines))
+        minute = self._minute_at(event.pos().x()) if self._ppm else -1
+        if 0 <= minute < 24 * 60:
+            self._show_hover_line(minute)
+            self.tooltip.setText(self._hover_text(minute, self._activity_at(event.pos())))
             self.tooltip.adjustSize()
-            global_pos = self.mapToGlobal(event.pos())
-            self.tooltip.move(global_pos.x() + 15, global_pos.y() + 15)
+            self._move_tooltip(event.pos())
             self.tooltip.show()
         else:
-            self.tooltip.hide()
+            self._hide_hover()
         super().mouseMoveEvent(event)
 
-    def leaveEvent(self, event):
+    def _show_hover_line(self, minute):
+        if not self._hover_line:
+            return
+        x = self._x(minute)
+        rect = self.sceneRect()
+        self._hover_line.setLine(x, self.AXIS_H, x, rect.height())
+        self._hover_line.show()
+        # Uhrzeit oben in der Stundenleiste, mit Hintergrund damit sie lesbar bleibt
+        self._hover_label.setHtml(
+            f'<span style="background-color:{self.axis_bg.name()}">&nbsp;{hhmm(minute)}&nbsp;</span>')
+        w = self._hover_label.boundingRect().width()
+        self._hover_label.setPos(max(0, min(x - w / 2, rect.width() - w)), 1)
+        self._hover_label.show()
+
+    def _hide_hover(self):
         self.tooltip.hide()
+        if self._hover_line:
+            self._hover_line.hide()
+            self._hover_label.hide()
+
+    def _move_tooltip(self, pos):
+        """Hinweis neben die Maus, am rechten/unteren Bildschirmrand auf die andere Seite."""
+        gp = self.mapToGlobal(pos)
+        x, y = gp.x() + 15, gp.y() + 15
+        screen = self.screen().availableGeometry() if hasattr(self, "screen") else None
+        if screen is not None:
+            if x + self.tooltip.width() > screen.right():
+                x = gp.x() - 15 - self.tooltip.width()
+            if y + self.tooltip.height() > screen.bottom():
+                y = gp.y() - 15 - self.tooltip.height()
+        self.tooltip.move(x, y)
+
+    def _hover_text(self, minute, hovered=None):
+        """Hinweis zur Linie: Uhrzeit, Personalzeit und alles, was zu dieser Minute lief."""
+        date_str = self.current_date.toString("yyyy-MM-dd")
+        moment = parse_time(f"{date_str} {hhmm(minute)}:00")
+        lines = [f"<b>{hhmm(minute)} Uhr</b>", self._work_text(minute)]
+
+        if hovered:  # Eintrag direkt unter der Maus: ausführlich
+            start, end = parse_time(hovered["start"]), parse_time(hovered["end"])
+            lines += ["", f"<b>{escape(hovered.get('customer_name') or hovered.get('type'))}</b>",
+                      escape(type_label(hovered)),
+                      f"{start:%H:%M} – {end:%H:%M}  ({format_duration((end - start).total_seconds())})"]
+            if hovered.get("details"):
+                lines.append(escape(hovered["details"]))
+            if hovered.get("is_suggestion"):
+                lines.append("<i>Vorschlag aus Log</i>")
+
+        # Weitere Einträge, die zu dieser Minute liefen (Minute zählt, nicht die Sekunde)
+        others = [a for a in self._day_entries if a is not hovered
+                  and parse_time(a["start"]).replace(second=0) <= moment < parse_time(a["end"])]
+        if not any(p is hovered for p in self._pc_band):
+            others += [p for p in self._pc_band
+                       if parse_time(p["start"]).replace(second=0) <= moment < parse_time(p["end"])][:1]
+        if others:
+            lines.append("")
+            for a in others[:8]:
+                lines.append(f"{parse_time(a['start']):%H:%M}–{parse_time(a['end']):%H:%M}  "
+                             f"{escape(type_label(a))}: {escape(a.get('customer_name') or '')}")
+            if len(others) > 8:
+                lines.append(f"<i>… und {len(others) - 8} weitere</i>")
+        elif not hovered:
+            lines.append("<i>Keine Einträge</i>")
+        return "<br>".join(lines)
+
+    def leaveEvent(self, event):
+        self._hide_hover()
         super().leaveEvent(event)
 
     def mousePressEvent(self, event):

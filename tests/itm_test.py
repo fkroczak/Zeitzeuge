@@ -21,6 +21,9 @@ from itm_reader import ItmReader
 MOCK = os.path.join(ROOT, "tests", "mock_itm")
 
 
+LATER = False  # True: Tag hat sich in ITM geändert (wieder eingestempelt, noch offen)
+
+
 class Handler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         path, _, query = self.path.partition("?")
@@ -28,13 +31,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
             body, kind = open(os.path.join(MOCK, "index.html"), "rb").read(), "text/html"
         elif path == "/api/tag":
             day = query.split("=", 1)[1]
-            body = open(os.path.join(MOCK, "tag.json"), encoding="utf-8").read().replace("DATUM", day)
+            body = open(os.path.join(MOCK, "tag.json"), encoding="utf-8").read()
+            if LATER:
+                body = body.replace('"DATUMT17:41:00"', 'null')
+            body = body.replace("DATUM", day)
             body, kind = body.encode("utf-8"), "application/json"
         else:
             self.send_error(404)
             return
         self.send_response(200)
         self.send_header("Content-Type", kind + "; charset=utf-8")
+        if kind == "application/json":  # Browser darf die Antwort zwischenspeichern
+            self.send_header("Cache-Control", "max-age=3600")
         self.end_headers()
         self.wfile.write(body)
 
@@ -92,4 +100,17 @@ assert day["zeiten"] == [
     {"start": f"{today} 08:10:00", "end": f"{today} 12:39:00"},
     {"start": f"{today} 13:33:00", "end": f"{today} 17:41:00"},
 ], day["zeiten"]
+
+# 4. Heute erneut lesen, nachdem sich der Tag in ITM geändert hat: Zeitzeuge darf
+# nicht die Daten der vorigen, noch geladenen Seite übernehmen
+def reread_today(reader):
+    global LATER
+    if not LATER and reader._today_read:  # erst nach dem ersten Lesen ändern
+        LATER = True
+        reader._today_read = 0
+        reader._wake.set()
+    return LATER and saved()[today]["zeiten"][-1]["end"] is None
+
+
+run("http://127.0.0.1:8814", reread_today, "heute nach Änderung erneut gelesen")
 print("ITM-Test ok")

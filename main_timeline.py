@@ -23,6 +23,7 @@ from activity_tracker import ActivityTracker
 from call_import import start_call_server
 import icons
 import storage
+from log_parsers import VpnParser
 from settings_dialogs import (ActivityTypeSettingsDialog,
                               ConnectionSettingsDialog, WorkHoursDialog)
 from grouping import format_tv_id, work_blocks
@@ -182,6 +183,10 @@ def load_config_with_defaults():
                 r"%LOCALAPPDATA%\Devolutions\RemoteDesktopManager\Connections.log"
             )
         ],
+        # VPN-Verbindungen (Logs von VPN-Clients und VPN-Einträge aus RDM)
+        "vpn_enabled": True,
+        "vpn_paths": VpnParser().default_paths,  # OpenVPN GUI, OpenVPN Connect, Sophos SSL VPN
+        "vpn_timezone_correction": 0,  # VPN-Clients schreiben Ortszeit
         # deine gewünschten Zeitzonen
         "timezone_correction": 0,
         "teamviewer_timezone_correction": 1,
@@ -238,7 +243,7 @@ def load_config_with_defaults():
                         ("Zugangsdaten", "#9B59B6"), ("Arbeitsblock", "#5B8DEF")]:
         cfg["type_colors"].setdefault(kind, color)
     # Alte Standardpfade enthielten doppelte Backslashes (C:\Users\x\\TeamViewer)
-    for key in ("teamviewer_paths", "rdm_paths"):
+    for key in ("teamviewer_paths", "rdm_paths", "vpn_paths"):
         cfg[key] = [clean_path(p) for p in cfg.get(key, [])]
     if "Telefonat" not in cfg["activity_types"]:
         cfg["activity_types"].append("Telefonat")
@@ -615,6 +620,8 @@ class TimelineApp(QMainWindow):
         self.sources_menu = menu.addMenu("Daten&quellen")
         self.sources_menu.addAction("Team&Viewer-Logs …", self.edit_teamviewer_settings)
         self.sources_menu.addAction("&RDM-Logs …", self.edit_rdm_settings)
+        self.sources_menu.addAction("&VPN-Verbindungen …", self.edit_vpn_settings)
+        self.sources_menu.addSeparator()
         self.sources_menu.addAction("3CX &direkt auslesen …", self.open_pbx_settings)
         self.sources_menu.addAction("3CX über &Chrome/Tampermonkey einrichten …", self.open_browser_setup)
         self.sources_menu.addAction("&ITM-Personalzeiten …", self.open_itm_settings)
@@ -1229,12 +1236,15 @@ class TimelineApp(QMainWindow):
 
     # ---------------------- Einstellungen / Dialoge ---------------------------
 
-    def _edit_log_settings(self, key, default_path, title):
+    def _edit_log_settings(self, key, default_path, title, **options):
+        defaults = default_path if isinstance(default_path, list) else [default_path]
         dialog = ConnectionSettingsDialog(
-            self.config, key, [os.path.expandvars(default_path)], title, self
+            self.config, key, [os.path.expandvars(p) for p in defaults], title, self, **options
         )
         if dialog.exec_() == dialog.Accepted:
             self.config[f"{key}_paths"] = dialog.get_paths()
+            if dialog.enabled_box:
+                self.config[f"{key}_enabled"] = dialog.enabled_box.isChecked()
             self.config[f"{key}_timezone_correction"] = dialog.get_timezone_correction()
             save_config(self.config)
             self.timeline.refresh()
@@ -1249,6 +1259,17 @@ class TimelineApp(QMainWindow):
         self._edit_log_settings(
             "rdm", r"%LOCALAPPDATA%\Devolutions\RemoteDesktopManager\Connections.log",
             "RDM-Logeinstellungen",
+        )
+
+    def edit_vpn_settings(self):
+        self._edit_log_settings(
+            "vpn", VpnParser().default_paths, "VPN-Verbindungen",
+            enabled_text="VPN-Verbindungen auslesen und anzeigen (auch die VPN-Einträge aus RDM)",
+            folders=True,
+            hint="Logdateien oder Ordner deiner VPN-Clients, z. B. OpenVPN GUI "
+                 "(%USERPROFILE%\\OpenVPN\\log), OpenVPN Connect oder Sophos SSL VPN. "
+                 "Bei einem Ordner zählen alle .log- und .txt-Dateien darin, "
+                 "der Dateiname wird zum Verbindungsnamen.",
         )
 
     def edit_work_hours(self):
