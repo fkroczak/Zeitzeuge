@@ -10,5 +10,7 @@ anrufe_stand.json
 personalzeiten.json
 personalzeiten.json.tmp
 itm_profil/
+mitschnitt_*.json
+mitschnitt_*.json.tmp
 ki_vorschlaege/
 anthropic_key.txt

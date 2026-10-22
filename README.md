@@ -190,13 +190,24 @@ Zeitzeuge öffnet die Tagesübersicht der ITM-Zeiterfassung unsichtbar mit Edge,
 
 Die Anmeldung liegt in `%LOCALAPPDATA%\Zeitzeuge\itm_profil`, die gelesenen Tage in `personalzeiten.json` im Datenordner. Die Timeline zeigt dann deine gestempelte Zeit hell und alles andere, auch die Pausen, abgedunkelt. Ohne Personalzeiten gilt wie bisher die Arbeitszeit aus den Einstellungen.
 
+### Abfragen mitschneiden (3CX und ITM)
+
+Mit einem Mitschnitt lässt sich prüfen, ob Zeitzeuge die Daten später direkt beim Server abfragen kann, ohne die Seite dauerhaft in Edge offen zu halten. Das spart viel Arbeitsspeicher.
+
+1. **Einstellungen → Datenquellen → 3CX direkt auslesen …** oder **ITM-Personalzeiten …** öffnen.
+2. **Abfragen mitschneiden …** klicken. Ein Edge-Fenster öffnet sich.
+3. Falls nötig anmelden. Bei 3CX die Anrufliste ein Stück nach unten scrollen, bei ITM zwei oder drei andere Tage aufrufen.
+4. Das Fenster schließen. Zeitzeuge speichert `mitschnitt_pbx_….json` oder `mitschnitt_itm_….json` im Datenordner.
+
+Aufgezeichnet werden nur Datenabfragen, keine Bilder oder Skripte. Passwörter, Token und Cookie-Werte sind geschwärzt. Von Token und Cookies bleiben Name, Länge und Ablaufzeit, damit man sieht, wie lange eine Anmeldung hält. Antworten sind gekürzt (die ersten drei Einträge einer Liste). Darin können trotzdem Namen und Telefonnummern stehen, schau die Datei also vor dem Weitergeben durch.
+
 ### KI-Vorschläge
 
 Du brauchst einen API-Schlüssel von Anthropic (console.anthropic.com).
 
-1. **Einstellungen ▾ → KI-Vorschläge …** öffnen.
+1. **Einstellungen → KI-Vorschläge …** öffnen.
 2. Schlüssel eintragen (beginnt mit `sk-ant-`) und Modell wählen.
-3. Tag anzeigen und **✨ KI-Vorschläge** klicken oder F6 drücken.
+3. Tag anzeigen und **KI-Vorschläge** klicken oder F6 drücken.
 
 Der Schlüssel liegt nur auf deinem PC unter `%LOCALAPPDATA%\Zeitzeuge\anthropic_key.txt`, nicht im Datenordner. Alternativ liest Zeitzeuge die Umgebungsvariable `ANTHROPIC_API_KEY`.
 
@@ -275,6 +286,7 @@ Läuft RDM auf einem Server, kann Zeitzeuge dessen Log auch über das Netzwerk l
 | `activity_tracker.py` | Aktivitätsprotokoll (aktives Fenster, Leerlauf) |
 | `pbx_reader.py` | Edge im Hintergrund steuern (DevTools-Protokoll), 3CX direkt auslesen |
 | `itm_reader.py` | Personalzeiten aus der ITM-Zeiterfassung lesen |
+| `request_recorder.py` | Mitschnitt der Abfragen einer Seite, mit Schwärzen von Geheimnissen |
 | `ai_classifier.py` | KI-Vorschläge über die Anthropic-API |
 | `storage.py` | Speicherort der Daten |
 | `browser_setup.py` | Einrichtungsassistent für Tampermonkey |
@@ -291,7 +303,7 @@ Zeitzeuge arbeitet nur auf deinem eigenen Rechner. Es liest lokale Logdateien un
 
 **KI-Vorschläge:** Dabei gehen die Einträge des Tages an Anthropic: Uhrzeiten, Kunden- und Verbindungsnamen, Anrufer und, wenn eingeschaltet, die Fenstertitel. Passwörter selbst stehen nicht in den Logs und werden nicht gesendet. Fenster aus `tracking_ignore` gehen nur als „(ausgeblendet)“ mit. Prüfe vorher, ob das zu deinen Verträgen mit Kunden passt. Wenn nicht: Fenstertitel ausschalten oder die Funktion nicht nutzen.
 
-Das Aktivitätsprotokoll speichert Fenstertitel. Darin können Kundennamen, Betreffzeilen von Mails oder Dateinamen stehen. Die Dateien in `aktivitaet/` gehören deshalb nur auf deinen PC. In den Ordnern `3cx_profil` und `itm_profil` liegen deine Anmeldungen bei 3CX und ITM. Sie sind zu schützen wie ein Browserprofil. Alle diese Dateien stehen in `.gitignore`, genauso wie `anrufe.json`, `personalzeiten.json`, `ki_vorschlaege/` und die persönliche `zeitzeuge_config.json`.
+Das Aktivitätsprotokoll speichert Fenstertitel. Darin können Kundennamen, Betreffzeilen von Mails oder Dateinamen stehen. Die Dateien in `aktivitaet/` gehören deshalb nur auf deinen PC. In den Ordnern `3cx_profil` und `itm_profil` liegen deine Anmeldungen bei 3CX und ITM. Sie sind zu schützen wie ein Browserprofil. Alle diese Dateien stehen in `.gitignore`, genauso wie `anrufe.json`, `personalzeiten.json`, `ki_vorschlaege/`, `mitschnitt_*.json` und die persönliche `zeitzeuge_config.json`.
 
 
 ## Lizenz

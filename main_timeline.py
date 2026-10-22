@@ -1049,6 +1049,7 @@ class TimelineApp(QMainWindow):
             lambda _n: self.timeline.draw_timeline(self.current_date)
         )
         self.pbx_reader.login_required.connect(self.on_pbx_login_required)
+        self.pbx_reader.recording_done.connect(self.on_recording_done)
         self.pbx_reader.start()
         self.calls_label.setText("3CX: wird geladen …")
 
@@ -1084,6 +1085,12 @@ class TimelineApp(QMainWindow):
             url_label="3CX-Adresse:", url_key="calls_3cx_url", enabled_key="pbx_reader_enabled",
             enabled_text="Anrufliste automatisch im Hintergrund lesen",
             login_text="Bei 3CX anmelden …", attr="pbx_reader",
+            record_text="Ein Edge-Fenster mit dem 3CX-Webclient öffnet sich.\n\n"
+                        "1. Falls nötig anmelden.\n"
+                        "2. Die Anrufliste öffnen und ein Stück nach unten scrollen, "
+                        "damit ältere Anrufe nachladen.\n"
+                        "3. Das Fenster schließen.\n\n"
+                        "Zeitzeuge speichert dann die Mitschnitt-Datei im Datenordner.",
         ),
         "itm": dict(
             title="ITM-Personalzeiten",
@@ -1094,6 +1101,11 @@ class TimelineApp(QMainWindow):
             url_label="ITM-Adresse:", url_key="itm_url", enabled_key="itm_reader_enabled",
             enabled_text="Personalzeiten automatisch im Hintergrund lesen",
             login_text="Bei ITM anmelden …", attr="itm_reader",
+            record_text="Ein Edge-Fenster mit der ITM-Zeiterfassung öffnet sich.\n\n"
+                        "1. Falls nötig anmelden.\n"
+                        "2. Zwei oder drei andere Tage in der Tagesübersicht aufrufen.\n"
+                        "3. Das Fenster schließen.\n\n"
+                        "Zeitzeuge speichert dann die Mitschnitt-Datei im Datenordner.",
         ),
     }
 
@@ -1181,16 +1193,47 @@ class TimelineApp(QMainWindow):
                 follow_status()
                 reader.show_login(self)
 
+        def record():
+            enabled.setChecked(True)
+            reader = apply()
+            if not reader:
+                return
+            follow_status()
+            path = os.path.join(DATA_DIR, f"mitschnitt_{kind}_{datetime.now():%Y-%m-%d_%H%M}.json")
+            if reader.record(path):
+                QMessageBox.information(dialog, "Abfragen mitschneiden", spec["record_text"])
+
         follow_status()
 
         login_btn = QPushButton(spec["login_text"])
         login_btn.clicked.connect(login)
+        record_btn = QPushButton("Abfragen &mitschneiden …")
+        record_btn.setToolTip("Aufzeichnen, welche Abfragen die Seite an ihren Server schickt "
+                              "(Passwörter und Token werden geschwärzt).")
+        record_btn.clicked.connect(record)
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.addButton(login_btn, QDialogButtonBox.ActionRole)
+        buttons.addButton(record_btn, QDialogButtonBox.ActionRole)
         buttons.accepted.connect(lambda: (apply(), dialog.accept()))
         buttons.rejected.connect(dialog.reject)
         layout.addWidget(buttons)
         return dialog
+
+    def on_recording_done(self, path):
+        if not path:
+            QMessageBox.warning(self, "Abfragen mitschneiden",
+                                "Der Mitschnitt hat nicht geklappt. Details stehen in der Statuszeile.")
+            return
+        box = QMessageBox(QMessageBox.Information, "Mitschnitt gespeichert",
+                          f"Gespeichert unter:\n{path}\n\n"
+                          "Passwörter, Token und Cookie-Werte sind geschwärzt, Antworten gekürzt. "
+                          "Die Datei kann trotzdem Namen und Nummern aus der Anrufliste enthalten. "
+                          "Schau sie vor dem Weitergeben kurz durch.", parent=self)
+        open_btn = box.addButton("Ordner öffnen", QMessageBox.ActionRole)
+        box.addButton(QMessageBox.Ok)
+        box.exec_()
+        if box.clickedButton() is open_btn:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(os.path.dirname(path)))
 
     # ---------------------- ITM-Personalzeiten --------------------------------
 
@@ -1213,6 +1256,7 @@ class TimelineApp(QMainWindow):
                 QSystemTrayIcon.Warning, 8000,
             )
         )
+        self.itm_reader.recording_done.connect(self.on_recording_done)
         self.timeline.personal_day = self.itm_reader.day
         self.itm_reader.start()
         self.itm_reader.want(self.current_date.toString("yyyy-MM-dd"))

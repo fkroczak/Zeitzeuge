@@ -239,6 +239,7 @@ class BrowserReader(QObject):
     # Signale werden aus dem Hintergrund-Thread gesendet (Qt stellt sie zu)
     status_changed = pyqtSignal(str)
     login_required = pyqtSignal()
+    recording_done = pyqtSignal(str)  # Pfad der Mitschnitt-Datei, leer bei Fehler
 
     READ_INTERVAL = 60  # Sekunden zwischen zwei Durchläufen
     RETRY_INTERVAL = 20  # nach einem Fehler früher neu versuchen
@@ -261,6 +262,7 @@ class BrowserReader(QObject):
         self._thread = None
         # Nur ein Edge darf das Profil benutzen: Lesen und Anmelden wechseln sich ab
         self._browser_lock = threading.Lock()
+        self._record_stop = threading.Event()
 
     def start_url(self):
         raise NotImplementedError
@@ -276,6 +278,7 @@ class BrowserReader(QObject):
 
     def stop(self):
         self._stop.set()
+        self._record_stop.set()
         self._wake.set()
         self._close_browser()
 
@@ -291,9 +294,23 @@ class BrowserReader(QObject):
         self._set_status(f"{self.NAME}: Anmeldung im Edge-Fenster …")
         threading.Thread(target=self._login_window, daemon=True).start()
 
+    def record(self, out_file, mode="login", max_seconds=30 * 60):
+        """Mitschnitt: Edge-Fenster öffnen und aufzeichnen, welche Abfragen die Seite
+        an ihren Server schickt, bis du das Fenster schließt. Ergebnis über recording_done."""
+        if self._login_open:
+            return False
+        self._login_open = True
+        self._record_stop.clear()
+        threading.Thread(target=self._record_window, args=(out_file, mode, max_seconds),
+                         daemon=True).start()
+        return True
+
+    def stop_recording(self):
+        self._record_stop.set()
+
     # ------------------------------------------------------------ Browser
 
-    def _browser_args(self, mode, debug=True):
+    def _browser_args(self, mode, debug=True, url=None):
         """mode: "headless" (unsichtbar), "hidden" (Fenster außerhalb des Bildschirms),
         "login" (normales Fenster zum Anmelden)."""
         exe = find_browser()
@@ -317,7 +334,7 @@ class BrowserReader(QObject):
         if debug:
             args += ["--remote-debugging-port=0", "--remote-allow-origins=*"]
         if mode == "login":
-            return args + [f"--app={self.start_url()}", "--window-size=1100,800"]
+            return args + [f"--app={url or self.start_url()}", "--window-size=1100,800"]
         args += ["--window-size=1100,2400"]
         if mode == "headless":
             return args + ["--headless=new", "about:blank"]
@@ -367,12 +384,12 @@ class BrowserReader(QObject):
         page = next(p for p in pages if p.get("type") == "page")
         self._tools = _DevTools(page["webSocketDebuggerUrl"])
 
-    def _launch(self, mode):
+    def _launch(self, mode, url=None):
         """Edge starten und warten, bis er seine DevTools-Schnittstelle meldet. Gibt den Port zurück."""
         port_file = os.path.join(self.profile_dir, "DevToolsActivePort")
         if os.path.exists(port_file):
             os.remove(port_file)
-        self._proc = self._popen(self._browser_args(mode))
+        self._proc = self._popen(self._browser_args(mode, url=url))
 
         # Edge schreibt seinen Port in DevToolsActivePort. Er gibt beim Start oft an einen
         # anderen Prozess ab, darum zählt die Datei, nicht der gestartete Prozess.
@@ -453,6 +470,42 @@ class BrowserReader(QObject):
             finally:
                 self._login_open = False
                 self.needs_login = False
+        self._wake.set()
+
+    def _record_window(self, out_file, mode, max_seconds):
+        from request_recorder import Recorder  # nur hier gebraucht
+
+        self._wake.set()  # Lese-Schleife aus dem Warten holen
+        path = ""
+        with self._browser_lock:
+            try:
+                self._close_browser()  # unsichtbaren Edge beenden, Profil freigeben
+                kill_profile_processes(self.profile_dir)
+                self._wait_profile_free(15)
+                # Leer starten, damit schon die erste Abfrage der Seite mitgeschnitten wird
+                port = self._launch(mode, url="about:blank")
+                pages = json.load(urllib.request.urlopen(f"http://127.0.0.1:{port}/json/list", timeout=10))
+                page = next(p for p in pages if p.get("type") == "page")
+                version = json.load(urllib.request.urlopen(f"http://127.0.0.1:{port}/json/version", timeout=10))
+                recorder = Recorder(page["webSocketDebuggerUrl"], self.start_url(), self.NAME)
+                self._set_status(f"{self.NAME}: Mitschnitt läuft, Fenster schließen zum Beenden")
+                recorder.run(self._record_stop, max_seconds)
+                data = recorder.result(version.get("Browser", ""))
+                tmp = out_file + ".tmp"
+                with open(tmp, "w", encoding="utf-8") as f:
+                    json.dump(data, f, ensure_ascii=False, indent=1)
+                os.replace(tmp, out_file)
+                path = out_file
+                self._close_gracefully(port)  # Anmeldung aus dem Fenster bleibt gespeichert
+                self._set_status(f"{self.NAME}: Mitschnitt gespeichert ({len(data['abfragen'])} Abfragen)")
+            except Exception as e:
+                self._set_status(f"{self.NAME}: Mitschnitt fehlgeschlagen ({e})")
+            finally:
+                self._close_tools()
+                kill_profile_processes(self.profile_dir)
+                self._proc = None
+                self._login_open = False
+        self.recording_done.emit(path)
         self._wake.set()
 
     def _login_done(self):
