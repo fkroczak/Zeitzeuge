@@ -263,5 +263,11 @@ if problems:
         print(" -", p)
         if os.environ.get("GITHUB_ACTIONS"):
             print(f"::error title=Bedienbarkeit::{p}")
-    sys.exit(1)
+    sys.stdout.flush()
+    os._exit(1)
 print("Bedienbarkeit ok")
+
+# Direkt beenden: PyQt räumt beim Interpreter-Ende sporadisch in falscher Reihenfolge auf
+# (Zugriffsfehler unter Windows, auch mit altem Code). Alle Prüfungen sind hier gelaufen.
+sys.stdout.flush()
+os._exit(0)

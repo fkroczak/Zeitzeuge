@@ -1279,4 +1279,10 @@ if __name__ == "__main__":
             window.showMinimized()
     else:
         window.show()
-    sys.exit(app.exec_())
+    code = app.exec_()
+    if not window._quitting:  # z. B. Windows-Abmeldung: laufenden Abschnitt trotzdem speichern
+        window.quit_app()
+    # Direkt beenden: PyQt räumt beim Interpreter-Ende sporadisch in falscher Reihenfolge auf
+    # (Zugriffsfehler unter Windows). quit_app hat da schon alles gespeichert und gestoppt.
+    sys.stdout and sys.stdout.flush()
+    os._exit(code)

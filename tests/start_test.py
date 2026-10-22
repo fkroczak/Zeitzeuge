@@ -14,3 +14,8 @@ window.show()
 QTimer.singleShot(1000, window.quit_app)
 app.exec_()
 print("Start ok")
+
+# Direkt beenden: PyQt räumt beim Interpreter-Ende sporadisch in falscher Reihenfolge auf
+# (Zugriffsfehler unter Windows, auch mit altem Code). Alle Prüfungen sind hier gelaufen.
+sys.stdout.flush()
+os._exit(0)

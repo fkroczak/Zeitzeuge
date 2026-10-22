@@ -32,6 +32,7 @@ externen Dienste oder Config-Formate angefasst.
 | Menü „Einstellungen“: 12 Einträge flach. Werkzeugleiste mit Unicode-Zeichen, bei 1200 px rutschte „Einstellungen“ in den Überlauf. | Menü nach Aufgaben, Icons, „Dunkel“ ins Menü, „Aktualisieren“ nur als Icon (Tooltip + F5). |
 | Infobereich nur „Öffnen“ und „Beenden“, Aufzeichnung nur tief im Menü schaltbar. | Siehe unten. Eine gemeinsame `QAction` für Menü, Infobereich und Statuszeile, damit der Zustand nie auseinanderläuft. |
 | Windows-CI Lauf 38 (nur Doku geändert): Test meldete „ok“, Prozess endete trotzdem mit Fehler. Ursache in meinem neuen Code: Der Hintergrund-Thread konnte beim Beenden noch laufen und danach ein Signal an die schon gelöschte Timeline senden. | `quit_app` wartet den Thread kurz ab (max. 3 s), danach meldet er nichts mehr. Neuer Test stellt das nach (schlägt ohne Fix fehl). |
+| Lauf 39 weiter rot. Diagnose-Lauf 40: „Windows fatal exception: access violation“ im Hauptthread **nach** Testende, kein Python-Code beteiligt. Das ist PyQts Aufräumen beim Interpreter-Ende (lokal mit gdb bestätigt: `cleanup_on_exit`), das sporadisch auf ein schon gelöschtes Objekt zugreift. Trat lokal auch mit dem **alten** Code auf; betrifft auch das echte Beenden der App unter Windows. | App und Qt-Tests beenden sich nach der Event-Loop mit `os._exit(code)`. Vorher ist alles gespeichert und gestoppt; endet die App ohne „Beenden“ (z. B. Windows-Abmeldung), wird `quit_app` jetzt ausdrücklich nachgeholt und der laufende Abschnitt gespeichert. |
 | Architektur: flache Module nach Zuständigkeit (Parser, Tracker, Leser, Dialoge, Timeline, Hauptfenster). | **Kein Umbau.** Die Struktur passt zur Größe (~4.000 Zeilen). Nur die Kopplung Parser→Fenster gelöst. Weitere Aufteilung siehe offene Punkte. |
 
 **Neues Logo (kam während der Nacht über PR #3):** Statt eines zusätzlichen grünen Punkts zeigt
@@ -91,7 +92,7 @@ Unter Windows ist alles langsamer (Virenscanner, EXE-Entpacken), das Verhältnis
 | neu: `tests/tray_test.py` (Menü, pausieren/fortsetzen über Infobereich und Statuszeile, Zustand gespeichert, PC-Daten bei Pause sichtbar) | grün |
 | neu: `tests/parser_test.py` (Zeitzone, zu kurze/ungültige Zeilen, Cache, strenges Zeitformat) | grün |
 | Alter vs. neuer Parser auf 126.000 Logzeilen | identisch |
-| Windows-CI (GitHub Actions, windows-latest): alle 15 Schritte inkl. neuer Tests, 3CX/ITM mit echtem Edge und EXE-Bau | grün: Läufe 33–37. Lauf 38 rot (Absturz beim Beenden, behoben, siehe Befunde) |
+| Windows-CI (GitHub Actions, windows-latest): alle 15 Schritte inkl. neuer Tests, 3CX/ITM mit echtem Edge und EXE-Bau | grün: Läufe 33–37. Läufe 38–40 rot durch Absturz beim Beenden (siehe Befunde), danach behoben |
 | Echtes Beenden (`Beenden` im Menü, 10× alt und 10× neu) | 0 Abstürze |
 | Sichtprüfung hell und dunkel per Screenshots | ok |
 | Unabhängiges Code-Review durch einen zweiten Agenten (Parser alt/neu mit je 20.000 Zufallszeilen inkl. ungültiger Daten, Stresstest Neu-Einlesen während Pfad- und Datumswechsel, Start/Beenden, Lazy Imports) | keine Fehler gefunden |
@@ -135,7 +136,10 @@ Ordner [`docs/screenshots/2026-10-22/`](screenshots/2026-10-22/) mit Bildübersi
 Alles liegt nur auf dem Branch. `main` ist unverändert.
 
 - **Alles verwerfen:** Branch nicht mergen (oder löschen). Lokal: `git checkout main`.
-- **Nach einem Merge alles zurück:** `git revert 0f4c26c 936be8b 41b0103 b39f394 dfee077 01a2940`
+- **Nach einem Merge alles zurück:** alle Commits dieses Branches seit `39abfb1` außer dem Merge
+  `8339294` zurücknehmen, neueste zuerst. Liste: `git log --oneline --no-merges 39abfb1..HEAD`
+  (enthält auch den Diagnose-Commit und seine Rücknahme, die sich gegenseitig aufheben). Kern:
+  `git revert 47091c7 0f4c26c 936be8b 41b0103 b39f394 dfee077 01a2940` plus den Absturz-Fix
   (neueste zuerst; den Merge-Commit `8339294` nicht zurücknehmen, er enthält nur Stand von `main`).
 - **Nur die Oberfläche zurück, Startzeit behalten:** `git revert 0f4c26c 936be8b 41b0103 b39f394`.
 - **Nur die Logo-Zustandsanzeige zurück:** `git revert 0f4c26c` (dann wieder grüner Extra-Punkt).
