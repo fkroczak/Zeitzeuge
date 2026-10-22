@@ -68,6 +68,11 @@ def type_label(activity):
     return activity.get("type", "")
 
 
+def hhmm(minutes):
+    minutes = int(minutes)
+    return f"{minutes // 60:02d}:{minutes % 60:02d}"
+
+
 def format_duration(seconds):
     minutes = int(round(seconds / 60))
     if minutes < 1:
@@ -169,6 +174,10 @@ class TimelineView(QGraphicsView):
         self.fit_day = True        # ganzen Tag ins Fenster einpassen
         self._drag_start = None    # Mausposition beim Drücken (Bereich ziehen)
         self._drag_item = None     # markierter Bereich während des Ziehens
+        self._hover_line = None    # senkrechte Linie unter der Maus
+        self._hover_label = None   # Uhrzeit oben an der Linie
+        self._day_entries = []     # gezeichnete Einträge (für die Linie)
+        self._pc_band = []
         self.dark_mode = self.config.get("dark_mode", False)
 
         self.setRenderHint(QPainter.Antialiasing)
@@ -325,17 +334,40 @@ class TimelineView(QGraphicsView):
 
     def _work_spans(self, date: QDate):
         """Arbeitszeit als [(Start, Ende)] in Minuten: Personalzeiten aus ITM, sonst Einstellungen."""
+        return self._work_info(date)[0]
+
+    def _work_info(self, date: QDate):
+        """([(Start, Ende)] in Minuten, aus ITM?, Index der noch offenen Buchung oder None)."""
         day = self.personal_day(date.toString("yyyy-MM-dd")) if self.personal_day else None
         if day and day.get("zeiten"):
-            spans = []
+            spans, open_idx = [], None
             for t in day["zeiten"]:
                 start = parse_time(t["start"])
+                if not t["end"]:
+                    open_idx = len(spans)
                 end = parse_time(t["end"]) if t["end"] else datetime.now()  # noch eingestempelt
                 end_min = end.hour * 60 + end.minute if end.date() == start.date() else 24 * 60
                 spans.append((start.hour * 60 + start.minute, end_min))
-            return spans
+            return spans, True, open_idx
         hours = work_hours(self.config, date.dayOfWeek() - 1)
-        return [hours] if hours else []
+        return ([hours] if hours else []), False, None
+
+    def _work_text(self, minute):
+        """Was zu dieser Minute laut Personalzeit/Arbeitszeit gilt (eine Zeile)."""
+        spans, from_itm, open_idx = self._work_info(self.current_date)
+        name = "Personalzeit" if from_itm else "Arbeitszeit"
+        if not spans:
+            return f"<i>Keine {name}</i>"
+        for i, (a, b) in enumerate(spans):
+            if a <= minute < b:
+                if i == open_idx:
+                    return f"<b>{name}</b> seit {hhmm(a)} (eingestempelt)"
+                return f"<b>{name}</b> {hhmm(a)} – {hhmm(b)}"
+        before = [b for _a, b in spans if b <= minute]
+        after = [a for a, _b in spans if a > minute]
+        if before and after:
+            return f"<b>Pause</b> {hhmm(max(before))} – {hhmm(min(after))}"
+        return f"<i>Außerhalb der {name}</i>"
 
     def _work_minutes(self, date: QDate):
         """Beginn und Ende der Arbeitszeit; an freien Tagen ist der ganze Tag abgedunkelt."""
@@ -358,6 +390,7 @@ class TimelineView(QGraphicsView):
         self._ppm = self.BASE_PX_PER_MIN * self.zoom_level
         self._drag_item = None
         self.scene.clear()
+        self._hover_line = self._hover_label = None  # mit der Szene gelöscht
         self.activity_rects.clear()
         self.tooltip.hide()
         self.scene.setBackgroundBrush(self.background_color)
@@ -423,6 +456,15 @@ class TimelineView(QGraphicsView):
                 )
                 label.setPos(x + 2, 3)
 
+        # Personalzeit/Arbeitszeit als schmaler Streifen unter der Stundenleiste
+        work_color = QColor("#27AE60")
+        work_color.setAlpha(200)
+        for span_start, span_end in spans:
+            if span_end <= span_start:
+                continue
+            self.scene.addRect(self._x(span_start), self.AXIS_H - 3, self._x(span_end) - self._x(span_start),
+                               3, no_pen, QBrush(work_color))
+
         # Einträge
         label_font = QFont("Segoe UI", 8)
         metrics = QFontMetrics(label_font)
@@ -477,6 +519,17 @@ class TimelineView(QGraphicsView):
             now = QDateTime.currentDateTime().time()
             x = self._x(now.hour() * 60 + now.minute())
             self.scene.addLine(x, 0, x, height, QPen(QColor("#E74C3C"), 1.5))
+
+        # Senkrechte Linie unter der Maus (erst bei Mausbewegung sichtbar)
+        self._hover_line = self.scene.addLine(0, 0, 0, height, QPen(self.text_color, 1, Qt.DashLine))
+        self._hover_line.setZValue(90)
+        self._hover_line.hide()
+        self._hover_label = self.scene.addText("", QFont("Segoe UI", 8, QFont.Bold))
+        self._hover_label.setDefaultTextColor(self.text_color)
+        self._hover_label.setZValue(91)
+        self._hover_label.hide()
+        self._day_entries = activities
+        self._pc_band = pc_band
 
         self.setSceneRect(0, 0, width, height)
 
@@ -576,7 +629,7 @@ class TimelineView(QGraphicsView):
     def mouseMoveEvent(self, event):
         # Klicken und ziehen: Bereich markieren
         if self._drag_start is not None and abs(event.pos().x() - self._drag_start.x()) > 5:
-            self.tooltip.hide()
+            self._hide_hover()
             x1 = self.mapToScene(self._drag_start).x()
             x2 = self.mapToScene(event.pos()).x()
             rect = self.sceneRect()
@@ -595,27 +648,84 @@ class TimelineView(QGraphicsView):
             self.tooltip.show()
             return
 
-        a = self._activity_at(event.pos())
-        if a:
-            start, end = parse_time(a["start"]), parse_time(a["end"])
-            lines = [f"<b>{escape(a.get('customer_name') or a.get('type'))}</b>",
-                     escape(type_label(a)),
-                     f"{start:%H:%M} – {end:%H:%M}  ({format_duration((end - start).total_seconds())})"]
-            if a.get("details"):
-                lines.append(escape(a["details"]))
-            if a.get("is_suggestion"):
-                lines.append("<i>Vorschlag aus Log</i>")
-            self.tooltip.setText("<br>".join(lines))
+        minute = self._minute_at(event.pos().x()) if self._ppm else -1
+        if 0 <= minute < 24 * 60:
+            self._show_hover_line(minute)
+            self.tooltip.setText(self._hover_text(minute, self._activity_at(event.pos())))
             self.tooltip.adjustSize()
-            global_pos = self.mapToGlobal(event.pos())
-            self.tooltip.move(global_pos.x() + 15, global_pos.y() + 15)
+            self._move_tooltip(event.pos())
             self.tooltip.show()
         else:
-            self.tooltip.hide()
+            self._hide_hover()
         super().mouseMoveEvent(event)
 
-    def leaveEvent(self, event):
+    def _show_hover_line(self, minute):
+        if not self._hover_line:
+            return
+        x = self._x(minute)
+        rect = self.sceneRect()
+        self._hover_line.setLine(x, self.AXIS_H, x, rect.height())
+        self._hover_line.show()
+        # Uhrzeit oben in der Stundenleiste, mit Hintergrund damit sie lesbar bleibt
+        self._hover_label.setHtml(
+            f'<span style="background-color:{self.axis_bg.name()}">&nbsp;{hhmm(minute)}&nbsp;</span>')
+        w = self._hover_label.boundingRect().width()
+        self._hover_label.setPos(max(0, min(x - w / 2, rect.width() - w)), 1)
+        self._hover_label.show()
+
+    def _hide_hover(self):
         self.tooltip.hide()
+        if self._hover_line:
+            self._hover_line.hide()
+            self._hover_label.hide()
+
+    def _move_tooltip(self, pos):
+        """Hinweis neben die Maus, am rechten/unteren Bildschirmrand auf die andere Seite."""
+        gp = self.mapToGlobal(pos)
+        x, y = gp.x() + 15, gp.y() + 15
+        screen = self.screen().availableGeometry() if hasattr(self, "screen") else None
+        if screen is not None:
+            if x + self.tooltip.width() > screen.right():
+                x = gp.x() - 15 - self.tooltip.width()
+            if y + self.tooltip.height() > screen.bottom():
+                y = gp.y() - 15 - self.tooltip.height()
+        self.tooltip.move(x, y)
+
+    def _hover_text(self, minute, hovered=None):
+        """Hinweis zur Linie: Uhrzeit, Personalzeit und alles, was zu dieser Minute lief."""
+        date_str = self.current_date.toString("yyyy-MM-dd")
+        moment = parse_time(f"{date_str} {hhmm(minute)}:00")
+        lines = [f"<b>{hhmm(minute)} Uhr</b>", self._work_text(minute)]
+
+        if hovered:  # Eintrag direkt unter der Maus: ausführlich
+            start, end = parse_time(hovered["start"]), parse_time(hovered["end"])
+            lines += ["", f"<b>{escape(hovered.get('customer_name') or hovered.get('type'))}</b>",
+                      escape(type_label(hovered)),
+                      f"{start:%H:%M} – {end:%H:%M}  ({format_duration((end - start).total_seconds())})"]
+            if hovered.get("details"):
+                lines.append(escape(hovered["details"]))
+            if hovered.get("is_suggestion"):
+                lines.append("<i>Vorschlag aus Log</i>")
+
+        # Weitere Einträge, die zu dieser Minute liefen (Minute zählt, nicht die Sekunde)
+        others = [a for a in self._day_entries if a is not hovered
+                  and parse_time(a["start"]).replace(second=0) <= moment < parse_time(a["end"])]
+        if not any(p is hovered for p in self._pc_band):
+            others += [p for p in self._pc_band
+                       if parse_time(p["start"]).replace(second=0) <= moment < parse_time(p["end"])][:1]
+        if others:
+            lines.append("")
+            for a in others[:8]:
+                lines.append(f"{parse_time(a['start']):%H:%M}–{parse_time(a['end']):%H:%M}  "
+                             f"{escape(type_label(a))}: {escape(a.get('customer_name') or '')}")
+            if len(others) > 8:
+                lines.append(f"<i>… und {len(others) - 8} weitere</i>")
+        elif not hovered:
+            lines.append("<i>Keine Einträge</i>")
+        return "<br>".join(lines)
+
+    def leaveEvent(self, event):
+        self._hide_hover()
         super().leaveEvent(event)
 
     def mousePressEvent(self, event):

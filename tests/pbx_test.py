@@ -133,4 +133,10 @@ for got, want in checks:
     if got != want:
         print(f"::error title=3CX-Test::erwartet {want!r}, gelesen {got!r}")
         sys.exit(1)
+
+# 5. Neue Anrufe kommen nur nach echtem Neuladen der Seite (3CX aktualisiert sich nicht selbst)
+assert "Neu Anrufer" not in {c["name"] for c in calls()}, "neuer Anruf schon vor dem Neuladen"
+PbxReader.RELOAD_INTERVAL = 3
+run("http://127.0.0.1:8812", lambda r: "Neu Anrufer" in {c["name"] for c in calls()},
+    "nach dem Neuladen neuen Anruf gelesen")
 print("3CX-Test ok")

@@ -306,6 +306,10 @@ class BrowserReader(QObject):
             "--mute-audio",
             "--deny-permission-prompts",
             "--disable-notifications",
+            # Unsichtbare Seite nicht drosseln oder schlafen legen, sonst bleibt sie stehen
+            "--disable-background-timer-throttling",
+            "--disable-renderer-backgrounding",
+            "--disable-backgrounding-occluded-windows",
         ]
         args += shlex.split(os.environ.get("ZEITZEUGE_BROWSER_ARGS", ""))
         if mode == "login":
@@ -473,7 +477,9 @@ class BrowserReader(QObject):
 class PbxReader(BrowserReader):
     calls_added = pyqtSignal(int)
 
-    RELOAD_INTERVAL = 15 * 60
+    # 3CX aktualisiert die Anrufliste im unsichtbaren Edge nicht zuverlässig von selbst,
+    # darum die Seite regelmäßig neu laden
+    RELOAD_INTERVAL = 5 * 60
     NAME = "3CX"
     def __init__(self, base_url, calls_file, profile_dir, userscript_text, parent=None,
                  days_back=14):
@@ -520,7 +526,9 @@ class PbxReader(BrowserReader):
         # Nach Mitternacht sofort neu laden, sonst hieße "Heute 23:50" schon morgen
         elif (time.time() - self._last_load > self.RELOAD_INTERVAL
               or date.fromtimestamp(self._last_load) != date.today()):
-            self._tools.call("Page.navigate", url=self.call_list_url())
+            # Page.reload statt Page.navigate: Die Adresse endet auf "#/…", ein Navigieren
+            # dorthin springt nur innerhalb der Seite und lädt nichts neu.
+            self._tools.call("Page.reload", ignoreCache=True)
             self._last_load = time.time()
             self._wait_load()
         if not self._login_open and not self._stop.is_set() and self._read_once():
