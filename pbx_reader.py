@@ -475,11 +475,11 @@ class PbxReader(BrowserReader):
 
     RELOAD_INTERVAL = 15 * 60
     NAME = "3CX"
-    FIRST_DAYS = 14  # beim ersten Lauf so viele Tage zurück lesen
-
-    def __init__(self, base_url, calls_file, profile_dir, userscript_text, parent=None):
+    def __init__(self, base_url, calls_file, profile_dir, userscript_text, parent=None,
+                 days_back=14):
         super().__init__(base_url, profile_dir, parent)
         self.calls_file = calls_file
+        self.days_back = days_back  # so viele Tage immer vollständig halten (Einstellung)
         self.userscript_text = userscript_text
         self.js = build_reader_js(userscript_text)
         self.last_read = None
@@ -525,8 +525,10 @@ class PbxReader(BrowserReader):
             self._wait_load()
         if not self._login_open and not self._stop.is_set() and self._read_once():
             target = self._back_to
-            if not self.complete_from:
-                first = (date.today() - timedelta(days=self.FIRST_DAYS)).isoformat()
+            # Die eingestellten Tage zurück vollständig halten (auch wenn die Zahl erhöht wurde)
+            first = (date.today() - timedelta(days=self.days_back)).isoformat()
+            if ((not self.complete_from or first < self.complete_from)
+                    and not (self._list_end and first < self._list_end)):
                 target = min(target or first, first)
             if target:
                 self._scroll_back(target)

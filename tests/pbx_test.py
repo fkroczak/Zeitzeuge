@@ -39,8 +39,8 @@ def fail(problem, reader):
     sys.exit(1)
 
 
-def run(url, until, what):
-    reader = PbxReader(url, calls_file, profile, script)
+def run(url, until, what, days=14):
+    reader = PbxReader(url, calls_file, profile, script, days_back=days)
     reader.READ_INTERVAL = 2
     reader.start()
     deadline = time.time() + 60
@@ -107,6 +107,10 @@ def want(n):
 
 run("http://127.0.0.1:8812", want(25), "beim Blättern auf 25 Tage zurück nachgelesen")
 assert json.load(open(state))["vollstaendig_ab"] == days_back(25)
+# Mehr Tage eingestellt: liest von selbst weiter zurück
+run("http://127.0.0.1:8812",
+    lambda r: json.load(open(state))["vollstaendig_ab"] == days_back(30),
+    "Einstellung 30 Tage nachgelesen", days=30)
 run("http://127.0.0.1:8812",
     lambda r: (r.want(days_back(60)), json.load(open(state))["vollstaendig_ab"] == days_back(40))[1],
     "Listenende erkannt")
@@ -121,7 +125,9 @@ checks = [
     (by_name["Hanna Dr. Kurz"]["via"], "Carla Test 702"),
     (by_name["Info Cafeteria"]["direction"], "Ausgehend"),
     (by_name["Carla Test"]["direction"], "Verpasst"),
-    (sum(1 for c in calls() if c["duration_s"] > 0 and c["name"] != "Alt Kunde"), 7),
+    # verschiedene Anrufer zählen: läuft der Test über Mitternacht, verschiebt die
+    # nachgebaute Seite "Heute"/"Gestern" und dieselben Anrufe kommen mit neuem Datum
+    (len({c["name"] for c in calls() if c["duration_s"] > 0 and c["name"] != "Alt Kunde"}), 7),
 ]
 for got, want in checks:
     if got != want:
