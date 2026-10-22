@@ -113,7 +113,7 @@ def clean_path(path):
 def load_config_with_defaults():
     defaults = {
         "activity_types": [
-            # Remote / ZugÃ¤nge
+            # Remote / Zugänge
             "VPN-Sitzung",
             "RDP-Sitzung",
             "SSH-Sitzung",
@@ -123,10 +123,9 @@ def load_config_with_defaults():
             "VPN",
             "Website-Verbindung",
 
-            # Admin-OberflÃ¤chen / Dienste
+            # Admin-Oberflächen / Dienste
             "Nextcloud-Admin",
             "NAS-Admin",
-            "Website-Verbindung",
             "Hosting-Admin",
             "M365-Admin",
             "Mail-Administration",
@@ -139,15 +138,15 @@ def load_config_with_defaults():
 
         ],
         "type_colors": {
-            # Remote / ZugÃ¤nge
-            "VPN-Sitzung":           "#00B894",  # TÃ¼rkis
+            # Remote / Zugänge
+            "VPN-Sitzung":           "#00B894",  # Türkis
             "RDP-Sitzung":           "#F1C40F",  # Gelb
             "SSH-Sitzung":           "#E67E22",  # Orange
 
-            # Admin-OberflÃ¤chen / Dienste
+            # Admin-Oberflächen / Dienste
             "Nextcloud-Admin":       "#3498DB",  # Blau
             "NAS-Admin":             "#16A085",  # Petrol
-            "Website-Admin":         "#1ABC9C",  # TÃ¼rkisgrÃ¼n
+            "Website-Admin":         "#1ABC9C",  # Türkisgrün
             "Hosting-Admin":         "#9B59B6",  # Lila (z.B. Netcup/goneo)
             "M365-Admin":            "#2980B9",  # Dunkelblau
             "Mail-Administration":   "#C0392B",  # Rot
@@ -183,7 +182,7 @@ def load_config_with_defaults():
                 r"%LOCALAPPDATA%\Devolutions\RemoteDesktopManager\Connections.log"
             )
         ],
-        # deine gewÃ¼nschten Zeitzonen
+        # deine gewünschten Zeitzonen
         "timezone_correction": 0,
         "teamviewer_timezone_correction": 1,
         "rdm_timezone_correction": 0,
@@ -242,6 +241,7 @@ def load_config_with_defaults():
         cfg[key] = [clean_path(p) for p in cfg.get(key, [])]
     if "Telefonat" not in cfg["activity_types"]:
         cfg["activity_types"].append("Telefonat")
+    cfg["activity_types"] = list(dict.fromkeys(cfg["activity_types"]))  # alte Doppelte entfernen
 
     # gleich zurückschreiben (damit neue Keys persistieren)
     try:
@@ -760,7 +760,7 @@ class TimelineApp(QMainWindow):
             missing = self.timeline.missing_sources()
             if missing:
                 parts.append(f"keine Logdatei gefunden: {', '.join(missing)} "
-                             "(Pfade unter Einstellungen ▾)")
+                             "(Pfade unter Einstellungen → Datenquellen)")
         if self.pc_activities:
             parts.append(f"am PC aktiv {format_duration(merged_seconds(self.pc_activities))}")
         itm_day = self.itm_reader.day(self.current_date.toString("yyyy-MM-dd")) if self.itm_reader else None

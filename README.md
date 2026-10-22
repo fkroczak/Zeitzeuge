@@ -20,7 +20,7 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
 - **Personalzeiten aus der ITM-Zeiterfassung:** Zeitzeuge liest deine gestempelten Zeiten und hebt sie in der Timeline als Arbeitszeit hervor. Pausen sind abgedunkelt. Die Statuszeile zeigt die gewertete Zeit und die Sollzeit.
 - **Aktivitätsprotokoll:** Alle 5 Sekunden merkt sich Zeitzeuge das aktive Fenster, zum Beispiel eine RDP-Sitzung, einen Browser-Tab, Outlook oder PuTTY.
   - Es erscheint als farbiges Band „PC“ oben in der Timeline, eine Farbe pro Programm.
-  - Mit **PC-Verlauf in Liste** stehen die Fenster auch in der Tagesliste.
+  - Mit **PC-Verlauf** in der Werkzeugleiste stehen die Fenster auch in der Tagesliste.
   - Nach 5 Minuten ohne Maus und Tastatur oder bei gesperrtem PC wird nichts aufgezeichnet.
   - Fenster mit bestimmten Wörtern im Titel werden nur als „(ausgeblendet)“ gespeichert, zum Beispiel Passwortmanager.
 - **Tagesliste** unter der Timeline mit Von, Bis, Dauer, Typ, Kunde und Details.
@@ -40,7 +40,7 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
   - Mit **Klicken und Ziehen** markierst du einen Zeitraum. Beim Loslassen wird genau dieser Zeitraum angezeigt.
   - Ein Doppelklick auf eine freie Stelle oder **Ganzer Tag** führt zurück zur Tagesansicht. **Arbeitszeit** zeigt die Arbeitszeit des Tages.
   - STRG + Mausrad zoomt an der Mausposition, das Mausrad allein blättert durch den Tag.
-  - Dunkles und helles Design, eigene Aktivitätstypen mit frei wählbaren Farben.
+  - Dunkles und helles Design (**Einstellungen → Dunkles Design**), eigene Aktivitätstypen mit frei wählbaren Farben.
 
 ### Tastenkürzel
 
@@ -55,6 +55,7 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
 | STRG + C | Markierte Zeilen der Tagesliste kopieren |
 | Enter | Details zur markierten Zeile der Tagesliste |
 | ALT + E | Menü Einstellungen öffnen |
+| ALT + E, Q | Untermenü Datenquellen |
 
 ## Voraussetzungen
 
@@ -93,7 +94,7 @@ Die fertige `ZeitZeuge.exe` liegt danach in `dist/`. Die Einstellungsdatei `zeit
 
 ### TeamViewer und RDM
 
-Über die Knöpfe **TeamViewer** und **RDM** in der Werkzeugleiste stellst du ein:
+Unter **Einstellungen → Datenquellen → TeamViewer-Logs …** bzw. **RDM-Logs …** stellst du ein:
 - wo die Logdateien liegen,
 - eine Zeitzonenkorrektur, weil TeamViewer seine Zeiten in UTC speichert.
 
@@ -108,7 +109,7 @@ Standardpfade:
 
 **Variante 1: Zeitzeuge liest selbst (empfohlen).** Zeitzeuge öffnet den 3CX-Webclient unsichtbar mit dem installierten Microsoft Edge und liest jede Minute die Anrufliste. Gibt es kein Edge, nimmt es Chrome. Edge läuft dabei mit einem eigenen Profil, getrennt von deinem normalen Browser. Es ist egal, ob du sonst den 3CX-Client, die Webseite oder das Tischtelefon benutzt.
 
-1. **Einstellungen ▾ → 3CX direkt auslesen …** öffnen.
+1. **Einstellungen → Datenquellen → 3CX direkt auslesen …** öffnen.
 2. 3CX-Adresse prüfen und **Bei 3CX anmelden …** klicken.
 3. Im Edge-Fenster ganz normal bei 3CX anmelden und das Fenster schließen.
 
@@ -116,7 +117,7 @@ Die Anmeldung bleibt gespeichert (`%LOCALAPPDATA%\Zeitzeuge\3cx_profil`). Läuft
 
 Beim ersten Lauf scrollt Zeitzeuge die Anrufliste 14 Tage zurück. Bis zu welchem Tag die Anrufe vollständig sind, merkt es sich in `anrufe_stand.json`. Zeigst du einen älteren Tag an, scrollt Zeitzeuge im Hintergrund bis dorthin weiter. Das geht nur so weit zurück, wie 3CX die Anrufe selbst noch anzeigt.
 
-**Variante 2: über Chrome und Tampermonkey.** Das ist sinnvoll, wenn du die 3CX-Webseite ohnehin offen hast. Am einfachsten über **Einstellungen ▾ → 3CX über Chrome/Tampermonkey einrichten …**. Der Assistent öffnet nacheinander die richtigen Seiten in Chrome, und du bestätigst jeweils mit einem Klick:
+**Variante 2: über Chrome und Tampermonkey.** Das ist sinnvoll, wenn du die 3CX-Webseite ohnehin offen hast. Am einfachsten über **Einstellungen → Datenquellen → 3CX über Chrome/Tampermonkey einrichten …**. Der Assistent öffnet nacheinander die richtigen Seiten in Chrome, und du bestätigst jeweils mit einem Klick:
 
 1. Tampermonkey im Chrome Web Store hinzufügen.
 2. Bei Tampermonkey den Schalter „Nutzerskripte zulassen“ einschalten (ab Chrome 138 nötig).
@@ -151,7 +152,7 @@ Die Einstellungen für Telefonate stehen in `zeitzeuge_config.json`:
 
 Zeitzeuge öffnet die Tagesübersicht der ITM-Zeiterfassung unsichtbar mit Edge, genauso wie bei 3CX. Es merkt sich die Daten, die die Seite dabei lädt. Heute wird alle 5 Minuten gelesen, andere Tage einmal, sobald du sie in Zeitzeuge anzeigst.
 
-1. **Einstellungen ▾ → ITM-Personalzeiten …** öffnen.
+1. **Einstellungen → Datenquellen → ITM-Personalzeiten …** öffnen.
 2. Adresse prüfen (`https://app.itm-gruppe.com`) und **Bei ITM anmelden …** klicken.
 3. Im Edge-Fenster anmelden und das Fenster schließen.
 
@@ -161,14 +162,22 @@ Die Anmeldung liegt in `%LOCALAPPDATA%\Zeitzeuge\itm_profil`, die gelesenen Tage
 
 Zeitzeuge speichert Config, Anrufe und Aktivitätsprotokoll unter **Dokumente\Zeitzeuge**.
 
-- **Einstellungen ▾ → Speicherort ändern …** wählt einen anderen Ordner. Die Daten ziehen mit um, danach startet Zeitzeuge neu.
-- **Einstellungen ▾ → Datenordner öffnen** zeigt den Ordner im Explorer.
+- **Einstellungen → Datenspeicher → Speicherort ändern …** wählt einen anderen Ordner. Die Daten ziehen mit um, danach startet Zeitzeuge neu.
+- **Einstellungen → Datenspeicher → Datenordner öffnen** zeigt den Ordner im Explorer (auch im Menü des Infobereichs).
 - Daten aus älteren Versionen, die noch neben der EXE liegen, verschiebt Zeitzeuge beim ersten Start automatisch.
 - Die 3CX-Anmeldung liegt immer lokal unter `%LOCALAPPDATA%\Zeitzeuge`. Der Ordner „Dokumente“ wird oft mit OneDrive synchronisiert, und eine Browser-Anmeldung gehört nicht in die Cloud.
 
 ### Aktivitätsprotokoll
 
-Ein- und ausschalten über **Einstellungen ▾ → Aktive Fenster aufzeichnen**. Die Daten liegen pro Tag in `aktivitaet/JJJJ-MM-TT.jsonl` im Datenordner.
+Ein- und ausschalten geht an drei Stellen, alle zeigen denselben Zustand:
+
+- Knopf **Aufzeichnung aktiv / pausiert** rechts unten in der Statuszeile (ein Klick schaltet um),
+- Menü im Infobereich → **Aufzeichnung pausieren / fortsetzen**,
+- **Einstellungen → Aktive Fenster aufzeichnen**.
+
+Das Symbol im Infobereich hat einen grünen Punkt, solange aufgezeichnet wird, und einen grauen Punkt mit Pause-Zeichen, wenn die Aufzeichnung pausiert ist. Der Zustand bleibt nach einem Neustart erhalten. Bereits Aufgezeichnetes bleibt auch bei Pause in der Timeline sichtbar.
+
+ Die Daten liegen pro Tag in `aktivitaet/JJJJ-MM-TT.jsonl` im Datenordner.
 
 | Schlüssel | Standard | Bedeutung |
 |---|---|---|
@@ -178,7 +187,9 @@ Ein- und ausschalten über **Einstellungen ▾ → Aktive Fenster aufzeichnen**.
 
 ### Im Hintergrund laufen
 
-Aufgezeichnet wird nur, solange Zeitzeuge läuft. Schließt du das Fenster, läuft Zeitzeuge im Infobereich weiter (Symbol neben der Uhr). Richtig beenden geht über Rechtsklick auf das Symbol → **Beenden**.
+Aufgezeichnet wird nur, solange Zeitzeuge läuft. Schließt du das Fenster, läuft Zeitzeuge im Infobereich weiter (Symbol neben der Uhr). Richtig beenden geht über Rechtsklick auf das Symbol → **Beenden** oder **Einstellungen → Zeitzeuge beenden**.
+
+Das Menü im Infobereich enthält: **Zeitzeuge öffnen** (auch per Klick auf das Symbol), den Zustand der Aufzeichnung mit **pausieren / fortsetzen**, **Logs neu einlesen**, **Datenquellen**, **Datenordner öffnen** und **Beenden**.
 
 Damit Zeitzeuge mit Windows startet:
 
@@ -188,13 +199,13 @@ Damit Zeitzeuge mit Windows startet:
 
 ### RDM im Rechenzentrum
 
-Läuft RDM auf einem Server, kann Zeitzeuge dessen Log auch über das Netzwerk lesen. Trag unter **Einstellungen ▾ → RDM-Logs …** den Netzwerkpfad ein, zum Beispiel `\\server\c$\Users\<name>\AppData\Local\Devolutions\RemoteDesktopManager\Connections.log`. Weicht die Zeitzone des Servers ab, gleichst du das dort mit der Zeitzonenkorrektur aus.
+Läuft RDM auf einem Server, kann Zeitzeuge dessen Log auch über das Netzwerk lesen. Trag unter **Einstellungen → Datenquellen → RDM-Logs …** den Netzwerkpfad ein, zum Beispiel `\\server\c$\Users\<name>\AppData\Local\Devolutions\RemoteDesktopManager\Connections.log`. Weicht die Zeitzone des Servers ab, gleichst du das dort mit der Zeitzonenkorrektur aus.
 
 ### Weitere Einstellungen
 
 | Schlüssel | Bedeutung |
 |---|---|
-| `work_days` | Arbeitszeit pro Wochentag, z. B. `"Fr": "08:00-13:00"`, leer = frei. Einstellbar unter **Einstellungen ▾ → Arbeitszeiten …** |
+| `work_days` | Arbeitszeit pro Wochentag, z. B. `"Fr": "08:00-13:00"`, leer = frei. Einstellbar unter **Einstellungen → Arbeitszeiten …** |
 | `dark_mode` | Dunkles Design |
 | `activity_types`, `type_colors` | Aktivitätstypen und ihre Farben |
 
@@ -203,7 +214,8 @@ Läuft RDM auf einem Server, kann Zeitzeuge dessen Log auch über das Netzwerk l
 | Datei | Inhalt |
 |---|---|
 | `main_timeline.py` | Hauptfenster, Werkzeugleiste, Einstellungen, Design |
-| `timeline_only.py` | Zeichnen der Timeline, Tooltips, Zoom |
+| `timeline_only.py` | Zeichnen der Timeline, Tooltips, Zoom, Logs im Hintergrund lesen |
+| `icons.py` | Linien-Icons (Lucide, ISC-Lizenz) und Zustandspunkt der Aufzeichnung |
 | `log_parsers.py` | Einlesen der TeamViewer- und RDM-Logs |
 | `call_import.py` | Empfang der 3CX-Anrufe, Auslieferung des Browser-Skripts |
 | `activity_tracker.py` | Aktivitätsprotokoll (aktives Fenster, Leerlauf) |
@@ -211,7 +223,7 @@ Läuft RDM auf einem Server, kann Zeitzeuge dessen Log auch über das Netzwerk l
 | `itm_reader.py` | Personalzeiten aus der ITM-Zeiterfassung lesen |
 | `storage.py` | Speicherort der Daten |
 | `browser_setup.py` | Einrichtungsassistent für Tampermonkey |
-| `tests/` | Tests, laufen bei jedem Build: Start, 3CX und ITM mit nachgebauten Seiten, Fensterabfrage, Anrufliste |
+| `tests/` | Tests, laufen bei jedem Build: Start, Bedienbarkeit, Infobereich, Log-Parser, 3CX und ITM mit nachgebauten Seiten, Fensterabfrage, Anrufliste. Dazu `start_bench.py` (Startzeit messen) und `screenshots.sh` (Bildschirmfotos mit Demodaten) |
 | `settings_dialogs.py` | Dialoge für Logpfade und Aktivitätstypen |
 | `zeitzeuge_anrufe.user.js` | Tampermonkey-Skript für den 3CX-Webclient |
 | `ZeitZeuge.spec` | Build-Datei für PyInstaller |

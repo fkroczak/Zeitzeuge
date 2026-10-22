@@ -184,8 +184,8 @@ dialogs = [("05_dialog_arbeitszeiten", lambda: main_timeline.WorkHoursDialog(win
                "TeamViewer-Logeinstellungen", window)),
            ("07_dialog_3cx", window.build_pbx_dialog),
            ("08_dialog_details", lambda: main_timeline.ActivityViewDialog(window.list_entries[2], window))]
-if hasattr(window, "build_settings_dialog"):
-    dialogs.append(("09_dialog_einstellungen", window.build_settings_dialog))
+dialogs.append(("09_dialog_aktivitaetstypen",
+                lambda: main_timeline.ActivityTypeSettingsDialog(window.config, window)))
 for name, make in dialogs:
     d = make()
     d.show()
