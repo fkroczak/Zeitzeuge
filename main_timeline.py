@@ -735,6 +735,12 @@ class TimelineApp(QMainWindow):
         entries.sort(key=lambda a: a["start"])
         self.list_entries = entries
 
+        # Spaltenbreiten beim Befüllen einfrieren: Mit "an Inhalt anpassen" misst Qt sonst nach
+        # jeder Zelle alle Zeilen neu (bei vollem PC-Verlauf über 20 s, Fenster hängt)
+        header = self.table.horizontalHeader()
+        self.table.setUpdatesEnabled(False)
+        for col in range(4):
+            header.setSectionResizeMode(col, QHeaderView.Fixed)
         self.table.setRowCount(len(entries))
         for row, a in enumerate(entries):
             start, end = parse_time(a["start"]), parse_time(a["end"])
@@ -755,6 +761,9 @@ class TimelineApp(QMainWindow):
             for col, item in enumerate(values):
                 item.setToolTip(item.text())
                 self.table.setItem(row, col, item)
+        for col in range(4):
+            header.setSectionResizeMode(col, QHeaderView.ResizeToContents)  # einmal messen
+        self.table.setUpdatesEnabled(True)
         self.update_status_text()
 
     VIEWS = [("grouped", "Zusammengefasst"), ("single", "Einzeln"), ("blocks", "Arbeitsblöcke"),
@@ -1492,6 +1501,8 @@ if __name__ == "__main__":
     install_translator(app)
     app.setQuitOnLastWindowClosed(False)
     window = TimelineApp()
+    from hang_watch import HangWatch
+    hang_watch = HangWatch(os.path.join(DATA_DIR, "haenger.log"), app)
     if "--minimized" in sys.argv or window.config.get("start_minimized", False):
         if not window.tray:
             window.showMinimized()

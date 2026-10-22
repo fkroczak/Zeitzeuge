@@ -14,3 +14,5 @@ mitschnitt_*.json
 mitschnitt_*.json.tmp
 ki_vorschlaege/
 anthropic_key.txt
+haenger.log
+haenger.log.alt
