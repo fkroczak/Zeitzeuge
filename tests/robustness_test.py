@@ -49,6 +49,10 @@ QSystemTrayIcon.isSystemTrayAvailable = staticmethod(lambda: True)
 app = QApplication(sys.argv)
 main_timeline.install_error_hooks()
 window = main_timeline.TimelineApp()
+# Ohne Bildschirm gibt es keinen echten Infobereich: Sprechblasen am vorgetäuschten Symbol
+# stürzen unter Windows in Qt ab. Meldungen hier nur mitschreiben.
+tray_messages = []
+window.tray.showMessage = lambda title, text, *a: tray_messages.append((title, text))
 
 saved = defekt(CONFIG)
 check(len(saved) == 1, "kaputte Config beiseitegelegt")

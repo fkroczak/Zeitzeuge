@@ -99,6 +99,10 @@ def gui_test():
     QSystemTrayIcon.isSystemTrayAvailable = staticmethod(lambda: True)
     app = QApplication(sys.argv)
     window = main_timeline.TimelineApp()
+    # Ohne Bildschirm gibt es keinen echten Infobereich: Sprechblasen an einem nur
+    # vorgetäuschten Symbol stürzen unter Windows in Qt ab. Meldungen hier mitschreiben.
+    tray_messages = []
+    window.tray.showMessage = lambda title, text, *a: tray_messages.append(title)
     window.show()
 
     now = datetime.now().replace(microsecond=0)
@@ -149,6 +153,9 @@ def gui_test():
     with open(main_timeline.CONFIG_FILE, encoding="utf-8") as f:
         assert json.load(f)["teamviewer_names"]["987654321"] == "Beispiel AG"
     assert window._prompt_window is None and not window._prompt_queue
+    # Feierabend-Erinnerung: höchstens einmal am Tag, nur nach Ende der Arbeitszeit
+    reminders = [m for m in tray_messages if m.startswith("Feierabend")]
+    assert len(reminders) <= 1, tray_messages
 
     bands = dict((k, e) for k, _t, e in window.timeline._bands)
     assert len(bands["doc"]) == 1 and bands["doc"][0]["doc"], bands["doc"]
