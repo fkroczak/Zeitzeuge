@@ -55,6 +55,11 @@ jobs:
           QT_QPA_PLATFORM: offscreen
         run: python tests/tray_test.py
 
+      - name: Statuszeile (Zustand der Datenquellen)
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python tests/source_status_test.py
+
       - name: Tätigkeiten nachtragen und Nachfragen
         env:
           QT_QPA_PLATFORM: offscreen

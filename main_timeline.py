@@ -540,8 +540,19 @@ class TimelineApp(QMainWindow):
 
         # Statuszeile
         self.info_label = QLabel(self)
-        self.calls_label = QLabel(self)
+        self.calls_label = QLabel(self)  # letzter Text des 3CX-Lesers (steht im Hinweis der Anzeige)
         self.statusBar().addWidget(self.info_label, 1)
+        # Datenquellen nebeneinander: grüner Haken = läuft, gelbes Dreieck = keine Daten,
+        # graue Uhr = liest gerade. Ein Klick führt zur Lösung (Anmeldung, Einstellungen).
+        self.source_buttons = {}
+        for kind in ("logs", "pbx", "itm"):
+            button = QToolButton(self)
+            button.setObjectName("source")
+            button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+            button.clicked.connect(lambda _c=False, k=kind: self.on_source_clicked(k))
+            button.hide()
+            self.statusBar().addPermanentWidget(button)
+            self.source_buttons[kind] = button
         # Wichtigste Aufgabe sichtbar machen: offene Tätigkeiten, ein Klick trägt die erste ein
         self.open_docs_button = QToolButton(self)
         self.open_docs_button.setObjectName("cta")
@@ -549,7 +560,6 @@ class TimelineApp(QMainWindow):
         self.open_docs_button.clicked.connect(self.document_next_open)
         self.open_docs_button.hide()
         self.statusBar().addPermanentWidget(self.open_docs_button)
-        self.statusBar().addPermanentWidget(self.calls_label)
         # Zustand der Fensteraufzeichnung, ein Klick schaltet sie um (wie im Infobereich)
         self.tracking_button = QToolButton(self)
         self.tracking_button.setAccessibleName("Fensteraufzeichnung ein- oder ausschalten")
@@ -1023,10 +1033,6 @@ class TimelineApp(QMainWindow):
             parts.append("Logs werden gelesen …")
         else:
             parts.append("keine Einträge")
-            missing = self.timeline.missing_sources()
-            if missing:
-                parts.append(f"keine Logdatei gefunden: {', '.join(missing)} "
-                             "(Pfade unter Einstellungen → Datenquellen → Einrichten)")
         if self.pc_activities:
             parts.append(f"am PC aktiv {format_duration(merged_seconds(self.pc_activities))}")
         doc = self.doc_band(self.current_date.toString("yyyy-MM-dd"))
@@ -1047,6 +1053,56 @@ class TimelineApp(QMainWindow):
                 text += f" (Soll {format_duration(itm_day['soll'] * 60)})"
             parts.append(text)
         self.info_label.setText("   ·   ".join(parts))
+        self.update_source_indicators()
+
+    def update_source_indicators(self):
+        """Anzeigen der Datenquellen in der Statuszeile auf den neuesten Stand bringen."""
+        if not hasattr(self, "source_buttons"):
+            return
+        states = {}
+        missing = [] if self.timeline.loading else self.timeline.missing_sources()
+        if missing:
+            states["logs"] = ("warn", f"Logs: {', '.join(missing)} fehlt",
+                              f"Keine Logdatei gefunden: {', '.join(missing)}.\n"
+                              "Klicken, um den Pfad einzustellen.")
+        for kind, name in (("pbx", "3CX"), ("itm", "ITM")):
+            reader = self.pbx_reader if kind == "pbx" else self.itm_reader
+            if not reader:
+                continue
+            state, why = reader.health()
+            hint = {"warn": "Klicken, um dich anzumelden." if reader.needs_login
+                    else "Klicken für die Einstellungen.",
+                    "ok": "Läuft. Klicken für die Einstellungen.",
+                    "busy": "Liest gerade."}[state]
+            text = f"{name} {why}" if state == "ok" else f"{name}: {why}"
+            states[kind] = (state, text, f"{reader.status}\n{hint}")
+        for kind, button in self.source_buttons.items():
+            if kind not in states:
+                button.hide()
+                continue
+            state, text, tip = states[kind]
+            button.setIcon(icons.source_icon(state))
+            button.setText(text)
+            button.setToolTip(tip)
+            label = {"ok": "läuft", "warn": "Problem", "busy": "liest"}[state]
+            button.setAccessibleName(f"{text} ({label})")
+            button.show()
+
+    def on_source_clicked(self, kind):
+        """Klick auf eine Datenquelle: direkt zur Lösung."""
+        if kind == "logs":
+            missing = self.timeline.missing_sources()
+            (self.edit_rdm_settings if missing == ["RDM"] else self.edit_teamviewer_settings)()
+        elif kind == "pbx":
+            if self.pbx_reader and self.pbx_reader.needs_login:
+                self.show_pbx_login()
+            else:
+                self.open_pbx_settings()
+        elif kind == "itm":
+            if self.itm_reader and self.itm_reader.needs_login:
+                self.itm_reader.show_login(self)
+            else:
+                self.open_itm_settings()
 
     # ---------------------- Datum / Navigation --------------------------------
 
@@ -1582,6 +1638,7 @@ class TimelineApp(QMainWindow):
             days_back=self.config.get("calls_days_back", 14),
         )
         self.pbx_reader.status_changed.connect(self.calls_label.setText)
+        self.pbx_reader.status_changed.connect(lambda _t: self.update_source_indicators())
         self.pbx_reader.calls_added.connect(
             lambda _n: self.timeline.draw_timeline(self.current_date)
         )
@@ -1591,12 +1648,14 @@ class TimelineApp(QMainWindow):
         self._watch_reader(self.pbx_reader)
         self.pbx_reader.start()
         self.calls_label.setText("3CX: wird geladen …")
+        self.update_source_indicators()
 
     def stop_pbx_reader(self):
         if self.pbx_reader:
             self.pbx_reader.stop()
             self.pbx_reader.deleteLater()
             self.pbx_reader = None
+            self.update_source_indicators()
 
     def on_pbx_login_required(self):
         if self.tray:
@@ -1808,9 +1867,7 @@ class TimelineApp(QMainWindow):
             return
         from itm_reader import ItmReader
         self.itm_reader = ItmReader(self.config.get("itm_url", ""), ITM_FILE, ITM_PROFILE_DIR, self)
-        self.itm_reader.status_changed.connect(
-            lambda text: self.statusBar().showMessage(text, 5000)
-        )
+        self.itm_reader.status_changed.connect(lambda _t: self.update_source_indicators())
         self.itm_reader.day_read.connect(
             lambda d: self.timeline.draw_timeline(self.current_date)
             if d == self.current_date.toString("yyyy-MM-dd") else None
@@ -1834,6 +1891,7 @@ class TimelineApp(QMainWindow):
             self.itm_reader.deleteLater()
             self.itm_reader = None
             self.timeline.personal_day = None
+            self.update_source_indicators()
 
     # ---------------------- Speicherort ----------------------------------------
 
