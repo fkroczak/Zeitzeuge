@@ -51,7 +51,13 @@ class Journal:
 
     def load(self, date_str):
         if date_str not in self._cache:
-            data = safe_io.read_json(self._path(date_str), None, expect=dict) or {}
+            try:
+                data = safe_io.read_json(self._path(date_str), None, expect=dict,
+                                         raise_locked=True) or {}
+            except safe_io.FileLocked:
+                # Gesperrt (OneDrive, Virenscanner): nichts merken, sonst überschriebe das
+                # nächste Speichern die Datei mit nur dem neuen Eintrag
+                return {"items": [], "ignored": [], "locked": True}
             items = [i for i in data.get("items", []) if self._valid(i)]
             self._cache[date_str] = {"items": items, "ignored": list(data.get("ignored", []))}
         return self._cache[date_str]
@@ -82,6 +88,9 @@ class Journal:
             raise ValueError("Ende muss nach dem Beginn liegen")
         date_str = item["start"][:10]
         data = self.load(date_str)
+        if data.get("locked"):
+            raise OSError("Die Datei des Tages ist gerade gesperrt (z. B. von OneDrive). "
+                          "Bitte gleich noch einmal speichern.")
         data["items"] = [i for i in data["items"] if i.get("id") != item["id"]]
         data["items"].append(item)
         if not self._save(date_str):
@@ -98,6 +107,8 @@ class Journal:
     def delete(self, item):
         date_str = item["start"][:10]
         data = self.load(date_str)
+        if data.get("locked"):
+            raise OSError("Die Datei des Tages ist gerade gesperrt. Bitte gleich noch einmal versuchen.")
         data["items"] = [i for i in data["items"] if i.get("id") != item.get("id")]
         self._save(date_str)
 
@@ -105,7 +116,7 @@ class Journal:
         date_str = entry["start"][:10]
         data = self.load(date_str)
         key = entry_key(entry)
-        if key not in data["ignored"]:
+        if key not in data["ignored"] and not data.get("locked"):
             data["ignored"].append(key)
             self._save(date_str)
 

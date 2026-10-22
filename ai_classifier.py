@@ -23,6 +23,8 @@ from datetime import datetime
 
 from PyQt5.QtCore import QObject, pyqtSignal
 
+import net
+import safe_io
 import storage
 
 try:
@@ -41,6 +43,12 @@ MODELS = [
     ("claude-haiku-5-5", "Claude Haiku 5.5 (am günstigsten)", 0.10, 0.50),
 ]
 DEFAULT_MODEL = MODELS[0][0]
+OFFLINE_TEXT = "Keine Internetverbindung. Die KI-Vorschläge gehen erst wieder mit Internet."
+
+
+def api_url():
+    """Adresse der API (ANTHROPIC_BASE_URL wie im anthropic-Paket, z. B. für Tests)."""
+    return os.environ.get("ANTHROPIC_BASE_URL") or "https://api.anthropic.com"
 
 DEFAULT_CATEGORIES = [
     "Fernwartung",
@@ -188,6 +196,8 @@ def to_entries(date_str, items):
     """Antwort der KI in Timeline-Einträge umwandeln (ungültige Zeilen fallen weg)."""
     result = []
     for i, item in enumerate(items):
+        if not isinstance(item, dict):
+            continue  # kaputter Eintrag in der Datei
         von, bis = item.get("von", ""), item.get("bis", "")
         if not (_valid_hm(von) and _valid_hm(bis)) or bis <= von:
             continue
@@ -223,19 +233,15 @@ class AiStore:
 
     def load(self, date_str):
         if date_str not in self._cache:
-            try:
-                with open(self._path(date_str), encoding="utf-8") as f:
-                    self._cache[date_str] = json.load(f)
-            except (OSError, ValueError):
-                self._cache[date_str] = None
+            # Kaputte Datei wird beiseitegelegt (safe_io) statt beim nächsten Speichern überschrieben
+            data = safe_io.read_json(self._path(date_str), None, expect=dict)
+            if data is not None and not isinstance(data.get("items", []), list):
+                data["items"] = []
+            self._cache[date_str] = data
         return self._cache[date_str]
 
     def save(self, date_str, data):
-        os.makedirs(self.folder, exist_ok=True)
-        tmp = self._path(date_str) + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-        os.replace(tmp, self._path(date_str))
+        safe_io.write_json(self._path(date_str), data, indent=2)
         self._cache[date_str] = data
 
     def entries(self, date_str):
@@ -295,8 +301,12 @@ def classify(text, categories, model, key, effort="low"):
 
 
 def error_text(exc):
-    """Verständliche Meldung zu einem Fehler beim Aufruf."""
+    """Verständliche Meldung zu einem Fehler beim Aufruf (nie ein Stacktrace)."""
     if anthropic is not None:
+        if isinstance(exc, (anthropic.APIConnectionError, anthropic.APITimeoutError)):
+            if not net.reachable(api_url()):
+                return OFFLINE_TEXT
+            return "Keine Verbindung zu Anthropic. Internet oder Proxy prüfen."
         if isinstance(exc, anthropic.AuthenticationError):
             return "API-Schlüssel ungültig. Bitte unter Einstellungen ▾ → KI-Vorschläge prüfen."
         if isinstance(exc, anthropic.PermissionDeniedError):
@@ -306,8 +316,12 @@ def error_text(exc):
         if isinstance(exc, anthropic.APIConnectionError):
             return "Keine Verbindung zu Anthropic. Internet oder Proxy prüfen."
         if isinstance(exc, anthropic.APIStatusError):
-            return f"Fehler von Anthropic ({exc.status_code}): {getattr(exc, 'message', exc)}"
-    return str(exc) or type(exc).__name__
+            return f"Fehler von Anthropic ({exc.status_code}): {str(getattr(exc, 'message', exc))[:200]}"
+    if isinstance(exc, (ConnectionError, TimeoutError, OSError)):
+        return OFFLINE_TEXT if not net.reachable(api_url()) else f"Netzwerkfehler: {str(exc)[:200]}"
+    if isinstance(exc, ValueError):
+        return "Die Antwort von Claude war nicht lesbar. Bitte noch einmal versuchen."
+    return (str(exc) or type(exc).__name__)[:200]
 
 
 class AiClassifier(QObject):
@@ -367,6 +381,9 @@ class AiClassifier(QObject):
 
     def _run(self, date_str, text, digest, model, categories, key, effort):
         try:
+            if not net.reachable(api_url()):  # ohne Netz gleich klar melden statt nach Minuten
+                self.failed.emit(date_str, OFFLINE_TEXT)
+                return
             items, usage = classify(text, categories, model, key, effort)
             old = self.store.load(date_str) or {}
             # Übernommene Vorschläge bleiben übernommen, wenn sie gleich wiederkommen
@@ -386,6 +403,7 @@ class AiClassifier(QObject):
             })
             self.finished.emit(date_str, len(items), cost)
         except Exception as exc:  # Netzwerk, API, ungültiges JSON
+            safe_io.log(f"KI-Vorschläge {date_str}: {exc!r}")
             self.failed.emit(date_str, error_text(exc))
         finally:
             self.running.discard(date_str)

@@ -2,6 +2,9 @@ import json
 import os
 import re
 import sys
+import threading
+import time
+import traceback
 import warnings
 
 from datetime import datetime, timedelta
@@ -22,6 +25,7 @@ from PyQt5.QtWidgets import (QAbstractItemView, QAction, QApplication, QProxySty
 from activity_tracker import ActivityTracker, tracking_filters
 from ai_classifier import AI_TYPE, AiClassifier, AiStore
 import icons
+import safe_io
 import storage
 from log_parsers import VpnParser
 from vpn_reader import vpn_sources
@@ -72,6 +76,9 @@ ITM_FILE = os.path.join(DATA_DIR, "personalzeiten.json")
 ITM_PROFILE_DIR = os.path.join(storage.local_dir(), "itm_profil")
 AI_DIR = os.path.join(DATA_DIR, "ki_vorschlaege")
 JOURNAL_DIR = os.path.join(DATA_DIR, "taetigkeiten")
+# Fehler und beiseitegelegte Dateien stehen in fehler.log (siehe safe_io)
+safe_io.set_log_path(os.path.join(DATA_DIR, "fehler.log"))
+CONFIG_LOCKED = False  # Config war beim Start gesperrt: dann nichts darüber speichern
 
 
 class AppStyle(QProxyStyle):
@@ -259,14 +266,15 @@ def load_config_with_defaults():
         "prompt_on_quit": True,        # beim Beenden an offene Tätigkeiten erinnern
         "prompt_end_of_day": True,     # nach Feierabend an offene Tätigkeiten erinnern
     }
-    if os.path.exists(CONFIG_FILE):
-            try:
-                with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-                    cfg = json.load(f)
-            except Exception:
-                cfg = {}
-    else:
+    # Kaputte Datei wird beiseitegelegt (zeitzeuge_config.json.defekt-…), nicht überschrieben
+    global CONFIG_LOCKED
+    try:
+        cfg = safe_io.read_json(CONFIG_FILE, {}, expect=dict, raise_locked=True)
+    except safe_io.FileLocked:
         cfg = {}
+        CONFIG_LOCKED = True
+        safe_io.report("zeitzeuge_config.json ist gesperrt. Zeitzeuge startet mit Standardwerten "
+                       "und speichert Einstellungen erst nach einem Neustart.")
 
     # Früher schaltete "vpn_enabled" auch Sophos Connect und FortiClient ab
     for key in ("sophos_enabled", "forti_enabled"):
@@ -274,9 +282,12 @@ def load_config_with_defaults():
             cfg[key] = cfg["vpn_enabled"]
     # Defaults mergen
     for k, v in defaults.items():
+        if isinstance(v, (dict, list)) and not isinstance(cfg.get(k, v), type(v)):
+            safe_io.report(f"Einstellung „{k}“ war ungültig und steht wieder auf Standard.")
+            cfg[k] = v
         cfg.setdefault(k, v)
     # Arbeitszeiten pro Wochentag (aus work_start/work_end übernommen)
-    if "work_days" not in cfg:
+    if not isinstance(cfg.get("work_days"), dict):
         span = f"{cfg['work_start']}-{cfg['work_end']}"
         cfg["work_days"] = {d: (span if i < 5 else "")
                             for i, d in enumerate(["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"])}
@@ -289,24 +300,23 @@ def load_config_with_defaults():
         cfg["type_colors"].setdefault(kind, color)
     # Alte Standardpfade enthielten doppelte Backslashes (C:\Users\x\\TeamViewer)
     for key in ("teamviewer_paths", "rdm_paths", "vpn_paths"):
-        cfg[key] = [clean_path(p) for p in cfg.get(key, [])]
+        cfg[key] = [clean_path(p) for p in cfg.get(key, []) if isinstance(p, str)]
     if "Telefonat" not in cfg["activity_types"]:
         cfg["activity_types"].append("Telefonat")
     cfg["activity_types"] = list(dict.fromkeys(cfg["activity_types"]))  # alte Doppelte entfernen
 
-    # gleich zurückschreiben (damit neue Keys persistieren)
-    try:
-        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-            json.dump(cfg, f, ensure_ascii=False, indent=2)
-    except Exception as e:
-        print(f"Konfiguration konnte nicht gespeichert werden: {e}")
+    # gleich zurückschreiben (damit neue Keys persistieren), atomar
+    if not CONFIG_LOCKED:
+        safe_io.write_json(CONFIG_FILE, cfg, indent=2)
 
     return cfg
 
 
 def save_config(config: dict):
-    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-        json.dump(config, f, indent=4, ensure_ascii=False)
+    if CONFIG_LOCKED:  # sonst stünden statt deiner Einstellungen nur Standardwerte in der Datei
+        safe_io.log("zeitzeuge_config.json war beim Start gesperrt, Einstellungen nicht gespeichert")
+        return
+    safe_io.write_json(CONFIG_FILE, config, indent=4)
 
 
 GERMAN = QLocale(QLocale.German, QLocale.Germany)
@@ -589,6 +599,7 @@ class TimelineApp(QMainWindow):
         # Erst zeichnen, wenn das Fenster seine echte Größe hat (spart ein Zeichnen beim Start).
         # Die Logs liest die Timeline dabei im Hintergrund.
         QTimer.singleShot(0, lambda: self.timeline.draw_timeline(self.current_date))
+        self._init_robustness()
 
     # ---------------------- Werkzeugleiste ------------------------------------
 
@@ -1232,7 +1243,11 @@ class TimelineApp(QMainWindow):
                 self, "Tätigkeit löschen",
                 f"Diese Tätigkeit löschen?\n\n{ticket_line(item)}") != QMessageBox.Yes:
             return
-        self.journal.delete(item)
+        try:
+            self.journal.delete(item)
+        except OSError as e:
+            QMessageBox.warning(self, "Tätigkeit löschen", str(e))
+            return
         self.timeline.draw_timeline(self.current_date)
 
     def doc_for_row(self):
@@ -1471,6 +1486,7 @@ class TimelineApp(QMainWindow):
         self.pbx_reader.login_required.connect(self.on_pbx_login_required)
         self.pbx_reader.recording_done.connect(self.on_recording_done)
         self.pbx_reader.check_done.connect(self.on_pbx_check_done)
+        self._watch_reader(self.pbx_reader)
         self.pbx_reader.start()
         self.calls_label.setText("3CX: wird geladen …")
 
@@ -1706,6 +1722,7 @@ class TimelineApp(QMainWindow):
         )
         self.itm_reader.recording_done.connect(self.on_recording_done)
         self.timeline.personal_day = self.itm_reader.day
+        self._watch_reader(self.itm_reader)
         self.itm_reader.start()
         self.itm_reader.want(self.current_date.toString("yyyy-MM-dd"))
 
@@ -1747,10 +1764,11 @@ class TimelineApp(QMainWindow):
         self.restart()
 
     def restart(self):
+        # --neustart: die neue Instanz wartet, bis diese hier beendet ist (nur eine Instanz)
         if hasattr(sys, "_MEIPASS"):
-            QProcess.startDetached(sys.executable, [])
+            QProcess.startDetached(sys.executable, ["--neustart"])
         else:
-            QProcess.startDetached(sys.executable, [os.path.abspath(__file__)])
+            QProcess.startDetached(sys.executable, [os.path.abspath(__file__), "--neustart"])
         self.quit_app()
 
     # ---------------------- Infobereich (Tray) --------------------------------
@@ -1942,13 +1960,143 @@ class TimelineApp(QMainWindow):
             save_config(self.config)
             self.timeline.draw_timeline(self.current_date)
 
+    # ---------------------- Absicherung gegen Fehler und Aussetzer -------------
+
+    WATCH_INTERVAL = 60 * 1000     # Wächter für die Hintergrund-Leser
+    PROBLEM_INTERVAL = 15 * 1000   # Meldungen aus safe_io anzeigen
+    TRAY_PROBLEM_GAP = 10 * 60     # Probleme höchstens so oft im Infobereich melden (Sekunden)
+
+    def _init_robustness(self):
+        """Wächter für die Leser, Anzeige von Problemen, Edge-Reste aufräumen."""
+        self._last_tray_problem = 0
+        self.watch_timer = QTimer(self)
+        self.watch_timer.timeout.connect(self._watch_readers)
+        self.watch_timer.start(self.WATCH_INTERVAL)
+        self.problem_timer = QTimer(self)
+        self.problem_timer.timeout.connect(self.show_problems)
+        self.problem_timer.start(self.PROBLEM_INTERVAL)
+        # Probleme beim Start (z. B. kaputte Config) gleich nach dem Anzeigen einmal sagen
+        QTimer.singleShot(1500, lambda: self.show_problems(startup=True))
+        threading.Thread(target=self._kill_orphans, daemon=True, name="Edge-Reste").start()
+
+    def _watch_reader(self, reader):
+        reader.trouble.connect(self.on_reader_trouble)
+
+    def _watch_readers(self):
+        """Tote Lese-Threads neu starten, hängende Durchläufe abbrechen."""
+        for reader in (self.pbx_reader, self.itm_reader):
+            if not reader or reader.stopped:
+                continue
+            try:
+                reader.check_hung()
+                if not reader.alive():
+                    safe_io.log(f"{reader.NAME}: Lese-Thread war beendet, Wächter startet ihn neu")
+                    reader.start()
+            except Exception as e:
+                safe_io.log(f"Wächter: {reader.NAME} nicht neu gestartet: {e!r}")
+
+    def _kill_orphans(self):
+        """Edge-Reste mit Zeitzeuge-Profilen nach einem Absturz beenden (nie dein normaler Edge).
+        Für eingeschaltete Leser macht das der Leser selbst, bevor er Edge startet."""
+        try:
+            for key, profile in (("pbx_reader_enabled", PBX_PROFILE_DIR),
+                                 ("itm_reader_enabled", ITM_PROFILE_DIR)):
+                if self.config.get(key) or not os.path.isdir(profile):
+                    continue
+                from pbx_reader import kill_profile_processes
+                count = kill_profile_processes(profile)
+                if count:
+                    safe_io.log(f"{count} übrig gebliebene Edge-Prozesse ({os.path.basename(profile)}) beendet")
+        except Exception as e:
+            safe_io.log(f"Edge-Reste nicht beendet: {e!r}")
+
+    def on_reader_trouble(self, text):
+        """Ein Leser hat mehrmals hintereinander nichts lesen können (einmal pro Störung)."""
+        self.statusBar().showMessage(text, 30000)
+        if self.tray:
+            self.tray.showMessage("Zeitzeuge", text, QSystemTrayIcon.Warning, 8000)
+
+    def show_problems(self, startup=False):
+        """Gemerkte Probleme (kaputte Dateien, Fehler) in Statuszeile und Infobereich zeigen."""
+        problems = safe_io.take_problems()
+        if not problems:
+            return
+        text = problems[-1] if len(problems) == 1 else \
+            f"{problems[-1]} (und {len(problems) - 1} weitere, siehe fehler.log)"
+        self.statusBar().showMessage(text, 30000)
+        now = time.time()
+        if self.tray and (startup or (not self.isVisible()
+                                      and now - self._last_tray_problem > self.TRAY_PROBLEM_GAP)):
+            self._last_tray_problem = now
+            self.tray.showMessage("Zeitzeuge", "\n".join(problems[-3:]), QSystemTrayIcon.Warning, 10000)
+
+
+_last_error_report = [0.0]
+
+
+def report_exception(exc_type, exc, tb, where=""):
+    """Unbehandelte Ausnahme: Stacktrace in fehler.log, höchstens einmal pro Minute melden.
+    Zeitzeuge läuft weiter."""
+    try:
+        text = "".join(traceback.format_exception(exc_type, exc, tb))
+        safe_io.log(f"Unbehandelter Fehler{where}:\n{text.rstrip()}")
+        if time.time() - _last_error_report[0] > 60:
+            _last_error_report[0] = time.time()
+            safe_io.report(f"Interner Fehler ({exc_type.__name__}: {str(exc)[:100]}). "
+                           "Zeitzeuge läuft weiter, Details in fehler.log.")
+    except Exception:
+        pass  # Melden darf selbst nie abstürzen
+
+
+def install_error_hooks():
+    """Unbehandelte Ausnahmen abfangen. Ohne das beendet PyQt5 das Programm bei einem
+    Fehler in einem Slot sofort, und Fehler in Threads gingen ungesehen verloren."""
+    def hook(exc_type, exc, tb):
+        if issubclass(exc_type, KeyboardInterrupt):
+            return sys.__excepthook__(exc_type, exc, tb)
+        report_exception(exc_type, exc, tb)
+
+    def thread_hook(args):
+        if issubclass(args.exc_type, SystemExit):
+            return
+        name = args.thread.name if args.thread else "?"
+        report_exception(args.exc_type, args.exc_value, args.exc_traceback, f" im Thread {name}")
+
+    sys.excepthook = hook
+    threading.excepthook = thread_hook
+
+
+_instance_lock = None
+
+
+def acquire_single_instance(path=None, wait_ms=500):
+    """Nur eine Instanz: zwei würden sich gegenseitig die Dateien überschreiben.
+    Die Sperre liegt lokal (nicht im oft mit OneDrive synchronisierten Datenordner).
+    False, wenn Zeitzeuge schon läuft."""
+    global _instance_lock
+    from PyQt5.QtCore import QLockFile
+    path = path or os.path.join(storage.local_dir(), "zeitzeuge.lock")
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    lock = QLockFile(path)
+    lock.setStaleLockTime(0)  # nur als verwaist werten, wenn der Prozess nicht mehr läuft
+    if not lock.tryLock(wait_ms):
+        return False
+    _instance_lock = lock
+    return True
+
 
 if __name__ == "__main__":
     QLocale.setDefault(GERMAN)
+    install_error_hooks()
     app = QApplication(sys.argv)
     app.setStyle(AppStyle())
     install_translator(app)
     app.setQuitOnLastWindowClosed(False)
+    if not acquire_single_instance(wait_ms=20000 if "--neustart" in sys.argv else 500):
+        if "--minimized" not in sys.argv:
+            QMessageBox.information(None, "Zeitzeuge",
+                                    "Zeitzeuge läuft schon. Du findest es im Infobereich neben der Uhr.")
+        sys.exit(0)
     window = TimelineApp()
     from hang_watch import HangWatch
     hang_watch = HangWatch(os.path.join(DATA_DIR, "haenger.log"), app)

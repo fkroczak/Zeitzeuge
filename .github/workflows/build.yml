@@ -69,6 +69,11 @@ jobs:
       - name: Fenster-Filter (Black-/Whitelist, Schreibfehler)
         run: python tests/tracking_filter_test.py
 
+      - name: Robustheit (kaputte Dateien, ohne Internet, Absturz des Lesers)
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python tests/robustness_test.py
+
       - name: Lesbarkeit (nur Hinweis)
         run: python tests/readability_check.py
 
