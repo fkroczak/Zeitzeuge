@@ -215,3 +215,5 @@ else:
     print("Kein Infobereich gefunden, Tray-Bilder fehlen")
 
 window.quit_app()
+# Ohne Event-Loop stürzt PyQt beim Aufräumen sporadisch ab (auch mit altem Code, nicht in der App)
+os._exit(0)

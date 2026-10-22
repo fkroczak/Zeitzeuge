@@ -9,7 +9,7 @@ sleep 1
 openbox >/dev/null 2>&1 & WM=$!
 stalonetray --geometry 6x1-0-0 --icon-size 24 --background '#1f2329' >/dev/null 2>&1 & TRAY=$!
 sleep 1
-python3 "$(dirname "$0")/screenshots.py" "$OUT" "$@"
+python3 -X faulthandler "$(dirname "$0")/screenshots.py" "$OUT" "$@"
 STATUS=$?
 kill $TRAY $WM $XVFB 2>/dev/null
 exit $STATUS

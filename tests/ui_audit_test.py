@@ -208,7 +208,8 @@ for menu in window.findChildren(QMenu):
         if group > 5:
             problem("Menü", f"mehr als 5 Einträge ohne Trennlinie (ab '{action.text()}')")
             group = -99
-        if "&" not in action.text() and menu.parent() is window:
+        # Reine Anzeigen (deaktiviert, z. B. Zustand im Infobereich) brauchen keinen Alt-Buchstaben
+        if "&" not in action.text() and menu.parent() is window and action.isEnabled():
             problem("Menü", f"'{action.text()}' ohne Alt-Buchstaben")
 
 # Dialoge: Namen, Hinweise

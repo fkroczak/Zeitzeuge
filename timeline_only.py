@@ -9,7 +9,7 @@ from PyQt5.QtWidgets import (QDialog, QDialogButtonBox, QFormLayout,
                              QGraphicsRectItem, QGraphicsScene, QGraphicsView,
                              QLabel, QLineEdit, QTextEdit, QVBoxLayout)
 
-from activity_tracker import app_label, merge_segments
+from activity_tracker import app_label, merge_segments, read_segments
 from call_import import load_call_suggestions
 from grouping import format_tv_id, group_entries
 from log_parsers import ConnectionIndex, RdmParser, TeamViewerParser
@@ -162,6 +162,7 @@ class TimelineView(QGraphicsView):
         self.current_date = QDate.currentDate()
         self.calls_file = None  # wird vom Hauptfenster gesetzt (anrufe.json)
         self.tracker = None     # Aktivitätsprotokoll, vom Hauptfenster gesetzt
+        self.activity_dir = None  # Ordner des Protokolls (auch lesbar, wenn pausiert)
         self.personal_day = None  # date_str -> Personalzeiten aus ITM, vom Hauptfenster gesetzt
 
         self._remote_cache = {}  # date_str -> list[conn]
@@ -323,9 +324,13 @@ class TimelineView(QGraphicsView):
 
     def pc_entries_for(self, date: QDate, min_seconds=30, max_gap=60):
         """Aktive Fenster des Tages als Einträge (für Band und Tagesliste)."""
-        if not self.tracker:
+        date_str = date.toString("yyyy-MM-dd")
+        if self.tracker:
+            segments = self.tracker.segments_for(date_str)
+        elif self.activity_dir:  # pausiert: bisher Aufgezeichnetes trotzdem zeigen
+            segments = read_segments(self.activity_dir, date_str)
+        else:
             return []
-        segments = self.tracker.segments_for(date.toString("yyyy-MM-dd"))
         result = []
         for seg in merge_segments(segments, min_seconds=min_seconds, max_gap=max_gap):
             result.append({
@@ -412,7 +417,8 @@ class TimelineView(QGraphicsView):
         pc_band = self.pc_entries_for(date, min_seconds=5, max_gap=15)
         n_lanes = max(self.MIN_LANES, len(lanes_end))
         band_y = self.AXIS_H + 6
-        top = band_y + (self.PC_BAND_H + 10 if self.tracker else 2)
+        show_band = bool(self.tracker or pc_band)
+        top = band_y + (self.PC_BAND_H + 10 if show_band else 2)
         content_h = top + n_lanes * (self.LANE_H + self.LANE_GAP) + 8
         # Platz für die horizontale Scrollleiste lassen, sonst erscheint eine senkrechte
         free_h = self.maximumViewportSize().height() - self.horizontalScrollBar().sizeHint().height()
@@ -465,7 +471,7 @@ class TimelineView(QGraphicsView):
             fill = QColor(base)
             if a["is_suggestion"]:
                 fill.setAlpha(110 if self.dark_mode else 70)
-                pen = QPen(base, 1.5, Qt.DashLine)
+                pen = QPen(base, 1.2)
             else:
                 fill.setAlpha(220)
                 pen = QPen(base.darker(130), 1.5)
@@ -484,7 +490,7 @@ class TimelineView(QGraphicsView):
                 item.setAcceptedMouseButtons(Qt.NoButton)
 
         # PC-Aktivität als schmales Band
-        if self.tracker:
+        if show_band:
             for p in pc_band:
                 start, end = parse_time(p["start"]), parse_time(p["end"])
                 x1 = self._x(start.hour * 60 + start.minute + start.second / 60)
