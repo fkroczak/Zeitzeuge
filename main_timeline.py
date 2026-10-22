@@ -1143,8 +1143,7 @@ class TimelineApp(QMainWindow):
     def doc_band(self, date_str):
         """Zeile "Doku": eigene Tätigkeiten und (gestrichelt) was noch offen ist."""
         entries = self.journal.entries(date_str)
-        if self.config.get("prompt_mode", "window") != "off" or self.config.get("list_view") == "doc":
-            entries += [open_entry(e) for e in self.doc_candidates(date_str)]
+        entries += [open_entry(e) for e in self.doc_candidates(date_str)]
         return sorted(entries, key=lambda e: e["start"])
 
     def on_doc_request(self, action, entry):
