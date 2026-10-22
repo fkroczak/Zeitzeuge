@@ -111,7 +111,7 @@ Standardpfade:
 
 1. **Einstellungen ▾ → 3CX direkt auslesen …** öffnen.
 2. 3CX-Adresse prüfen und **Bei 3CX anmelden …** klicken.
-3. Im Edge-Fenster ganz normal bei 3CX anmelden und das Fenster schließen.
+3. Im Edge-Fenster ganz normal bei 3CX anmelden. Sobald die Anrufliste erscheint, schließt Zeitzeuge das Fenster selbst und liest danach unsichtbar im Hintergrund weiter. Das Fenster muss also nicht offen bleiben.
 
 Die Anmeldung bleibt gespeichert (`%LOCALAPPDATA%\Zeitzeuge\3cx_profil`). Läuft sie ab, meldet sich Zeitzeuge im Infobereich. Ein Klick auf die Meldung öffnet die Anmeldung. Ton, Mikrofon und Benachrichtigungen sind gesperrt, dort klingelt also nichts. Für 3CX zählt Zeitzeuge aber als zusätzlich angemeldeter Webclient.
 
@@ -155,7 +155,7 @@ Zeitzeuge öffnet die Tagesübersicht der ITM-Zeiterfassung unsichtbar mit Edge,
 
 1. **Einstellungen ▾ → ITM-Personalzeiten …** öffnen.
 2. Adresse prüfen (`https://app.itm-gruppe.com`) und **Bei ITM anmelden …** klicken.
-3. Im Edge-Fenster anmelden und das Fenster schließen.
+3. Im Edge-Fenster anmelden. Sobald die Tagesübersicht geladen ist, schließt Zeitzeuge das Fenster selbst.
 
 Die Anmeldung liegt in `%LOCALAPPDATA%\Zeitzeuge\itm_profil`, die gelesenen Tage in `personalzeiten.json` im Datenordner. Die Timeline zeigt dann deine gestempelte Zeit hell und alles andere, auch die Pausen, abgedunkelt. Ohne Personalzeiten gilt wie bisher die Arbeitszeit aus den Einstellungen.
 
