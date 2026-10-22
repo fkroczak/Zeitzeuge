@@ -100,6 +100,34 @@ jobs:
       - name: EXE bauen
         run: pyinstaller --noconfirm --clean ZeitZeuge.spec
 
+      - name: Versionsnummer prüfen (Tag v* muss zu version.py passen)
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $v = python -c "from version import VERSION; print(VERSION)"
+          if ("v$v" -ne "${{ github.ref_name }}") { Write-Host "::error::Tag ${{ github.ref_name }} passt nicht zu version.py ($v)"; exit 1 }
+
+      - name: EXE signieren (nur wenn ein Zertifikat hinterlegt ist)
+        env:
+          SIGN_PFX_BASE64: ${{ secrets.SIGN_PFX_BASE64 }}
+          SIGN_PFX_PASSWORD: ${{ secrets.SIGN_PFX_PASSWORD }}
+        shell: pwsh
+        run: |
+          if (-not $env:SIGN_PFX_BASE64) {
+            Write-Host "::notice title=Signatur::Kein Zertifikat hinterlegt (Secrets SIGN_PFX_BASE64, SIGN_PFX_PASSWORD), EXE bleibt unsigniert."
+            exit 0
+          }
+          $pfx = Join-Path $env:RUNNER_TEMP "signatur.pfx"
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:SIGN_PFX_BASE64))
+          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" |
+            Sort-Object FullName -Descending | Select-Object -First 1
+          & $signtool.FullName sign /f $pfx /p $env:SIGN_PFX_PASSWORD /fd SHA256 `
+            /tr http://timestamp.digicert.com /td SHA256 /d "Zeitzeuge" dist\ZeitZeuge.exe
+          $code = $LASTEXITCODE
+          Remove-Item $pfx -Force
+          if ($code -ne 0) { exit $code }
+          & $signtool.FullName verify /pa dist\ZeitZeuge.exe
+
       - name: EXE als Download bereitstellen
         uses: actions/upload-artifact@v6
         with:
