@@ -1381,18 +1381,21 @@ class TimelineApp(QMainWindow):
         """Beenden über Menü/Infobereich: vorher an offene Tätigkeiten von heute erinnern."""
         if self.config.get("prompt_on_quit", True) and self.config.get("prompt_mode") != "off":
             open_items = self.doc_candidates(datetime.now().strftime("%Y-%m-%d"))
-            if open_items:
-                box = QMessageBox(QMessageBox.Question, "Zeitzeuge beenden",
-                                  f"Heute sind noch {len(open_items)} Tätigkeiten nicht "
-                                  "dokumentiert. Jetzt nachtragen?", parent=self)
-                later = box.addButton("&Nachtragen", QMessageBox.AcceptRole)
-                box.addButton("Trotzdem &beenden", QMessageBox.DestructiveRole)
-                box.setDefaultButton(later)
-                box.exec_()
-                if box.clickedButton() is later:
-                    self.show_open_docs()
-                    return
+            if open_items and self.ask_document_first(len(open_items)):
+                self.show_open_docs()
+                return
         self.quit_app()
+
+    def ask_document_first(self, count):
+        """Rückfrage beim Beenden. True = erst nachtragen, nicht beenden."""
+        box = QMessageBox(QMessageBox.Question, "Zeitzeuge beenden",
+                          f"Heute sind noch {count} Tätigkeiten nicht dokumentiert. "
+                          "Jetzt nachtragen?", parent=self)
+        later = box.addButton("&Nachtragen", QMessageBox.AcceptRole)
+        box.addButton("Trotzdem &beenden", QMessageBox.DestructiveRole)
+        box.setDefaultButton(later)
+        box.exec_()
+        return box.clickedButton() is later
 
     # ---------------------- Aktivitätsprotokoll -------------------------------
 

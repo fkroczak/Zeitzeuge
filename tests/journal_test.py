@@ -92,9 +92,7 @@ def flush_deletes():
     """Gelöschte Fenster (deleteLater) jetzt wirklich löschen. In der App passiert das in der
     Ereignisschleife; der Test läuft ohne app.exec_(), sonst geschähe es erst im nächsten Dialog."""
     from PyQt5.QtCore import QCoreApplication, QEvent
-    print("lösche Fenster …")
     QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
-    print("gelöscht")
 
 
 def gui_test():
@@ -103,7 +101,7 @@ def gui_test():
     import main_timeline  # noqa: E402
     from PyQt5.QtCore import QTimer  # noqa: E402
     from PyQt5.QtTest import QTest  # noqa: E402
-    from PyQt5.QtWidgets import QApplication, QMessageBox, QSystemTrayIcon  # noqa: E402
+    from PyQt5.QtWidgets import QApplication, QSystemTrayIcon  # noqa: E402
 
     QSystemTrayIcon.isSystemTrayAvailable = staticmethod(lambda: True)
     app = QApplication(sys.argv)
@@ -189,21 +187,11 @@ def gui_test():
                               "type": "SSH-Verbindung", "customer_name": "fw01",
                               "details": "", "is_suggestion": True})
     window.view_combo.setCurrentIndex(window.view_combo.findData("grouped"))
+    # Meldungsboxen stürzen unter Windows ohne Bildschirm in Qt ab: Rückfrage ersetzen
     asked = []
-
-
-    def answer_box():
-        box = QApplication.activeModalWidget()
-        if isinstance(box, QMessageBox):
-            asked.append(box.text())
-            box.buttons()[0].click()  # "Nachtragen"
-        else:
-            QTimer.singleShot(100, answer_box)
-
-
-    QTimer.singleShot(100, answer_box)
+    window.ask_document_first = lambda count: asked.append(count) or True  # "Nachtragen"
     window.request_quit()
-    assert asked and "1 Tätigkeiten" in asked[0], asked
+    assert asked == [1], asked
     assert not window._quitting, "trotz „Nachtragen“ beendet"
     assert window.config["list_view"] == "doc"
 
