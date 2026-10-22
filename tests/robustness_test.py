@@ -47,6 +47,7 @@ from PyQt5.QtWidgets import QApplication, QSystemTrayIcon  # noqa: E402
 
 QSystemTrayIcon.isSystemTrayAvailable = staticmethod(lambda: True)
 app = QApplication(sys.argv)
+app.setStyle(main_timeline.AppStyle())  # wie die App (Fusion), Windows-Stil stürzt ohne Bildschirm ab
 main_timeline.install_error_hooks()
 window = main_timeline.TimelineApp()
 # Ohne Bildschirm gibt es keinen echten Infobereich: Sprechblasen am vorgetäuschten Symbol

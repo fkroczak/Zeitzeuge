@@ -107,6 +107,7 @@ def gui_test():
 
     QSystemTrayIcon.isSystemTrayAvailable = staticmethod(lambda: True)
     app = QApplication(sys.argv)
+    app.setStyle(main_timeline.AppStyle())  # wie die App (Fusion), Windows-Stil stürzt ohne Bildschirm ab
     window = main_timeline.TimelineApp()
     # Ohne Bildschirm gibt es keinen echten Infobereich: Sprechblasen an einem nur
     # vorgetäuschten Symbol stürzen unter Windows in Qt ab. Meldungen hier mitschreiben.
