@@ -633,7 +633,23 @@ class BrowserReader(QObject):
 
     def _set_status(self, text):
         self.status = text
+        if " gelesen " in f"{text} ":  # "3CX gelesen 17:53 …", "ITM gelesen 17:54"
+            self.last_ok = datetime.now()
         self.status_changed.emit(text)
+
+    def health(self):
+        """Zustand für die Statuszeile: ("ok" | "warn" | "busy", kurzer Grund)."""
+        if self.needs_login:
+            return "warn", "Anmeldung nötig"
+        if self._offline:
+            return "warn", "offline"
+        if self._failed:
+            return "warn", "Fehler"
+        if self._login_open:
+            return "busy", "Anmeldung läuft"
+        if not getattr(self, "last_ok", None):
+            return "busy", "lädt …"
+        return "ok", f"{self.last_ok:%H:%M}"
 
     def _need_login(self):
         if not self.needs_login:

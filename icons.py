@@ -109,3 +109,28 @@ def state_dot(active):
                + PAUSE_BARS.format(c="#FFFFFF"))
     return _render(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">{svg}</svg>',
                    (16, 20, 24, 32))
+
+
+# Zustand einer Datenquelle in der Statuszeile. Form UND Farbe: Haken, Dreieck, Uhr.
+WARN_FILL, WARN_LINE = "#F5B800", "#6B4E00"   # gelbes Warndreieck mit dunklem Rand
+OK_COLOR = "#2E9E5B"
+BUSY_COLOR = "#7D8590"
+
+
+def source_icon(state):
+    """state: "ok" (grüner Haken), "warn" (gelbes Dreieck mit !), "busy" (graue Uhr)."""
+    if state == "warn":
+        svg = (f'<path d="M12 2.5 22.5 21h-21z" fill="{WARN_FILL}" stroke="{WARN_LINE}" '
+               'stroke-width="1.6" stroke-linejoin="round"/>'
+               f'<path d="M12 9v5.5" stroke="{WARN_LINE}" stroke-width="2.4" stroke-linecap="round"/>'
+               f'<circle cx="12" cy="17.7" r="1.4" fill="{WARN_LINE}"/>')
+    elif state == "ok":
+        svg = (f'<circle cx="12" cy="12" r="10" fill="{OK_COLOR}"/>'
+               '<path d="m7.5 12.5 3 3 6-6.5" stroke="#FFFFFF" stroke-width="2.4" fill="none" '
+               'stroke-linecap="round" stroke-linejoin="round"/>')
+    else:
+        svg = (f'<circle cx="12" cy="12" r="9" fill="none" stroke="{BUSY_COLOR}" stroke-width="2"/>'
+               f'<path d="M12 7v5l3 2" stroke="{BUSY_COLOR}" stroke-width="2" fill="none" '
+               'stroke-linecap="round"/>')
+    return _render(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">{svg}</svg>',
+                   (16, 20, 24, 32))
