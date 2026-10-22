@@ -62,8 +62,13 @@ assert window.tray_toggle_action.text().replace("&", "") == "Aufzeichnung pausie
 # Beenden, während die Logs noch gelesen werden: Thread wird abgewartet und meldet nichts mehr
 import time  # noqa: E402
 timeline = window.timeline
-for thread in list(timeline._threads):  # erstes Einlesen beim Start abschließen lassen
-    thread.join(10)
+# Erstes Einlesen beim Start (startet per Timer) ganz abschließen lassen, auch die Meldung
+deadline = time.monotonic() + 15
+while time.monotonic() < deadline:
+    app.processEvents()
+    if timeline._threads and not timeline.loading and not any(t.is_alive() for t in timeline._threads):
+        break
+    time.sleep(0.05)
 app.processEvents()
 emitted = []
 timeline.logs_loaded.connect(lambda *_: emitted.append(1))
