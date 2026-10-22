@@ -1,24 +1,27 @@
 # timeline_only.py
+import threading
 from datetime import datetime
 from html import escape
 
-from PyQt5.QtCore import QDate, QDateTime, Qt, pyqtSignal
+from PyQt5.QtCore import QDate, QDateTime, Qt, QTimer, pyqtSignal
 from PyQt5.QtGui import QBrush, QColor, QFont, QFontMetrics, QPainter, QPen
 from PyQt5.QtWidgets import (QDialog, QDialogButtonBox, QFormLayout,
                              QGraphicsRectItem, QGraphicsScene, QGraphicsView,
                              QLabel, QLineEdit, QTextEdit, QVBoxLayout)
 
-from activity_tracker import app_label, merge_segments
+from activity_tracker import app_label, merge_segments, read_segments
 from call_import import load_call_suggestions
 from grouping import format_tv_id, group_entries
 from log_parsers import ConnectionIndex, RdmParser, TeamViewerParser, VpnParser
 
-DEBUG = False  # bei Bedarf auf True setzen
 TIME_FMT = "%Y-%m-%d %H:%M:%S"
 
 
 def parse_time(text):
-    return datetime.strptime(text, TIME_FMT)
+    """'JJJJ-MM-TT hh:mm:ss' -> datetime. Streng wie strptime, aber viel schneller."""
+    if len(text) != 19 or text[10] != " ":
+        raise ValueError(f"Ungültige Zeit: {text!r}")
+    return datetime.fromisoformat(text)
 
 
 WEEKDAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
@@ -151,6 +154,8 @@ class ActivityViewDialog(QDialog):
 class TimelineView(QGraphicsView):
     # Nach jedem Zeichnen: Einträge des Tages und PC-Aktivität (für die Tagesliste)
     day_loaded = pyqtSignal(list, list)
+    # Hintergrund-Thread hat TeamViewer- und RDM-Logs gelesen
+    logs_loaded = pyqtSignal(object, object, object)
 
     APP_COLORS = ["#5B8DEF", "#E67E22", "#27AE60", "#9B59B6", "#E84393",
                   "#16A085", "#C0392B", "#F1C40F", "#2C3E50", "#7F8C8D"]
@@ -178,15 +183,21 @@ class TimelineView(QGraphicsView):
         self.current_date = QDate.currentDate()
         self.calls_file = None  # wird vom Hauptfenster gesetzt (anrufe.json)
         self.tracker = None     # Aktivitätsprotokoll, vom Hauptfenster gesetzt
+        self.activity_dir = None  # Ordner des Protokolls (auch lesbar, wenn pausiert)
         self.personal_day = None  # date_str -> Personalzeiten aus ITM, vom Hauptfenster gesetzt
 
         self._remote_cache = {}  # date_str -> list[conn]
-        self._tv_parser = TeamViewerParser(debug=DEBUG)
-        self._rdm_parser = RdmParser(debug=DEBUG)
-        self._vpn_parser = VpnParser(debug=DEBUG)
-        self._tv_index = None
+        self._tv_parser = TeamViewerParser(self.config)
+        self._rdm_parser = RdmParser(self.config)
+        self._vpn_parser = VpnParser(self.config)
+        self._tv_index = None   # None = Logs noch nicht gelesen
         self._rdm_index = None
         self._vpn_index = None
+        self.loading = False    # Logs werden gerade im Hintergrund gelesen
+        self._reload = False    # während des Lesens erneut angefordert
+        self._thread = None
+        self._closing = False   # beim Beenden: Thread darf nichts mehr melden
+        self.logs_loaded.connect(self._on_logs_loaded)
 
         self.zoom_level = 1.0
         self.fit_day = True        # ganzen Tag ins Fenster einpassen
@@ -229,7 +240,8 @@ class TimelineView(QGraphicsView):
     def set_dark_mode(self, enabled: bool):
         self.dark_mode = enabled
         self.init_timeline_colors()
-        self.draw_timeline(self.current_date)
+        if self._ppm:  # erst neu zeichnen, wenn schon einmal gezeichnet wurde
+            self.draw_timeline(self.current_date)
 
     # ----------------------------- Tooltip -----------------------------------
 
@@ -245,46 +257,70 @@ class TimelineView(QGraphicsView):
     # ----------------------------- Daten laden --------------------------------
 
     def refresh(self):
-        """Logdateien neu einlesen (nur geänderte Dateien werden wirklich gelesen)."""
-        self._tv_index = None
-        self._rdm_index = None
-        self._vpn_index = None
-        self._remote_cache.clear()
-        self.draw_timeline(self.current_date)
+        """Logdateien im Hintergrund neu einlesen (nur geänderte Dateien werden wirklich gelesen).
 
-    # Alter Name, falls noch irgendwo verwendet
-    update_realtime_connections = refresh
+        Große Logs oder Netzwerkpfade blockieren so weder den Start noch die Bedienung.
+        Danach wird die Timeline neu gezeichnet.
+        """
+        if self.loading:
+            self._reload = True
+            return
+        self.loading = True
+        self._thread = threading.Thread(target=self._load_logs, daemon=True)
+        self._thread.start()
+
+    def shutdown(self, timeout=3):
+        """Beim Beenden: laufendes Einlesen abwarten, danach meldet der Thread nichts mehr.
+
+        Sonst kann er nach dem Aufräumen ein Signal an die gelöschte Timeline senden
+        (Absturz beim Beenden unter Windows).
+        """
+        self._closing = True
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout)
+
+    def _start_first_load(self):
+        self.loading = False
+        self.refresh()
+
+    def _load_logs(self):
+        indexes = []
+        vpn_on = self.config.get("vpn_enabled", True)
+        for name, parser in (("TeamViewer", self._tv_parser), ("RDM", self._rdm_parser),
+                             ("VPN", self._vpn_parser)):
+            try:
+                skip = parser is self._vpn_parser and not vpn_on
+                indexes.append(ConnectionIndex([] if skip else parser.parse_logs()))
+            except Exception as e:
+                print(f"Fehler beim Lesen der {name}-Logs: {e}")
+                indexes.append(ConnectionIndex([]))
+        if not self._closing:
+            self.logs_loaded.emit(*indexes)  # Qt stellt das im GUI-Thread zu
+
+    def _on_logs_loaded(self, tv_index, rdm_index, vpn_index):
+        self._tv_index, self._rdm_index, self._vpn_index = tv_index, rdm_index, vpn_index
+        self._remote_cache.clear()
+        self.loading = False
+        if self._reload:
+            self._reload = False
+            self.refresh()
+        self.draw_timeline(self.current_date)
 
     def load_remote_connections(self, date: QDate):
         date_str = date.toString("yyyy-MM-dd")
         if date_str in self._remote_cache:
             self.remote_suggestions = self._remote_cache[date_str]
             return
-
-        if self._tv_index is None:
-            try:
-                self._tv_index = ConnectionIndex(self._tv_parser.parse_logs())
-            except Exception as e:
-                print(f"Fehler im TeamViewerParser: {e}")
-                self._tv_index = ConnectionIndex([])
-
-        if self._rdm_index is None:
-            try:
-                self._rdm_index = ConnectionIndex(self._rdm_parser.parse_logs())
-            except Exception as e:
-                print(f"Fehler im RdmParser: {e}")
-                self._rdm_index = ConnectionIndex([])
-
-        vpn_on = self.config.get("vpn_enabled", True)
-        if self._vpn_index is None:
-            try:
-                self._vpn_index = ConnectionIndex(self._vpn_parser.parse_logs() if vpn_on else [])
-            except Exception as e:
-                print(f"Fehler im VpnParser: {e}")
-                self._vpn_index = ConnectionIndex([])
+        if self._tv_index is None:  # erster Start: ohne Logs zeichnen, sie kommen gleich nach
+            self.remote_suggestions = []
+            if not self.loading:
+                self.loading = True
+                # Erst lesen, wenn dieses Zeichnen fertig ist (sonst bremst der Thread es aus)
+                QTimer.singleShot(0, self._start_first_load)
+            return
 
         day = self._tv_index.get_for_date(date_str) + self._rdm_index.get_for_date(date_str)
-        if not vpn_on:  # VPN abgeschaltet: auch die VPN-Einträge aus RDM weglassen
+        if not self.config.get("vpn_enabled", True):  # VPN abgeschaltet: auch die VPN-Einträge aus RDM weglassen
             day = [c for c in day if not c.get("type", "").startswith("VPN")]
         day += self._vpn_index.get_for_date(date_str)
         for conn in day:
@@ -335,9 +371,13 @@ class TimelineView(QGraphicsView):
 
     def pc_entries_for(self, date: QDate, min_seconds=30, max_gap=60):
         """Aktive Fenster des Tages als Einträge (für Band und Tagesliste)."""
-        if not self.tracker:
+        date_str = date.toString("yyyy-MM-dd")
+        if self.tracker:
+            segments = self.tracker.segments_for(date_str)
+        elif self.activity_dir:  # pausiert: bisher Aufgezeichnetes trotzdem zeigen
+            segments = read_segments(self.activity_dir, date_str)
+        else:
             return []
-        segments = self.tracker.segments_for(date.toString("yyyy-MM-dd"))
         result = []
         for seg in merge_segments(segments, min_seconds=min_seconds, max_gap=max_gap):
             result.append({
@@ -455,7 +495,8 @@ class TimelineView(QGraphicsView):
         pc_band = self.pc_entries_for(date, min_seconds=5, max_gap=15)
         n_lanes = max(self.MIN_LANES, len(lanes_end))
         band_y = self.AXIS_H + 6
-        top = band_y + (self.PC_BAND_H + 10 if self.tracker else 2)
+        show_band = bool(self.tracker or pc_band)
+        top = band_y + (self.PC_BAND_H + 10 if show_band else 2)
         row_h = self.LANE_H + self.LANE_GAP
         free_top = top + n_fixed * row_h + 6  # kleiner Abstand vor den freien Spuren
         content_h = free_top + n_lanes * row_h + 8
@@ -536,7 +577,7 @@ class TimelineView(QGraphicsView):
             fill = QColor(base)
             if a["is_suggestion"]:
                 fill.setAlpha(110 if self.dark_mode else 70)
-                pen = QPen(base, 1.5, Qt.DashLine)
+                pen = QPen(base, 1.2)
             else:
                 fill.setAlpha(220)
                 pen = QPen(base.darker(130), 1.5)
@@ -555,7 +596,7 @@ class TimelineView(QGraphicsView):
                 item.setAcceptedMouseButtons(Qt.NoButton)
 
         # PC-Aktivität als schmales Band
-        if self.tracker:
+        if show_band:
             for p in pc_band:
                 start, end = parse_time(p["start"]), parse_time(p["end"])
                 x1 = self._x(start.hour * 60 + start.minute + start.second / 60)

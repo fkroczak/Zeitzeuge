@@ -6,9 +6,9 @@ import warnings
 
 from datetime import datetime
 
-from PyQt5.QtCore import (QDate, QLocale, QObject, QProcess, QSize, Qt, QTimer,
-                          QUrl, pyqtSignal)
-from PyQt5.QtGui import (QColor, QDesktopServices, QIcon, QKeySequence, QPalette,
+from PyQt5.QtCore import (QDate, QLibraryInfo, QLocale, QObject, QProcess, QSize, Qt,
+                          QTimer, QTranslator, QUrl, pyqtSignal)
+from PyQt5.QtGui import (QColor, QDesktopServices, QFont, QIcon, QKeySequence, QPalette,
                          QPixmap)
 from PyQt5.QtWidgets import (QAbstractItemView, QAction, QApplication, QProxyStyle,
                              QStyle, QStyleFactory,
@@ -20,10 +20,8 @@ from PyQt5.QtWidgets import (QAbstractItemView, QAction, QApplication, QProxySty
                              QVBoxLayout, QWidget)
 
 from activity_tracker import ActivityTracker
-from browser_setup import BrowserSetupDialog, build_userscript
 from call_import import start_call_server
-from itm_reader import ItmReader
-from pbx_reader import PbxReader, find_browser
+import icons
 import storage
 from log_parsers import VpnParser
 from settings_dialogs import (ActivityTypeSettingsDialog,
@@ -83,6 +81,22 @@ class AppStyle(QProxyStyle):
             return 26
         return super().pixelMetric(metric, option, widget)
 
+    def styleHint(self, hint, option=None, widget=None, data=None):
+        # Dialogknöpfe überall wie unter Windows: OK links von Abbrechen, ohne Symbole
+        if hint == QStyle.SH_DialogButtonLayout:
+            return QDialogButtonBox.WinLayout
+        if hint == QStyle.SH_DialogButtonBox_ButtonsHaveIcons:
+            return 0
+        return super().styleHint(hint, option, widget, data)
+
+
+def install_translator(app):
+    """Qt-eigene Texte (OK/Abbrechen, Ja/Nein, Kalender) auf Deutsch."""
+    translator = QTranslator(app)
+    if translator.load(GERMAN, "qtbase", "_", QLibraryInfo.location(QLibraryInfo.TranslationsPath)):
+        app.installTranslator(translator)
+    return translator
+
 
 class CallSignal(QObject):
     # Signal aus dem Server-Thread sicher in den GUI-Thread bringen
@@ -100,7 +114,7 @@ def clean_path(path):
 def load_config_with_defaults():
     defaults = {
         "activity_types": [
-            # Remote / ZugÃ¤nge
+            # Remote / Zugänge
             "VPN-Sitzung",
             "RDP-Sitzung",
             "SSH-Sitzung",
@@ -110,10 +124,9 @@ def load_config_with_defaults():
             "VPN",
             "Website-Verbindung",
 
-            # Admin-OberflÃ¤chen / Dienste
+            # Admin-Oberflächen / Dienste
             "Nextcloud-Admin",
             "NAS-Admin",
-            "Website-Verbindung",
             "Hosting-Admin",
             "M365-Admin",
             "Mail-Administration",
@@ -126,15 +139,15 @@ def load_config_with_defaults():
 
         ],
         "type_colors": {
-            # Remote / ZugÃ¤nge
-            "VPN-Sitzung":           "#00B894",  # TÃ¼rkis
+            # Remote / Zugänge
+            "VPN-Sitzung":           "#00B894",  # Türkis
             "RDP-Sitzung":           "#F1C40F",  # Gelb
             "SSH-Sitzung":           "#E67E22",  # Orange
 
-            # Admin-OberflÃ¤chen / Dienste
+            # Admin-Oberflächen / Dienste
             "Nextcloud-Admin":       "#3498DB",  # Blau
             "NAS-Admin":             "#16A085",  # Petrol
-            "Website-Admin":         "#1ABC9C",  # TÃ¼rkisgrÃ¼n
+            "Website-Admin":         "#1ABC9C",  # Türkisgrün
             "Hosting-Admin":         "#9B59B6",  # Lila (z.B. Netcup/goneo)
             "M365-Admin":            "#2980B9",  # Dunkelblau
             "Mail-Administration":   "#C0392B",  # Rot
@@ -174,7 +187,7 @@ def load_config_with_defaults():
         "vpn_enabled": True,
         "vpn_paths": VpnParser().default_paths,  # OpenVPN GUI, OpenVPN Connect, Sophos SSL VPN
         "vpn_timezone_correction": 0,  # VPN-Clients schreiben Ortszeit
-        # deine gewÃ¼nschten Zeitzonen
+        # deine gewünschten Zeitzonen
         "timezone_correction": 0,
         "teamviewer_timezone_correction": 1,
         "rdm_timezone_correction": 0,
@@ -234,6 +247,7 @@ def load_config_with_defaults():
         cfg[key] = [clean_path(p) for p in cfg.get(key, [])]
     if "Telefonat" not in cfg["activity_types"]:
         cfg["activity_types"].append("Telefonat")
+    cfg["activity_types"] = list(dict.fromkeys(cfg["activity_types"]))  # alte Doppelte entfernen
 
     # gleich zurückschreiben (damit neue Keys persistieren)
     try:
@@ -268,30 +282,37 @@ THEMES = {
 }
 
 STYLESHEET = """
-QWidget { background-color: $bg; color: $text; font-size: 12px;
-          font-family: "Segoe UI", Arial, sans-serif; }
+QWidget { background-color: $bg; color: $text; font-size: 13px;
+          font-family: "Segoe UI Variable Text", "Segoe UI", "Inter", Arial, sans-serif; }
 QToolBar { background-color: $bar; border: none; border-bottom: 1px solid $border;
-           padding: 4px; spacing: 4px; }
-QToolBar::separator { background: $border; width: 1px; margin: 4px 6px; }
+           padding: 6px 8px; spacing: 4px; }
+QToolBar::separator { background: $border; width: 1px; margin: 6px 6px; }
 QToolButton { background: transparent; border: 1px solid transparent;
-              border-radius: 4px; padding: 4px 8px; }
-QToolButton:hover { background-color: $hover; border-color: $border; }
+              border-radius: 6px; padding: 4px 6px; }
+QToolButton:hover { background-color: $hover; }
 QToolButton:pressed, QToolButton:checked { background-color: $pressed; border-color: $border; }
 QToolButton::menu-indicator { image: none; }
 QStatusBar { background-color: $bar; color: $muted; border-top: 1px solid $border; }
-QStatusBar QLabel { background: transparent; color: $muted; padding: 0 8px; }
+QStatusBar QLabel { background: transparent; color: $muted; padding: 3px 8px; }
+QStatusBar QToolButton { color: $text; padding: 2px 8px; margin: 2px 4px; }
 QStatusBar::item { border: none; }
-QDateEdit, QLineEdit, QTextEdit, QComboBox, QSpinBox, QListWidget {
+QDateEdit, QLineEdit, QTextEdit, QComboBox, QSpinBox, QTimeEdit, QListWidget {
     background-color: $surface; color: $text; border: 1px solid $border;
-    border-radius: 4px; padding: 4px; selection-background-color: $accent;
+    border-radius: 6px; padding: 4px 6px; selection-background-color: $accent;
     selection-color: #FFFFFF; }
-QDateEdit { min-width: 105px; }
+QDateEdit, QComboBox { min-height: 22px; }
+QSpinBox, QTimeEdit { padding-right: 6px; }
+QAbstractSpinBox::up-button, QAbstractSpinBox::down-button { width: 0; border: none; }
+QDateEdit { min-width: 120px; }
+QComboBox QAbstractItemView { padding: 4px; outline: none; }
 QPushButton { background-color: $hover; color: $text; border: 1px solid $border;
-              border-radius: 4px; padding: 6px 12px; min-width: 80px; }
+              border-radius: 6px; padding: 6px 14px; min-width: 80px; }
 QPushButton:hover { background-color: $pressed; }
+QPushButton:default { background-color: $accent; color: #FFFFFF; border-color: $accent; }
 QToolButton:focus, QPushButton:focus { border: 2px solid $accent; }
-QToolButton:focus { padding: 3px 7px; }
-QPushButton:focus { padding: 5px 11px; }
+QToolButton:focus { padding: 3px 5px; }
+QPushButton:focus { padding: 5px 13px; }
+QPushButton:default:focus { border-color: $text; }
 QDateEdit:focus, QTimeEdit:focus, QLineEdit:focus, QTextEdit:focus, QComboBox:focus,
 QSpinBox:focus, QListWidget:focus, QTableWidget:focus, QGraphicsView:focus {
     border: 1px solid $accent; }
@@ -300,21 +321,28 @@ QLabel#hint { color: $muted; }
 QPushButton:disabled, QToolButton:disabled, QLineEdit:disabled, QDateEdit:disabled,
 QTimeEdit:disabled, QSpinBox:disabled, QCheckBox:disabled { color: $muted; }
 QPushButton:disabled { background-color: $surface; }
-QGroupBox { border: 1px solid $border; border-radius: 6px; margin-top: 1em;
-            padding-top: 12px; background-color: $surface; }
+QGroupBox { border: 1px solid $border; border-radius: 8px; margin-top: 1.2em;
+            padding: 12px 8px 8px 8px; background-color: $surface; font-weight: 600; }
 QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 6px; }
-QMenu { background-color: $surface; border: 1px solid $border; padding: 4px; }
-QMenu::item { padding: 5px 20px; border-radius: 3px; }
-QMenu::item:selected { background-color: $accent; color: #FFFFFF; }
-QGraphicsView { border: 1px solid $border; border-radius: 4px; }
+QGroupBox QWidget { font-weight: normal; }
+QGroupBox QLabel, QGroupBox QCheckBox { background: transparent; }
+QCheckBox { spacing: 8px; }
+QMenu { background-color: $surface; border: 1px solid $border; border-radius: 8px; padding: 6px; }
+QMenu::item { padding: 6px 28px 6px 10px; border-radius: 4px; }
+QMenu::item:selected { background-color: $hover; color: $text; }
+QMenu::item:disabled { color: $muted; }
+QMenu::separator { height: 1px; background: $border; margin: 5px 8px; }
+QMenu::icon { padding-left: 6px; }
+QGraphicsView { border: 1px solid $border; border-radius: 8px; }
 QTableWidget { background-color: $surface; alternate-background-color: $alt;
-               border: 1px solid $border; border-radius: 4px; gridline-color: transparent;
+               border: 1px solid $border; border-radius: 8px; gridline-color: transparent;
                selection-background-color: $accent; selection-color: #FFFFFF; }
-QTableWidget::item { padding: 2px 6px; border: none; }
+QTableWidget::item { padding: 2px 8px; border: none; }
 QHeaderView::section { background-color: $bar; color: $muted; border: none;
-                       border-bottom: 1px solid $border; padding: 4px 6px; font-weight: 600; }
+                       border-bottom: 1px solid $border; padding: 6px 8px; font-weight: 600; }
 QTableCornerButton::section { background-color: $bar; border: none; }
 QSplitter::handle { background: transparent; }
+QSplitter::handle:vertical { height: 8px; }
 QScrollBar:horizontal { height: 10px; background: transparent; margin: 0; }
 QScrollBar:vertical { width: 10px; background: transparent; margin: 0; }
 QScrollBar::handle { background: $handle; border-radius: 4px; min-width: 30px; min-height: 30px; }
@@ -327,7 +355,7 @@ QCalendarWidget QWidget#qt_calendar_navigationbar { background-color: $bar; }
 QCalendarWidget QAbstractItemView { background-color: $surface; color: $text;
     selection-background-color: $accent; selection-color: #FFFFFF; }
 QCalendarWidget QAbstractItemView:disabled { color: $muted; }
-QToolTip { background-color: #2b2b2b; color: #f0f0f0; border: 1px solid #555; }
+QToolTip { background-color: #2b2b2b; color: #f0f0f0; border: 1px solid #555; padding: 4px 6px; }
 """
 
 
@@ -370,12 +398,14 @@ class TimelineApp(QMainWindow):
         self.pc_activities = []
         self.list_entries = []
         self._quitting = False
+        self._icon_actions = []  # (Aktion, Iconname): werden bei Designwechsel neu eingefärbt
 
         self._build_toolbar()
 
         # Timeline oben, Tagesliste unten
         self.timeline = TimelineView(self.activities, self.config, parent=self)
         self.timeline.day_loaded.connect(self.update_day_list)
+        self.timeline.activity_dir = ACTIVITY_DIR
 
         # Aktivitätsprotokoll: alle 5 Sekunden aktives Fenster abfragen
         self.tracker = None
@@ -401,19 +431,21 @@ class TimelineApp(QMainWindow):
         header.setStretchLastSection(True)
         self.table.setAccessibleName("Tagesliste")
         self.table.cellDoubleClicked.connect(lambda row, _col: self.open_details(row))
-        details_action = QAction("Details öffnen", self.table)
+        details_action = QAction("&Details öffnen", self.table)
         details_action.setShortcuts([QKeySequence(Qt.Key_Return), QKeySequence(Qt.Key_Enter)])
         details_action.setShortcutContext(Qt.WidgetShortcut)
         details_action.triggered.connect(lambda: self.open_details(self.table.currentRow()))
         self.table.addAction(details_action)
-        copy_action = QAction("Kopieren", self.table)
+        copy_action = QAction("&Kopieren", self.table)
         copy_action.setShortcut(QKeySequence.Copy)
         copy_action.setShortcutContext(Qt.WidgetShortcut)
         copy_action.triggered.connect(self.copy_selection)
         self.table.addAction(copy_action)
-        name_action = QAction("TeamViewer-ID benennen …", self.table)
+        name_action = QAction("&TeamViewer-ID benennen …", self.table)
         name_action.triggered.connect(self.name_teamviewer_id)
         self.table.addAction(name_action)
+        self._icon_actions += [(details_action, "details"), (copy_action, "copy"),
+                               (name_action, "tag")]
         self.table.setContextMenuPolicy(Qt.ActionsContextMenu)
 
         self.timeline.setAccessibleName("Timeline des Tages")
@@ -434,6 +466,12 @@ class TimelineApp(QMainWindow):
         self.calls_label = QLabel(self)
         self.statusBar().addWidget(self.info_label, 1)
         self.statusBar().addPermanentWidget(self.calls_label)
+        # Zustand der Fensteraufzeichnung, ein Klick schaltet sie um (wie im Infobereich)
+        self.tracking_button = QToolButton(self)
+        self.tracking_button.setAccessibleName("Fensteraufzeichnung ein- oder ausschalten")
+        self.tracking_button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self.tracking_button.clicked.connect(self.tracking_action.toggle)
+        self.statusBar().addPermanentWidget(self.tracking_button)
         self.statusBar().setSizeGripEnabled(False)
 
         # Anruf-Empfang für das Tampermonkey-Skript starten
@@ -471,12 +509,15 @@ class TimelineApp(QMainWindow):
         if self.config.get("itm_reader_enabled", False):
             self.start_itm_reader()
 
-        self.apply_style()  # zeichnet die Timeline
+        self.apply_style()  # setzt auch Icons und Aufzeichnungs-Zustand
         self.timeline.setFocus()
+        # Erst zeichnen, wenn das Fenster seine echte Größe hat (spart ein Zeichnen beim Start).
+        # Die Logs liest die Timeline dabei im Hintergrund.
+        QTimer.singleShot(0, lambda: self.timeline.draw_timeline(self.current_date))
 
     # ---------------------- Werkzeugleiste ------------------------------------
 
-    def _action(self, text, slot, shortcut=None, tip=None):
+    def _action(self, text, slot, shortcut=None, tip=None, icon_name=None):
         action = QAction(text, self)
         action.triggered.connect(slot)
         if shortcut:
@@ -486,16 +527,23 @@ class TimelineApp(QMainWindow):
             first = shortcut[0] if isinstance(shortcut, list) else shortcut
             label += f" ({QKeySequence(first).toString(QKeySequence.NativeText)})"
         action.setToolTip(label)
+        if icon_name:
+            self._icon_actions.append((action, icon_name))
         self.addAction(action)  # Tastenkürzel im ganzen Fenster
         return action
 
     def _build_toolbar(self):
         tb = QToolBar("Navigation", self)
         tb.setMovable(False)
-        tb.setIconSize(QSize(16, 16))
+        tb.setIconSize(QSize(18, 18))
+        tb.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
         self.addToolBar(Qt.TopToolBarArea, tb)
+        icon_only = []
 
-        tb.addAction(self._action("◀", self.show_previous_day, "Ctrl+Left", "Vorheriger Tag"))
+        # Gruppe 1: Tag wählen
+        prev_day = self._action("Vorheriger Tag", self.show_previous_day, "Ctrl+Left", icon_name="prev")
+        next_day = self._action("Nächster Tag", self.show_next_day, "Ctrl+Right", icon_name="next")
+        tb.addAction(prev_day)
         self.date_edit = QDateEdit(self.current_date, self)
         self.date_edit.setAccessibleName("Datum")
         self.date_edit.setLocale(GERMAN)
@@ -503,23 +551,33 @@ class TimelineApp(QMainWindow):
         self.date_edit.setCalendarPopup(True)
         self.date_edit.dateChanged.connect(self.date_changed)
         tb.addWidget(self.date_edit)
-        tb.addAction(self._action("▶", self.show_next_day, "Ctrl+Right", "Nächster Tag"))
-        tb.addAction(self._action("Heute", self.show_today, "Ctrl+T"))
+        tb.addAction(next_day)
+        tb.addAction(self._action("Heute", self.show_today, "Ctrl+T", "Heute zeigen", "today"))
+        icon_only += [prev_day, next_day]
         tb.addSeparator()
-        tb.addAction(self._action("⟳ Aktualisieren", self.refresh, "F5", "Logs neu einlesen"))
+        # Gruppe 2: Daten
+        self.refresh_action = self._action("Aktualisieren", self.refresh, "F5", "Logs neu einlesen",
+                                           "refresh")
+        tb.addAction(self.refresh_action)
+        icon_only.append(self.refresh_action)
         tb.addSeparator()
-        tb.addAction(self._action("−", self.zoom_out, "Ctrl+-", "Verkleinern"))
-        tb.addAction(self._action("+", self.zoom_in, ["Ctrl++", "Ctrl+="], "Vergrößern"))
+        # Gruppe 3: Ausschnitt der Timeline
+        zoom_out = self._action("Verkleinern", self.zoom_out, "Ctrl+-", icon_name="zoom_out")
+        zoom_in = self._action("Vergrößern", self.zoom_in, ["Ctrl++", "Ctrl+="], icon_name="zoom_in")
+        tb.addAction(zoom_out)
+        tb.addAction(zoom_in)
+        icon_only += [zoom_out, zoom_in]
         tb.addAction(self._action("Ganzer Tag", self.timeline_whole_day, "Ctrl+0",
-                                  "Ganzen Tag zeigen (oder Doppelklick in die Timeline)"))
+                                  "Ganzen Tag zeigen (oder Doppelklick in die Timeline)", "whole_day"))
         tb.addAction(self._action("Arbeitszeit", self.timeline_work_time, "Ctrl+9",
-                                  "Arbeitszeit des Tages zeigen"))
+                                  "Arbeitszeit des Tages zeigen", "work_time"))
 
         spacer = QWidget(self)
         spacer.setSizePolicy(spacer.sizePolicy().Expanding, spacer.sizePolicy().Preferred)
         spacer.setStyleSheet("background: transparent;")
         tb.addWidget(spacer)
 
+        # Gruppe 4: Tagesliste
         self.view_combo = QComboBox(self)
         self.view_combo.setAccessibleName("Ansicht der Tagesliste")
         self.view_combo.setToolTip(
@@ -533,51 +591,64 @@ class TimelineApp(QMainWindow):
         self.view_combo.currentIndexChanged.connect(self.change_view)
         tb.addWidget(self.view_combo)
 
-        self.pc_list_action = QAction("PC-Verlauf in Liste", self)
+        self.pc_list_action = QAction("PC-Verlauf", self)
         self.pc_list_action.setCheckable(True)
         self.pc_list_action.setChecked(self.config.get("show_pc_in_list", False))
         self.pc_list_action.setToolTip("Aktive Fenster in der Tagesliste anzeigen")
         self.pc_list_action.toggled.connect(self.toggle_pc_list)
+        self._icon_actions.append((self.pc_list_action, "monitor"))
         tb.addAction(self.pc_list_action)
+        tb.addSeparator()
 
-        self.dark_action = QAction("Dunkel", self)
+        # Menü nach Aufgaben: Ansicht | Aufzeichnung | Einstellen | Info.
+        # Seltenes (Datenquellen, Speicherort) steckt in Untermenüs.
+        menu = QMenu(self)
+        self.dark_action = menu.addAction("&Dunkles Design")
         self.dark_action.setCheckable(True)
         self.dark_action.setChecked(self.dark_mode)
-        self.dark_action.setToolTip("Dunkles Design")
         self.dark_action.toggled.connect(self.toggle_dark_mode)
-        tb.addAction(self.dark_action)
-
-        # Gruppen: Anzeige | Datenquellen | Aufzeichnung | Speicher | Info
-        menu = QMenu(self)
-        menu.addAction("&Arbeitszeiten …", self.edit_work_hours)
-        menu.addAction("Aktivitäts&typen und Farben …", self.edit_activity_types)
-        menu.addSeparator()
-        menu.addAction("Team&Viewer-Logs …", self.edit_teamviewer_settings)
-        menu.addAction("&RDM-Logs …", self.edit_rdm_settings)
-        menu.addAction("&VPN-Verbindungen …", self.edit_vpn_settings)
-        menu.addSeparator()
-        menu.addAction("3CX &direkt auslesen …", self.open_pbx_settings)
-        menu.addAction("3CX über &Chrome/Tampermonkey einrichten …", self.open_browser_setup)
-        menu.addAction("&ITM-Personalzeiten …", self.open_itm_settings)
         menu.addSeparator()
         self.tracking_action = menu.addAction("Aktive &Fenster aufzeichnen")
         self.tracking_action.setCheckable(True)
         self.tracking_action.setChecked(self.config.get("tracking_enabled", True))
         self.tracking_action.toggled.connect(self.toggle_tracking)
         menu.addSeparator()
-        menu.addAction("&Speicherort ändern …", self.change_data_dir)
-        menu.addAction("Daten&ordner öffnen",
-                       lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(DATA_DIR)))
+        self._icon_actions += [
+            (menu.addAction("&Arbeitszeiten …", self.edit_work_hours), "clock"),
+            (menu.addAction("Aktivitäts&typen und Farben …", self.edit_activity_types), "palette"),
+        ]
+        self.sources_menu = menu.addMenu("Daten&quellen")
+        self.sources_menu.addAction("Team&Viewer-Logs …", self.edit_teamviewer_settings)
+        self.sources_menu.addAction("&RDM-Logs …", self.edit_rdm_settings)
+        self.sources_menu.addAction("&VPN-Verbindungen …", self.edit_vpn_settings)
+        self.sources_menu.addSeparator()
+        self.sources_menu.addAction("3CX &direkt auslesen …", self.open_pbx_settings)
+        self.sources_menu.addAction("3CX über &Chrome/Tampermonkey einrichten …", self.open_browser_setup)
+        self.sources_menu.addAction("&ITM-Personalzeiten …", self.open_itm_settings)
+        storage_menu = menu.addMenu("Daten&speicher")
+        self.open_folder_action = storage_menu.addAction(
+            "&Datenordner öffnen", lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(DATA_DIR)))
+        storage_menu.addAction("&Speicherort ändern …", self.change_data_dir)
+        self._icon_actions += [(self.sources_menu.menuAction(), "plug"),
+                               (storage_menu.menuAction(), "folder"),
+                               (self.open_folder_action, "folder")]
         menu.addSeparator()
-        menu.addAction("Ü&ber Zeitzeuge", self.show_about)
-        settings_btn = QToolButton(self)
-        settings_btn.setText("&Einstellungen ▾")
-        settings_btn.setAccessibleName("Einstellungen")
-        settings_btn.setMenu(menu)
-        settings_btn.setPopupMode(QToolButton.InstantPopup)
-        tb.addWidget(settings_btn)
+        self._icon_actions += [
+            (menu.addAction("Ü&ber Zeitzeuge", self.show_about), "info"),
+            (menu.addAction("Zeitzeuge be&enden", self.quit_app), "power"),
+        ]
+        self.menu_button = QToolButton(self)
+        self.menu_button.setText("&Einstellungen")
+        self.menu_button.setToolTip("Einstellungen, Datenquellen und mehr (Alt+E)")
+        self.menu_button.setAccessibleName("Einstellungen")
+        self.menu_button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self.menu_button.setMenu(menu)
+        self.menu_button.setPopupMode(QToolButton.InstantPopup)
+        tb.addWidget(self.menu_button)
 
-        # Screenreader lesen sonst nur "◀", "+" usw. vor
+        for action in icon_only:
+            tb.widgetForAction(action).setToolButtonStyle(Qt.ToolButtonIconOnly)
+        # Screenreader lesen sonst nur das Symbol vor
         for action in tb.actions():
             button = tb.widgetForAction(action)
             if isinstance(button, QToolButton) and not button.accessibleName():
@@ -690,12 +761,14 @@ class TimelineApp(QMainWindow):
         if n:
             parts.append(f"{n} Einträge")
             parts.append(f"belegt {format_duration(merged_seconds(self.day_activities))}")
+        elif self.timeline.loading:
+            parts.append("Logs werden gelesen …")
         else:
             parts.append("keine Einträge")
             missing = self.timeline.missing_sources()
             if missing:
                 parts.append(f"keine Logdatei gefunden: {', '.join(missing)} "
-                             "(Pfade unter Einstellungen ▾)")
+                             "(Pfade unter Einstellungen → Datenquellen)")
         if self.pc_activities:
             parts.append(f"am PC aktiv {format_duration(merged_seconds(self.pc_activities))}")
         itm_day = self.itm_reader.day(self.current_date.toString("yyyy-MM-dd")) if self.itm_reader else None
@@ -727,7 +800,7 @@ class TimelineApp(QMainWindow):
 
     def refresh(self):
         self.timeline.refresh()
-        self.statusBar().showMessage("Logs neu eingelesen", 2000)
+        self.statusBar().showMessage("Logs werden neu eingelesen …", 2000)
 
     def auto_refresh(self):
         if self.current_date == QDate.currentDate():
@@ -763,7 +836,28 @@ class TimelineApp(QMainWindow):
         self.config["tracking_enabled"] = enabled
         save_config(self.config)
         self.set_tracking(enabled)
+        self.update_tracking_state()
         self.timeline.draw_timeline(self.current_date)
+
+    def update_tracking_state(self):
+        """Zustand der Aufzeichnung überall gleich zeigen: Statuszeile, Infobereich, Menüs."""
+        on = self.tracker is not None
+        text = "Aufzeichnung aktiv" if on else "Aufzeichnung pausiert"
+        self.tracking_button.setText(text)
+        self.tracking_button.setIcon(icons.state_dot(on))
+        self.tracking_button.setToolTip(
+            "Aktive Fenster werden aufgezeichnet. Klicken zum Pausieren." if on
+            else "Die Aufzeichnung der aktiven Fenster ist pausiert. Klicken zum Fortsetzen.")
+        if self.tray:
+            self.tray.setIcon(icons.tray_icon(self.logo_svg, on) if self.logo_svg
+                              else self.windowIcon())
+            self.tray.setToolTip(f"Zeitzeuge – {text}")
+            self.tray_state_action.setText(text)
+            self.tray_state_action.setIcon(icons.state_dot(on))
+            self.tray_toggle_action.setText("Aufzeichnung &pausieren" if on
+                                            else "Aufzeichnung &fortsetzen")
+            color = THEMES["dark" if self.dark_mode else "light"]["text"]
+            self.tray_toggle_action.setIcon(icons.icon("pause" if on else "record", color))
 
     def toggle_pc_list(self, enabled):
         self.config["show_pc_in_list"] = enabled
@@ -773,6 +867,7 @@ class TimelineApp(QMainWindow):
     # ---------------------- Browser-Anbindung ---------------------------------
 
     def userscript_text(self):
+        from browser_setup import build_userscript  # erst bei Bedarf laden (Startzeit)
         with open(resource_path("zeitzeuge_anrufe.user.js"), "r", encoding="utf-8") as f:
             template = f.read()
         return build_userscript(template, self.config.get("calls_3cx_url", ""),
@@ -783,14 +878,16 @@ class TimelineApp(QMainWindow):
             QMessageBox.warning(self, "Browser-Anbindung",
                                 "Der Anrufempfang läuft nicht (Port belegt oder ausgeschaltet).")
             return
+        from browser_setup import BrowserSetupDialog
         BrowserSetupDialog(self.config, self.config.get("calls_port", 8765),
                            save_config, self).exec_()
 
     # ---------------------- 3CX direkt auslesen -------------------------------
 
     def start_pbx_reader(self):
-        if self.pbx_reader or PbxReader is None:
+        if self.pbx_reader:
             return
+        from pbx_reader import PbxReader  # Edge-Steuerung nur laden, wenn sie gebraucht wird
         self.pbx_reader = PbxReader(
             self.config.get("calls_3cx_url", ""), CALLS_FILE, PBX_PROFILE_DIR,
             open(resource_path("zeitzeuge_anrufe.user.js"), encoding="utf-8").read(), self,
@@ -862,6 +959,7 @@ class TimelineApp(QMainWindow):
         return self.build_reader_dialog("itm")
 
     def _open_reader_settings(self, kind):
+        from pbx_reader import find_browser
         if not find_browser():
             QMessageBox.warning(self, self.READER_DIALOGS[kind]["title"],
                                 "Microsoft Edge oder Google Chrome wurde nicht gefunden.")
@@ -948,6 +1046,7 @@ class TimelineApp(QMainWindow):
     def start_itm_reader(self):
         if self.itm_reader:
             return
+        from itm_reader import ItmReader
         self.itm_reader = ItmReader(self.config.get("itm_url", ""), ITM_FILE, ITM_PROFILE_DIR, self)
         self.itm_reader.status_changed.connect(
             lambda text: self.statusBar().showMessage(text, 5000)
@@ -1015,14 +1114,34 @@ class TimelineApp(QMainWindow):
 
     def _build_tray(self):
         self.tray = None
+        try:
+            with open(resource_path("zeitzeuge.svg"), encoding="utf-8") as f:
+                self.logo_svg = f.read()
+        except OSError:  # ältere Builds ohne SVG: einfach das Logo aus der .ico
+            self.logo_svg = None
         if not QSystemTrayIcon.isSystemTrayAvailable():
             return
         self.tray = QSystemTrayIcon(self.windowIcon(), self)
-        self.tray.setToolTip("Zeitzeuge")
+        # Schnellzugriffe; Aufzeichnung, Datenquellen und Datenordner sind dieselben
+        # Aktionen wie im Hauptfenster, ihr Zustand ist also überall gleich.
         menu = QMenu(self)
-        menu.addAction("Ö&ffnen", self.show_from_tray)
+        open_action = menu.addAction("&Zeitzeuge öffnen", self.show_from_tray)
+        bold = QFont(open_action.font())
+        bold.setBold(True)
+        open_action.setFont(bold)
+        menu.setDefaultAction(open_action)
         menu.addSeparator()
-        menu.addAction("&Beenden", self.quit_app)
+        # Zustand als eigene Zeile, darunter der passende Befehl (Text wechselt mit dem Zustand)
+        self.tray_state_action = menu.addAction("")
+        self.tray_state_action.setEnabled(False)
+        self.tray_toggle_action = menu.addAction("", self.tracking_action.toggle)
+        refresh = menu.addAction("Logs &neu einlesen", self.refresh)
+        menu.addSeparator()
+        menu.addMenu(self.sources_menu)
+        menu.addAction(self.open_folder_action)
+        menu.addSeparator()
+        quit_action = menu.addAction("&Beenden", self.quit_app)
+        self._icon_actions += [(open_action, "window"), (refresh, "refresh"), (quit_action, "power")]
         self.tray.setContextMenu(menu)
         # Klick auf die Meldung "3CX-Anmeldung nötig" öffnet die Anmeldung
         self.tray.messageClicked.connect(self.on_tray_message_clicked)
@@ -1047,6 +1166,7 @@ class TimelineApp(QMainWindow):
 
     def quit_app(self):
         self._quitting = True
+        self.timeline.shutdown()
         if self.tracker:
             self.tracker.stop()
         for reader in (self.pbx_reader, self.itm_reader):
@@ -1108,6 +1228,10 @@ class TimelineApp(QMainWindow):
         self.setStyleSheet("")  # alte Farben vollständig entfernen
         QApplication.instance().setPalette(pal)
         self.setStyleSheet(sheet)
+        for action, name in self._icon_actions:
+            action.setIcon(icons.icon(name, theme["text"]))
+        self.menu_button.setIcon(icons.icon("menu", theme["text"]))
+        self.update_tracking_state()
         self.timeline.set_dark_mode(self.dark_mode)
 
     # ---------------------- Einstellungen / Dialoge ---------------------------
@@ -1168,6 +1292,7 @@ if __name__ == "__main__":
     QLocale.setDefault(GERMAN)
     app = QApplication(sys.argv)
     app.setStyle(AppStyle())
+    install_translator(app)
     app.setQuitOnLastWindowClosed(False)
     window = TimelineApp()
     if "--minimized" in sys.argv or window.config.get("start_minimized", False):
@@ -1175,4 +1300,10 @@ if __name__ == "__main__":
             window.showMinimized()
     else:
         window.show()
-    sys.exit(app.exec_())
+    code = app.exec_()
+    if not window._quitting:  # z. B. Windows-Abmeldung: laufenden Abschnitt trotzdem speichern
+        window.quit_app()
+    # Direkt beenden: PyQt räumt beim Interpreter-Ende sporadisch in falscher Reihenfolge auf
+    # (Zugriffsfehler unter Windows). quit_app hat da schon alles gespeichert und gestoppt.
+    sys.stdout and sys.stdout.flush()
+    os._exit(code)

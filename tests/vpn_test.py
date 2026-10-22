@@ -24,8 +24,8 @@ with open(os.path.join(folder, "connect.txt"), "w", encoding="utf-8") as f:
 with open(os.path.join(folder, "ignoriert.bin"), "w") as f:
     f.write("2026-10-22 10:00:00 Initialization Sequence Completed\n")
 
-parser = VpnParser()
-parser.get_config_values = lambda key: ([folder, os.path.join(folder, "fehlt.log")], 0)
+parser = VpnParser({"vpn_paths": [folder, os.path.join(folder, "fehlt.log")],
+                    "vpn_timezone_correction": 0})
 got = sorted((c["start"][11:16], c["end"][11:16], c["customer_name"]) for c in parser.parse_logs())
 want = [
     ("08:10", "08:55", "kunde-mueller"),
