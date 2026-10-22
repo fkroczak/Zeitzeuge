@@ -105,6 +105,20 @@ Standardpfade:
 | TeamViewer | `%APPDATA%\TeamViewer\Connections.txt` |
 | RDM | `%LOCALAPPDATA%\Devolutions\RemoteDesktopManager\Connections.log` |
 
+### VPN-Verbindungen
+
+Unter **Einstellungen ▾ → VPN-Verbindungen …** schaltest du ein oder aus, ob Zeitzeuge VPN-Verbindungen liest. Ausgeschaltet verschwinden auch die VPN-Einträge aus RDM.
+
+Dort legst du auch fest, wo die Logs deiner VPN-Clients liegen. Du kannst einzelne Dateien oder ganze Ordner eintragen. Bei einem Ordner liest Zeitzeuge alle `.log`- und `.txt`-Dateien darin. Der Dateiname wird zum Namen der Verbindung, bei OpenVPN ist das der Profilname.
+
+| VPN-Client | Standardpfad |
+|---|---|
+| OpenVPN GUI | `%USERPROFILE%\OpenVPN\log` |
+| OpenVPN Connect | `%APPDATA%\OpenVPN Connect\logs` |
+| Sophos SSL VPN Client | `%PROGRAMFILES(X86)%\Sophos\Sophos SSL VPN Client\log` |
+
+Erkannt werden Zeilen mit Zeitstempel und „Initialization Sequence Completed“ oder „CONNECTED“ als Beginn und „process exiting“, „restarting“ oder „DISCONNECTED“ als Ende. Ist die Verbindung noch offen, endet der Eintrag beim letzten Logeintrag. Hinweis: OpenVPN GUI überschreibt sein Log bei jeder neuen Verbindung, ältere Tage fehlen dann.
+
 ### Telefonate aus 3CX
 
 **Variante 1: Zeitzeuge liest selbst (empfohlen).** Zeitzeuge öffnet den 3CX-Webclient unsichtbar mit dem installierten Microsoft Edge und liest jede Minute die Anrufliste. Alle 5 Minuten lädt es die Seite neu, weil 3CX neue Anrufe im Hintergrund sonst nicht nachträgt. Gibt es kein Edge, nimmt es Chrome. Edge läuft dabei mit einem eigenen Profil, getrennt von deinem normalen Browser. Es ist egal, ob du sonst den 3CX-Client, die Webseite oder das Tischtelefon benutzt.

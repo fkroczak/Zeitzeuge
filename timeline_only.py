@@ -11,7 +11,7 @@ from PyQt5.QtWidgets import (QDialog, QDialogButtonBox, QFormLayout,
 from activity_tracker import app_label, merge_segments
 from call_import import load_call_suggestions
 from grouping import format_tv_id, group_entries
-from log_parsers import ConnectionIndex, RdmParser, TeamViewerParser
+from log_parsers import ConnectionIndex, RdmParser, TeamViewerParser, VpnParser
 
 DEBUG = False  # bei Bedarf auf True setzen
 TIME_FMT = "%Y-%m-%d %H:%M:%S"
@@ -167,8 +167,10 @@ class TimelineView(QGraphicsView):
         self._remote_cache = {}  # date_str -> list[conn]
         self._tv_parser = TeamViewerParser(debug=DEBUG)
         self._rdm_parser = RdmParser(debug=DEBUG)
+        self._vpn_parser = VpnParser(debug=DEBUG)
         self._tv_index = None
         self._rdm_index = None
+        self._vpn_index = None
 
         self.zoom_level = 1.0
         self.fit_day = True        # ganzen Tag ins Fenster einpassen
@@ -230,6 +232,7 @@ class TimelineView(QGraphicsView):
         """Logdateien neu einlesen (nur geänderte Dateien werden wirklich gelesen)."""
         self._tv_index = None
         self._rdm_index = None
+        self._vpn_index = None
         self._remote_cache.clear()
         self.draw_timeline(self.current_date)
 
@@ -256,7 +259,18 @@ class TimelineView(QGraphicsView):
                 print(f"Fehler im RdmParser: {e}")
                 self._rdm_index = ConnectionIndex([])
 
+        vpn_on = self.config.get("vpn_enabled", True)
+        if self._vpn_index is None:
+            try:
+                self._vpn_index = ConnectionIndex(self._vpn_parser.parse_logs() if vpn_on else [])
+            except Exception as e:
+                print(f"Fehler im VpnParser: {e}")
+                self._vpn_index = ConnectionIndex([])
+
         day = self._tv_index.get_for_date(date_str) + self._rdm_index.get_for_date(date_str)
+        if not vpn_on:  # VPN abgeschaltet: auch die VPN-Einträge aus RDM weglassen
+            day = [c for c in day if not c.get("type", "").startswith("VPN")]
+        day += self._vpn_index.get_for_date(date_str)
         for conn in day:
             conn["is_suggestion"] = True
         self.remote_suggestions = day

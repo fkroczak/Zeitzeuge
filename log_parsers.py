@@ -364,3 +364,118 @@ class ConnectionIndex:
     def get_for_date(self, date_str: str) -> List[dict]:
         """Alle Verbindungen für ein bestimmtes Datum."""
         return self.by_date.get(date_str, [])
+
+
+class VpnParser(BaseConnectionParser):
+    """VPN-Verbindungen aus den Logdateien von VPN-Clients (OpenVPN, Sophos SSL VPN, …).
+
+    Ein Pfad darf eine Datei oder ein Ordner sein (dann zählen alle .log/.txt darin).
+    Der Name der Verbindung ist der Dateiname, bei OpenVPN also der Profilname.
+    """
+
+    TIME_FORMATS = [
+        (re.compile(r"(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2})"), ["%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"]),
+        (re.compile(r"(\d{2}\.\d{2}\.\d{4},? \d{2}:\d{2}:\d{2})"), ["%d.%m.%Y %H:%M:%S", "%d.%m.%Y, %H:%M:%S"]),
+        (re.compile(r"(\d{2}/\d{2}/\d{4},? \d{2}:\d{2}:\d{2})"), ["%m/%d/%Y %H:%M:%S", "%m/%d/%Y, %H:%M:%S"]),
+        (re.compile(r"([A-Z][a-z]{2} \d{1,2}, \d{4},? \d{2}:\d{2}:\d{2})"),
+         ["%b %d, %Y, %H:%M:%S", "%b %d, %Y %H:%M:%S"]),                       # OpenVPN Connect
+        (re.compile(r"[A-Z][a-z]{2} ([A-Z][a-z]{2} +\d{1,2} \d{2}:\d{2}:\d{2} \d{4})"),
+         ["%b %d %H:%M:%S %Y"]),                                                 # OpenVPN (Linux/alt)
+    ]
+    UP = re.compile(r"initialization sequence completed|event: connected|\bstatus[=: ]+connected"
+                    r"|\btunnel (is )?up\b|verbindung hergestellt", re.I)
+    DOWN = re.compile(r"process exiting|process restarting|event: disconnected|\bdisconnected\b"
+                      r"|\bstatus[=: ]+disconnected|tunnel (is )?down|verbindung getrennt", re.I)
+
+    @property
+    def default_paths(self):
+        return [os.path.expandvars(p) for p in (
+            r"%USERPROFILE%\OpenVPN\log",                                # OpenVPN GUI
+            r"%APPDATA%\OpenVPN Connect\logs",                           # OpenVPN Connect
+            r"%PROGRAMFILES(X86)%\Sophos\Sophos SSL VPN Client\log",      # Sophos SSL VPN
+        )]
+
+    def parse_time(self, line, tz_correction):
+        head = line[:60]
+        for pattern, formats in self.TIME_FORMATS:
+            m = pattern.search(head)
+            if not m:
+                continue
+            text = re.sub(r" +", " ", m.group(1))
+            for fmt in formats:
+                try:
+                    return datetime.strptime(text, fmt) + timedelta(hours=tz_correction)
+                except ValueError:
+                    pass
+        return None
+
+    def parse_line(self, line, tz_correction):
+        """(Zeit, "up"/"down"/None) oder None ohne Zeitstempel."""
+        when = self.parse_time(line, tz_correction)
+        if not when:
+            return None
+        if self.UP.search(line):
+            return when, "up"
+        if self.DOWN.search(line):
+            return when, "down"
+        return when, None
+
+    def files(self, paths):
+        for path in paths:
+            path = os.path.expandvars(path)
+            if os.path.isdir(path):
+                for name in sorted(os.listdir(path)):
+                    if name.lower().endswith((".log", ".txt")):
+                        yield os.path.join(path, name)
+            elif os.path.isfile(path):
+                yield path
+
+    def parse_file(self, path, tz_correction):
+        name = os.path.splitext(os.path.basename(path))[0]
+        found, start, last = [], None, None
+
+        def close(end):
+            end = max(end, start + timedelta(minutes=1))
+            found.append({
+                "start": start.strftime("%Y-%m-%d %H:%M:%S"),
+                "end": end.strftime("%Y-%m-%d %H:%M:%S"),
+                "type": "VPN-Verbindung",
+                "customer_name": name,
+                "is_suggestion": True,
+                "details": f"VPN {name} ({os.path.basename(path)})",
+            })
+
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                data = self.parse_line(line, tz_correction)
+                if not data:
+                    continue
+                when, event = data
+                if start and when.date() != start.date() and event != "down":
+                    close(last)  # über Nacht ohne Ende: am letzten Eintrag abschließen
+                    start = None
+                if event == "up" and not start:
+                    start = when
+                elif event == "down" and start:
+                    close(when)
+                    start = None
+                last = when
+        if start:  # noch verbunden: bis zum letzten Eintrag in der Datei
+            close(last)
+        return found
+
+    def parse_logs(self):
+        paths, tz_correction = self.get_config_values("vpn")
+        connections = []
+        self.files_read = 0
+        for path in self.files(paths):
+            key = (path, tz_correction)
+            try:
+                mtime = os.path.getmtime(path)
+                if key not in self._cache or self._cache[key][0] != mtime:
+                    self._cache[key] = (mtime, self.parse_file(path, tz_correction))
+                connections.extend(self._cache[key][1])
+                self.files_read += 1
+            except OSError as e:
+                print(f"Fehler beim Lesen der VPN-Logdatei {path}: {e}")
+        return connections
