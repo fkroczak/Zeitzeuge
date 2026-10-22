@@ -1,12 +1,15 @@
 """TeamViewer- und RDM-Logs einlesen.
 
 Beide Parser lesen eine Datei nur neu, wenn sie sich geändert hat (Cache nach
-Pfad, Änderungszeit und Zeitzonenkorrektur).
+Pfad, Änderungszeit und Zeitzonenkorrektur). UTF-16 wird erkannt, von sehr großen
+Dateien nur das Ende gelesen (safe_io.log_lines). Kaputte Zeilen werden übersprungen.
 """
 import os
 import re
 from collections import defaultdict
 from datetime import datetime, timedelta
+
+import safe_io
 
 
 def _dmy(text):
@@ -48,8 +51,7 @@ class BaseConnectionParser:
                 if cached and cached[0] == mtime:
                     file_connections = cached[1]
                 else:
-                    with open(path, "r", encoding="utf-8", errors="ignore") as f:
-                        file_connections = self.parse_file(f, tz_correction)
+                    file_connections = self.parse_file(safe_io.log_lines(path), tz_correction)
                     self._cache[(path, tz_correction)] = (mtime, file_connections)
                 connections.extend(file_connections)
                 self.files_read += 1
@@ -75,7 +77,10 @@ class TeamViewerParser(BaseConnectionParser):
     def parse_file(self, lines, tz_correction):
         result = []
         for line in lines:
-            conn = self.parse_line(line, tz_correction)
+            try:
+                conn = self.parse_line(line, tz_correction)
+            except Exception:
+                continue  # kaputte Zeile (Binärmüll o. Ä.) bricht nicht alles ab
             if conn:
                 result.append(conn)
         return result
@@ -138,9 +143,12 @@ class RdmParser(BaseConnectionParser):
     def parse_file(self, lines, tz_correction):
         connections, sessions = [], {}
         for line in lines:
-            data = self.parse_line(line, tz_correction)
-            if data:
-                self._process(data, connections, sessions)
+            try:
+                data = self.parse_line(line, tz_correction)
+                if data:
+                    self._process(data, connections, sessions)
+            except Exception:
+                continue  # kaputte Zeile (Binärmüll o. Ä.) bricht nicht alles ab
         # Nicht getrennte Verbindungen: 1 Minute anzeigen
         for session in sessions.values():
             connections.append(self._connection(
@@ -272,11 +280,12 @@ class VpnParser(BaseConnectionParser):
                 "details": f"VPN {name} ({os.path.basename(path)})",
             })
 
-        with open(path, "r", encoding="utf-8", errors="ignore") as f:
-            for line in f:
+        for line in safe_io.log_lines(path):
+            try:
                 data = self.parse_line(line, tz_correction)
-                if not data:
-                    continue
+            except Exception:
+                continue  # kaputte Zeile
+            if data:
                 when, event = data
                 if start and when.date() != start.date() and event != "down":
                     close(last)  # über Nacht ohne Ende: am letzten Eintrag abschließen

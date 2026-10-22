@@ -12,7 +12,6 @@ gelesen, andere Tage einmal, sobald sie angezeigt werden.
 
 import base64
 import json
-import os
 import re
 import threading
 import time
@@ -23,6 +22,7 @@ from urllib.parse import unquote, urlsplit
 
 from PyQt5.QtCore import pyqtSignal
 
+import safe_io
 from pbx_reader import BrowserReader
 
 # Läuft in der Seite vor deren eigenem Code und merkt sich jede Antwort mit Tagesdaten
@@ -78,7 +78,16 @@ def day_from_api(data):
 
 
 class DirectFailed(Exception):
-    """Die Direkt-Abfrage klappt nicht (anderes Format, Server nicht erreichbar …)."""
+    """Die Direkt-Abfrage klappt nicht (anderes Format, unerwartete Antwort …)."""
+
+
+class NetworkError(OSError):
+    """Server gerade nicht erreichbar (kein Internet, Zeitüberschreitung). Nur ein
+    Fehlversuch: Die Direkt-Abfrage bleibt an, es wird später erneut versucht."""
+
+
+# Diese HTTP-Fehler sind vorübergehend (Server überlastet, Wartung), kein anderes Format
+TEMPORARY_HTTP = {408, 429, 500, 502, 503, 504}
 
 
 def session_token(cookies, host):
@@ -115,11 +124,9 @@ def token_expiry(token):
 
 
 def load_days(path):
-    try:
-        with open(path, encoding="utf-8") as f:
-            return json.load(f)
-    except (OSError, ValueError):
-        return {}
+    """Gespeicherte Tage. Kaputte Datei wird beiseitegelegt, kaputte Tage übersprungen."""
+    data = safe_io.read_json(path, {}, expect=dict)
+    return {k: v for k, v in data.items() if isinstance(k, str) and isinstance(v, dict)}
 
 
 class ItmReader(BrowserReader):
@@ -188,7 +195,13 @@ class ItmReader(BrowserReader):
         if time.time() - self._today_read > self.READ_INTERVAL - 10:
             todo.insert(0, today)
         for i, date_str in enumerate(todo):
-            if self._stop.is_set() or self._login_open or not self._read_day(date_str):
+            try:
+                ok = not self._stop.is_set() and not self._login_open and self._read_day(date_str)
+            except Exception:  # z. B. offline: angeforderte Tage nicht vergessen
+                with self._lock:
+                    self._wanted.update(d for d in todo[i:] if d != today)
+                raise
+            if not ok:
                 with self._lock:  # später nachholen
                     self._wanted.update(d for d in todo[i:] if d != today)
                 return
@@ -223,9 +236,13 @@ class ItmReader(BrowserReader):
                 if e.code == 401 and attempt == 0:
                     self._token = None  # abgelaufen: neues holen und noch einmal
                     continue
+                if e.code in TEMPORARY_HTTP:
+                    raise NetworkError(f"ITM-Server meldet {e.code}") from e
                 raise DirectFailed(f"HTTP {e.code}") from e
-            except (OSError, ValueError) as e:
+            except ValueError as e:  # Antwort ist kein JSON: anderes Format
                 raise DirectFailed(str(e)) from e
+            except OSError as e:  # kein Netz, Zeitüberschreitung: später noch einmal
+                raise NetworkError(f"ITM nicht erreichbar ({e})") from e
             if not isinstance(data, dict) or not isinstance(data.get("personalzeiten"), list):
                 raise DirectFailed("Antwort ohne Personalzeiten")
             self.needs_login = False
@@ -240,16 +257,26 @@ class ItmReader(BrowserReader):
         if self._api:
             return self._api
         api = None
+        network_error = None
         for name in ("appsettings.Live.json", "appsettings.json"):
             try:
                 with urllib.request.urlopen(f"{self.base_url}/{name}", timeout=15) as resp:
                     uris = json.load(resp).get("BaseUriConfiguration") or {}
                 api = uris.get("V2BackendUri") or uris.get("ApiUri")
-            except (OSError, ValueError, AttributeError):
+            except urllib.error.HTTPError as e:
+                if e.code in TEMPORARY_HTTP:
+                    network_error = e
+                continue
+            except (ValueError, AttributeError):
+                continue
+            except OSError as e:  # kein Netz: das ist kein Grund, die Direkt-Abfrage abzuschalten
+                network_error = e
                 continue
             if api and "localhost" not in api:
                 break
             api = None
+        if not api and network_error is not None:
+            raise NetworkError(f"ITM nicht erreichbar ({network_error})")
         if not api:
             raise DirectFailed("Adresse der Schnittstelle nicht gefunden")
         self._api = api.rstrip("/") + "/"
@@ -299,6 +326,12 @@ class ItmReader(BrowserReader):
             return None
         finally:
             if own:
+                # Sauber beenden: Hart beendet schreibt Edge die erneuerte Anmeldung
+                # (Cookies, Speicher der Seite) unter Windows nicht mehr ins Profil, und
+                # beim nächsten Erneuern hieße es "Anmeldung nötig"
+                port = getattr(self, "_port", None)
+                if port and self._tools:
+                    self._close_gracefully(port)
                 self._close_browser()
 
     # ---- über die Webseite (Rückfall)
@@ -337,10 +370,7 @@ class ItmReader(BrowserReader):
         if self.days.get(date_str) == day:
             return
         self.days[date_str] = day
-        tmp = self.data_file + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(self.days, f, ensure_ascii=False, indent=1, sort_keys=True)
-        os.replace(tmp, self.data_file)
+        safe_io.write_json(self.data_file, self.days, sort_keys=True)
         self.day_read.emit(date_str)
 
     def _login_done(self):

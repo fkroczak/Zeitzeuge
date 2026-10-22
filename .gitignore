@@ -16,3 +16,7 @@ ki_vorschlaege/
 anthropic_key.txt
 haenger.log
 haenger.log.alt
+taetigkeiten/
+*.defekt-*
+fehler.log
+fehler.log.alt

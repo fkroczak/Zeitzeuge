@@ -31,7 +31,9 @@ import psutil
 import websocket  # Paket websocket-client
 from PyQt5.QtCore import QObject, pyqtSignal
 
-from call_import import merge_calls
+import net
+import safe_io
+from call_import import load_calls, merge_calls
 
 PARSER_START = "// ---- ANRUFLISTE LESEN: START ----"
 PARSER_END = "// ---- ANRUFLISTE LESEN: ENDE ----"
@@ -226,15 +228,33 @@ class _DevTools:
         self._id = 0
 
     def call(self, method, timeout=15, **params):
-        self.ws.settimeout(timeout)
+        """Befehl senden und auf seine Antwort warten, höchstens timeout Sekunden insgesamt
+        (Edge schickt dazwischen laufend Ereignisse, die zählen nicht als Antwort)."""
+        if not self.alive():
+            raise ConnectionError("Verbindung zu Edge getrennt")
+        deadline = time.time() + timeout
         self._id += 1
+        self.ws.settimeout(timeout)
         self.ws.send(json.dumps({"id": self._id, "method": method, "params": params}))
         while True:
-            msg = json.loads(self.ws.recv())
+            left = deadline - time.time()
+            if left <= 0:
+                raise TimeoutError(f"Edge antwortet nicht auf {method}")
+            self.ws.settimeout(left)
+            raw = self.ws.recv()
+            if not raw:  # Verbindung zu (Edge beendet oder abgestürzt)
+                raise ConnectionError("Verbindung zu Edge getrennt")
+            try:
+                msg = json.loads(raw)
+            except ValueError:
+                continue
             if msg.get("id") == self._id:
                 if "error" in msg:
                     raise RuntimeError(msg["error"].get("message"))
                 return msg.get("result", {})
+
+    def alive(self):
+        return bool(getattr(self.ws, "connected", False))
 
     def close(self):
         try:
@@ -252,11 +272,16 @@ class BrowserReader(QObject):
     status_changed = pyqtSignal(str)
     login_required = pyqtSignal()
     recording_done = pyqtSignal(str)  # Pfad der Mitschnitt-Datei, leer bei Fehler
+    trouble = pyqtSignal(str)  # einmal nach TROUBLE_AFTER Fehlschlägen in Folge (Infobereich)
 
     READ_INTERVAL = 60  # Sekunden zwischen zwei Durchläufen
     START_BROWSER = True  # False: der Leser startet Edge selbst nur bei Bedarf
-    RETRY_INTERVAL = 20  # nach einem Fehler früher neu versuchen
+    RETRY_INTERVAL = 20  # nach einem Fehler früher neu versuchen (verdoppelt sich, siehe net.Backoff)
     NAME = "Seite"
+    LOGIN_TIMEOUT = 10 * 60  # Anmeldefenster schließt sich, wenn sich so lange niemand anmeldet
+    STEP_TIMEOUT = 15 * 60   # länger darf ein Durchlauf nicht hängen, sonst Edge hart beenden
+    PROBE_INTERVAL = 30      # offline: so oft prüfen, ob das Netz wieder da ist
+    TROUBLE_AFTER = 5        # nach so vielen Fehlschlägen in Folge einmal melden
 
     def __init__(self, base_url, profile_dir, parent=None):
         super().__init__(parent)
@@ -276,6 +301,12 @@ class BrowserReader(QObject):
         # Nur ein Edge darf das Profil benutzen: Lesen und Anmelden wechseln sich ab
         self._browser_lock = threading.Lock()
         self._record_stop = threading.Event()
+        self._backoff = net.Backoff()
+        self._backoff.START = self.RETRY_INTERVAL
+        self._offline = False
+        self._step_started = None  # Beginn des laufenden Durchlaufs (für check_hung)
+        self._cleaned = False      # Reste eines früheren Laufs beendet
+        self.next_try = None       # nächster Versuch nach einem Fehler (datetime)
 
     def start_url(self):
         raise NotImplementedError
@@ -286,14 +317,43 @@ class BrowserReader(QObject):
         if self._thread and self._thread.is_alive():
             return
         self._stop.clear()
-        self._thread = threading.Thread(target=self._loop, daemon=True)
+        self._thread = threading.Thread(target=self._loop, daemon=True, name=f"Leser {self.NAME}")
         self._thread.start()
 
     def stop(self):
+        """Lesen beenden. Auch ein offenes Anmelde- oder Mitschnitt-Fenster geht zu."""
         self._stop.set()
         self._record_stop.set()
         self._wake.set()
         self._close_browser()
+        # Kein Edge mit unserem Profil darf übrig bleiben, auch nicht mitten im Anmelden
+        try:
+            kill_profile_processes(self.profile_dir)
+        except Exception as e:
+            safe_io.log(f"{self.NAME}: Edge-Reste nicht beendet: {e}")
+
+    @property
+    def stopped(self):
+        return self._stop.is_set()
+
+    def alive(self):
+        """Läuft der Lese-Thread?"""
+        return bool(self._thread and self._thread.is_alive())
+
+    def check_hung(self):
+        """Hängt ein Durchlauf länger als STEP_TIMEOUT: Edge hart beenden, dann bricht der
+        Durchlauf mit Fehler ab und der nächste startet Edge neu. True, wenn es so war."""
+        started = self._step_started
+        if not started or time.time() - started < self.STEP_TIMEOUT:
+            return False
+        self._step_started = time.time()  # nicht jede Minute erneut
+        safe_io.log(f"{self.NAME}: Durchlauf hängt seit {int(time.time() - started)} s, beende Edge")
+        tools, self._tools = self._tools, None
+        if tools:
+            tools.close()
+        # Prozesse suchen dauert etwas: nicht im Fenster-Thread
+        threading.Thread(target=kill_profile_processes, args=(self.profile_dir,), daemon=True).start()
+        return True
 
     def read(self):
         """Sofort lesen (statt auf den nächsten Durchlauf zu warten)."""
@@ -383,6 +443,7 @@ class BrowserReader(QObject):
             self._mode = "hidden"
             port = self._launch("hidden")
 
+        self._port = port  # für ein sauberes Beenden (_close_gracefully)
         self._connect(port)
 
         # Kein "HeadlessChrome" in der Kennung, sonst verhalten sich manche Seiten anders
@@ -399,6 +460,8 @@ class BrowserReader(QObject):
 
     def _launch(self, mode, url=None):
         """Edge starten und warten, bis er seine DevTools-Schnittstelle meldet. Gibt den Port zurück."""
+        if self._stop.is_set():
+            raise RuntimeError("Zeitzeuge beendet das Lesen")
         port_file = os.path.join(self.profile_dir, "DevToolsActivePort")
         if os.path.exists(port_file):
             os.remove(port_file)
@@ -445,6 +508,7 @@ class BrowserReader(QObject):
 
     def _login_window(self):
         self._wake.set()  # Lese-Schleife aus dem Warten holen
+        timed_out = False
         with self._browser_lock:
             try:
                 self._close_browser()  # unsichtbaren Edge beenden, Profil freigeben
@@ -464,13 +528,18 @@ class BrowserReader(QObject):
                         self._proc = self._popen(self._browser_args("login", debug=False))
                 # Warten, bis die Anmeldung geklappt hat oder du das Fenster schließt. Edge gibt
                 # beim Start an einen anderen Prozess ab, darum zählt ein sichtbares Fenster.
-                started = time.time()
+                started = opened = time.time()
                 ok = 0
                 while not self._stop.is_set():
                     ok = ok + 1 if self._tools and self._login_done() else 0
                     if ok >= 2:  # zweimal hintereinander, damit kein Zwischenstand zählt
                         self._set_status(f"{self.NAME}: angemeldet, Anmeldefenster wird geschlossen")
                         self._close_gracefully(port)
+                        break
+                    if time.time() - opened > self.LOGIN_TIMEOUT:
+                        timed_out = True  # niemand meldet sich an: Fenster nicht ewig offen lassen
+                        if port:
+                            self._close_gracefully(port)
                         break
                     if login_window_open(self.profile_dir):
                         started = min(started, time.time() - 60)  # Fenster war schon da
@@ -481,12 +550,17 @@ class BrowserReader(QObject):
                 self._close_tools()
                 kill_profile_processes(self.profile_dir)
                 self._proc = None
-                self._set_status(f"{self.NAME}: Anmeldefenster geschlossen, lese …")
+                if timed_out:
+                    self._set_status(f"{self.NAME}: Anmeldung abgebrochen (Zeitüberschreitung)")
+                    safe_io.log(f"{self.NAME}: Anmeldefenster nach {self.LOGIN_TIMEOUT} s "
+                                "ohne Anmeldung geschlossen")
+                else:
+                    self._set_status(f"{self.NAME}: Anmeldefenster geschlossen, lese …")
             except Exception as e:
                 self._set_status(f"{self.NAME}: {e}")
             finally:
                 self._login_open = False
-                self.needs_login = False
+                self.needs_login = timed_out  # nach Zeitüberschreitung weiter nötig
         self._wake.set()
 
     def _record_window(self, out_file, mode, max_seconds):
@@ -508,10 +582,8 @@ class BrowserReader(QObject):
                 self._set_status(f"{self.NAME}: Mitschnitt läuft, Fenster schließen zum Beenden")
                 recorder.run(self._record_stop, max_seconds)
                 data = recorder.result(version.get("Browser", ""))
-                tmp = out_file + ".tmp"
-                with open(tmp, "w", encoding="utf-8") as f:
-                    json.dump(data, f, ensure_ascii=False, indent=1)
-                os.replace(tmp, out_file)
+                if not safe_io.write_json(out_file, data):
+                    raise OSError("Datei konnte nicht gespeichert werden")
                 path = out_file
                 self._close_gracefully(port)  # Anmeldung aus dem Fenster bleibt gespeichert
                 self._set_status(f"{self.NAME}: Mitschnitt gespeichert ({len(data['abfragen'])} Abfragen)")
@@ -575,29 +647,104 @@ class BrowserReader(QObject):
         return result.get("result", {}).get("value")
 
     def _loop(self):
+        # Darf nie sterben: Jeder Fehler eines Durchlaufs wird gefangen und gemeldet
         while not self._stop.is_set():
-            if not self._login_open:
-                with self._browser_lock:
-                    self._step()
-            self._wake.wait(min(self.RETRY_INTERVAL, self.READ_INTERVAL) if self._failed
-                            else self.READ_INTERVAL)
-            self._wake.clear()
+            try:
+                if not self._login_open:
+                    with self._browser_lock:
+                        if not self._cleaned:  # Reste eines abgestürzten Laufs (auch Anmeldefenster)
+                            self._cleaned = True
+                            kill_profile_processes(self.profile_dir)
+                        self._step_started = time.time()
+                        try:
+                            self._step()
+                        finally:
+                            self._step_started = None
+            except Exception as e:  # unerwartet (z. B. Fehler beim Aufräumen)
+                if self._stop.is_set():
+                    break
+                safe_io.log(f"{self.NAME}: unerwarteter Fehler im Lese-Thread: {e!r}")
+                self._failed_step(e)
+            try:
+                self._wait_next()
+            except Exception as e:
+                safe_io.log(f"{self.NAME}: Fehler beim Warten: {e!r}")
+                self._wake.wait(self.RETRY_INTERVAL)
         self._close_browser()
 
+    def _wait_next(self):
+        """Bis zum nächsten Durchlauf warten. Nach Fehlern länger (Backoff). Offline wird
+        zwischendurch geprüft, ob das Netz wieder da ist: dann geht es sofort weiter."""
+        delay = self._backoff.delay() if self._failed else self.READ_INTERVAL
+        end = time.time() + delay
+        while not self._stop.is_set():
+            left = end - time.time()
+            if left <= 0:
+                break
+            if self._wake.wait(min(left, self.PROBE_INTERVAL) if self._offline else left):
+                break
+            if self._offline and net.reachable(self.base_url):
+                break
+        self._wake.clear()
+
     def _step(self):
-        """Ein Durchlauf: Browser bei Bedarf starten, dann lesen."""
+        """Ein Durchlauf: Erreichbarkeit prüfen, Browser bei Bedarf starten, dann lesen."""
         if self._login_open or self._stop.is_set():
             return
         try:
+            if not self._online():
+                return
+            if self._tools and not self._tools.alive():
+                # Edge abgestürzt oder im Task-Manager beendet: aufräumen, gleich neu starten
+                safe_io.log(f"{self.NAME}: Verbindung zu Edge verloren, starte neu")
+                self._close_browser()
             if not self._tools and self.START_BROWSER:
                 self._start_browser()
                 self._started = True
             self._tick()
             self._failed = False
+            self._backoff.reset()
+            self.next_try = None
         except Exception as e:
-            self._failed = True
-            self._set_status(f"{self.NAME}: Fehler ({e}), neuer Versuch")
+            if self._stop.is_set():
+                return  # beim Beenden abgebrochen: kein Fehler
+            self._failed_step(e)
             self._close_browser()
+
+    def _online(self):
+        """Server erreichbar? Offline: Fehlversuch zählen und keinen Edge starten."""
+        if net.reachable(self.base_url):
+            if self._offline:
+                self._offline = False
+                safe_io.log(f"{self.NAME}: Server wieder erreichbar")
+                self._on_back_online()
+            return True
+        if not self._offline:
+            safe_io.log(f"{self.NAME}: Server nicht erreichbar ({self.base_url})")
+        self._offline = True
+        self._failed_step(None)
+        return False
+
+    def _on_back_online(self):
+        """Netz ist wieder da (je Leser, z. B. Seite neu laden)."""
+
+    def _failed_step(self, error):
+        """Fehlschlag merken: Wartezeit verlängern, Status setzen, nach TROUBLE_AFTER einmal melden."""
+        self._failed = True
+        delay = self._backoff.fail()
+        self.next_try = datetime.now() + timedelta(seconds=delay)
+        when = f"{self.next_try:%H:%M}"
+        if error is None:
+            text = f"{self.NAME}: offline, nächster Versuch {when}"
+        else:
+            text = f"{self.NAME}: Fehler ({str(error)[:150] or type(error).__name__}), nächster Versuch {when}"
+            safe_io.log(text)
+        self._set_status(text)
+        if self._backoff.failures == self.TROUBLE_AFTER:
+            self.trouble.emit(
+                f"{self.NAME}: Server nicht erreichbar. Zeitzeuge versucht es weiter." if error is None
+                else f"{self.NAME} lässt sich seit {self.TROUBLE_AFTER} Versuchen nicht lesen "
+                     f"({str(error)[:120]}). Zeitzeuge versucht es weiter.")
 
     def _tick(self):
         raise NotImplementedError
@@ -623,11 +770,8 @@ class PbxReader(BrowserReader):
         self._last_load = 0
         # Ab diesem Tag (YYYY-MM-DD) sind alle Anrufe in anrufe.json
         self.state_file = os.path.join(os.path.dirname(calls_file), "anrufe_stand.json")
-        try:
-            with open(self.state_file, encoding="utf-8") as f:
-                self.complete_from = json.load(f).get("vollstaendig_ab")
-        except (OSError, ValueError, AttributeError):
-            self.complete_from = None
+        done = safe_io.read_json(self.state_file, {}, expect=dict).get("vollstaendig_ab")
+        self.complete_from = done if isinstance(done, str) else None
         self._back_to = None   # angezeigter Tag, für den nachgelesen werden soll
         self._list_end = None  # ältester Tag, den 3CX noch zeigt (nur diese Sitzung)
 
@@ -644,6 +788,9 @@ class PbxReader(BrowserReader):
 
     def call_list_url(self):
         return f"{self.base_url}/#/call_history/all"
+
+    def _on_back_online(self):
+        self._last_load = 0  # Seite zeigt evtl. noch einen Netzwerkfehler: neu laden
 
     start_url = call_list_url
 
@@ -689,8 +836,7 @@ class PbxReader(BrowserReader):
         done = target if data.get("erreicht") else self._list_end
         if not self.complete_from or done < self.complete_from:
             self.complete_from = done
-            with open(self.state_file, "w", encoding="utf-8") as f:
-                json.dump({"vollstaendig_ab": done}, f)
+            safe_io.write_json(self.state_file, {"vollstaendig_ab": done}, indent=None)
         self._set_status(f"3CX gelesen {datetime.now():%H:%M} (vollständig ab {done})")
         if added:
             self.calls_added.emit(added)
@@ -773,11 +919,7 @@ class PbxReader(BrowserReader):
             self.check_done.emit("", f"Direkt-Abfrage fehlgeschlagen: {e}")
             return
 
-        try:
-            with open(self.calls_file, encoding="utf-8") as f:
-                known = json.load(f)
-        except (OSError, ValueError):
-            known = []
+        known = load_calls(self.calls_file)
         by_minute = {}
         for c in known:
             by_minute.setdefault(c.get("start", "")[:16], []).append(c)
@@ -810,8 +952,7 @@ class PbxReader(BrowserReader):
             "anrufe": len(calls),
             "vergleich": rows,
         }
-        with open(out_file, "w", encoding="utf-8") as f:
-            json.dump(report, f, ensure_ascii=False, indent=1)
+        safe_io.write_json(out_file, report)
         found = sum(1 for r in rows if r["in_anrufe_json"])
         text = f"{len(calls)} Anrufe direkt gelesen, {found} davon auch in anrufe.json gefunden."
         self._set_status(f"3CX: Direkt-Abfrage klappt ({len(calls)} Anrufe)")
