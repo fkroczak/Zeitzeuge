@@ -10,6 +10,9 @@ function item(ini, crm, name, nr, icon, tag, zeit, dauer, via) {
   <div class="meta"><svg class="icon call-${icon}"></svg><span>${tag} ${zeit}</span>${dauer?`${sep()}<span>${dauer}</span>`:''}${via?`${sep()}<span>via ${via}</span>`:''}</div></div>
   <button>...</button></app-call-history-item>`;
 }
+// Seitenaufrufe zählen: Erst nach einem echten Neuladen erscheint ein neuer Anruf
+const aufrufe = Number(sessionStorage.getItem("aufrufe") || 0) + 1;
+sessionStorage.setItem("aufrufe", aufrufe);
 if (location.search.includes("login")) localStorage.setItem("token", 1);  // Anmeldung simulieren
 function render() {
   if (!localStorage.getItem("token")) {
@@ -21,6 +24,7 @@ function render() {
     return;
   }
   document.getElementById("app").innerHTML = '<app-impersonation-banner></app-impersonation-banner><div id="scrollBox" style="height:300px;overflow-y:auto">' + [
+    aufrufe > 1 ? item("NA",0,"Neu Anrufer","703","incoming","Heute","11:30","1:00","") : "",
     item("SB",0,"Sara Beispiel","701","incoming","Heute","10:55","9:12",""),
     item("GB",1,"Gustav Bauer","0049251000000001","incoming","Heute","09:50","0:19",""),
     item("IC",1,"Info Cafeteria","0251000000002","outgoing","Heute","09:18","3:11",""),

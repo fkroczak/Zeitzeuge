@@ -106,7 +106,7 @@ Standardpfade:
 
 ### Telefonate aus 3CX
 
-**Variante 1: Zeitzeuge liest selbst (empfohlen).** Zeitzeuge öffnet den 3CX-Webclient unsichtbar mit dem installierten Microsoft Edge und liest jede Minute die Anrufliste. Gibt es kein Edge, nimmt es Chrome. Edge läuft dabei mit einem eigenen Profil, getrennt von deinem normalen Browser. Es ist egal, ob du sonst den 3CX-Client, die Webseite oder das Tischtelefon benutzt.
+**Variante 1: Zeitzeuge liest selbst (empfohlen).** Zeitzeuge öffnet den 3CX-Webclient unsichtbar mit dem installierten Microsoft Edge und liest jede Minute die Anrufliste. Alle 5 Minuten lädt es die Seite neu, weil 3CX neue Anrufe im Hintergrund sonst nicht nachträgt. Gibt es kein Edge, nimmt es Chrome. Edge läuft dabei mit einem eigenen Profil, getrennt von deinem normalen Browser. Es ist egal, ob du sonst den 3CX-Client, die Webseite oder das Tischtelefon benutzt.
 
 1. **Einstellungen ▾ → 3CX direkt auslesen …** öffnen.
 2. 3CX-Adresse prüfen und **Bei 3CX anmelden …** klicken.
