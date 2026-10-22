@@ -36,9 +36,10 @@ if sys.platform == "win32":
         hwnd = _user32.GetForegroundWindow()
         if not hwnd:
             return None
-        length = _user32.GetWindowTextLengthW(hwnd)
-        buf = ctypes.create_unicode_buffer(length + 1)
-        _user32.GetWindowTextW(hwnd, buf, length + 1)
+        # Kein GetWindowTextLengthW: Das schickt dem Fenster eine Nachricht und wartet,
+        # bis es antwortet. Hängt das Fenster, hinge sonst auch Zeitzeuge.
+        buf = ctypes.create_unicode_buffer(512)
+        _user32.InternalGetWindowText(hwnd, buf, 512)
 
         pid = wintypes.DWORD()
         _user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))

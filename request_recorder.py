@@ -156,6 +156,108 @@ def summarize_body(body, mime=""):
     return {"text": _short(text)}
 
 
+def mask_text(text):
+    """Inhalt unkenntlich machen, Form behalten: Buchstaben -> x/X, Ziffern -> 9.
+    So bleibt erkennbar, ob ein Feld ein Name, eine Rufnummer oder ein Datum ist."""
+    return "".join("9" if c.isdigit() else ("X" if c.isupper() else "x") if c.isalpha() else c
+                   for c in text)
+
+
+def _varint(buf, pos):
+    value = shift = 0
+    while True:
+        if pos >= len(buf) or shift > 63:
+            raise ValueError("varint")
+        b = buf[pos]
+        pos += 1
+        value |= (b & 0x7F) << shift
+        shift += 7
+        if not b & 0x80:
+            return value, pos
+
+
+def _proto_fields(buf, depth):
+    """Protobuf ohne Schema zerlegen. Fehler, wenn buf keine gültige Nachricht ist."""
+    fields, pos = [], 0
+    while pos < len(buf):
+        key, pos = _varint(buf, pos)
+        field, wire = key >> 3, key & 7
+        if field == 0:
+            raise ValueError("feld 0")
+        if wire == 0:
+            value, pos = _varint(buf, pos)
+        elif wire == 1:
+            if pos + 8 > len(buf):
+                raise ValueError("fixed64")
+            value, pos = {"fixed64": int.from_bytes(buf[pos:pos + 8], "little")}, pos + 8
+        elif wire == 5:
+            if pos + 4 > len(buf):
+                raise ValueError("fixed32")
+            value, pos = {"fixed32": int.from_bytes(buf[pos:pos + 4], "little")}, pos + 4
+        elif wire == 2:
+            size, pos = _varint(buf, pos)
+            if pos + size > len(buf):
+                raise ValueError("länge")
+            value, pos = _proto_value(buf[pos:pos + size], depth + 1), pos + size
+        else:
+            raise ValueError("wiretype")
+        fields.append((field, value))
+    return fields
+
+
+def _proto_value(data, depth):
+    if data and depth < 12:
+        try:
+            return _proto_group(_proto_fields(data, depth))
+        except ValueError:
+            pass
+    try:
+        text = data.decode("utf-8")
+        if text.isprintable():
+            return {"text": mask_text(text)} if text else ""
+    except UnicodeDecodeError:
+        pass
+    return {"bytes": len(data)}
+
+
+def _proto_group(fields):
+    """Felder nach Nummer zusammenfassen; wiederholte Felder auf die ersten Einträge kürzen."""
+    out = {}
+    for field, value in fields:
+        out.setdefault(str(field), []).append(value)
+    for key, values in out.items():
+        if len(values) == 1:
+            out[key] = values[0]
+        elif len(values) > MAX_ITEMS:
+            out[key] = values[:MAX_ITEMS] + [f"… {len(values) - MAX_ITEMS} weitere (insgesamt {len(values)})"]
+    return out
+
+
+def summarize_binary(data):
+    """Binären Inhalt beschreiben. Protobuf wird mit Feldnummern zerlegt, Texte maskiert."""
+    if not data:
+        return None
+    try:
+        return {"protobuf": _proto_group(_proto_fields(data, 0)), "bytes": len(data)}
+    except ValueError:
+        return {"text": f"<{len(data)} Bytes binär>"}
+
+
+def _post_bytes(req):
+    """Binären Anfrageinhalt als Bytes (postDataEntries sind verlustfrei, postData nicht)."""
+    entries = req.get("postDataEntries") or []
+    if entries and all("bytes" in e for e in entries):
+        return b"".join(base64.b64decode(e["bytes"]) for e in entries)
+    text = req.get("postData") or ""
+    try:
+        return text.encode("latin-1")
+    except UnicodeEncodeError:
+        return text.encode("utf-8")
+
+
+SKIP_BODY = re.compile(r"wasm|image/|font/|javascript|css", re.I)
+
+
 class Recorder:
     """Hört über das DevTools-Protokoll an einer Seite mit und sammelt die Abfragen."""
 
@@ -246,7 +348,9 @@ class Recorder:
             body = result.get("body")
             mime = entry.get("typ_inhalt") or ""
             if body is not None and result.get("base64Encoded"):
-                entry["antwort"] = {"text": f"<{len(body) * 3 // 4} Bytes binär>"}
+                entry["antwort"] = summarize_binary(base64.b64decode(body))
+            elif body and ("octet-stream" in mime or "protobuf" in mime):
+                entry["antwort"] = summarize_binary(body.encode("latin-1", "replace"))
             elif body and ("html" in mime or "javascript" in mime):  # Seiten und Code nicht speichern
                 entry["antwort"] = {"text": f"<{mime}, {len(body)} Zeichen>"}
             else:
@@ -259,7 +363,7 @@ class Recorder:
                               if c.get("expires", -1) > 0 else "Sitzung"),
                 "httpOnly": c.get("httpOnly"), "secure": c.get("secure"),
                 "sameSite": c.get("sameSite"), "laenge": len(c.get("value") or ""),
-                **({"jwt": _jwt_info(c["value"])} if JWT.fullmatch(c.get("value") or "") else {}),
+                **cookie_shape(c.get("value") or ""),
             } for c in result["cookies"]]
         elif kind == "storage":
             value = (result.get("result") or {}).get("value")
@@ -283,7 +387,10 @@ class Recorder:
         if req.get("postData") is not None or req.get("hasPostData"):
             ctype = next((v for k, v in (req.get("headers") or {}).items()
                           if k.lower() == "content-type"), "")
-            entry["anfrage_inhalt"] = summarize_body(req.get("postData"), ctype) or "<nicht gelesen>"
+            if "octet-stream" in ctype or "protobuf" in ctype:
+                entry["anfrage_inhalt"] = summarize_binary(_post_bytes(req)) or "<nicht gelesen>"
+            else:
+                entry["anfrage_inhalt"] = summarize_body(req.get("postData"), ctype) or "<nicht gelesen>"
         return entry
 
     def _finish(self, rid, extra=None):
@@ -330,7 +437,7 @@ class Recorder:
         elif method == "Network.loadingFinished" and rid in self.entries:
             entry = self.entries[rid]
             self._merge_extra(rid, entry)
-            if entry.get("typ") in BODY_TYPES:
+            if entry.get("typ") in BODY_TYPES and not SKIP_BODY.search(entry.get("typ_inhalt") or ""):
                 self._send("Network.getResponseBody", kind="body", ref=rid, requestId=rid)
             else:
                 self._finish(rid)
@@ -361,6 +468,32 @@ class Recorder:
             "cookies": self.cookies,
             "seitenspeicher": self.storage,
         }
+
+
+def cookie_shape(value):
+    """Aufbau eines Cookie-Werts ohne Inhalt: JWT-Ablauf oder Feldnamen, falls JSON/Base64-JSON."""
+    from urllib.parse import unquote
+    match = JWT.search(value)
+    if match:
+        return {"jwt": _jwt_info(match.group(0))}
+    for text in (unquote(value), value):
+        candidates = [text]
+        try:
+            candidates.append(base64.urlsafe_b64decode(text + "=" * (-len(text) % 4)).decode("utf-8"))
+        except (ValueError, UnicodeDecodeError):
+            pass
+        for cand in candidates:
+            try:
+                data = json.loads(cand)
+            except ValueError:
+                continue
+            if isinstance(data, dict):
+                info = {"json_felder": sorted(data)[:40]}
+                inner = JWT.search(cand)
+                if inner:
+                    info["jwt"] = _jwt_info(inner.group(0))
+                return info
+    return {}
 
 
 # Schlüssel aus localStorage/sessionStorage (dort legen viele Web-Apps ihr Token ab)

@@ -12,6 +12,7 @@ gelesen, andere Tage einmal, sobald sie angezeigt werden.
 
 import json
 import os
+import re
 import threading
 import time
 from datetime import date, datetime
@@ -89,6 +90,10 @@ class ItmReader(BrowserReader):
     LOAD_TIMEOUT = 25       # so lange auf die Daten einer Seite warten
 
     def __init__(self, base_url, data_file, profile_dir, parent=None):
+        # Steht in der Einstellung schon die Seite (…/zeiterfassung/tageszeiten), würde
+        # sie sonst doppelt angehängt und ITM zeigt "Not found".
+        base_url = base_url.strip().split("?")[0].split("#")[0]
+        base_url = re.sub(r"/zeiterfassung(/.*)?$", "", base_url.rstrip("/"))
         super().__init__(base_url, profile_dir, parent)
         self.data_file = data_file
         self.days = load_days(data_file)

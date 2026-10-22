@@ -33,7 +33,12 @@ fetch("/api/login", {method: "POST", headers: {"Content-Type": "application/json
     localStorage.setItem("auth", JSON.stringify({token: d.access_token, expires_in: 3600}));
     return fetch("/api/anrufe?token=" + d.access_token + "&tage=14",
                  {headers: {Authorization: "Bearer " + d.access_token}});
-  }).then((r) => r.json()).then((d) => { document.getElementById("app").textContent = d.length; });
+  }).then((r) => r.json()).then((d) => {
+    document.getElementById("app").textContent = d.length;
+    return fetch("/MyPhone/MPWebService.asmx", {method: "POST",
+      headers: {"Content-Type": "application/octet-stream"},
+      body: new Uint8Array([0x08, 0x6a, 0xd2, 0x06, 0x05, 0x12, 0x03, 0x37, 0x36, 0x39])});
+  }).then((r) => r.arrayBuffer()).then(() => fetch("/api/anrufe?fertig=1"));
 </script></body></html>""" % PASSWORD
 
 
@@ -55,12 +60,22 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if self.path.startswith("/api/anrufe"):
             calls = [{"start": f"2026-10-{d:02d} 09:00", "nummer": "+49 30 123"} for d in range(1, 11)]
             self._send(json.dumps(calls), "application/json")
-            loaded.set()
+            if "fertig" in self.path:
+                loaded.set()
         else:
             self._send(PAGE, "text/html")
 
     def do_POST(self):
         self.rfile.read(int(self.headers.get("Content-Length", 0)))
+        if self.path.startswith("/MyPhone"):
+            name = "Müller Hans".encode("utf-8")
+            body = bytes([0x08, 0x6b, 0x12, len(name)]) + name
+            self.send_response(200)
+            self.send_header("Content-Type", "application/octet-stream")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
         self._send(json.dumps({"access_token": JWT, "expires_in": 3600}), "application/json",
                    [("Set-Cookie", f"sitzung={COOKIE}; Path=/; HttpOnly; Max-Age=86400")])
 
@@ -123,11 +138,16 @@ for secret in (PASSWORD, COOKIE, JWT, JWT.split(".")[1]):
 urls = [a["adresse"] for a in data["abfragen"]]
 if not any("/api/login" in u for u in urls) or not any("/api/anrufe" in u for u in urls):
     fail(f"Abfragen fehlen: {urls}")
-anrufe = next(a for a in data["abfragen"] if "/api/anrufe" in a["adresse"])
+anrufe = next(a for a in data["abfragen"] if "/api/anrufe?token" in a["adresse"])
 if "7 weitere" not in json.dumps(anrufe.get("antwort"), ensure_ascii=False):
     fail(f"Antwort nicht gekürzt: {anrufe.get('antwort')}")
 if not anrufe["anfrage_koepfe"].get("Authorization", {}).get("jwt", {}).get("gueltig_minuten") == 60:
     fail(f"Ablauf des Tokens fehlt: {anrufe['anfrage_koepfe']}")
+proto = next(a for a in data["abfragen"] if "MPWebService" in a["adresse"])
+if "Müller" in text or proto.get("antwort", {}).get("protobuf", {}).get("2", {}).get("text") != "Xxxxxx Xxxx":
+    fail(f"Protobuf nicht zerlegt oder nicht maskiert: {proto.get('antwort')}")
+if proto.get("anfrage_inhalt", {}).get("protobuf", {}).get("1") != 106:
+    fail(f"Protobuf-Anfrage nicht zerlegt: {proto.get('anfrage_inhalt')}")
 if not any(c["name"] == "sitzung" for c in data["cookies"]):
     fail(f"Cookie-Name fehlt: {data['cookies']}")
 if "auth" not in data["seitenspeicher"].get("localStorage", {}):

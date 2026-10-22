@@ -145,10 +145,15 @@ def profile_in_use(profile_dir):
 def profile_processes(profile_dir):
     """Alle Edge/Chrome-Prozesse, die mit genau diesem Profil laufen (nie dein normaler Edge)."""
     wanted = os.path.normcase(os.path.abspath(profile_dir))
+    exe = os.path.basename(find_browser() or "").lower()
+    names = {n for n in (exe, "msedge.exe", "chrome.exe", "msedge", "chrome") if n}
     found = []
-    for proc in psutil.process_iter(["pid", "cmdline"]):
+    # Nur den Namen aller Prozesse lesen (schnell), die Befehlszeile nur bei Edge/Chrome
+    for proc in psutil.process_iter(["pid", "name"]):
         try:
-            for arg in proc.info["cmdline"] or []:
+            if (proc.info["name"] or "").lower() not in names:
+                continue
+            for arg in proc.cmdline() or []:
                 if arg.startswith("--user-data-dir=") and \
                         os.path.normcase(os.path.abspath(arg.split("=", 1)[1].strip('"'))) == wanted:
                     found.append(proc)
@@ -156,6 +161,13 @@ def profile_processes(profile_dir):
         except (psutil.NoSuchProcess, psutil.AccessDenied, ValueError):
             continue
     return found
+
+
+def _cmdline(proc):
+    try:
+        return proc.cmdline() or []
+    except psutil.Error:
+        return []
 
 
 def kill_profile_processes(profile_dir):
@@ -181,7 +193,7 @@ def login_window_open(profile_dir):
     if sys.platform != "win32":
         # Hauptprozess (ohne --type=…) ohne --headless = sichtbares Fenster
         return any("--headless" not in cmd and "--type=" not in cmd and "-32000" not in cmd
-                   for cmd in (" ".join(p.info["cmdline"] or []) for p in procs))
+                   for cmd in (" ".join(_cmdline(p)) for p in procs))
     import ctypes
     from ctypes import wintypes
     pids = {p.pid for p in procs}
@@ -392,6 +404,7 @@ class BrowserReader(QObject):
         # Edge schreibt seinen Port in DevToolsActivePort. Er gibt beim Start oft an einen
         # anderen Prozess ab, darum zählt die Datei, nicht der gestartete Prozess.
         deadline = time.time() + 20
+        next_check = 0
         while time.time() < deadline:
             first = ""
             try:
@@ -402,8 +415,11 @@ class BrowserReader(QObject):
             if first.isdigit():
                 return int(first)
             code = self._proc.poll()
-            if code is not None and not profile_processes(self.profile_dir):
-                raise RuntimeError(f"Edge hat sich beendet, Code {code}")
+            # Alle Prozesse durchsuchen ist teuer: nur alle 2 s, nicht bei jedem Durchlauf
+            if code is not None and time.time() > next_check:
+                next_check = time.time() + 2
+                if not profile_processes(self.profile_dir):
+                    raise RuntimeError(f"Edge hat sich beendet, Code {code}")
             time.sleep(0.2)
         code = self._proc.poll()
         kill_profile_processes(self.profile_dir)

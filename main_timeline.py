@@ -1214,6 +1214,8 @@ if __name__ == "__main__":
     app.setStyle(AppStyle())
     app.setQuitOnLastWindowClosed(False)
     window = TimelineApp()
+    from hang_watch import HangWatch
+    hang_watch = HangWatch(os.path.join(DATA_DIR, "haenger.log"), app)
     if "--minimized" in sys.argv or window.config.get("start_minimized", False):
         if not window.tray:
             window.showMinimized()
