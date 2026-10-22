@@ -2,10 +2,10 @@ import os
 
 from PyQt5.QtCore import QTime
 from PyQt5.QtGui import QColor
-from PyQt5.QtWidgets import (QCheckBox, QColorDialog, QDialog, QDialogButtonBox,
+from PyQt5.QtWidgets import (QCheckBox, QColorDialog, QComboBox, QDialog, QDialogButtonBox,
                              QFileDialog, QFormLayout, QGridLayout, QGroupBox,
-                             QHBoxLayout, QInputDialog, QLabel, QListWidget,
-                             QPushButton, QSpinBox, QTimeEdit, QVBoxLayout)
+                             QHBoxLayout, QInputDialog, QLabel, QLineEdit, QListWidget,
+                             QPlainTextEdit, QPushButton, QSpinBox, QTimeEdit, QVBoxLayout)
 
 class ConnectionSettingsDialog(QDialog):
     def __init__(self, config, config_key, default_paths, title, parent=None,
@@ -298,3 +298,79 @@ class WorkHoursDialog(QDialog):
             else:
                 result[key] = ""
         return result
+
+
+class AiSettingsDialog(QDialog):
+    """Einstellungen für die KI-Vorschläge (Anthropic-API)."""
+
+    def __init__(self, config, spent_usd=0.0, parent=None):
+        super().__init__(parent)
+        import ai_classifier as ai  # erst hier, damit der Dialog auch ohne Paket aufgeht
+        self.ai = ai
+        self.config = config
+        self.setWindowTitle("KI-Vorschläge")
+        self.setMinimumWidth(540)
+        layout = QVBoxLayout(self)
+
+        info = QLabel(
+            "Zeitzeuge schickt die Einträge eines Tages an Claude von Anthropic. Zurück kommen "
+            "Tätigkeiten mit Kunde, Kategorie und einem Satz fürs Ticket. Sie stehen in der "
+            "Timeline in der Zeile „KI“ und in der Tagesliste unter „KI-Vorschläge“.\n\n"
+            "Gesendet wird nur, wenn du es anstößt (F6), und nur, wenn sich der Tag geändert hat. "
+            "Ein Tag kostet meist wenige Cent.")
+        info.setWordWrap(True)
+        layout.addWidget(info)
+
+        form = QFormLayout()
+        self.key_edit = QLineEdit(ai.api_key())
+        self.key_edit.setEchoMode(QLineEdit.Password)
+        self.key_edit.setPlaceholderText("sk-ant-…")
+        if ai.key_from_env():
+            self.key_edit.setEnabled(False)
+            self.key_edit.setToolTip("Kommt aus der Umgebungsvariable ANTHROPIC_API_KEY")
+        form.addRow("API-Schlüssel:", self.key_edit)
+        key_hint = QLabel("Liegt nur auf diesem PC unter %LOCALAPPDATA%\\Zeitzeuge, "
+                          "nicht im Datenordner.")
+        key_hint.setObjectName("hint")
+        key_hint.setWordWrap(True)
+        form.addRow("", key_hint)
+
+        self.model_combo = QComboBox()
+        for mid, name, price_in, price_out in ai.MODELS:
+            self.model_combo.addItem(name, mid)
+        self.model_combo.setCurrentIndex(
+            max(0, self.model_combo.findData(config.get("ai_model", ai.DEFAULT_MODEL))))
+        form.addRow("Modell:", self.model_combo)
+
+        self.titles_check = QCheckBox("Fenstertitel mitsenden (genauere Vorschläge)")
+        self.titles_check.setChecked(config.get("ai_send_window_titles", True))
+        form.addRow("", self.titles_check)
+        self.auto_check = QCheckBox("Vergangene Tage beim Anzeigen automatisch einordnen")
+        self.auto_check.setChecked(config.get("ai_auto", False))
+        form.addRow("", self.auto_check)
+
+        self.categories_edit = QPlainTextEdit("\n".join(config.get("ai_categories")
+                                                       or ai.DEFAULT_CATEGORIES))
+        self.categories_edit.setAccessibleName("Kategorien, eine pro Zeile")
+        self.categories_edit.setMaximumHeight(150)
+        form.addRow("Kategorien\n(eine pro Zeile):", self.categories_edit)
+        layout.addLayout(form)
+
+        spent = QLabel(f"Bisher ausgegeben: ca. {spent_usd:.2f} $".replace(".", ","))
+        spent.setObjectName("hint")
+        layout.addWidget(spent)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def apply(self):
+        """Eingaben in die Config übernehmen und den Schlüssel lokal speichern."""
+        if not self.ai.key_from_env():
+            self.ai.save_api_key(self.key_edit.text().strip())
+        self.config["ai_model"] = self.model_combo.currentData()
+        self.config["ai_send_window_titles"] = self.titles_check.isChecked()
+        self.config["ai_auto"] = self.auto_check.isChecked()
+        cats = [c.strip() for c in self.categories_edit.toPlainText().splitlines() if c.strip()]
+        self.config["ai_categories"] = list(dict.fromkeys(cats)) or list(self.ai.DEFAULT_CATEGORIES)

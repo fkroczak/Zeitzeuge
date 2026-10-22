@@ -20,14 +20,15 @@ from PyQt5.QtWidgets import (QAbstractItemView, QAction, QApplication, QProxySty
                              QVBoxLayout, QWidget)
 
 from activity_tracker import ActivityTracker
+from ai_classifier import AI_TYPE, AiClassifier, AiStore
 from call_import import start_call_server
 import icons
 import storage
 from log_parsers import VpnParser
-from settings_dialogs import (ActivityTypeSettingsDialog,
+from settings_dialogs import (ActivityTypeSettingsDialog, AiSettingsDialog,
                               ConnectionSettingsDialog, WorkHoursDialog)
-from grouping import format_tv_id, work_blocks
-from timeline_only import (ActivityViewDialog, TimelineView, entry_color,
+from grouping import format_tv_id, group_entries, work_blocks
+from timeline_only import (ActivityViewDialog, TimelineView, ai_copy_text, entry_color,
                            format_duration, parse_time, type_label)
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -59,11 +60,13 @@ else:
 DATA_DIR = storage.data_dir()
 CONFIG_FILE = os.path.join(DATA_DIR, "zeitzeuge_config.json")
 CALLS_FILE = os.path.join(DATA_DIR, "anrufe.json")
+VPN_FILE = os.path.join(DATA_DIR, "vpn_verbindungen.json")
 ACTIVITY_DIR = os.path.join(DATA_DIR, "aktivitaet")
 # 3CX-Anmeldung immer lokal (nicht in OneDrive-synchronisierten Dokumenten)
 PBX_PROFILE_DIR = os.path.join(storage.local_dir(), "3cx_profil")
 ITM_FILE = os.path.join(DATA_DIR, "personalzeiten.json")
 ITM_PROFILE_DIR = os.path.join(storage.local_dir(), "itm_profil")
+AI_DIR = os.path.join(DATA_DIR, "ki_vorschlaege")
 
 
 class AppStyle(QProxyStyle):
@@ -187,6 +190,14 @@ def load_config_with_defaults():
         "vpn_enabled": True,
         "vpn_paths": VpnParser().default_paths,  # OpenVPN GUI, OpenVPN Connect, Sophos SSL VPN
         "vpn_timezone_correction": 0,  # VPN-Clients schreiben Ortszeit
+        # Sophos Connect (scvpn.log, scgui.log, charon.log – charon.log enthält auch FortiClient)
+        "sophos_connect_dirs": [
+            r"C:\Program Files (x86)\Sophos\Connect",
+            r"C:\Program Files\Sophos\Connect",
+        ],
+        # Eigene VPN-Aufzeichnung: Teil der Adapterbeschreibung -> Quelle
+        "vpn_monitor_enabled": True,
+        "vpn_adapters": {"Sophos": "Sophos", "Fortinet": "FortiClient"},
         # deine gewünschten Zeitzonen
         "timezone_correction": 0,
         "teamviewer_timezone_correction": 1,
@@ -219,6 +230,12 @@ def load_config_with_defaults():
         "merge_gap_minutes": 5,    # Verbindungen mit kürzerer Pause werden eine Zeile
         "block_gap_minutes": 10,   # Einträge mit kürzerer Pause werden ein Arbeitsblock
         "teamviewer_names": {},    # TeamViewer-ID -> Name, z. B. {"1076789144": "Müller GmbH"}
+
+        # KI-Vorschläge (Anthropic). Der API-Schlüssel steht nicht hier, sondern lokal.
+        "ai_model": "claude-opus-5-5",
+        "ai_effort": "low",
+        "ai_send_window_titles": True,
+        "ai_auto": False,          # vergangene Tage beim Anzeigen automatisch einordnen
     }
     if os.path.exists(CONFIG_FILE):
             try:
@@ -240,7 +257,8 @@ def load_config_with_defaults():
     cfg["type_colors"].setdefault("Telefonat", "#27AE60")
     for kind, color in [("VPN-Verbindung", "#00B894"), ("SSH-Verbindung", "#E67E22"),
                         ("FTP-Verbindung", "#7F8C8D"), ("TeamViewer-Verbindung", "#3460DB"),
-                        ("Zugangsdaten", "#9B59B6"), ("Arbeitsblock", "#5B8DEF")]:
+                        ("Zugangsdaten", "#9B59B6"), ("Arbeitsblock", "#5B8DEF"),
+                        (AI_TYPE, "#A55EEA")]:
         cfg["type_colors"].setdefault(kind, color)
     # Alte Standardpfade enthielten doppelte Backslashes (C:\Users\x\\TeamViewer)
     for key in ("teamviewer_paths", "rdm_paths", "vpn_paths"):
@@ -407,6 +425,14 @@ class TimelineApp(QMainWindow):
         self.timeline.day_loaded.connect(self.update_day_list)
         self.timeline.activity_dir = ACTIVITY_DIR
 
+        # KI-Vorschläge (Claude): Ablage pro Tag, Aufruf im Hintergrund
+        self.ai_store = AiStore(AI_DIR)
+        self.ai = AiClassifier(self.ai_store, self.config, self)
+        self.ai.finished.connect(self.on_ai_finished)
+        self.ai.failed.connect(self.on_ai_failed)
+        self.timeline.ai_entries = self.ai_store.entries
+        self.timeline.ai_action.connect(self.on_ai_action)
+
         # Aktivitätsprotokoll: alle 5 Sekunden aktives Fenster abfragen
         self.tracker = None
         self.track_timer = QTimer(self)
@@ -444,6 +470,11 @@ class TimelineApp(QMainWindow):
         name_action = QAction("&TeamViewer-ID benennen …", self.table)
         name_action.triggered.connect(self.name_teamviewer_id)
         self.table.addAction(name_action)
+        for text, status in [("KI-Vorschlag übernehmen", "übernehmen"),
+                             ("KI-Vorschlag verwerfen", "verwerfen")]:
+            action = QAction(text, self.table)
+            action.triggered.connect(lambda _c=False, s=status: self.ai_action_on_row(s))
+            self.table.addAction(action)
         self._icon_actions += [(details_action, "details"), (copy_action, "copy"),
                                (name_action, "tag")]
         self.table.setContextMenuPolicy(Qt.ActionsContextMenu)
@@ -476,6 +507,14 @@ class TimelineApp(QMainWindow):
 
         # Anruf-Empfang für das Tampermonkey-Skript starten
         self.timeline.calls_file = CALLS_FILE
+        # VPN: eigene Aufzeichnung alle 30 Sekunden, Logs alle 2 Minuten – unabhängig von der Ansicht
+        vpn = self.timeline.vpn_reader
+        vpn.archive_file = VPN_FILE
+        vpn.dirs = self.config.get("sophos_connect_dirs") or vpn.dirs
+        vpn.adapters = self.config.get("vpn_adapters") or vpn.adapters
+        self.vpn_timer = QTimer(self)
+        self.vpn_timer.timeout.connect(self.vpn_sample)
+        self.apply_vpn_monitor()
         self.call_server = None
         if self.config.get("calls_enabled", True):
             self.call_signal = CallSignal()
@@ -560,6 +599,10 @@ class TimelineApp(QMainWindow):
                                            "refresh")
         tb.addAction(self.refresh_action)
         icon_only.append(self.refresh_action)
+        self.ai_button_action = self._action(
+            "KI-Vorschläge", lambda: self.classify_day(), "F6",
+            "Tätigkeiten des Tages von Claude einordnen lassen")
+        tb.addAction(self.ai_button_action)
         tb.addSeparator()
         # Gruppe 3: Ausschnitt der Timeline
         zoom_out = self._action("Verkleinern", self.zoom_out, "Ctrl+-", icon_name="zoom_out")
@@ -583,7 +626,8 @@ class TimelineApp(QMainWindow):
         self.view_combo.setToolTip(
             "Zusammengefasst: Verbindungen und Passwort-/OTP-Anzeigen werden je Eintrag eine Zeile\n"
             "Einzeln: jede Zeile aus den Logs\n"
-            "Arbeitsblöcke: alles mit kurzer Pause dazwischen als ein Block, z. B. fürs Ticket")
+            "Arbeitsblöcke: alles mit kurzer Pause dazwischen als ein Block, z. B. fürs Ticket\n"
+            "KI-Vorschläge: Tätigkeiten, die Claude aus dem Tag erkannt hat (F6)")
         for key, text in self.VIEWS:
             self.view_combo.addItem(text, key)
         self.view_combo.setCurrentIndex(
@@ -616,6 +660,7 @@ class TimelineApp(QMainWindow):
         self._icon_actions += [
             (menu.addAction("&Arbeitszeiten …", self.edit_work_hours), "clock"),
             (menu.addAction("Aktivitäts&typen und Farben …", self.edit_activity_types), "palette"),
+            (menu.addAction("&KI-Vorschläge …", self.edit_ai_settings), "spark"),
         ]
         self.sources_menu = menu.addMenu("Daten&quellen")
         self.sources_menu.addAction("Team&Viewer-Logs …", self.edit_teamviewer_settings)
@@ -681,7 +726,9 @@ class TimelineApp(QMainWindow):
         self.day_activities = activities
         self.pc_activities = pc_activities or []
         entries = list(activities)
-        if self.config.get("list_view") == "blocks":
+        if self.config.get("list_view") == "ai":
+            entries = self.ai_store.entries(self.current_date.toString("yyyy-MM-dd"))
+        elif self.config.get("list_view") == "blocks":
             entries = work_blocks(entries, self.config.get("block_gap_minutes", 10))
         elif self.config.get("show_pc_in_list", False):
             entries += self.pc_activities
@@ -710,7 +757,8 @@ class TimelineApp(QMainWindow):
                 self.table.setItem(row, col, item)
         self.update_status_text()
 
-    VIEWS = [("grouped", "Zusammengefasst"), ("single", "Einzeln"), ("blocks", "Arbeitsblöcke")]
+    VIEWS = [("grouped", "Zusammengefasst"), ("single", "Einzeln"), ("blocks", "Arbeitsblöcke"),
+             ("ai", "KI-Vorschläge")]
 
     def change_view(self, _index):
         self.config["list_view"] = self.view_combo.currentData()
@@ -749,6 +797,9 @@ class TimelineApp(QMainWindow):
             rows = range(self.table.rowCount())
         lines = []
         for row in rows:
+            if row < len(self.list_entries) and self.list_entries[row].get("ai"):
+                lines.append(ai_copy_text(self.list_entries[row]))  # fertige Ticketzeile
+                continue
             cells = [self.table.item(row, c).text() for c in range(self.table.columnCount())]
             lines.append(f"{cells[0]}–{cells[1]}\t" + "\t".join(cells[2:]).rstrip())
         QApplication.clipboard().setText("\n".join(lines))
@@ -788,6 +839,10 @@ class TimelineApp(QMainWindow):
         for reader in (self.pbx_reader, self.itm_reader):
             if reader:
                 reader.want(date.toString("yyyy-MM-dd"))
+        # Vergangene Tage auf Wunsch automatisch einordnen (nur ohne vorhandene Vorschläge)
+        if (self.config.get("ai_auto") and date < QDate.currentDate()
+                and not self.ai_store.load(date.toString("yyyy-MM-dd"))):
+            self.classify_day(quiet=True)
 
     def show_previous_day(self):
         self.date_edit.setDate(self.current_date.addDays(-1))
@@ -803,8 +858,104 @@ class TimelineApp(QMainWindow):
         self.statusBar().showMessage("Logs werden neu eingelesen …", 2000)
 
     def auto_refresh(self):
+        try:
+            if self.config.get("vpn_enabled", True):
+                self.timeline.vpn_reader.update_from_logs()  # Sophos-Logs sichern, bevor sie überschrieben werden
+        except Exception as e:
+            print(f"Fehler beim Lesen der VPN-Logs: {e}")
         if self.current_date == QDate.currentDate():
             self.timeline.refresh()
+
+    def apply_vpn_monitor(self):
+        """Eigene VPN-Aufzeichnung nur, wenn VPN eingeschaltet ist."""
+        if self.config.get("vpn_enabled", True) and self.config.get("vpn_monitor_enabled", True):
+            if not self.vpn_timer.isActive():
+                self.vpn_timer.start(30 * 1000)
+                QTimer.singleShot(0, self.vpn_sample)
+        else:
+            self.vpn_timer.stop()
+
+    def vpn_sample(self):
+        if self.timeline.vpn_reader.sample() and self.current_date == QDate.currentDate() and self.isVisible():
+            self.timeline.refresh()
+
+    # ---------------------- KI-Vorschläge -------------------------------------
+
+    def ai_input(self, date):
+        """Einträge des Tages für die KI: zusammengefasst, damit es kurz bleibt."""
+        entries = group_entries(self.timeline.activities_for(date),
+                                self.config.get("merge_gap_minutes", 5))
+        return entries, self.timeline.pc_entries_for(date, min_seconds=60)
+
+    def classify_day(self, quiet=False):
+        date = self.current_date
+        date_str = date.toString("yyyy-MM-dd")
+        if date_str in self.ai.running:
+            self.statusBar().showMessage("KI-Vorschläge werden schon erstellt …", 3000)
+            return
+        entries, pc = self.ai_input(date)
+        if not quiet and self.ai_store.is_current(date_str, self.ai.input_hash(self.ai.input_text(entries, pc))):
+            answer = QMessageBox.question(
+                self, "KI-Vorschläge",
+                "Für diesen Tag gibt es schon Vorschläge, und die Einträge haben sich nicht geändert.\n"
+                "Trotzdem neu erstellen? Das kostet einen weiteren Aufruf.")
+            if answer != QMessageBox.Yes:
+                return
+            started = self.ai.start(date_str, entries, pc, force=True)
+        else:
+            started = self.ai.start(date_str, entries, pc)
+        if started:
+            self.ai_button_action.setEnabled(False)
+            self.statusBar().showMessage(
+                f"Claude ordnet {GERMAN.toString(date, 'dd.MM.')} ein …", 60000)
+
+    def on_ai_finished(self, date_str, count, cost):
+        self.ai_button_action.setEnabled(True)
+        cost_text = f"{cost:.3f}".replace(".", ",")
+        self.statusBar().showMessage(
+            f"KI: {count} Vorschläge für {date_str[8:10]}.{date_str[5:7]}., "
+            f"Kosten ca. {cost_text} $", 8000)
+        if date_str == self.current_date.toString("yyyy-MM-dd"):
+            self.timeline.draw_timeline(self.current_date)
+
+    def on_ai_failed(self, date_str, message):
+        self.ai_button_action.setEnabled(True)
+        self.statusBar().showMessage(f"KI-Vorschläge: {message}", 10000)
+        if not self.isVisible() or self.config.get("ai_auto"):
+            return
+        QMessageBox.warning(self, "KI-Vorschläge", message)
+
+    def on_ai_action(self, entry, action):
+        status = "übernommen" if action == "übernehmen" else "verworfen"
+        self.ai_store.set_status(entry["start"][:10], entry["ai_id"], status)
+        self.timeline.draw_timeline(self.current_date)
+
+    def ai_action_on_row(self, action):
+        row = self.table.currentRow()
+        if not 0 <= row < len(self.list_entries) or not self.list_entries[row].get("ai"):
+            self.statusBar().showMessage("Die markierte Zeile ist kein KI-Vorschlag "
+                                         "(Ansicht „KI-Vorschläge“ wählen)", 4000)
+            return
+        self.on_ai_action(self.list_entries[row], action)
+
+    def ai_spent(self):
+        """Summe der bisherigen Kosten aus allen gespeicherten Tagen."""
+        total = 0.0
+        try:
+            names = os.listdir(AI_DIR)
+        except OSError:
+            return total
+        for name in names:
+            if name.endswith(".json"):
+                data = self.ai_store.load(name[:-5]) or {}
+                total += data.get("cost_usd", 0) + data.get("earlier_cost_usd", 0)
+        return total
+
+    def edit_ai_settings(self):
+        dialog = AiSettingsDialog(self.config, self.ai_spent(), self)
+        if dialog.exec_() == dialog.Accepted:
+            dialog.apply()
+            save_config(self.config)
 
     # ---------------------- Aktivitätsprotokoll -------------------------------
 
@@ -1269,8 +1420,10 @@ class TimelineApp(QMainWindow):
             hint="Logdateien oder Ordner deiner VPN-Clients, z. B. OpenVPN GUI "
                  "(%USERPROFILE%\\OpenVPN\\log), OpenVPN Connect oder Sophos SSL VPN. "
                  "Bei einem Ordner zählen alle .log- und .txt-Dateien darin, "
-                 "der Dateiname wird zum Verbindungsnamen.",
+                 "der Dateiname wird zum Verbindungsnamen. Sophos Connect und FortiClient "
+                 "erkennt Zeitzeuge von selbst.",
         )
+        self.apply_vpn_monitor()
 
     def edit_work_hours(self):
         dialog = WorkHoursDialog(self.config, self)
