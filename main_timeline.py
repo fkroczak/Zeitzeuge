@@ -37,7 +37,7 @@ from settings_dialogs import RulesDialog, TrackingFilterDialog
 import rules
 from grouping import format_tv_id, group_entries, work_blocks
 from timeline_only import (ActivityViewDialog, TimelineView, ai_copy_text, entry_color,
-                           format_duration, parse_time, row_kind, type_label)
+                           exec_entry_menu, format_duration, parse_time, row_kind, type_label)
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
@@ -236,7 +236,7 @@ def load_config_with_defaults():
         # Klassifizierung ohne KI (rules.py); Reihenfolge = Priorität
         "rules": rules.default_rules(),
         "rules_gap_minutes": 5,
-        "rules_min_minutes": 2,
+        "rules_min_minutes": 5,
         "show_pc_in_list": False,
 
         "pbx_reader_enabled": False,  # 3CX direkt über Edge im Hintergrund lesen
@@ -296,7 +296,7 @@ def load_config_with_defaults():
                         ("FTP-Verbindung", "#7F8C8D"), ("TeamViewer-Verbindung", "#3460DB"),
                         ("Zugangsdaten", "#9B59B6"), ("Arbeitsblock", "#5B8DEF"),
                         (AI_TYPE, "#A55EEA"), ("Dokumentiert", "#2E9E5B"),
-                        ("Undokumentiert", "#E67E22"), ("Klassifizierung", "#8E7CC3")]:
+                        ("Undokumentiert", "#E67E22"), ("Klassifizierung", "#8395A7")]:
         cfg["type_colors"].setdefault(kind, color)
     # Alte Standardpfade enthielten doppelte Backslashes (C:\Users\x\\TeamViewer)
     for key in ("teamviewer_paths", "rdm_paths", "vpn_paths"):
@@ -374,6 +374,9 @@ QSpinBox:focus, QListWidget:focus, QTableWidget:focus, QGraphicsView:focus {
     border: 1px solid $accent; }
 QToolButton#qt_toolbar_ext_button { border: 1px solid $border; background-color: $hover; }
 QLabel#hint { color: $muted; }
+QStatusBar QToolButton#cta { background-color: $accent; color: #FFFFFF; font-weight: 600;
+                             border-radius: 6px; padding: 2px 12px; }
+QStatusBar QToolButton#cta:hover { background-color: $accent; border-color: $text; }
 QPushButton:disabled, QToolButton:disabled, QLineEdit:disabled, QDateEdit:disabled,
 QTimeEdit:disabled, QSpinBox:disabled, QCheckBox:disabled { color: $muted; }
 QPushButton:disabled { background-color: $surface; }
@@ -476,6 +479,7 @@ class TimelineApp(QMainWindow):
         self.timeline.doc_entries = self.doc_band
         self.timeline.rule_entries = self.rule_band
         self.timeline.doc_request.connect(self.on_doc_request)
+        self.timeline.entry_action.connect(self.on_entry_action)
         self._rule_cache = {}
         self._prompt_window = None
         self._prompt_queue = []
@@ -517,24 +521,9 @@ class TimelineApp(QMainWindow):
         copy_action.setShortcutContext(Qt.WidgetShortcut)
         copy_action.triggered.connect(self.copy_selection)
         self.table.addAction(copy_action)
-        doc_action = QAction("Tätigkeit &eintragen / bearbeiten …", self.table)
-        doc_action.triggered.connect(self.doc_for_row)
-        self.table.addAction(doc_action)
-        doc_delete = QAction("Tätigkeit &löschen", self.table)
-        doc_delete.triggered.connect(self.delete_doc_row)
-        self.table.addAction(doc_delete)
-        self._icon_actions.append((doc_action, "edit"))
-        name_action = QAction("&TeamViewer-ID benennen …", self.table)
-        name_action.triggered.connect(self.name_teamviewer_id)
-        self.table.addAction(name_action)
-        for text, status in [("KI-Vorschlag übernehmen", "übernehmen"),
-                             ("KI-Vorschlag verwerfen", "verwerfen")]:
-            action = QAction(text, self.table)
-            action.triggered.connect(lambda _c=False, s=status: self.ai_action_on_row(s))
-            self.table.addAction(action)
-        self._icon_actions += [(details_action, "details"), (copy_action, "copy"),
-                               (name_action, "tag")]
-        self.table.setContextMenuPolicy(Qt.ActionsContextMenu)
+        # Rechtsklick: dasselbe Menü wie in der Timeline, nur mit passenden Befehlen
+        self.table.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(self.table_menu)
 
         self.timeline.setAccessibleName("Timeline des Tages")
         self.timeline.setAccessibleDescription(
@@ -553,6 +542,13 @@ class TimelineApp(QMainWindow):
         self.info_label = QLabel(self)
         self.calls_label = QLabel(self)
         self.statusBar().addWidget(self.info_label, 1)
+        # Wichtigste Aufgabe sichtbar machen: offene Tätigkeiten, ein Klick trägt die erste ein
+        self.open_docs_button = QToolButton(self)
+        self.open_docs_button.setObjectName("cta")
+        self.open_docs_button.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self.open_docs_button.clicked.connect(self.document_next_open)
+        self.open_docs_button.hide()
+        self.statusBar().addPermanentWidget(self.open_docs_button)
         self.statusBar().addPermanentWidget(self.calls_label)
         # Zustand der Fensteraufzeichnung, ein Klick schaltet sie um (wie im Infobereich)
         self.tracking_button = QToolButton(self)
@@ -971,13 +967,9 @@ class TimelineApp(QMainWindow):
         self.update_view_button()
         self.timeline.draw_timeline(self.current_date)
 
-    def name_teamviewer_id(self):
-        row = self.table.currentRow()
-        if not 0 <= row < len(self.list_entries):
-            return
-        tv_id = self.list_entries[row].get("tv_id")
+    def name_teamviewer_id(self, entry):
+        tv_id = entry.get("tv_id")
         if not tv_id:
-            self.statusBar().showMessage("Die markierte Zeile ist keine TeamViewer-Verbindung", 4000)
             return
         names = self.config.setdefault("teamviewer_names", {})
         name, ok = QInputDialog.getText(
@@ -992,6 +984,8 @@ class TimelineApp(QMainWindow):
             names.pop(tv_id, None)
         save_config(self.config)
         self.timeline.draw_timeline(self.current_date)
+        self.statusBar().showMessage(f"TeamViewer-ID {format_tv_id(tv_id)} heißt jetzt „{name.strip()}“"
+                                     if name.strip() else "Name entfernt", 4000)
 
     def open_details(self, row):
         if 0 <= row < len(self.list_entries):
@@ -1039,10 +1033,13 @@ class TimelineApp(QMainWindow):
         done = [e for e in doc if e.get("doc")]
         open_count = len(doc) - len(done)
         if done or open_count:
-            text = f"dokumentiert {format_duration(merged_seconds(done))}" if done else "nichts dokumentiert"
-            if open_count:
-                text += f", {open_count} offen (F7)"
-            parts.append(text)
+            parts.append(f"dokumentiert {format_duration(merged_seconds(done))}" if done
+                         else "nichts dokumentiert")
+        self.open_docs_button.setVisible(bool(open_count))
+        if open_count:
+            self.open_docs_button.setText(f"{open_count} offen – jetzt eintragen")
+            self.open_docs_button.setToolTip("Erste noch nicht dokumentierte Tätigkeit eintragen (F7)")
+            self.open_docs_button.setAccessibleName(f"{open_count} Tätigkeiten offen, jetzt eintragen")
         itm_day = self.itm_reader.day(self.current_date.toString("yyyy-MM-dd")) if self.itm_reader else None
         if itm_day and itm_day.get("gewertet") is not None:
             text = f"Personalzeit {format_duration(itm_day['gewertet'] * 60)}"
@@ -1158,14 +1155,8 @@ class TimelineApp(QMainWindow):
             except (OSError, ValueError) as e:
                 self.statusBar().showMessage(str(e), 8000)
         self.timeline.draw_timeline(self.current_date)
-
-    def ai_action_on_row(self, action):
-        row = self.table.currentRow()
-        if not 0 <= row < len(self.list_entries) or not self.list_entries[row].get("ai"):
-            self.statusBar().showMessage("Die markierte Zeile ist kein KI-Vorschlag "
-                                         "(Ansicht „KI-Vorschläge“ wählen)", 4000)
-            return
-        self.on_ai_action(self.list_entries[row], action)
+        self.statusBar().showMessage("KI-Vorschlag übernommen und als Tätigkeit gespeichert"
+                                     if status == "übernommen" else "KI-Vorschlag verworfen", 4000)
 
     def ai_spent(self):
         """Summe der bisherigen Kosten aus allen gespeicherten Tagen."""
@@ -1205,13 +1196,13 @@ class TimelineApp(QMainWindow):
         rule_list = self.config.get("rules") or []
         key = (len(entries), entries[-1]["end"] if entries else "", len(pc),
                pc[-1]["end"] if pc else "", json.dumps(rule_list, sort_keys=True),
-               self.config.get("rules_gap_minutes", 5), self.config.get("rules_min_minutes", 2))
+               self.config.get("rules_gap_minutes", 5), self.config.get("rules_min_minutes", 5))
         cached = self._rule_cache.get(date_str)
         if cached and cached[0] == key:
             return cached[1]
         blocks = rules.classify(entries, pc, rule_list,
                                 gap_minutes=self.config.get("rules_gap_minutes", 5),
-                                min_minutes=self.config.get("rules_min_minutes", 2))
+                                min_minutes=self.config.get("rules_min_minutes", 5))
         self._rule_cache[date_str] = (key, blocks)
         return blocks
 
@@ -1241,18 +1232,56 @@ class TimelineApp(QMainWindow):
         return sorted(entries, key=lambda e: e["start"])
 
     def on_doc_request(self, action, entry):
-        """Aus der Timeline: eintragen, bearbeiten, löschen, nicht dokumentieren."""
-        if action == "add":
-            self.add_doc(entry)
-        elif action == "add_at":
+        """Klick in der Timeline (offen: eintragen, Tätigkeit: bearbeiten)."""
+        self.on_entry_action(action, entry)
+
+    def on_entry_action(self, key, entry):
+        """Befehl aus dem Rechtsklick-Menü (Timeline und Tagesliste gleich)."""
+        if key == "add":
+            self.add_doc(entry.get("source_entry", entry))
+        elif key == "add_at":
             self.add_doc(minute=entry["minute"])
-        elif action == "edit":
+        elif key == "edit":
             self.edit_doc(entry["doc_item"])
-        elif action == "delete":
+        elif key == "delete":
             self.delete_doc(entry["doc_item"])
-        elif action == "ignore":
-            self.journal.ignore(entry)
+        elif key == "ignore":
+            self.journal.ignore(entry.get("source_entry", entry))
             self.timeline.draw_timeline(self.current_date)
+            self.statusBar().showMessage("Wird nicht mehr nachgefragt", 4000)
+        elif key == "reject":
+            self.on_ai_action(entry, "verwerfen")
+        elif key == "details":
+            ActivityViewDialog(entry, self).exec_()
+        elif key == "name_tv":
+            self.name_teamviewer_id(entry)
+        elif key == "copy":
+            if entry.get("doc"):
+                text = ticket_line(entry["doc_item"])
+            elif entry.get("ai") or entry.get("rule"):
+                text = ai_copy_text(entry)
+            else:
+                start, end = parse_time(entry["start"]), parse_time(entry["end"])
+                text = (f"{start:%H:%M}–{end:%H:%M}\t{type_label(entry)}\t"
+                        f"{entry.get('customer_name', '')}\t{entry.get('details', '')}").rstrip()
+            QApplication.clipboard().setText(text)
+            self.statusBar().showMessage("In die Zwischenablage kopiert", 3000)
+
+    def table_menu(self, pos):
+        row = self.table.rowAt(pos.y())
+        if not 0 <= row < len(self.list_entries):
+            return
+        self.table.selectRow(row)
+        entry = self.list_entries[row]
+        key = exec_entry_menu(self, entry, self.table.viewport().mapToGlobal(pos))
+        if key:
+            self.on_entry_action(key, entry)
+
+    def document_next_open(self):
+        """Knopf „… offen – jetzt eintragen“: erste offene Tätigkeit des Tages eintragen."""
+        open_items = self.doc_candidates(self.current_date.toString("yyyy-MM-dd"))
+        if open_items:
+            self.add_doc(open_items[0])
 
     def add_doc(self, entry=None, minute=None):
         """Tätigkeit nachtragen, auf Wunsch vorbelegt aus einem erkannten Eintrag."""
@@ -1276,8 +1305,10 @@ class TimelineApp(QMainWindow):
             return
         item = dialog.item()
         if entry:
-            item["source"] = entry.get("type", "")
-        self._save_doc(item, entry, dialog.remember_tv())
+            item["source"] = "KI" if entry.get("ai") else entry.get("type", "")
+        if self._save_doc(item, entry, dialog.remember_tv()) and entry and entry.get("ai"):
+            self.ai_store.set_status(entry["start"][:10], entry["ai_id"], "übernommen")
+            self.timeline.draw_timeline(self.current_date)
 
     def _save_doc(self, item, entry=None, remember_tv=False, old=None):
         try:
@@ -1320,9 +1351,10 @@ class TimelineApp(QMainWindow):
             QMessageBox.warning(self, "Tätigkeit löschen", str(e))
             return
         self.timeline.draw_timeline(self.current_date)
+        self.statusBar().showMessage("Tätigkeit gelöscht", 4000)
 
     def doc_for_row(self):
-        """Tagesliste: Tätigkeit zur markierten Zeile eintragen oder bearbeiten."""
+        """F7 bei markierter Zeile: Tätigkeit dazu eintragen oder bearbeiten."""
         row = self.table.currentRow()
         if not 0 <= row < len(self.list_entries):
             return None
@@ -1331,13 +1363,6 @@ class TimelineApp(QMainWindow):
             self.edit_doc(entry["doc_item"])
         else:
             self.add_doc(entry.get("source_entry", entry))
-
-    def delete_doc_row(self):
-        row = self.table.currentRow()
-        if 0 <= row < len(self.list_entries) and self.list_entries[row].get("doc"):
-            self.delete_doc(self.list_entries[row]["doc_item"])
-        else:
-            self.statusBar().showMessage("Die markierte Zeile ist keine eingetragene Tätigkeit", 4000)
 
     def show_open_docs(self):
         """Fenster zeigen, heute, Ansicht "Dokumentation"."""
@@ -1349,6 +1374,8 @@ class TimelineApp(QMainWindow):
         self.config.setdefault("timeline_rows", {})[key] = on
         save_config(self.config)
         self.timeline.draw_timeline(self.current_date)
+        name = {"doc": "Doku", "rule": "Regel", "ai": "KI"}[key]
+        self.statusBar().showMessage(f"Zeile „{name}“ {'eingeblendet' if on else 'ausgeblendet'}", 3000)
 
     def edit_prompt_settings(self):
         dialog = DocPromptDialog(self.config, self)
@@ -1422,9 +1449,11 @@ class TimelineApp(QMainWindow):
         elif action == "ignore":
             self.journal.ignore(entry)
             self.timeline.draw_timeline(self.current_date)
+            self.statusBar().showMessage("Wird nicht mehr nachgefragt", 4000)
         else:  # später
             snooze = self.config.get("prompt_snooze_minutes", 15)
             self._prompt_asked[key] = datetime.now() + timedelta(minutes=snooze)
+            self.statusBar().showMessage(f"Zeitzeuge fragt in {snooze} Minuten noch einmal", 4000)
         if window:
             window.deleteLater()
         QTimer.singleShot(400, self.show_next_prompt)

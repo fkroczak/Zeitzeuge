@@ -21,7 +21,7 @@ class _EntryForm(QWidget):
     """Gemeinsame Felder: Datum, Von, Bis, Kunde, Kategorie, Text."""
 
     def __init__(self, start, end, customers, categories, customer="", category="", text="",
-                 tv_id=None, parent=None):
+                 tv_id=None, parent=None, show_date=True):
         super().__init__(parent)
         form = QFormLayout(self)
         form.setContentsMargins(0, 0, 0, 0)
@@ -30,7 +30,10 @@ class _EntryForm(QWidget):
         self.date_edit.setLocale(QLocale(QLocale.German, QLocale.Germany))  # "Mi" statt "Wed"
         self.date_edit.setDisplayFormat("ddd dd.MM.yyyy")
         self.date_edit.setCalendarPopup(True)
-        form.addRow("&Datum:", self.date_edit)
+        if show_date:
+            form.addRow("&Datum:", self.date_edit)
+        else:  # Nachfrage: der Tag steht fest, ein Feld weniger
+            self.date_edit.hide()
 
         times = QHBoxLayout()
         self.start_edit = QTimeEdit(QTime(start.hour, start.minute))
@@ -191,7 +194,7 @@ class PromptWindow(QDialog):
             start, end, customers, categories,
             customer=suggest_customer(entry, tv_names),
             category=suggest_category(entry, categories),
-            tv_id=entry.get("tv_id"), parent=self)
+            tv_id=entry.get("tv_id"), parent=self, show_date=False)
         layout.addWidget(self.form)
 
         buttons = QDialogButtonBox()

@@ -10,7 +10,7 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
 
 - **Tages-Timeline** von 00:00 bis 24:00 mit markierter Arbeitszeit. Telefonate, VPN und TeamViewer haben je eine feste Zeile („Tel“, „VPN“, „TV“). So siehst du sofort, wann du telefoniert hast oder verbunden warst. Darunter folgen RDM und eigene Einträge; überlappen sie sich, rücken sie in die nächste Zeile.
 - **TeamViewer:** liest `Connections.txt` mit Sitzungs-ID, Beginn und Ende. Verbindungen unter 1 Minute werden ausgeblendet.
-  - Statt der ID kannst du einen Namen vergeben: Rechtsklick auf die Zeile in der Tagesliste, dann **TeamViewer-ID benennen …**.
+  - Statt der ID kannst du einen Namen vergeben: Rechtsklick auf die Verbindung (Tagesliste oder Timeline), dann **TeamViewer-ID benennen …**.
 - **Remote Desktop Manager (Devolutions):** liest `Connections.log`.
   - RDP-, SSH-, VPN-, FTP- und Website-Verbindungen mit Beginn und Ende.
   - Angezeigte Passwörter, Benutzernamen und Einmal-Passwörter (OTP).
@@ -47,17 +47,21 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
 - **KI-Vorschläge (Claude von Anthropic):** Auf Knopfdruck (F6) ordnet Claude die Spuren des Tages zu Tätigkeiten.
   - Jeder Vorschlag hat Kunde, Kategorie (zum Beispiel Fernwartung oder Telefonsupport) und einen Satz fürs Ticket.
   - Die Vorschläge stehen in der Timeline in einer eigenen Zeile „KI“, lila und gepunktet.
-  - Rechtsklick auf einen Vorschlag: **übernehmen** (dann durchgezogen), **verwerfen** oder **Text kopieren**.
+  - Rechtsklick auf einen Vorschlag: **Als Tätigkeit eintragen …** (Text prüfen, speichern, dann durchgezogen), **Vorschlag verwerfen** oder **Kopieren**.
   - In der Tagesliste zeigt die Ansicht **KI-Vorschläge** alle Vorschläge. STRG + C kopiert sie als fertige Ticketzeilen.
 - **Tätigkeiten dokumentieren:** Was du gemacht hast, trägst du direkt in Zeitzeuge ein. Es steht in einer eigenen Zeile „Doku“ ganz oben in der Timeline.
   - **Nachtragen** (F7): Zeit, Kunde, Kategorie und ein Satz, was du gemacht hast. Ist in der Tagesliste eine Zeile markiert, sind Zeit und Kunde schon ausgefüllt.
-  - Rechtsklick auf einen Eintrag in der Timeline: **Tätigkeit dazu eintragen …**. Rechtsklick auf eine freie Stelle: **Tätigkeit ab hh:mm eintragen …**.
+  - Rechtsklick auf einen Eintrag: **Tätigkeit dazu eintragen …**. Rechtsklick auf eine freie Stelle der Timeline: **Tätigkeit ab hh:mm eintragen …**.
+  - Timeline und Tagesliste haben dasselbe Rechtsklick-Menü. Es zeigt nur Befehle, die zum Eintrag passen.
   - **Offenes fällt auf:** Verbindungen und Telefonate ohne Dokumentation stehen gestrichelt mit „?“ in der Zeile „Doku“. Ein Klick darauf öffnet das Eintragen.
   - **Zeitzeuge fragt nach:** Endet eine TeamViewer-Sitzung, eine RDP-/SSH-/VPN-Verbindung oder ein Telefonat, erscheint unten rechts ein kleines Fenster: „Was hast du gemacht?“. Zeit, Kunde und Kategorie sind schon ausgefüllt, du schreibst nur noch einen Satz. **Später fragen** fragt in 15 Minuten wieder, **Nicht dokumentieren** fragt für diesen Eintrag nie mehr.
   - **TeamViewer-ID zum Kunden:** Bei TeamViewer kennt Zeitzeuge oft nur die ID. Trägst du beim Dokumentieren den Kunden ein, merkt es sich den Namen für diese ID. Ab dann steht überall der Name.
   - **Erinnerung:** Nach Feierabend und beim Beenden sagt Zeitzeuge, wie viele Tätigkeiten heute noch offen sind.
-  - Die Statuszeile zeigt „dokumentiert 3:10 h, 2 offen“. Die Ansicht **Dokumentation** in der Tagesliste zeigt alles, STRG + C kopiert es als fertige Ticketzeilen.
-  - Übernimmst du einen KI-Vorschlag, steht er auch als Tätigkeit in der Zeile „Doku“.
+  - Sind Tätigkeiten offen, steht rechts unten der blaue Knopf **2 offen – jetzt eintragen**. Ein Klick öffnet die erste offene Tätigkeit zum Eintragen. Die Statuszeile zeigt daneben „dokumentiert 3:10 h“.
+  - Dokumentierte Tätigkeiten tragen in der Timeline ein ✓, offene ein ?.
+  - Jede Aktion bestätigt Zeitzeuge kurz in der Statuszeile, z. B. „Tätigkeit gespeichert“ oder „Zeitzeuge fragt in 15 Minuten noch einmal“.
+  - Die Ansicht **Dokumentation** in der Tagesliste zeigt alles, STRG + C kopiert es als fertige Ticketzeilen.
+  - Trägst du einen KI-Vorschlag als Tätigkeit ein, steht er in der Zeile „Doku“ und gilt als übernommen.
 - **Eigene Zeilen oben in der Timeline:** „Doku“ (deine Tätigkeiten), „Regel“ (Klassifizierung ohne KI) und „KI“. Jede Zeile schaltest du unter **Einstellungen → Zeilen der Timeline** ein oder aus.
 - **Zeitlinie unter der Maus:** Eine gestrichelte senkrechte Linie folgt der Maus, oben steht die genaue Uhrzeit. Der Hinweis daneben zeigt, ob du zu dieser Minute eingestempelt warst (Personalzeit oder Pause) und welche Einträge gerade liefen. Der grüne Streifen unter der Stundenleiste und der helle Hintergrund markieren die Personalzeit (ohne ITM die Arbeitszeit aus den Einstellungen).
 - **Details:** Fährst du über einen Eintrag, siehst du Kunde, Zeitraum und Dauer. Ein Klick in der Timeline, ein Doppelklick oder **Enter** in der Liste öffnet die Details.
@@ -265,7 +269,7 @@ Eine Regel sagt: Wenn ein Feld dieses Muster enthält, gehört der Eintrag zu di
 - Ist das Feld **Kunde** leer, gilt der Kunde vom Eintrag, bei Telefonaten der Anrufer. `{1}` setzt die erste Klammer aus dem regulären Ausdruck ein. So holst du den Kunden aus einem Fenstertitel wie „Ticket #123 – Müller GmbH“.
 - Die Reihenfolge zählt: Die erste passende Regel gewinnt. Mit **Nach oben** und **Nach unten** änderst du sie.
 - Verbindungen und Telefonate gehen immer vor PC-Fenstern. Ein Fenster während einer TeamViewer-Sitzung gehört also zur Sitzung.
-- Treffer mit gleicher Kategorie und gleichem Kunden werden ein Block, wenn die Pause kürzer als 5 Minuten ist. Blöcke unter 2 Minuten fallen weg. Blöcke überschneiden sich nie.
+- Treffer mit gleicher Kategorie und gleichem Kunden werden ein Block, wenn die Pause kürzer als 5 Minuten ist. Blöcke unter 5 Minuten fallen weg, damit die Zeile ruhig bleibt. Blöcke überschneiden sich nie.
 - Eine ungültige Regel zeigt der Dialog als Fehler an. Speichern geht erst, wenn sie korrigiert ist.
 - **Standardregeln wiederherstellen** holt die mitgelieferten Regeln zurück: Fernwartung (TeamViewer, RDP, SSH, VPN, Remotedesktop-Fenster), Telefonsupport, Zugangsdaten, E-Mail, Microsoft 365 / Azure und Teams. Die Regel fürs Ticketsystem ist ein Muster zum Anpassen und erst einmal aus.
 
@@ -273,7 +277,7 @@ Eine Regel sagt: Wenn ein Feld dieses Muster enthält, gehört der Eintrag zu di
 |---|---|---|
 | `rules` | Standardregeln | Liste der Regeln, oberste zuerst. Felder: `name`, `field` (`any`, `app`, `title`, `customer`, `type`, `details`), `match`, `category`, `customer`, `enabled` |
 | `rules_gap_minutes` | `5` | Kürzere Pausen werden im Block überbrückt |
-| `rules_min_minutes` | `2` | Kürzere Blöcke fallen weg |
+| `rules_min_minutes` | `5` | Kürzere Blöcke fallen weg |
 
 Die Kategorien sind dieselben wie bei den KI-Vorschlägen (`ai_categories`).
 
