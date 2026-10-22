@@ -105,13 +105,27 @@ Standardpfade:
 | TeamViewer | `%APPDATA%\TeamViewer\Connections.txt` |
 | RDM | `%LOCALAPPDATA%\Devolutions\RemoteDesktopManager\Connections.log` |
 
+### VPN-Verbindungen
+
+Unter **Einstellungen ▾ → VPN-Verbindungen …** schaltest du ein oder aus, ob Zeitzeuge VPN-Verbindungen liest. Ausgeschaltet verschwinden auch die VPN-Einträge aus RDM.
+
+Dort legst du auch fest, wo die Logs deiner VPN-Clients liegen. Du kannst einzelne Dateien oder ganze Ordner eintragen. Bei einem Ordner liest Zeitzeuge alle `.log`- und `.txt`-Dateien darin. Der Dateiname wird zum Namen der Verbindung, bei OpenVPN ist das der Profilname.
+
+| VPN-Client | Standardpfad |
+|---|---|
+| OpenVPN GUI | `%USERPROFILE%\OpenVPN\log` |
+| OpenVPN Connect | `%APPDATA%\OpenVPN Connect\logs` |
+| Sophos SSL VPN Client | `%PROGRAMFILES(X86)%\Sophos\Sophos SSL VPN Client\log` |
+
+Erkannt werden Zeilen mit Zeitstempel und „Initialization Sequence Completed“ oder „CONNECTED“ als Beginn und „process exiting“, „restarting“ oder „DISCONNECTED“ als Ende. Ist die Verbindung noch offen, endet der Eintrag beim letzten Logeintrag. Hinweis: OpenVPN GUI überschreibt sein Log bei jeder neuen Verbindung, ältere Tage fehlen dann.
+
 ### Telefonate aus 3CX
 
 **Variante 1: Zeitzeuge liest selbst (empfohlen).** Zeitzeuge öffnet den 3CX-Webclient unsichtbar mit dem installierten Microsoft Edge und liest jede Minute die Anrufliste. Alle 5 Minuten lädt es die Seite neu, weil 3CX neue Anrufe im Hintergrund sonst nicht nachträgt. Gibt es kein Edge, nimmt es Chrome. Edge läuft dabei mit einem eigenen Profil, getrennt von deinem normalen Browser. Es ist egal, ob du sonst den 3CX-Client, die Webseite oder das Tischtelefon benutzt.
 
 1. **Einstellungen ▾ → 3CX direkt auslesen …** öffnen.
 2. 3CX-Adresse prüfen und **Bei 3CX anmelden …** klicken.
-3. Im Edge-Fenster ganz normal bei 3CX anmelden und das Fenster schließen.
+3. Im Edge-Fenster ganz normal bei 3CX anmelden. Sobald die Anrufliste erscheint, schließt Zeitzeuge das Fenster selbst und liest danach unsichtbar im Hintergrund weiter. Das Fenster muss also nicht offen bleiben.
 
 Die Anmeldung bleibt gespeichert (`%LOCALAPPDATA%\Zeitzeuge\3cx_profil`). Läuft sie ab, meldet sich Zeitzeuge im Infobereich. Ein Klick auf die Meldung öffnet die Anmeldung. Ton, Mikrofon und Benachrichtigungen sind gesperrt, dort klingelt also nichts. Für 3CX zählt Zeitzeuge aber als zusätzlich angemeldeter Webclient.
 
@@ -155,7 +169,7 @@ Zeitzeuge öffnet die Tagesübersicht der ITM-Zeiterfassung unsichtbar mit Edge,
 
 1. **Einstellungen ▾ → ITM-Personalzeiten …** öffnen.
 2. Adresse prüfen (`https://app.itm-gruppe.com`) und **Bei ITM anmelden …** klicken.
-3. Im Edge-Fenster anmelden und das Fenster schließen.
+3. Im Edge-Fenster anmelden. Sobald die Tagesübersicht geladen ist, schließt Zeitzeuge das Fenster selbst.
 
 Die Anmeldung liegt in `%LOCALAPPDATA%\Zeitzeuge\itm_profil`, die gelesenen Tage in `personalzeiten.json` im Datenordner. Die Timeline zeigt dann deine gestempelte Zeit hell und alles andere, auch die Pausen, abgedunkelt. Ohne Personalzeiten gilt wie bisher die Arbeitszeit aus den Einstellungen.
 

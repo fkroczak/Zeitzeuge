@@ -122,6 +122,11 @@ class ItmReader(BrowserReader):
     def _on_browser_started(self):
         self._tools.call("Page.enable")  # sonst wird das Skript nicht eingespielt
         self._tools.call("Page.addScriptToEvaluateOnNewDocument", source=CAPTURE_JS)
+        # Tagesdaten immer frisch vom Server holen: Aus dem Zwischenspeicher käme sonst
+        # beim erneuten Lesen von heute der Stand vom Morgen (z. B. nur "eingestempelt seit 08:09")
+        self._tools.call("Network.enable")
+        self._tools.call("Network.setCacheDisabled", cacheDisabled=True)
+        self._tools.call("Network.setBypassServiceWorker", bypass=True)
 
     def _tick(self):
         today = date.today().isoformat()
@@ -141,6 +146,10 @@ class ItmReader(BrowserReader):
     def _read_day(self, date_str):
         """Einen Tag lesen. False, wenn eine Anmeldung nötig ist."""
         self._set_status(f"ITM: lese {date_str} …")
+        try:  # Daten der noch angezeigten Seite vergessen, damit nur die neue Seite zählt
+            self._evaluate("window.__zz = {}")
+        except RuntimeError:
+            pass
         self._tools.call("Page.navigate", url=self.day_url(date_str))
         js = STATE_JS % json.dumps(date_str)
         state = None
@@ -174,3 +183,9 @@ class ItmReader(BrowserReader):
             json.dump(self.days, f, ensure_ascii=False, indent=1, sort_keys=True)
         os.replace(tmp, self.data_file)
         self.day_read.emit(date_str)
+
+    def _login_done(self):
+        try:  # Tagesdaten kamen an: angemeldet (Skript zum Merken läuft im Anmeldefenster mit)
+            return bool(self._evaluate("Object.keys(window.__zz || {}).length", timeout=5))
+        except Exception:
+            return False
