@@ -125,7 +125,9 @@ checks = [
     (by_name["Hanna Dr. Kurz"]["via"], "Carla Test 702"),
     (by_name["Info Cafeteria"]["direction"], "Ausgehend"),
     (by_name["Carla Test"]["direction"], "Verpasst"),
-    (sum(1 for c in calls() if c["duration_s"] > 0 and c["name"] != "Alt Kunde"), 7),
+    # verschiedene Anrufer zählen: läuft der Test über Mitternacht, verschiebt die
+    # nachgebaute Seite "Heute"/"Gestern" und dieselben Anrufe kommen mit neuem Datum
+    (len({c["name"] for c in calls() if c["duration_s"] > 0 and c["name"] != "Alt Kunde"}), 7),
 ]
 for got, want in checks:
     if got != want:
