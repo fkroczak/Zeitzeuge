@@ -92,7 +92,7 @@ Unter Windows ist alles langsamer (Virenscanner, EXE-Entpacken), das Verhältnis
 | neu: `tests/tray_test.py` (Menü, pausieren/fortsetzen über Infobereich und Statuszeile, Zustand gespeichert, PC-Daten bei Pause sichtbar) | grün |
 | neu: `tests/parser_test.py` (Zeitzone, zu kurze/ungültige Zeilen, Cache, strenges Zeitformat) | grün |
 | Alter vs. neuer Parser auf 126.000 Logzeilen | identisch |
-| Windows-CI (GitHub Actions, windows-latest): alle 15 Schritte inkl. neuer Tests, 3CX/ITM mit echtem Edge und EXE-Bau | grün: Läufe 33–37. Läufe 38–40 rot durch Absturz beim Beenden (siehe Befunde), danach behoben |
+| Windows-CI (GitHub Actions, windows-latest): alle 15 Schritte inkl. neuer Tests, 3CX/ITM mit echtem Edge und EXE-Bau | grün: Läufe 33–37, 41, 42 (alle 15 Schritte inkl. EXE). Läufe 38–40 rot durch Absturz beim Beenden, mit `d588166` behoben |
 | Echtes Beenden (`Beenden` im Menü, 10× alt und 10× neu) | 0 Abstürze |
 | Sichtprüfung hell und dunkel per Screenshots | ok |
 | Unabhängiges Code-Review durch einen zweiten Agenten (Parser alt/neu mit je 20.000 Zufallszeilen inkl. ungültiger Daten, Stresstest Neu-Einlesen während Pfad- und Datumswechsel, Start/Beenden, Lazy Imports) | keine Fehler gefunden |
