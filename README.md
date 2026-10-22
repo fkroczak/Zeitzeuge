@@ -10,6 +10,7 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
 
 - **Tages-Timeline** von 00:00 bis 24:00 mit markierter Arbeitszeit. Überlappende Einträge werden in eigenen Zeilen gezeigt.
 - **TeamViewer:** liest `Connections.txt` mit Sitzungs-ID, Beginn und Ende. Verbindungen unter 1 Minute werden ausgeblendet.
+  - Statt der ID kannst du einen Namen vergeben: Rechtsklick auf die Zeile in der Tagesliste, dann **TeamViewer-ID benennen …**.
 - **Remote Desktop Manager (Devolutions):** liest `Connections.log`.
   - RDP-, SSH-, VPN-, FTP- und Website-Verbindungen mit Beginn und Ende.
   - Angezeigte Passwörter, Benutzernamen und Einmal-Passwörter (OTP).
@@ -25,6 +26,12 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
 - **Tagesliste** unter der Timeline mit Von, Bis, Dauer, Typ, Kunde und Details.
   - Die Statuszeile zeigt die belegte Zeit des Tages. Überschneidungen werden nicht doppelt gezählt.
   - Markierte Zeilen kopierst du mit STRG + C, zum Beispiel für die Ticket-Dokumentation.
+  - Die Auswahl rechts in der Werkzeugleiste legt fest, wie die Liste aussieht:
+    - **Zusammengefasst** (Standard): Verbindungen zum selben Eintrag mit weniger als 5 Minuten Pause werden eine Zeile. Passwort-, Benutzernamen- und OTP-Anzeigen aus RDM stehen als Zähler bei der Verbindung, zum Beispiel „3 Verbindungen · 2× OTP, 1× Passwort“. Ohne passende Verbindung erscheinen sie als „Zugangsdaten“.
+    - **Einzeln:** jede Zeile aus den Logs, wie bisher.
+    - **Arbeitsblöcke:** alles mit weniger als 10 Minuten Pause wird ein Block, zum Beispiel „01:18–02:05 · SSL VPN, EPM, OPNsense“. Praktisch fürs Ticket.
+  - Die Details eines zusammengefassten Eintrags zeigen alle einzelnen Einträge.
+  - Die Pausen stellst du in der `zeitzeuge_config.json` unter `merge_gap_minutes` und `block_gap_minutes` ein.
 - **Details:** Fährst du über einen Eintrag, siehst du Kunde, Zeitraum und Dauer. Ein Klick in der Timeline, ein Doppelklick oder **Enter** in der Liste öffnet die Details.
 - **Immer aktuell:** Die Logs werden alle 2 Minuten geprüft. Mit F5 liest du sie sofort neu ein. Gelesen werden nur Dateien, die sich geändert haben.
 - **Bedienung:**

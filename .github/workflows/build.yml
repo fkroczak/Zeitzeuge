@@ -34,6 +34,11 @@ jobs:
           QT_QPA_PLATFORM: offscreen
         run: python tests/ui_audit_test.py
 
+      - name: Tagesliste zusammenfassen
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python tests/grouping_test.py
+
       - name: Lesbarkeit (nur Hinweis)
         run: python tests/readability_check.py
 

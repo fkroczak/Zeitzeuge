@@ -10,6 +10,7 @@ from PyQt5.QtWidgets import (QDialog, QDialogButtonBox, QFormLayout,
 
 from activity_tracker import app_label, merge_segments
 from call_import import load_call_suggestions
+from grouping import format_tv_id, group_entries
 from log_parsers import ConnectionIndex, RdmParser, TeamViewerParser
 
 DEBUG = False  # bei Bedarf auf True setzen
@@ -106,10 +107,16 @@ class ActivityViewDialog(QDialog):
         form.addRow("Dauer:", ro_field(dauer))
         layout.addLayout(form)
 
-        if activity.get("details"):
-            details = QTextEdit(activity["details"])
+        text = activity.get("details", "")
+        if activity.get("parts"):
+            lines = [f"{p['start'][11:16]}–{p['end'][11:16]}  {type_label(p)}  "
+                     f"{p.get('customer_name', '')}" for p in activity["parts"]]
+            text = (text + "\n\n" if text else "") + \
+                f"Enthält {len(lines)} Einträge:\n" + "\n".join(lines)
+        if text:
+            details = QTextEdit(text)
             details.setReadOnly(True)
-            details.setMaximumHeight(90)
+            details.setMaximumHeight(240 if activity.get("parts") else 90)
             label = QLabel("Details:")
             label.setBuddy(details)
             layout.addWidget(label)
@@ -270,7 +277,22 @@ class TimelineView(QGraphicsView):
                 continue
             valid.append(a)
         valid.sort(key=lambda a: a["start"])
+
+        # TeamViewer: eigener Name statt nur der ID
+        names = self.config.get("teamviewer_names", {})
+        for a in valid:
+            tv_id = a.get("tv_id")
+            if tv_id:
+                a["customer_name"] = names.get(tv_id) or f"TeamViewer {format_tv_id(tv_id)}"
+                a["details"] = f"TeamViewer-ID {format_tv_id(tv_id)}"
         return valid
+
+    def view_entries(self, date: QDate):
+        """Einträge so, wie Timeline und Liste sie zeigen (einzeln oder zusammengefasst)."""
+        entries = self.activities_for(date)
+        if self.config.get("list_view", "grouped") == "single":
+            return entries
+        return group_entries(entries, self.config.get("merge_gap_minutes", 5))
 
     def pc_entries_for(self, date: QDate, min_seconds=30, max_gap=60):
         """Aktive Fenster des Tages als Einträge (für Band und Tagesliste)."""
@@ -340,7 +362,7 @@ class TimelineView(QGraphicsView):
         self.tooltip.hide()
         self.scene.setBackgroundBrush(self.background_color)
 
-        activities = self.activities_for(date)
+        activities = self.view_entries(date)
 
         # Spuren verteilen: überlappende Einträge kommen in die nächste Zeile
         lanes_end = []

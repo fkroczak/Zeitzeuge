@@ -156,6 +156,7 @@ class TeamViewerParser(BaseConnectionParser):
                     "end": end_local.strftime("%Y-%m-%d %H:%M:%S"),
                     "type": "TeamViewer",
                     "customer_name": f"TeamViewer (ID: {session_id})",
+                    "tv_id": session_id,
                     "is_suggestion": True,
                 }
                 if DEBUG:
@@ -293,6 +294,7 @@ class RdmParser(BaseConnectionParser):
             "vpn": "VPN",
             "tunnel": "VPN",
             "gateway": "VPN",
+            "teamviewer": "TeamViewer",
         }
 
         for key, protocol in connection_types.items():
@@ -305,15 +307,16 @@ class RdmParser(BaseConnectionParser):
                     }
                 elif entry_key in self.current_sessions:
                     session = self.current_sessions[entry_key]
-                    connections.append(
-                        self._create_connection(
-                            session["start"],
-                            data["timestamp"],
-                            session["entry_name"],
-                            f"{protocol}-Verbindung",
-                            f"{protocol}-Verbindung {session['entry_name']}",
-                        )
+                    conn = self._create_connection(
+                        session["start"],
+                        data["timestamp"],
+                        session["entry_name"],
+                        f"{protocol}-Verbindung",
+                        f"{protocol}-Verbindung {session['entry_name']}",
                     )
+                    if protocol == "TeamViewer" and session["entry_name"].replace(" ", "").isdigit():
+                        conn["tv_id"] = session["entry_name"].replace(" ", "")
+                    connections.append(conn)
                     del self.current_sessions[entry_key]
                 return
 
