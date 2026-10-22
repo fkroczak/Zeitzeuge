@@ -865,7 +865,7 @@ class TimelineApp(QMainWindow):
             missing = self.timeline.missing_sources()
             if missing:
                 parts.append(f"keine Logdatei gefunden: {', '.join(missing)} "
-                             "(Pfade unter Einstellungen → Datenquellen)")
+                             "(Pfade unter Einstellungen → Datenquellen → Einrichten)")
         if self.pc_activities:
             parts.append(f"am PC aktiv {format_duration(merged_seconds(self.pc_activities))}")
         itm_day = self.itm_reader.day(self.current_date.toString("yyyy-MM-dd")) if self.itm_reader else None
