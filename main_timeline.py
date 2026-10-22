@@ -175,6 +175,9 @@ def load_config_with_defaults():
             r"C:\Program Files (x86)\Sophos\Connect",
             r"C:\Program Files\Sophos\Connect",
         ],
+        # Eigene VPN-Aufzeichnung: Teil der Adapterbeschreibung -> Quelle
+        "vpn_monitor_enabled": True,
+        "vpn_adapters": {"Sophos": "Sophos", "Fortinet": "FortiClient"},
         # deine gewÃ¼nschten Zeitzonen
         "timezone_correction": 0,
         "teamviewer_timezone_correction": 1,
@@ -439,7 +442,16 @@ class TimelineApp(QMainWindow):
 
         # Anruf-Empfang für das Tampermonkey-Skript starten
         self.timeline.calls_file = CALLS_FILE
-        self.timeline.vpn_reader.archive_file = VPN_FILE
+        # VPN: eigene Aufzeichnung alle 30 Sekunden, Logs alle 2 Minuten – unabhängig von der Ansicht
+        vpn = self.timeline.vpn_reader
+        vpn.archive_file = VPN_FILE
+        vpn.dirs = self.config.get("sophos_connect_dirs") or vpn.dirs
+        vpn.adapters = self.config.get("vpn_adapters") or vpn.adapters
+        self.vpn_timer = QTimer(self)
+        self.vpn_timer.timeout.connect(self.vpn_sample)
+        if self.config.get("vpn_monitor_enabled", True):
+            self.vpn_timer.start(30 * 1000)
+            QTimer.singleShot(0, self.vpn_sample)
         self.call_server = None
         if self.config.get("calls_enabled", True):
             self.call_signal = CallSignal()
@@ -730,7 +742,15 @@ class TimelineApp(QMainWindow):
         self.statusBar().showMessage("Logs neu eingelesen", 2000)
 
     def auto_refresh(self):
+        try:
+            self.timeline.vpn_reader.update_from_logs()  # Sophos-Logs sichern, bevor sie überschrieben werden
+        except Exception as e:
+            print(f"Fehler beim Lesen der VPN-Logs: {e}")
         if self.current_date == QDate.currentDate():
+            self.timeline.refresh()
+
+    def vpn_sample(self):
+        if self.timeline.vpn_reader.sample() and self.current_date == QDate.currentDate() and self.isVisible():
             self.timeline.refresh()
 
     # ---------------------- Aktivitätsprotokoll -------------------------------

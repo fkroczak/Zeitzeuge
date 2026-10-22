@@ -7,7 +7,7 @@ from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from vpn_reader import VpnReader, parse_fortinet, parse_sophos
+from vpn_reader import VpnReader, adapters_up, parse_fortinet, parse_sophos
 
 SCVPN = """\
 2026-10-19 02:16:57PM [12400] dbg 203.0.113.10 VPN state changed to connecting
@@ -73,6 +73,60 @@ with tempfile.TemporaryDirectory() as tmp:
     check("nach Überschreiben", len(VpnReader(archive, [logs]).connections()), 3)
     with open(archive, encoding="utf-8") as f:
         check("Archiv-Namen", json.load(f)["names"], {"203.0.113.20": "Kunde Nord"})
+
+# Eigene Aufzeichnung: Adapter alle 30 s prüfen, ohne Logs
+from datetime import timedelta  # noqa: E402
+
+with tempfile.TemporaryDirectory() as tmp:
+    archive = os.path.join(tmp, "vpn_verbindungen.json")
+    up = []
+    reader = VpnReader(archive, [os.path.join(tmp, "fehlt")], adapter_func=lambda: list(up))
+    t = datetime(2026, 10, 23, 9, 0, 0)
+
+    def tick(seconds=30):
+        global t
+        t += timedelta(seconds=seconds)
+        reader.sample(now=t)
+
+    tick()                                   # 09:00:30 nichts verbunden
+    up[:] = ["Fortinet Virtual Ethernet Adapter (NDIS 6.30) (Ethernet 3)", "Intel Wi-Fi"]
+    for _ in range(10):
+        tick()                               # 09:01:00 – 09:05:30 verbunden
+    up[:] = []
+    tick()                                   # 09:06:00 getrennt
+    up[:] = ["Sophos TAP Adapter (Sophos-TAP)"]
+    tick()                                   # 09:06:30 Sophos verbunden
+    tick()                                   # 09:07:00
+    tick(3600)                               # Ruhezustand: Ende bleibt 09:07:00, neuer Eintrag ab 10:07:00
+    tick()                                   # 10:07:30
+
+    # Zeitzeuge wird neu gestartet (z. B. nach Absturz): Archiv bleibt, offener Eintrag wird geschlossen
+    reader2 = VpnReader(archive, [os.path.join(tmp, "fehlt")], adapter_func=lambda: [])
+    reader2.sample(now=t + timedelta(seconds=30))
+    rows = [(c["start"][11:], c["end"][11:], c["customer_name"], c["running"]) for c in reader2.connections()]
+    check("eigene Aufzeichnung", rows, [
+        ("09:01:00", "09:05:30", "FortiClient", False),
+        ("09:06:30", "09:07:00", "Sophos Connect", False),
+        ("10:07:00", "10:07:30", "Sophos Connect", False),
+    ])
+
+    # Logs mit Namen haben Vorrang: überlappende eigene Aufzeichnung fällt weg
+    logs = os.path.join(tmp, "Connect")
+    os.makedirs(logs)
+    with open(os.path.join(logs, "scvpn.log"), "w", encoding="utf-8") as f:
+        f.write("2026-10-23 09:06:40AM [1] dbg 198.51.100.30 VPN state changed to connected\n"
+                "2026-10-23 09:06:55AM [1] dbg 198.51.100.30 VPN state changed to disconnected\n")
+    with open(os.path.join(logs, "scgui.log"), "w", encoding="utf-8") as f:
+        f.write("2026-10-23 09:06:41AM [1] inf Verbindung Kunde Süd hergestellt\n")
+    rows = [(c["start"][11:], c["customer_name"]) for c in VpnReader(archive, [logs], adapter_func=lambda: []).connections()]
+    check("Logs vor eigener Aufzeichnung", rows, [
+        ("09:01:00", "FortiClient"), ("09:06:40", "Kunde Süd"), ("10:07:00", "Sophos Connect")])
+
+# Echte Adapterabfrage (unter Windows über GetAdaptersAddresses)
+found = adapters_up()
+print("Verbundene Adapter:", found)
+if not found or not all(isinstance(a, str) and a.strip() for a in found):
+    errors.append(f"Adapterabfrage liefert nichts Brauchbares: {found!r}")
 
 if errors:
     print("\n".join(errors))

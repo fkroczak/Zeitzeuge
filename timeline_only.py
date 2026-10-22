@@ -262,7 +262,6 @@ class TimelineView(QGraphicsView):
 
         if self._vpn_index is None:
             try:
-                self.vpn_reader.dirs = self.config.get("sophos_connect_dirs") or self.vpn_reader.dirs
                 self._vpn_index = ConnectionIndex(self.vpn_reader.connections())
             except Exception as e:
                 print(f"Fehler beim Lesen der VPN-Logs: {e}")

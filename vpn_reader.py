@@ -10,12 +10,15 @@ Sophos Connect schreibt in seinen Programmordner:
               Adaptern von FortiClient ("Fortinet ... changed state from Down to Up").
 
 Die Logs werden bei Neustarts und neuen Verbindungen überschrieben. Darum hält
-Zeitzeuge alles Gefundene in vpn_verbindungen.json fest.
+Zeitzeuge alles in vpn_verbindungen.json fest und zeichnet zusätzlich selbst auf:
+Alle 30 Sekunden prüft es, ob ein VPN-Adapter (Sophos, Fortinet, ...) verbunden
+ist. So bleiben die Zeiten erhalten, auch wenn die Logs fehlen oder gelöscht sind.
 """
 
 import json
 import os
 import re
+import sys
 from datetime import datetime, timedelta
 
 TIME_FMT = "%Y-%m-%d %H:%M:%S"
@@ -158,45 +161,173 @@ def parse_fortinet(charon_lines, now=None):
     return result
 
 
-class VpnReader:
-    """Liest die Logs, merkt sich alles in archive_file und liefert alle Verbindungen."""
+def adapters_up():
+    """Beschreibungen und Namen aller verbundenen Netzwerkadapter."""
+    if sys.platform == "win32":
+        return _adapters_up_windows()
+    try:
+        import psutil
+        return [name for name, st in psutil.net_if_stats().items() if st.isup]
+    except Exception:
+        return []
 
-    def __init__(self, archive_file=None, dirs=None):
+
+if sys.platform == "win32":
+    import ctypes
+    from ctypes import wintypes
+
+    class _ADAPTER(ctypes.Structure):
+        pass
+
+    _ADAPTER._fields_ = [
+        ("Length", wintypes.ULONG), ("IfIndex", wintypes.DWORD),
+        ("Next", ctypes.POINTER(_ADAPTER)), ("AdapterName", ctypes.c_char_p),
+        ("FirstUnicastAddress", ctypes.c_void_p), ("FirstAnycastAddress", ctypes.c_void_p),
+        ("FirstMulticastAddress", ctypes.c_void_p), ("FirstDnsServerAddress", ctypes.c_void_p),
+        ("DnsSuffix", ctypes.c_wchar_p), ("Description", ctypes.c_wchar_p),
+        ("FriendlyName", ctypes.c_wchar_p), ("PhysicalAddress", ctypes.c_ubyte * 8),
+        ("PhysicalAddressLength", wintypes.ULONG), ("Flags", wintypes.ULONG),
+        ("Mtu", wintypes.ULONG), ("IfType", wintypes.ULONG), ("OperStatus", ctypes.c_int),
+    ]
+
+    def _adapters_up_windows():
+        # Ohne Adressen/DNS abfragen: schnell genug für alle 30 Sekunden
+        flags = 0x0001 | 0x0002 | 0x0004 | 0x0008  # ohne Unicast, Anycast, Multicast, DNS
+        size = wintypes.ULONG(16384)
+        for _ in range(3):
+            buf = ctypes.create_string_buffer(size.value)
+            ret = ctypes.windll.iphlpapi.GetAdaptersAddresses(0, flags, None, buf, ctypes.byref(size))
+            if ret != 111:  # ERROR_BUFFER_OVERFLOW: mit größerem Puffer noch einmal
+                break
+        if ret != 0:
+            return []
+        result = []
+        node = ctypes.cast(buf, ctypes.POINTER(_ADAPTER))
+        while node:
+            a = node.contents
+            if a.OperStatus == 1:  # IfOperStatusUp
+                result.append(f"{a.Description or ''} ({a.FriendlyName or ''})")
+            node = a.Next
+        return result
+
+
+# Teil der Adapterbeschreibung -> Quelle (wie in den Logs, damit doppelte wegfallen)
+DEFAULT_ADAPTERS = {"Sophos": "Sophos", "Fortinet": "FortiClient"}
+LABELS = {"Sophos": "Sophos Connect"}
+SAMPLE_SECONDS = 30
+
+
+def _overlaps(a, b):
+    return a["start"] < b["end"] and b["start"] < a["end"]
+
+
+class VpnReader:
+    """
+    Hält alle VPN-Verbindungen in archive_file fest:
+    - "connections": aus den Logs (mit Namen),
+    - "adapter":     selbst aufgezeichnet (sample() alle 30 Sekunden),
+    - "names":       Sophos-ID -> Verbindungsname.
+    """
+
+    def __init__(self, archive_file=None, dirs=None, adapters=None, adapter_func=None):
         self.archive_file = archive_file
         self.dirs = dirs or DEFAULT_DIRS
+        self.adapters = adapters or DEFAULT_ADAPTERS
+        self.adapter_func = adapter_func or adapters_up
         self.files_read = None
         self._sig = None
-        self._result = []
+        self._data = None
+        self._running_logs = []
+        self._last_sample = None
 
-    def _load_archive(self):
-        try:
-            with open(self.archive_file, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            return data.get("connections", []), data.get("names", {})
-        except (OSError, ValueError, TypeError, AttributeError):
-            return [], {}
+    # ------------------------------------------------------------ Archiv
 
-    def _save_archive(self, connections, names):
+    def _archive(self):
+        if self._data is None:
+            data = {}
+            if self.archive_file:
+                try:
+                    with open(self.archive_file, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                except (OSError, ValueError):
+                    data = {}
+            if not isinstance(data, dict):
+                data = {}
+            self._data = {k: data.get(k, default) for k, default in
+                          (("connections", []), ("adapter", []), ("names", {}))}
+        return self._data
+
+    def _save(self):
+        if not self.archive_file:
+            return
         try:
-            os.makedirs(os.path.dirname(self.archive_file), exist_ok=True)
+            os.makedirs(os.path.dirname(self.archive_file) or ".", exist_ok=True)
             tmp = self.archive_file + ".tmp"
             with open(tmp, "w", encoding="utf-8") as f:
-                json.dump({"connections": connections, "names": names}, f, ensure_ascii=False, indent=1)
+                json.dump(self._data, f, ensure_ascii=False, indent=1)
             os.replace(tmp, self.archive_file)
         except OSError as e:
             print(f"VPN-Verbindungen konnten nicht gespeichert werden: {e}")
 
-    def connections(self):
+    # ------------------------------------------------------------ eigene Aufzeichnung
+
+    def sample(self, now=None):
+        """Verbundene VPN-Adapter prüfen und sofort speichern. Gibt True zurück, wenn sich etwas geändert hat."""
+        now = now or datetime.now()
+        try:
+            up_list = self.adapter_func()
+        except Exception as e:
+            print(f"Netzwerkadapter konnten nicht gelesen werden: {e}")
+            return False
+        up = {}
+        for desc in up_list:
+            for part, source in self.adapters.items():
+                if part.lower() in desc.lower():
+                    up[desc] = source
+                    break
+
+        # Lange Lücke (Ruhezustand, Zeitzeuge war aus): offene Einträge enden beim letzten Blick
+        gap = (self._last_sample is None
+               or (now - self._last_sample).total_seconds() > 3 * SAMPLE_SECONDS)
+        self._last_sample = now
+        live = self._archive()["adapter"]
+        stamp = now.strftime(TIME_FMT)
+        changed = False
+        still_open = set()
+        for c in live:
+            if not c.get("running"):
+                continue
+            if gap or c["vpn_id"] not in up:
+                c["running"] = False
+            else:
+                c["end"] = stamp
+                still_open.add(c["vpn_id"])
+            changed = True
+        for desc, source in up.items():
+            if desc not in still_open:
+                name = LABELS.get(source, source)
+                live.append(_conn(now, now, source, desc, name,
+                                  f"{name}: Adapter {desc} (von Zeitzeuge aufgezeichnet)", True))
+                changed = True
+        if changed:
+            self._save()
+        return changed
+
+    # ------------------------------------------------------------ Logs
+
+    def update_from_logs(self):
+        """Sophos-/charon-Logs lesen und Neues ins Archiv übernehmen (nur wenn sich Dateien geändert haben)."""
         folders = [os.path.expandvars(d) for d in self.dirs if os.path.isdir(os.path.expandvars(d))]
         self.files_read = len(folders)
         files = [os.path.join(d, n + s) for d in folders
                  for n in ("scvpn.log", "scgui.log", "charon.log") for s in ("", ".old")]
         sig = tuple(os.path.getmtime(f) if os.path.exists(f) else 0 for f in files)
-        running = any(c.get("running") for c in self._result)
-        if sig == self._sig and not running:
-            return self._result
+        if sig == self._sig and not self._running_logs:
+            return
+        self._sig = sig
 
-        archived, names = self._load_archive() if self.archive_file else ([], {})
+        data = self._archive()
+        names = data["names"]
         found = []
         for d in folders:
             found += parse_sophos(_lines(d, "scvpn.log"), _lines(d, "scgui.log"), names)
@@ -205,12 +336,10 @@ class VpnReader:
         def key(c):
             return (c.get("vpn_source"), c.get("vpn_id"), c.get("start"))
 
-        merged = {key(c): c for c in archived}
+        merged = {key(c): c for c in data["connections"]}
         changed = False
         for c in found:
-            if c["running"]:
-                continue
-            if merged.get(key(c)) != c:
+            if not c["running"] and merged.get(key(c)) != c:
                 merged[key(c)] = c
                 changed = True
         stored = sorted(merged.values(), key=lambda c: c["start"])
@@ -220,9 +349,27 @@ class VpnReader:
                 c["customer_name"] = names[c["vpn_id"]]
                 c["details"] = f"Sophos Connect: {c['customer_name']} ({c['vpn_id']})"
                 changed = True
-        if changed and self.archive_file:
-            self._save_archive(stored, names)
+        data["connections"] = stored
+        if changed:
+            self._save()
+        self._running_logs = [c for c in found if c["running"]]
 
-        self._sig = sig
-        self._result = [dict(c) for c in stored] + [c for c in found if c["running"]]
-        return self._result
+    # ------------------------------------------------------------ Anzeige
+
+    def connections(self):
+        """Alle Verbindungen für die Timeline. Eigene Aufzeichnung nur, wo die Logs nichts haben."""
+        self.update_from_logs()
+        data = self._archive()
+        from_logs = data["connections"] + self._running_logs
+        result = [dict(c) for c in from_logs]
+        for c in data["adapter"]:
+            if not c.get("running") and (_t(c["end"]) - _t(c["start"])).total_seconds() < MIN_SECONDS:
+                continue
+            if any(l.get("vpn_source") == c.get("vpn_source") and _overlaps(l, c) for l in from_logs):
+                continue
+            result.append(dict(c))
+        return sorted(result, key=lambda c: c["start"])
+
+
+def _t(text):
+    return datetime.strptime(text, TIME_FMT)
