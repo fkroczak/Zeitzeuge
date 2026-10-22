@@ -54,7 +54,7 @@ oder größer sein.
 | `b39f394` | Oberfläche, Menü, Infobereich, PC-Band bei Pause, neue Tests | `icons.py` (neu), `main_timeline.py`, `timeline_only.py`, `activity_tracker.py`, `tests/tray_test.py` (neu), `tests/parser_test.py` (neu), `tests/ui_audit_test.py`, `.github/workflows/build.yml` |
 | `41b0103`, `936be8b` | Doku, Screenshots, doppelter Aktivitätstyp, kaputte Umlaute in Kommentaren | `README.md`, `docs/…`, `main_timeline.py` |
 | `8339294` | Merge von `main`: neues Logo (PR #3), 3CX-Tage einstellbar (PR #4) | `zeitzeuge.ico/.png/.svg`, `pbx_reader.py`, `main_timeline.py`, `README.md` |
-| nächster Commit | Fix: Log-Thread beim Beenden abwarten (siehe Befunde) + Test | `timeline_only.py`, `main_timeline.py`, `tests/tray_test.py` |
+| `47091c7` | Fix: Log-Thread beim Beenden abwarten (siehe Befunde) + Test | `timeline_only.py`, `main_timeline.py`, `tests/tray_test.py` |
 | `0f4c26c` | Neues Logo als Zustandsanzeige im Infobereich, Screenshots neu | `icons.py`, `main_timeline.py`, `ZeitZeuge.spec` (SVG in die EXE), `tests/ui_audit_test.py`, `docs/…` |
 
 ### Neue Bedienung im Überblick
