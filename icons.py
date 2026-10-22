@@ -3,6 +3,8 @@
 Die Formen stammen aus Lucide (https://lucide.dev, ISC-Lizenz). Sie werden in der
 Textfarbe des aktuellen Designs gezeichnet, deshalb passen sie zu Hell und Dunkel.
 """
+import re
+
 from PyQt5.QtCore import QByteArray, QRectF, Qt
 from PyQt5.QtGui import QColor, QIcon, QPainter, QPixmap
 from PyQt5.QtSvg import QSvgRenderer  # explizit importiert, damit PyInstaller QtSvg einpackt
@@ -50,56 +52,48 @@ def icon(name, color):
     svg = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" '
            f'stroke="{QColor(color).name()}" stroke-width="2" stroke-linecap="round" '
            f'stroke-linejoin="round">{PATHS[name]}</svg>')
+    return _render(svg, (16, 20, 24, 32, 48))
+
+
+# Farben aus dem Logo: roter "Jetzt"-Punkt = Aufzeichnung läuft, grau = pausiert
+ACTIVE_COLOR = "#E5484D"
+PAUSED_COLOR = "#7D8590"  # Kontrast >= 3:1 auf heller und dunkler Taskleiste
+# Pause-Zeichen im Koordinatensystem des Logos (256 x 256), ersetzt dort den Punkt
+PAUSE_BARS = ('<rect x="96" y="86" width="26" height="84" rx="7" fill="{c}"/>'
+              '<rect x="134" y="86" width="26" height="84" rx="7" fill="{c}"/>')
+
+
+def _render(svg, sizes):
     renderer = QSvgRenderer(QByteArray(svg.encode()))
     result = QIcon()
-    for size in (16, 20, 24, 32, 48):
+    for size in sizes:
         pix = QPixmap(size, size)
         pix.fill(Qt.transparent)
         painter = QPainter(pix)
         renderer.render(painter, QRectF(0, 0, size, size))
         painter.end()
         result.addPixmap(pix)
+        result.addPixmap(pix, QIcon.Disabled)  # auch in deaktivierten Menüzeilen farbig
     return result
 
 
-def _draw_state(painter, x, y, r, active):
-    """Grüner Punkt = Aufzeichnung läuft, grauer Punkt mit Pause-Zeichen = pausiert.
+def tray_icon(logo_svg, active):
+    """Logo für den Infobereich. Pausiert: Ring grau, Pause-Zeichen statt rotem Punkt.
 
-    Das Pause-Zeichen sorgt dafür, dass der Zustand nicht nur an der Farbe hängt.
+    Der Zustand hängt so nicht nur an der Farbe, sondern auch an der Form.
     """
-    painter.setRenderHint(QPainter.Antialiasing)
-    painter.setPen(Qt.NoPen)
-    painter.setBrush(QColor("#1F9D55" if active else "#6B7280"))
-    painter.drawEllipse(QRectF(x, y, r, r))
     if not active:
-        painter.setBrush(QColor("#FFFFFF"))
-        w, h = r * 0.14, r * 0.46
-        painter.drawRect(QRectF(x + r * 0.30, y + (r - h) / 2, w, h))
-        painter.drawRect(QRectF(x + r * 0.56, y + (r - h) / 2, w, h))
+        logo_svg = re.sub(r'stroke="#[0-9A-Fa-f]{6}"', f'stroke="{PAUSED_COLOR}"', logo_svg)
+        logo_svg = re.sub(r"<circle[^>]*/>", PAUSE_BARS.format(c=PAUSED_COLOR), logo_svg)
+    return _render(logo_svg, (16, 20, 24, 32, 48, 64))
 
 
-def with_badge(base_icon, active, size=64):
-    """App-Symbol mit Zustandspunkt unten rechts (für den Infobereich)."""
-    pix = base_icon.pixmap(size, size)
-    painter = QPainter(pix)
-    r = size * 0.42
-    x = y = size - r - 1
-    painter.setRenderHint(QPainter.Antialiasing)
-    painter.setPen(Qt.NoPen)
-    painter.setBrush(QColor("#FFFFFF"))
-    painter.drawEllipse(QRectF(x - 2, y - 2, r + 4, r + 4))
-    _draw_state(painter, x, y, r, active)
-    painter.end()
-    return QIcon(pix)
-
-
-def state_dot(active, size=32):
-    """Nur der Zustandspunkt (für die Statuszeile)."""
-    pix = QPixmap(size, size)
-    pix.fill(Qt.transparent)
-    painter = QPainter(pix)
-    _draw_state(painter, size * 0.1, size * 0.1, size * 0.8, active)
-    painter.end()
-    result = QIcon(pix)
-    result.addPixmap(pix, QIcon.Disabled)  # auch in der (deaktivierten) Statuszeile des Menüs farbig
-    return result
+def state_dot(active):
+    """Kleiner Zustandspunkt für Statuszeile und Menü, in den Farben des Logos."""
+    if active:
+        svg = f'<circle cx="128" cy="128" r="80" fill="{ACTIVE_COLOR}"/>'
+    else:
+        svg = (f'<circle cx="128" cy="128" r="110" fill="{PAUSED_COLOR}"/>'
+               + PAUSE_BARS.format(c="#FFFFFF"))
+    return _render(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">{svg}</svg>',
+                   (16, 20, 24, 32))

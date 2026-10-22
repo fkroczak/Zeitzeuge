@@ -11,8 +11,9 @@ externen Dienste oder Config-Formate angefasst.
 - **Oberfläche:** einheitliche Linien-Icons, deutsche Standardknöpfe, klarere Abstände,
   Hell/Dunkel konsistent.
 - **Menü:** nach Aufgaben gegliedert, Seltenes in Untermenüs „Datenquellen“ und „Datenspeicher“.
-- **Infobereich:** Aufzeichnung direkt pausieren/fortsetzen, Zustand am Symbol (grün / grau mit
-  Pause), im Menü und in der Statuszeile sichtbar.
+- **Infobereich:** Aufzeichnung direkt pausieren/fortsetzen. Der Zustand steckt im **neuen Logo**:
+  roter „Jetzt“-Punkt = läuft, grauer Ring mit Pause-Zeichen = pausiert. Gleiche Anzeige im Menü
+  und in der Statuszeile.
 - **Fehler behoben:** Bei ausgeschalteter Aufzeichnung verschwand das bereits Aufgezeichnete
   des Tages aus der Timeline.
 - Alle Tests grün (lokal und Windows-CI), 2 neue Tests.

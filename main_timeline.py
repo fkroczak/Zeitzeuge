@@ -842,7 +842,8 @@ class TimelineApp(QMainWindow):
             "Aktive Fenster werden aufgezeichnet. Klicken zum Pausieren." if on
             else "Die Aufzeichnung der aktiven Fenster ist pausiert. Klicken zum Fortsetzen.")
         if self.tray:
-            self.tray.setIcon(icons.with_badge(self.windowIcon(), on))
+            self.tray.setIcon(icons.tray_icon(self.logo_svg, on) if self.logo_svg
+                              else self.windowIcon())
             self.tray.setToolTip(f"Zeitzeuge – {text}")
             self.tray_state_action.setText(text)
             self.tray_state_action.setIcon(icons.state_dot(on))
@@ -1106,6 +1107,11 @@ class TimelineApp(QMainWindow):
 
     def _build_tray(self):
         self.tray = None
+        try:
+            with open(resource_path("zeitzeuge.svg"), encoding="utf-8") as f:
+                self.logo_svg = f.read()
+        except OSError:  # ältere Builds ohne SVG: einfach das Logo aus der .ico
+            self.logo_svg = None
         if not QSystemTrayIcon.isSystemTrayAvailable():
             return
         self.tray = QSystemTrayIcon(self.windowIcon(), self)

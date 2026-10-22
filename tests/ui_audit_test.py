@@ -175,6 +175,12 @@ for dark in (False, True):
 window.timeline.dark_mode = window.dark_mode
 window.timeline.init_timeline_colors()
 
+# Zustand im Infobereich: auf heller und dunkler Windows-Taskleiste erkennbar (Grafik, 3 : 1)
+import icons  # noqa: E402
+for taskbar in ("#F3F3F3", "#1F2329"):
+    for color in (icons.ACTIVE_COLOR, icons.PAUSED_COLOR):
+        check_contrast("Infobereich", color, taskbar, minimum=3.0)
+
 # Graue Hinweistexte direkt im Code (nur Farbe "gray" ist auf hellem Grund zu blass)
 for path in ["main_timeline.py", "settings_dialogs.py", "browser_setup.py", "timeline_only.py"]:
     with open(os.path.join(ROOT, path), encoding="utf-8") as f:

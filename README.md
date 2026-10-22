@@ -176,7 +176,7 @@ Ein- und ausschalten geht an drei Stellen, alle zeigen denselben Zustand:
 - Menü im Infobereich → **Aufzeichnung pausieren / fortsetzen**,
 - **Einstellungen → Aktive Fenster aufzeichnen**.
 
-Das Symbol im Infobereich hat einen grünen Punkt, solange aufgezeichnet wird, und einen grauen Punkt mit Pause-Zeichen, wenn die Aufzeichnung pausiert ist. Der Zustand bleibt nach einem Neustart erhalten. Bereits Aufgezeichnetes bleibt auch bei Pause in der Timeline sichtbar.
+Im Infobereich zeigt das Logo den Zustand: blauer Ring mit rotem „Jetzt“-Punkt, solange aufgezeichnet wird; grauer Ring mit Pause-Zeichen statt Punkt, wenn die Aufzeichnung pausiert ist. Die Statuszeile zeigt denselben roten bzw. grauen Punkt. Der Zustand bleibt nach einem Neustart erhalten. Bereits Aufgezeichnetes bleibt auch bei Pause in der Timeline sichtbar.
 
  Die Daten liegen pro Tag in `aktivitaet/JJJJ-MM-TT.jsonl` im Datenordner.
 
