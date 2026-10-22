@@ -30,7 +30,7 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
 - **Personalzeiten aus der ITM-Zeiterfassung:** Zeitzeuge liest deine gestempelten Zeiten und hebt sie in der Timeline als Arbeitszeit hervor. Pausen sind abgedunkelt. Die Statuszeile zeigt die gewertete Zeit und die Sollzeit.
 - **Aktivitätsprotokoll:** Alle 5 Sekunden merkt sich Zeitzeuge das aktive Fenster, zum Beispiel eine RDP-Sitzung, einen Browser-Tab, Outlook oder PuTTY.
   - Es erscheint als farbiges Band „PC“ oben in der Timeline, eine Farbe pro Programm.
-  - Mit **PC-Verlauf** in der Werkzeugleiste stehen die Fenster auch in der Tagesliste.
+  - Mit **PC-Verlauf** (Bildschirm-Symbol) in der Werkzeugleiste stehen die Fenster auch in der Tagesliste.
   - Nach 5 Minuten ohne Maus und Tastatur oder bei gesperrtem PC wird nichts aufgezeichnet.
   - Fenster mit bestimmten Wörtern im Titel werden nur als „(ausgeblendet)“ gespeichert, zum Beispiel Passwortmanager.
   - Mit dem **Fenster-Filter** lässt du private Programme ganz weg oder zeichnest nur erlaubte Programme auf.
@@ -38,7 +38,7 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
 - **Tagesliste** unter der Timeline mit Von, Bis, Dauer, Typ, Kunde und Details.
   - Die Statuszeile zeigt die belegte Zeit des Tages. Überschneidungen werden nicht doppelt gezählt.
   - Markierte Zeilen kopierst du mit STRG + C, zum Beispiel für die Ticket-Dokumentation.
-  - Die Auswahl rechts in der Werkzeugleiste legt fest, wie die Liste aussieht:
+  - Das Auge in der Werkzeugleiste legt fest, wie die Liste aussieht:
     - **Zusammengefasst** (Standard): Verbindungen zum selben Eintrag mit weniger als 5 Minuten Pause werden eine Zeile. Passwort-, Benutzernamen- und OTP-Anzeigen aus RDM stehen als Zähler bei der Verbindung, zum Beispiel „3 Verbindungen · 2× OTP, 1× Passwort“. Ohne passende Verbindung erscheinen sie als „Zugangsdaten“.
     - **Einzeln:** jede Zeile aus den Logs, wie bisher.
     - **Arbeitsblöcke:** alles mit weniger als 10 Minuten Pause wird ein Block, zum Beispiel „01:18–02:05 · SSL VPN, EPM, OPNsense“. Praktisch fürs Ticket.
@@ -122,7 +122,13 @@ Die fertige `ZeitZeuge.exe` liegt danach in `dist/`. Die Einstellungsdatei `zeit
 
 ## Einrichtung
 
-Der Knopf **Einstellungen** steht ganz links in der Werkzeugleiste. So bleibt er auch im schmalen Fenster sichtbar.
+Die Werkzeugleiste ist so aufgeteilt:
+
+- **Links:** vorheriger Tag, Datum, nächster Tag und Heute.
+- **Daneben:** Aktualisieren, Ansicht der Tagesliste (Auge), PC-Verlauf (Bildschirm), KI-Vorschläge (Stern), Lupen, Ganzer Tag und Arbeitszeit.
+- **Rechts:** **Einstellungen** (☰).
+
+Fährst du über einen Knopf, erklärt ein Hinweis, was er tut. Im schmalen Fenster zeigen „Ganzer Tag“ und „Arbeitszeit“ nur noch ihr Symbol, danach rutschen Werkzeuge in den Überlauf (»). Tag und Einstellungen bleiben immer sichtbar.
 
 ### Datenquellen ein- und ausschalten
 
@@ -215,7 +221,7 @@ Du brauchst einen API-Schlüssel von Anthropic (console.anthropic.com).
 
 1. **Einstellungen → KI-Vorschläge …** öffnen.
 2. Schlüssel eintragen (beginnt mit `sk-ant-`) und Modell wählen.
-3. Tag anzeigen und **KI-Vorschläge** klicken oder F6 drücken.
+3. Tag anzeigen und den Stern (**KI-Vorschläge**) klicken oder F6 drücken.
 
 Der Schlüssel liegt nur auf deinem PC unter `%LOCALAPPDATA%\Zeitzeuge\anthropic_key.txt`, nicht im Datenordner. Alternativ liest Zeitzeuge die Umgebungsvariable `ANTHROPIC_API_KEY`.
 

@@ -171,7 +171,7 @@ def gui_test():
     assert len(bands["doc"]) == 1 and bands["doc"][0]["doc"], bands["doc"]
 
     # Ansicht "Dokumentation" in der Tagesliste, STRG + C gibt die Ticketzeile
-    window.view_combo.setCurrentIndex(window.view_combo.findData("doc"))
+    window.change_view("doc")
     assert window.table.rowCount() == 1
     window.table.selectRow(0)
     window.copy_selection()
@@ -186,7 +186,7 @@ def gui_test():
     window.activities.append({"start": t(now - timedelta(minutes=9)), "end": t(now - timedelta(minutes=4)),
                               "type": "SSH-Verbindung", "customer_name": "fw01",
                               "details": "", "is_suggestion": True})
-    window.view_combo.setCurrentIndex(window.view_combo.findData("grouped"))
+    window.change_view("grouped")
     # Meldungsboxen stürzen unter Windows ohne Bildschirm in Qt ab: Rückfrage ersetzen
     asked = []
     window.ask_document_first = lambda count: asked.append(count) or True  # "Nachtragen"

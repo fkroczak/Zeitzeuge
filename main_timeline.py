@@ -20,7 +20,7 @@ from PyQt5.QtWidgets import (QAbstractItemView, QAction, QApplication, QProxySty
                              QMainWindow, QMenu, QMessageBox, QPushButton,
                              QSpinBox, QSplitter, QSystemTrayIcon, QTableWidget,
                              QTableWidgetItem, QToolBar, QToolButton,
-                             QVBoxLayout, QWidget)
+                             QActionGroup, QHBoxLayout, QSizePolicy, QVBoxLayout, QWidget)
 
 from activity_tracker import ActivityTracker, tracking_filters
 from ai_classifier import AI_TYPE, AiClassifier, AiStore
@@ -342,6 +342,7 @@ QWidget { background-color: $bg; color: $text; font-size: 13px;
 QToolBar { background-color: $bar; border: none; border-bottom: 1px solid $border;
            padding: 6px 8px; spacing: 4px; }
 QToolBar::separator { background: $border; width: 1px; margin: 6px 6px; }
+QToolBar#tools, QToolBar#fixed { border: none; padding: 0; background: transparent; }
 QToolButton { background: transparent; border: 1px solid transparent;
               border-radius: 6px; padding: 4px 6px; }
 QToolButton:hover { background-color: $hover; }
@@ -619,92 +620,124 @@ class TimelineApp(QMainWindow):
         return action
 
     def _build_toolbar(self):
-        tb = QToolBar("Navigation", self)
-        tb.setMovable(False)
-        tb.setIconSize(QSize(18, 18))
-        tb.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-        self.addToolBar(Qt.TopToolBarArea, tb)
-        icon_only = []
+        """Werkzeugleiste: links Tag wählen, in der Mitte die Werkzeuge, rechts Einstellungen.
 
-        tb.addWidget(self._build_settings_button())
-        tb.addSeparator()
-        # Gruppe 1: Tag wählen
+        Tag und Einstellungen stehen außerhalb des Überlaufs (»), sie verschwinden also
+        nie. Wird das Fenster schmal, zeigen zuerst "Ganzer Tag" und "Arbeitszeit" nur
+        noch ihr Symbol, danach rutschen Werkzeuge in den Überlauf. Jeder Knopf hat einen
+        Hinweis beim Darüberfahren.
+        """
+        outer = QToolBar("Navigation", self)
+        outer.setObjectName("main_toolbar")
+        outer.setMovable(False)
+        outer.setFloatable(False)
+        self.addToolBar(Qt.TopToolBarArea, outer)
+        header = QWidget(outer)
+        header.setStyleSheet("background: transparent;")
+        row = QHBoxLayout(header)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(4)
+        outer.addWidget(header)
+
+        # ---- links: Tag wählen (immer sichtbar)
+        days = QToolBar("Tag", header)
+        days.setObjectName("fixed")
+        days.setIconSize(QSize(18, 18))
+        days.setToolButtonStyle(Qt.ToolButtonIconOnly)
         prev_day = self._action("Vorheriger Tag", self.show_previous_day, "Ctrl+Left", icon_name="prev")
         next_day = self._action("Nächster Tag", self.show_next_day, "Ctrl+Right", icon_name="next")
-        tb.addAction(prev_day)
+        days.addAction(prev_day)
         self.date_edit = QDateEdit(self.current_date, self)
         self.date_edit.setAccessibleName("Datum")
+        self.date_edit.setToolTip("Tag wählen")
         self.date_edit.setLocale(GERMAN)
         self.date_edit.setDisplayFormat("ddd dd.MM.yyyy")
         self.date_edit.setCalendarPopup(True)
         self.date_edit.dateChanged.connect(self.date_changed)
-        tb.addWidget(self.date_edit)
-        tb.addAction(next_day)
-        tb.addAction(self._action("Heute", self.show_today, "Ctrl+T", "Heute zeigen", "today"))
-        icon_only += [prev_day, next_day]
-        tb.addSeparator()
-        # Gruppe 2: Daten
+        days.addWidget(self.date_edit)
+        days.addAction(next_day)
+        days.addAction(self._action("Heute", self.show_today, "Ctrl+T", "Heute zeigen", "today"))
+        days.addSeparator()
+        days.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Preferred)
+        row.addWidget(days, 0)
+
+        # ---- Mitte: Werkzeuge (dürfen im schmalen Fenster in den Überlauf)
+        tb = QToolBar("Werkzeuge", header)
+        tb.setObjectName("tools")
+        tb.setIconSize(QSize(18, 18))
+        tb.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        self.tools_bar = tb
+        row.addWidget(tb, 1)
+
         self.refresh_action = self._action("Aktualisieren", self.refresh, "F5", "Logs neu einlesen",
                                            "refresh")
         tb.addAction(self.refresh_action)
-        icon_only.append(self.refresh_action)
+        tb.addSeparator()
+        # Tagesliste: Ansicht (Auge), PC-Verlauf, KI-Vorschläge (Stern)
+        self.view_button = QToolButton(tb)
+        self.view_button.setAccessibleName("Ansicht der Tagesliste")
+        self.view_button.setPopupMode(QToolButton.InstantPopup)
+        view_menu = QMenu(self.view_button)
+        group = QActionGroup(view_menu)
+        self.view_actions = {}
+        for key, text in self.VIEWS:
+            if key == "doc":  # Trennlinie: Einträge aus den Logs | eingeordnete Tätigkeiten
+                view_menu.addSeparator()
+            action = view_menu.addAction(text)
+            action.setCheckable(True)
+            action.setActionGroup(group)
+            action.triggered.connect(lambda _c=False, k=key: self.change_view(k))
+            self.view_actions[key] = action
+        self.view_button.setMenu(view_menu)
+        tb.addWidget(self.view_button)
+        self._view_icon = True
+        self.update_view_button()
+
+        self.pc_list_action = QAction("PC-Verlauf", self)
+        self.pc_list_action.setCheckable(True)
+        self.pc_list_action.setChecked(self.config.get("show_pc_in_list", False))
+        self.pc_list_action.toggled.connect(self.toggle_pc_list)
+        self._icon_actions.append((self.pc_list_action, "monitor"))
+        tb.addAction(self.pc_list_action)
+        self.update_pc_list_tip()
+
         self.ai_button_action = self._action(
             "KI-Vorschläge", lambda: self.classify_day(), "F6",
-            "Tätigkeiten des Tages von Claude einordnen lassen")
+            "KI-Vorschläge: Tätigkeiten des Tages von Claude einordnen lassen", "spark")
         tb.addAction(self.ai_button_action)
         self.doc_button_action = self._action(
             "Nachtragen", lambda: self.add_doc(), "F7",
             "Tätigkeit nachtragen (zur markierten Zeile oder zur letzten halben Stunde)", "edit")
         tb.addAction(self.doc_button_action)
         tb.addSeparator()
-        # Gruppe 3: Ausschnitt der Timeline
-        zoom_out = self._action("Verkleinern", self.zoom_out, "Ctrl+-", icon_name="zoom_out")
-        zoom_in = self._action("Vergrößern", self.zoom_in, ["Ctrl++", "Ctrl+="], icon_name="zoom_in")
-        tb.addAction(zoom_out)
-        tb.addAction(zoom_in)
-        icon_only += [zoom_out, zoom_in]
-        tb.addAction(self._action("Ganzer Tag", self.timeline_whole_day, "Ctrl+0",
-                                  "Ganzen Tag zeigen (oder Doppelklick in die Timeline)", "whole_day"))
-        tb.addAction(self._action("Arbeitszeit", self.timeline_work_time, "Ctrl+9",
-                                  "Arbeitszeit des Tages zeigen", "work_time"))
+        # Ausschnitt der Timeline
+        tb.addAction(self._action("Verkleinern", self.zoom_out, "Ctrl+-", "Timeline verkleinern",
+                                  "zoom_out"))
+        tb.addAction(self._action("Vergrößern", self.zoom_in, ["Ctrl++", "Ctrl+="],
+                                  "Timeline vergrößern", "zoom_in"))
+        whole_day = self._action("Ganzer Tag", self.timeline_whole_day, "Ctrl+0",
+                                 "Ganzen Tag zeigen (oder Doppelklick in die Timeline)", "whole_day")
+        work_time = self._action("Arbeitszeit", self.timeline_work_time, "Ctrl+9",
+                                 "Arbeitszeit des Tages zeigen", "work_time")
+        tb.addAction(whole_day)
+        tb.addAction(work_time)
+        # Mit Text, solange Platz ist; im schmalen Fenster nur das Symbol
+        self._adaptive_buttons = [tb.widgetForAction(whole_day), tb.widgetForAction(work_time)]
 
-        spacer = QWidget(self)
-        spacer.setSizePolicy(spacer.sizePolicy().Expanding, spacer.sizePolicy().Preferred)
-        spacer.setStyleSheet("background: transparent;")
-        tb.addWidget(spacer)
+        # ---- rechts: Einstellungen (immer sichtbar)
+        right = QToolBar("Einstellungen", header)
+        right.setObjectName("fixed")
+        right.setIconSize(QSize(18, 18))
+        right.addWidget(self._build_settings_button())
+        right.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Preferred)
+        row.addWidget(right, 0)
 
-        # Gruppe 4: Tagesliste
-        self.view_combo = QComboBox(self)
-        self.view_combo.setAccessibleName("Ansicht der Tagesliste")
-        self.view_combo.setToolTip(
-            "Zusammengefasst: Verbindungen und Passwort-/OTP-Anzeigen werden je Eintrag eine Zeile\n"
-            "Einzeln: jede Zeile aus den Logs\n"
-            "Arbeitsblöcke: alles mit kurzer Pause dazwischen als ein Block, z. B. fürs Ticket\n"
-            "Dokumentation: deine eingetragenen Tätigkeiten und was noch offen ist (F7)\n"
-            "Regeln (ohne KI): Tätigkeiten, die Zeitzeuge über deine Regeln erkannt hat\n"
-            "KI-Vorschläge: Tätigkeiten, die Claude aus dem Tag erkannt hat (F6)")
-        for key, text in self.VIEWS:
-            self.view_combo.addItem(text, key)
-        self.view_combo.setCurrentIndex(
-            max(0, self.view_combo.findData(self.config.get("list_view", "grouped"))))
-        self.view_combo.currentIndexChanged.connect(self.change_view)
-        tb.addWidget(self.view_combo)
-
-        self.pc_list_action = QAction("PC-Verlauf", self)
-        self.pc_list_action.setCheckable(True)
-        self.pc_list_action.setChecked(self.config.get("show_pc_in_list", False))
-        self.pc_list_action.setToolTip("Aktive Fenster in der Tagesliste anzeigen")
-        self.pc_list_action.toggled.connect(self.toggle_pc_list)
-        self._icon_actions.append((self.pc_list_action, "monitor"))
-        tb.addAction(self.pc_list_action)
-
-        for action in icon_only:
-            tb.widgetForAction(action).setToolButtonStyle(Qt.ToolButtonIconOnly)
-        # Screenreader lesen sonst nur das Symbol vor
-        for action in tb.actions():
-            button = tb.widgetForAction(action)
-            if isinstance(button, QToolButton) and not button.accessibleName():
-                button.setAccessibleName(action.toolTip().split(" (")[0] or action.text())
+        for bar in (days, tb, right):
+            # Screenreader lesen sonst nur das Symbol vor
+            for action in bar.actions():
+                button = bar.widgetForAction(action)
+                if isinstance(button, QToolButton) and not button.accessibleName():
+                    button.setAccessibleName(action.toolTip().split(" (")[0] or action.text())
         # Überlauf-Knopf, wenn das Fenster schmal ist (z. B. bei 200 % Anzeige)
         ext = tb.findChild(QToolButton, "qt_toolbar_ext_button")
         if ext:
@@ -712,6 +745,43 @@ class TimelineApp(QMainWindow):
             ext.setToolTip("Weitere Befehle")
             ext.setText("»")
             ext.setToolButtonStyle(Qt.ToolButtonTextOnly)
+
+    def fit_toolbar(self):
+        """Text bei "Ganzer Tag"/"Arbeitszeit" nur zeigen, wenn alle Werkzeuge Platz haben."""
+        tb = getattr(self, "tools_bar", None)
+        if tb is None:
+            return
+        for button in self._adaptive_buttons:
+            button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        if tb.sizeHint().width() > tb.width():
+            for button in self._adaptive_buttons:
+                button.setToolButtonStyle(Qt.ToolButtonIconOnly)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        QTimer.singleShot(0, self.fit_toolbar)  # erst wenn die Leiste ihre neue Breite hat
+
+    def update_view_button(self):
+        """Hinweis am Auge: aktuelle Ansicht und was die Ansichten zeigen."""
+        key = self.config.get("list_view", "grouped")
+        if key not in self.view_actions:
+            key = "grouped"
+        self.view_actions[key].setChecked(True)
+        current = dict(self.VIEWS)[key]
+        self.view_button.setToolTip(
+            f"Ansicht der Tagesliste: {current}\n\n"
+            "Zusammengefasst: Verbindungen und Passwort-/OTP-Anzeigen je Eintrag eine Zeile\n"
+            "Einzeln: jede Zeile aus den Logs\n"
+            "Arbeitsblöcke: alles mit kurzer Pause dazwischen als ein Block, z. B. fürs Ticket\n"
+            "Dokumentation: deine eingetragenen Tätigkeiten und was noch offen ist (F7)\n"
+            "Regeln (ohne KI): Tätigkeiten, die Zeitzeuge über deine Regeln erkannt hat\n"
+            "KI-Vorschläge: Tätigkeiten, die Claude aus dem Tag erkannt hat")
+        self.view_button.setAccessibleDescription(f"Aktuell: {current}")
+
+    def update_pc_list_tip(self):
+        on = self.pc_list_action.isChecked()
+        self.pc_list_action.setToolTip(
+            "PC-Verlauf: aktive Fenster in der Tagesliste " + ("zeigen (an)" if on else "zeigen (aus)"))
 
     def _build_settings_button(self):
         """Knopf "Einstellungen" mit dem Menü. Steht links in der Werkzeugleiste, damit er
@@ -769,7 +839,7 @@ class TimelineApp(QMainWindow):
         self.menu_button.setText("&Einstellungen")
         self.menu_button.setToolTip("Einstellungen, Datenquellen und mehr (Alt+E)")
         self.menu_button.setAccessibleName("Einstellungen")
-        self.menu_button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self.menu_button.setToolButtonStyle(Qt.ToolButtonIconOnly)
         self.menu_button.setMenu(menu)
         self.menu_button.setPopupMode(QToolButton.InstantPopup)
         return self.menu_button
@@ -895,9 +965,10 @@ class TimelineApp(QMainWindow):
     VIEWS = [("grouped", "Zusammengefasst"), ("single", "Einzeln"), ("blocks", "Arbeitsblöcke"),
              ("doc", "Dokumentation"), ("rules", "Regeln (ohne KI)"), ("ai", "KI-Vorschläge")]
 
-    def change_view(self, _index):
-        self.config["list_view"] = self.view_combo.currentData()
+    def change_view(self, key):
+        self.config["list_view"] = key
         save_config(self.config)
+        self.update_view_button()
         self.timeline.draw_timeline(self.current_date)
 
     def name_teamviewer_id(self):
@@ -1272,9 +1343,7 @@ class TimelineApp(QMainWindow):
         """Fenster zeigen, heute, Ansicht "Dokumentation"."""
         self.show_from_tray()
         self.show_today()
-        index = self.view_combo.findData("doc")
-        if index >= 0:
-            self.view_combo.setCurrentIndex(index)
+        self.change_view("doc")
 
     def toggle_row(self, key, on):
         self.config.setdefault("timeline_rows", {})[key] = on
@@ -1469,6 +1538,7 @@ class TimelineApp(QMainWindow):
     def toggle_pc_list(self, enabled):
         self.config["show_pc_in_list"] = enabled
         save_config(self.config)
+        self.update_pc_list_tip()
         self.update_day_list(self.day_activities, self.pc_activities)
 
     # ---------------------- 3CX direkt auslesen -------------------------------
@@ -1904,6 +1974,7 @@ class TimelineApp(QMainWindow):
         for action, name in self._icon_actions:
             action.setIcon(icons.icon(name, theme["text"]))
         self.menu_button.setIcon(icons.icon("menu", theme["text"]))
+        self.view_button.setIcon(icons.icon("eye", theme["text"]))
         self.update_tracking_state()
         self.timeline.set_dark_mode(self.dark_mode)
 
