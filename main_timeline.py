@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import sys
 import warnings
 
@@ -11,7 +12,7 @@ from PyQt5.QtGui import (QColor, QDesktopServices, QIcon, QKeySequence, QPalette
                          QPixmap)
 from PyQt5.QtWidgets import (QAbstractItemView, QAction, QApplication, QProxyStyle,
                              QStyle, QStyleFactory,
-                             QCheckBox, QDateEdit, QDialog, QDialogButtonBox,
+                             QCheckBox, QComboBox, QDateEdit, QInputDialog, QDialog, QDialogButtonBox,
                              QFileDialog, QFormLayout, QHeaderView, QLabel, QLineEdit,
                              QMainWindow, QMenu, QMessageBox, QPushButton,
                              QSpinBox, QSplitter, QSystemTrayIcon, QTableWidget,
@@ -26,6 +27,7 @@ from pbx_reader import PbxReader, find_browser
 import storage
 from settings_dialogs import (ActivityTypeSettingsDialog,
                               ConnectionSettingsDialog, WorkHoursDialog)
+from grouping import format_tv_id, work_blocks
 from timeline_only import (ActivityViewDialog, TimelineView, entry_color,
                            format_duration, parse_time, type_label)
 
@@ -85,6 +87,13 @@ class CallSignal(QObject):
     # Signal aus dem Server-Thread sicher in den GUI-Thread bringen
     updated = pyqtSignal()
 
+
+
+def clean_path(path):
+    """Doppelte Backslashes in Pfaden entfernen (Netzwerkpfade \\\\server bleiben)."""
+    if path.startswith("\\\\"):
+        return "\\\\" + re.sub(r"\\{2,}", r"\\", path[2:])
+    return re.sub(r"\\{2,}", r"\\", path)
 
 
 def load_config_with_defaults():
@@ -153,11 +162,11 @@ def load_config_with_defaults():
         "work_end": "17:00",
 
         "teamviewer_paths": [
-            os.path.expandvars(r"%APPDATA%\\TeamViewer\\Connections.txt")
+            os.path.expandvars(r"%APPDATA%\TeamViewer\Connections.txt")
         ],
         "rdm_paths": [
             os.path.expandvars(
-                r"%LOCALAPPDATA%\\Devolutions\\RemoteDesktopManager\\Connections.log"
+                r"%LOCALAPPDATA%\Devolutions\RemoteDesktopManager\Connections.log"
             )
         ],
         # deine gewÃ¼nschten Zeitzonen
@@ -186,6 +195,12 @@ def load_config_with_defaults():
         "itm_url": "https://app.itm-gruppe.com",
         "itm_reader_enabled": False,  # Personalzeiten aus der ITM-Zeiterfassung lesen
         "close_to_tray": True,
+
+        # Tagesliste: "grouped" (zusammengefasst), "single" (einzeln), "blocks" (Arbeitsblöcke)
+        "list_view": "grouped",
+        "merge_gap_minutes": 5,    # Verbindungen mit kürzerer Pause werden eine Zeile
+        "block_gap_minutes": 10,   # Einträge mit kürzerer Pause werden ein Arbeitsblock
+        "teamviewer_names": {},    # TeamViewer-ID -> Name, z. B. {"1076789144": "Müller GmbH"}
     }
     if os.path.exists(CONFIG_FILE):
             try:
@@ -205,6 +220,13 @@ def load_config_with_defaults():
         cfg["work_days"] = {d: (span if i < 5 else "")
                             for i, d in enumerate(["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"])}
     cfg["type_colors"].setdefault("Telefonat", "#27AE60")
+    for kind, color in [("VPN-Verbindung", "#00B894"), ("SSH-Verbindung", "#E67E22"),
+                        ("FTP-Verbindung", "#7F8C8D"), ("TeamViewer-Verbindung", "#3460DB"),
+                        ("Zugangsdaten", "#9B59B6"), ("Arbeitsblock", "#5B8DEF")]:
+        cfg["type_colors"].setdefault(kind, color)
+    # Alte Standardpfade enthielten doppelte Backslashes (C:\Users\x\\TeamViewer)
+    for key in ("teamviewer_paths", "rdm_paths"):
+        cfg[key] = [clean_path(p) for p in cfg.get(key, [])]
     if "Telefonat" not in cfg["activity_types"]:
         cfg["activity_types"].append("Telefonat")
 
@@ -384,6 +406,9 @@ class TimelineApp(QMainWindow):
         copy_action.setShortcutContext(Qt.WidgetShortcut)
         copy_action.triggered.connect(self.copy_selection)
         self.table.addAction(copy_action)
+        name_action = QAction("TeamViewer-ID benennen …", self.table)
+        name_action.triggered.connect(self.name_teamviewer_id)
+        self.table.addAction(name_action)
         self.table.setContextMenuPolicy(Qt.ActionsContextMenu)
 
         self.timeline.setAccessibleName("Timeline des Tages")
@@ -490,6 +515,19 @@ class TimelineApp(QMainWindow):
         spacer.setStyleSheet("background: transparent;")
         tb.addWidget(spacer)
 
+        self.view_combo = QComboBox(self)
+        self.view_combo.setAccessibleName("Ansicht der Tagesliste")
+        self.view_combo.setToolTip(
+            "Zusammengefasst: Verbindungen und Passwort-/OTP-Anzeigen werden je Eintrag eine Zeile\n"
+            "Einzeln: jede Zeile aus den Logs\n"
+            "Arbeitsblöcke: alles mit kurzer Pause dazwischen als ein Block, z. B. fürs Ticket")
+        for key, text in self.VIEWS:
+            self.view_combo.addItem(text, key)
+        self.view_combo.setCurrentIndex(
+            max(0, self.view_combo.findData(self.config.get("list_view", "grouped"))))
+        self.view_combo.currentIndexChanged.connect(self.change_view)
+        tb.addWidget(self.view_combo)
+
         self.pc_list_action = QAction("PC-Verlauf in Liste", self)
         self.pc_list_action.setCheckable(True)
         self.pc_list_action.setChecked(self.config.get("show_pc_in_list", False))
@@ -565,7 +603,9 @@ class TimelineApp(QMainWindow):
         self.day_activities = activities
         self.pc_activities = pc_activities or []
         entries = list(activities)
-        if self.config.get("show_pc_in_list", False):
+        if self.config.get("list_view") == "blocks":
+            entries = work_blocks(entries, self.config.get("block_gap_minutes", 10))
+        elif self.config.get("show_pc_in_list", False):
             entries += self.pc_activities
         entries.sort(key=lambda a: a["start"])
         self.list_entries = entries
@@ -591,6 +631,35 @@ class TimelineApp(QMainWindow):
                 item.setToolTip(item.text())
                 self.table.setItem(row, col, item)
         self.update_status_text()
+
+    VIEWS = [("grouped", "Zusammengefasst"), ("single", "Einzeln"), ("blocks", "Arbeitsblöcke")]
+
+    def change_view(self, _index):
+        self.config["list_view"] = self.view_combo.currentData()
+        save_config(self.config)
+        self.timeline.draw_timeline(self.current_date)
+
+    def name_teamviewer_id(self):
+        row = self.table.currentRow()
+        if not 0 <= row < len(self.list_entries):
+            return
+        tv_id = self.list_entries[row].get("tv_id")
+        if not tv_id:
+            self.statusBar().showMessage("Die markierte Zeile ist keine TeamViewer-Verbindung", 4000)
+            return
+        names = self.config.setdefault("teamviewer_names", {})
+        name, ok = QInputDialog.getText(
+            self, "TeamViewer-ID benennen",
+            f"Name für TeamViewer-ID {format_tv_id(tv_id)} (leer = Name entfernen):",
+            text=names.get(tv_id, ""))
+        if not ok:
+            return
+        if name.strip():
+            names[tv_id] = name.strip()
+        else:
+            names.pop(tv_id, None)
+        save_config(self.config)
+        self.timeline.draw_timeline(self.current_date)
 
     def open_details(self, row):
         if 0 <= row < len(self.list_entries):

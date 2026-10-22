@@ -10,6 +10,7 @@ Qt-eigenen Mitteln.
 |---|---|---|---|
 | Bedienbarkeit (siehe unten) | `tests/ui_audit_test.py` | Schritt „Bedienbarkeit“ | **blockiert** den Build |
 | Lesbarkeit README und UI-Texte | `tests/readability_check.py` | Schritt „Lesbarkeit“ | warnt nur |
+| Tagesliste zusammenfassen (keine Einträge gehen verloren) | `tests/grouping_test.py` | Schritt „Tagesliste zusammenfassen“ | blockiert |
 | Start des Hauptfensters | `tests/start_test.py` | Schritt „Starttest“ | blockiert |
 
 `tests/ui_audit_test.py` öffnet Hauptfenster und alle Einstellungsdialoge ohne Bildschirm
