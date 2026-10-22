@@ -1,5 +1,6 @@
 # timeline_only.py
 import threading
+import time
 from datetime import datetime
 from html import escape
 
@@ -227,6 +228,7 @@ class TimelineView(QGraphicsView):
         self.loading = False    # Logs werden gerade im Hintergrund gelesen
         self._reload = False    # während des Lesens erneut angefordert
         self._thread = None
+        self._threads = []      # alle gestarteten Einlese-Threads (zum Abwarten beim Beenden)
         self._closing = False   # beim Beenden: Thread darf nichts mehr melden
         self.logs_loaded.connect(self._on_logs_loaded)
 
@@ -300,6 +302,7 @@ class TimelineView(QGraphicsView):
             return
         self.loading = True
         self._thread = threading.Thread(target=self._load_logs, daemon=True)
+        self._threads = [t for t in self._threads if t.is_alive()] + [self._thread]
         self._thread.start()
 
     def shutdown(self, timeout=3):
@@ -309,8 +312,10 @@ class TimelineView(QGraphicsView):
         (Absturz beim Beenden unter Windows).
         """
         self._closing = True
-        if self._thread and self._thread.is_alive():
-            self._thread.join(timeout)
+        end = time.monotonic() + timeout
+        # Auch ein älteres, noch laufendes Einlesen abwarten (nicht nur das letzte)
+        for thread in list(self._threads):
+            thread.join(max(0, end - time.monotonic()))
 
     def _start_first_load(self):
         self.loading = False
@@ -332,6 +337,8 @@ class TimelineView(QGraphicsView):
             self.logs_loaded.emit(*indexes)  # Qt stellt das im GUI-Thread zu
 
     def _on_logs_loaded(self, tv_index, rdm_index, vpn_index):
+        if self._closing:
+            return  # beim Beenden nichts mehr zeichnen
         self._tv_index, self._rdm_index, self._vpn_index = tv_index, rdm_index, vpn_index
         self._sophos_index = None  # Archiv der VPN-Aufzeichnung beim nächsten Zeichnen neu lesen
         self._remote_cache.clear()
