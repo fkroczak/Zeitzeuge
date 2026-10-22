@@ -241,6 +241,7 @@ class BrowserReader(QObject):
     login_required = pyqtSignal()
 
     READ_INTERVAL = 60  # Sekunden zwischen zwei Durchläufen
+    RETRY_INTERVAL = 20  # nach einem Fehler früher neu versuchen
     NAME = "Seite"
 
     def __init__(self, base_url, profile_dir, parent=None):
@@ -256,6 +257,7 @@ class BrowserReader(QObject):
         self._wake = threading.Event()
         self._login_open = False
         self._started = False  # Browser frisch gestartet (Seite lädt noch)
+        self._failed = False   # letzter Durchlauf mit Fehler
         self._thread = None
         # Nur ein Edge darf das Profil benutzen: Lesen und Anmelden wechseln sich ab
         self._browser_lock = threading.Lock()
@@ -291,7 +293,7 @@ class BrowserReader(QObject):
 
     # ------------------------------------------------------------ Browser
 
-    def _browser_args(self, mode):
+    def _browser_args(self, mode, debug=True):
         """mode: "headless" (unsichtbar), "hidden" (Fenster außerhalb des Bildschirms),
         "login" (normales Fenster zum Anmelden)."""
         exe = find_browser()
@@ -312,9 +314,11 @@ class BrowserReader(QObject):
             "--disable-backgrounding-occluded-windows",
         ]
         args += shlex.split(os.environ.get("ZEITZEUGE_BROWSER_ARGS", ""))
+        if debug:
+            args += ["--remote-debugging-port=0", "--remote-allow-origins=*"]
         if mode == "login":
             return args + [f"--app={self.start_url()}", "--window-size=1100,800"]
-        args += ["--remote-debugging-port=0", "--remote-allow-origins=*", "--window-size=1100,2400"]
+        args += ["--window-size=1100,2400"]
         if mode == "headless":
             return args + ["--headless=new", "about:blank"]
         # Ersatz, falls der unsichtbare Modus gesperrt ist: Fenster weit außerhalb des Bildschirms
@@ -349,9 +353,7 @@ class BrowserReader(QObject):
             self._mode = "hidden"
             port = self._launch("hidden")
 
-        pages = json.load(urllib.request.urlopen(f"http://127.0.0.1:{port}/json/list", timeout=10))
-        page = next(p for p in pages if p.get("type") == "page")
-        self._tools = _DevTools(page["webSocketDebuggerUrl"])
+        self._connect(port)
 
         # Kein "HeadlessChrome" in der Kennung, sonst verhalten sich manche Seiten anders
         version = json.load(urllib.request.urlopen(f"http://127.0.0.1:{port}/json/version", timeout=10))
@@ -359,6 +361,11 @@ class BrowserReader(QObject):
         if agent:
             self._tools.call("Network.setUserAgentOverride", userAgent=agent)
         self._on_browser_started()
+
+    def _connect(self, port):
+        pages = json.load(urllib.request.urlopen(f"http://127.0.0.1:{port}/json/list", timeout=10))
+        page = next(p for p in pages if p.get("type") == "page")
+        self._tools = _DevTools(page["webSocketDebuggerUrl"])
 
     def _launch(self, mode):
         """Edge starten und warten, bis er seine DevTools-Schnittstelle meldet. Gibt den Port zurück."""
@@ -391,9 +398,7 @@ class BrowserReader(QObject):
         self._tools.call("Page.navigate", url=self.start_url())
 
     def _close_browser(self):
-        if self._tools:
-            self._tools.close()
-            self._tools = None
+        self._close_tools()
         if self._proc and self._proc.poll() is None:
             self._proc.terminate()
             try:
@@ -411,18 +416,37 @@ class BrowserReader(QObject):
                 self._close_browser()  # unsichtbaren Edge beenden, Profil freigeben
                 kill_profile_processes(self.profile_dir)  # Reste, an die Edge sonst weiterleitet
                 self._wait_profile_free(15)
-                self._popen(self._browser_args("login"))
-                # Warten, bis du das Fenster schließt. Edge gibt beim Start an einen anderen
-                # Prozess ab, darum zählt ein sichtbares Fenster mit unserem Profil.
+                port = None
+                try:  # Seite beobachten, um das Fenster nach der Anmeldung selbst zu schließen
+                    port = self._launch("login")
+                    self._connect(port)
+                    self._on_browser_started()
+                    self._tools.call("Page.reload")  # mit den eben eingerichteten Skripten
+                except Exception:
+                    self._close_tools()  # dann schließt du das Fenster selbst
+                    if port is None:  # Fernsteuerung gesperrt: Fenster wie früher ohne öffnen
+                        kill_profile_processes(self.profile_dir)
+                        self._wait_profile_free(15)
+                        self._proc = self._popen(self._browser_args("login", debug=False))
+                # Warten, bis die Anmeldung geklappt hat oder du das Fenster schließt. Edge gibt
+                # beim Start an einen anderen Prozess ab, darum zählt ein sichtbares Fenster.
                 started = time.time()
+                ok = 0
                 while not self._stop.is_set():
+                    ok = ok + 1 if self._tools and self._login_done() else 0
+                    if ok >= 2:  # zweimal hintereinander, damit kein Zwischenstand zählt
+                        self._set_status(f"{self.NAME}: angemeldet, Anmeldefenster wird geschlossen")
+                        self._close_gracefully(port)
+                        break
                     if login_window_open(self.profile_dir):
                         started = min(started, time.time() - 60)  # Fenster war schon da
                     elif time.time() - started > 30:
                         break  # Fenster zu (oder nach 30 s nie erschienen)
                     time.sleep(1)
                 # Edge läuft nach dem Schließen oft im Hintergrund weiter: beenden
+                self._close_tools()
                 kill_profile_processes(self.profile_dir)
+                self._proc = None
                 self._set_status(f"{self.NAME}: Anmeldefenster geschlossen, lese …")
             except Exception as e:
                 self._set_status(f"{self.NAME}: {e}")
@@ -430,6 +454,26 @@ class BrowserReader(QObject):
                 self._login_open = False
                 self.needs_login = False
         self._wake.set()
+
+    def _login_done(self):
+        """Zeigt das Anmeldefenster schon die Seite nach der Anmeldung? (je Leser)"""
+        return False
+
+    def _close_tools(self):
+        if self._tools:
+            self._tools.close()
+            self._tools = None
+
+    def _close_gracefully(self, port):
+        """Edge regulär beenden, damit die Anmeldung (Cookies) im Profil gespeichert wird."""
+        try:
+            info = json.load(urllib.request.urlopen(f"http://127.0.0.1:{port}/json/version", timeout=5))
+            _DevTools(info["webSocketDebuggerUrl"]).call("Browser.close", timeout=5)
+        except Exception:
+            pass  # Edge schon zu: dann bleibt nur das Beenden danach
+        deadline = time.time() + 10
+        while profile_processes(self.profile_dir) and time.time() < deadline:
+            time.sleep(0.5)
 
     # ------------------------------------------------------------ Lesen
 
@@ -453,7 +497,8 @@ class BrowserReader(QObject):
             if not self._login_open:
                 with self._browser_lock:
                     self._step()
-            self._wake.wait(self.READ_INTERVAL)
+            self._wake.wait(min(self.RETRY_INTERVAL, self.READ_INTERVAL) if self._failed
+                            else self.READ_INTERVAL)
             self._wake.clear()
         self._close_browser()
 
@@ -466,7 +511,9 @@ class BrowserReader(QObject):
                 self._start_browser()
                 self._started = True
             self._tick()
+            self._failed = False
         except Exception as e:
+            self._failed = True
             self._set_status(f"{self.NAME}: Fehler ({e}), neuer Versuch")
             self._close_browser()
 
@@ -564,6 +611,13 @@ class PbxReader(BrowserReader):
         self._set_status(f"3CX gelesen {datetime.now():%H:%M} (vollständig ab {done})")
         if added:
             self.calls_added.emit(added)
+
+    def _login_done(self):
+        try:
+            data = json.loads(self._evaluate(self.js, timeout=5) or "null")
+        except Exception:
+            return False  # Seite lädt gerade neu
+        return bool(data and not data["login"] and data["calls"])
 
     def _wait_load(self):
         time.sleep(10)  # Seite laden lassen

@@ -34,13 +34,29 @@ jobs:
           QT_QPA_PLATFORM: offscreen
         run: python tests/ui_audit_test.py
 
+      - name: VPN-Logs lesen (OpenVPN u. a.)
+        run: python tests/vpn_logs_test.py
+
+      - name: VPN-Zeiten (Sophos Connect, FortiClient)
+        run: python tests/vpn_test.py
+
       - name: Tagesliste zusammenfassen
         env:
           QT_QPA_PLATFORM: offscreen
         run: python tests/grouping_test.py
 
-      - name: VPN-Zeiten (Sophos Connect, FortiClient)
-        run: python tests/vpn_test.py
+      - name: KI-Vorschläge (nachgebaute Anthropic-API)
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python tests/ai_test.py
+
+      - name: Infobereich und Fensteraufzeichnung ein/aus
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python tests/tray_test.py
+
+      - name: Logs einlesen (TeamViewer, RDM)
+        run: python tests/parser_test.py
 
       - name: Lesbarkeit (nur Hinweis)
         run: python tests/readability_check.py

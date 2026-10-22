@@ -12,6 +12,9 @@ Qt-eigenen Mitteln.
 | Lesbarkeit README und UI-Texte | `tests/readability_check.py` | Schritt „Lesbarkeit“ | warnt nur |
 | Tagesliste zusammenfassen (keine Einträge gehen verloren) | `tests/grouping_test.py` | Schritt „Tagesliste zusammenfassen“ | blockiert |
 | Start des Hauptfensters | `tests/start_test.py` | Schritt „Starttest“ | blockiert |
+| Infobereich: Menü, Aufzeichnung pausieren/fortsetzen, Zustand überall gleich | `tests/tray_test.py` | Schritt „Infobereich …“ | blockiert |
+| TeamViewer-/RDM-Logs einlesen, Zeitformat streng | `tests/parser_test.py` | Schritt „Logs einlesen …“ | blockiert |
+| Startzeit (Fenster sichtbar, Daten gezeichnet) | `tests/start_bench.py` | nein, von Hand | Messwert |
 
 `tests/ui_audit_test.py` öffnet Hauptfenster und alle Einstellungsdialoge ohne Bildschirm
 und prüft:
@@ -52,6 +55,11 @@ python tests/readability_check.py
 - Farben nur aus `THEMES` in `main_timeline.py`. Neue Farbpaare in den Kontrasttest aufnehmen.
 - Alles, was nur per Maus geht (Timeline), braucht einen Tastaturweg (Tagesliste, Tastenkürzel).
 - Menügruppen mit Trennlinien, höchstens 5 Einträge pro Gruppe, mit `&` für Alt-Buchstaben.
+  Reine Anzeigen im Menü (deaktiviert, z. B. „Aufzeichnung aktiv“) brauchen keinen.
+- Menü nach Aufgaben: Häufiges oben und direkt, Einmaliges (Datenquellen, Speicherort) im Untermenü.
+- Icons nur aus `icons.py` (eine Strichstärke, Textfarbe des Designs). Zustände nie nur über
+  Farbe zeigen (z. B. grauer Punkt **mit** Pause-Zeichen).
+- Ein Zustand, eine Aktion: Menü, Infobereich und Statuszeile nutzen dieselbe `QAction`.
 - Texte in der Du-Form, kurze Sätze, Fachbegriffe der Zielgruppe (RDP, Log) sind in Ordnung.
 
 ## Ratchet: Werte dürfen nur besser werden
@@ -67,6 +75,7 @@ python tests/readability_check.py
 |---|---|---|
 | 21.10.2026 vorher | 45 | 61 / 55 |
 | 21.10.2026 nachher | 0 | 61 / 55 |
+| 22.10.2026 Überarbeitung | 0 | 60 / 60 |
 
 ## Ausnahmen
 

@@ -31,7 +31,7 @@ BLOCK_TYPE = "Arbeitsblock"
 
 
 def _t(text):
-    return datetime.strptime(text, TIME_FMT)
+    return datetime.fromisoformat(text)  # Zeiten sind beim Laden schon geprüft
 
 
 def _protocol(entry):
