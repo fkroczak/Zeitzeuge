@@ -1078,6 +1078,7 @@ class TimelineApp(QMainWindow):
         )
         self.pbx_reader.login_required.connect(self.on_pbx_login_required)
         self.pbx_reader.recording_done.connect(self.on_recording_done)
+        self.pbx_reader.check_done.connect(self.on_pbx_check_done)
         self.pbx_reader.start()
         self.calls_label.setText("3CX: wird geladen …")
 
@@ -1243,10 +1244,36 @@ class TimelineApp(QMainWindow):
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.addButton(login_btn, QDialogButtonBox.ActionRole)
         buttons.addButton(record_btn, QDialogButtonBox.ActionRole)
+        if kind == "pbx":
+            def check():
+                enabled.setChecked(True)
+                reader = apply()
+                if reader:
+                    follow_status()
+                    path = os.path.join(DATA_DIR, f"3cx_pruefung_{datetime.now():%Y-%m-%d_%H%M}.json")
+                    reader.check_direct(path)
+            check_btn = QPushButton("Direkt-Abfrage &prüfen")
+            check_btn.setToolTip("Anrufe ohne Webseite direkt vom 3CX-Server holen und mit "
+                                 "der gespeicherten Anrufliste vergleichen")
+            check_btn.clicked.connect(check)
+            buttons.addButton(check_btn, QDialogButtonBox.ActionRole)
         buttons.accepted.connect(lambda: (apply(), dialog.accept()))
         buttons.rejected.connect(dialog.reject)
         layout.addWidget(buttons)
         return dialog
+
+    def on_pbx_check_done(self, path, text):
+        if not path:
+            QMessageBox.warning(self, "3CX-Direkt-Abfrage", text)
+            return
+        box = QMessageBox(QMessageBox.Information, "3CX-Direkt-Abfrage",
+                          f"{text}\n\nBericht: {path}\n\nNamen und Nummern sind maskiert.",
+                          parent=self)
+        open_btn = box.addButton("Ordner öffnen", QMessageBox.ActionRole)
+        box.addButton(QMessageBox.Ok)
+        box.exec_()
+        if box.clickedButton() is open_btn:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(os.path.dirname(path)))
 
     def on_recording_done(self, path):
         if not path:

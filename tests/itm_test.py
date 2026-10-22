@@ -17,11 +17,13 @@ sys.path.insert(0, ROOT)
 from PyQt5.QtCore import QCoreApplication
 
 from itm_reader import ItmReader
+from pbx_reader import profile_processes
 
 MOCK = os.path.join(ROOT, "tests", "mock_itm")
 
 
 LATER = False  # True: Tag hat sich in ITM geändert (wieder eingestempelt, noch offen)
+DIRECT = []    # Tage, die Zeitzeuge direkt über die Schnittstelle abgefragt hat
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
@@ -29,6 +31,19 @@ class Handler(http.server.BaseHTTPRequestHandler):
         path, _, query = self.path.partition("?")
         if path.endswith("/zeiterfassung/tageszeiten"):
             body, kind = open(os.path.join(MOCK, "index.html"), "rb").read(), "text/html"
+        elif path.endswith("/appsettings.Live.json"):
+            body = json.dumps({"BaseUriConfiguration": {"V2BackendUri": "http://127.0.0.1:8814/api/"}})
+            body, kind = body.encode("utf-8"), "application/json"
+        elif path == "/api/tagesuebersicht":
+            if not self.headers.get("Authorization", "").startswith("Bearer eyJ"):
+                self.send_error(401)
+                return
+            day = query.split("=", 1)[1]
+            DIRECT.append(day)
+            body = open(os.path.join(MOCK, "tag.json"), encoding="utf-8").read()
+            if LATER:
+                body = body.replace('"DATUMT17:41:00"', 'null')
+            body, kind = body.replace("DATUM", day).encode("utf-8"), "application/json"
         elif path == "/api/tag":
             day = query.split("=", 1)[1]
             body = open(os.path.join(MOCK, "tag.json"), encoding="utf-8").read()
@@ -80,6 +95,12 @@ def run(url, until, what, linger=0):
         reader.stop()
         sys.exit(1)
     print("ok:", what, "|", reader.status)
+    if not linger:
+        time.sleep(1)
+        if profile_processes(profile):
+            print(f"::error title=ITM-Test::Edge läuft nach dem Lesen weiter ({what})")
+            reader.stop()
+            sys.exit(1)
     time.sleep(linger)
     reader.stop()
     time.sleep(2)  # Browser sauber beenden lassen (Profil freigeben)
@@ -93,6 +114,12 @@ run("http://127.0.0.1:8814/ok", lambda r: today in saved(), "heute gelesen", lin
 # 3. Neustart, Anmeldung erhalten, Blättern auf gestern liest gestern nach
 run("http://127.0.0.1:8814", lambda r: (r.want(yesterday), yesterday in saved())[1],
     "gestern beim Blättern gelesen")
+
+# Direkt abgefragt, und Edge läuft danach nicht mehr (nur kurz zum Erneuern der Anmeldung)
+if yesterday not in DIRECT:
+    print(f"::error title=ITM-Test::nicht direkt abgefragt: {DIRECT}")
+    sys.exit(1)
+print("ok: direkt abgefragt:", sorted(set(DIRECT)))
 
 day = saved()[today]
 assert day["soll"] == 480 and day["gewertet"] == 517 and day["pause"] == 54, day

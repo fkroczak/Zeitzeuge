@@ -254,6 +254,7 @@ class BrowserReader(QObject):
     recording_done = pyqtSignal(str)  # Pfad der Mitschnitt-Datei, leer bei Fehler
 
     READ_INTERVAL = 60  # Sekunden zwischen zwei Durchläufen
+    START_BROWSER = True  # False: der Leser startet Edge selbst nur bei Bedarf
     RETRY_INTERVAL = 20  # nach einem Fehler früher neu versuchen
     NAME = "Seite"
 
@@ -524,6 +525,18 @@ class BrowserReader(QObject):
         self.recording_done.emit(path)
         self._wake.set()
 
+    def browser_cookies(self):
+        """Alle Cookies aus dem Edge-Profil (auch HttpOnly). Startet Edge kurz unsichtbar,
+        falls er gerade nicht läuft. Aufruf nur mit gehaltenem _browser_lock."""
+        own = not self._tools
+        if own:
+            self._start_browser()
+        try:
+            return self._tools.call("Network.getAllCookies").get("cookies", [])
+        finally:
+            if own:
+                self._close_browser()
+
     def _login_done(self):
         """Zeigt das Anmeldefenster schon die Seite nach der Anmeldung? (je Leser)"""
         return False
@@ -576,7 +589,7 @@ class BrowserReader(QObject):
         if self._login_open or self._stop.is_set():
             return
         try:
-            if not self._tools:
+            if not self._tools and self.START_BROWSER:
                 self._start_browser()
                 self._started = True
             self._tick()
@@ -592,6 +605,7 @@ class BrowserReader(QObject):
 
 class PbxReader(BrowserReader):
     calls_added = pyqtSignal(int)
+    check_done = pyqtSignal(str, str)  # Pfad des Prüfberichts (leer bei Fehler), Ergebnis
 
     # 3CX aktualisiert die Anrufliste im unsichtbaren Edge nicht zuverlässig von selbst,
     # darum die Seite regelmäßig neu laden
@@ -728,3 +742,78 @@ class PbxReader(BrowserReader):
         if added:
             self.calls_added.emit(added)
         return True
+
+    # ------------------------------------------------------------ Direkt-Abfrage prüfen
+
+    def check_direct(self, out_file):
+        """Anrufe direkt vom Server holen (ohne Webseite) und mit anrufe.json vergleichen.
+
+        Der Bericht enthält Zeiten und Feldwerte, Namen und Nummern nur maskiert. Damit
+        lässt sich festlegen, welches Feld Dauer und Richtung trägt."""
+        threading.Thread(target=self._check_direct, args=(out_file,), daemon=True).start()
+
+    def _check_direct(self, out_file):
+        from pbx_direct import LoginRequired, PbxClient, _jwt_claims
+        from request_recorder import mask_text
+
+        self._wake.set()
+        try:
+            with self._browser_lock:
+                self._set_status("3CX: hole Anmeldung aus dem Edge-Profil …")
+                cookies = self.browser_cookies()
+            cookie = next((c["value"] for c in cookies if c.get("name") == "RefreshTokenCookie"), None)
+            if not cookie:
+                raise LoginRequired("kein Anmelde-Cookie im Edge-Profil, bitte bei 3CX anmelden")
+            client = PbxClient(self.base_url, cookie)
+            self._set_status("3CX: frage Anrufliste direkt ab …")
+            client.login()
+            calls = client.call_history(0) + client.call_history(80)  # zwei Seiten
+        except Exception as e:
+            self._set_status(f"3CX: Direkt-Abfrage fehlgeschlagen ({e})")
+            self.check_done.emit("", f"Direkt-Abfrage fehlgeschlagen: {e}")
+            return
+
+        try:
+            with open(self.calls_file, encoding="utf-8") as f:
+                known = json.load(f)
+        except (OSError, ValueError):
+            known = []
+        by_minute = {}
+        for c in known:
+            by_minute.setdefault(c.get("start", "")[:16], []).append(c)
+
+        def fmt(t):
+            return t.strftime("%Y-%m-%d %H:%M:%S") if t else None
+
+        rows = []
+        for call in calls:
+            matches = []
+            if call["start"]:
+                for delta in (-1, 0, 1):
+                    key = fmt(call["start"] + timedelta(minutes=delta))[:16]
+                    matches += by_minute.get(key, [])
+            rows.append({
+                "start": fmt(call["start"]), "t3": fmt(call["t3"]), "ende": fmt(call["end"]),
+                "flags": call["flags"], "status": call["status"],
+                "nummer": mask_text(call["number"]), "name": mask_text(call["name"]),
+                "f8": mask_text(call["f8"]), "firma": bool(call["company"]),
+                "in_anrufe_json": [{"start": m.get("start"), "richtung": m.get("direction"),
+                                    "dauer_s": m.get("duration_s"),
+                                    "nummer": mask_text(m.get("number") or ""),
+                                    "name": mask_text(m.get("name") or "")} for m in matches],
+            })
+        claims = _jwt_claims(client.token)
+        report = {
+            "erstellt": datetime.now().isoformat(timespec="seconds"),
+            "nebenstelle": mask_text(client.extension),
+            "token_felder": sorted(claims),
+            "anrufe": len(calls),
+            "vergleich": rows,
+        }
+        with open(out_file, "w", encoding="utf-8") as f:
+            json.dump(report, f, ensure_ascii=False, indent=1)
+        found = sum(1 for r in rows if r["in_anrufe_json"])
+        text = f"{len(calls)} Anrufe direkt gelesen, {found} davon auch in anrufe.json gefunden."
+        self._set_status(f"3CX: Direkt-Abfrage klappt ({len(calls)} Anrufe)")
+        self.check_done.emit(out_file, text)
+

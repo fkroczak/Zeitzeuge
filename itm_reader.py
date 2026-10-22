@@ -10,13 +10,16 @@ Gelesene Tage landen in personalzeiten.json. Heute wird alle 5 Minuten neu
 gelesen, andere Tage einmal, sobald sie angezeigt werden.
 """
 
+import base64
 import json
 import os
 import re
 import threading
 import time
 from datetime import date, datetime
-from urllib.parse import urlsplit
+import urllib.error
+import urllib.request
+from urllib.parse import unquote, urlsplit
 
 from PyQt5.QtCore import pyqtSignal
 
@@ -74,6 +77,43 @@ def day_from_api(data):
     }
 
 
+class DirectFailed(Exception):
+    """Die Direkt-Abfrage klappt nicht (anderes Format, Server nicht erreichbar …)."""
+
+
+def session_token(cookies, host):
+    """JwtToken aus dem Cookie "session" der App (JSON, evtl. URL- oder Base64-kodiert)."""
+    for c in cookies:
+        if c.get("name") != "session" or not host.endswith(c.get("domain", "").lstrip(".")):
+            continue
+        value = c.get("value") or ""
+        for text in (unquote(value), value):
+            for candidate in (text, _b64(text)):
+                try:
+                    data = json.loads(candidate) if candidate else None
+                except ValueError:
+                    continue
+                if isinstance(data, dict) and data.get("JwtToken"):
+                    return data["JwtToken"]
+    return None
+
+
+def _b64(text):
+    try:
+        return base64.urlsafe_b64decode(text + "=" * (-len(text) % 4)).decode("utf-8")
+    except (ValueError, UnicodeDecodeError):
+        return ""
+
+
+def token_expiry(token):
+    """Ablauf (Unix-Zeit) eines JWT, 0 wenn unlesbar."""
+    try:
+        part = token.split(".")[1]
+        return float(json.loads(_b64(part)).get("exp", 0))
+    except (IndexError, ValueError, AttributeError, TypeError):
+        return 0
+
+
 def load_days(path):
     try:
         with open(path, encoding="utf-8") as f:
@@ -88,6 +128,10 @@ class ItmReader(BrowserReader):
     NAME = "ITM"
     READ_INTERVAL = 5 * 60  # heute alle 5 Minuten neu lesen
     LOAD_TIMEOUT = 25       # so lange auf die Daten einer Seite warten
+    TOKEN_TIMEOUT = 90      # so lange darf Edge zum Erneuern der Anmeldung laufen
+    # Edge läuft nicht dauerhaft: Die Daten fragt Zeitzeuge direkt ab, Edge startet nur
+    # kurz, wenn das Zugangstoken (gilt etwa 1 Stunde) erneuert werden muss.
+    START_BROWSER = False
 
     def __init__(self, base_url, data_file, profile_dir, parent=None):
         # Steht in der Einstellung schon die Seite (…/zeiterfassung/tageszeiten), würde
@@ -101,6 +145,9 @@ class ItmReader(BrowserReader):
         self._checked = set()  # in dieser Sitzung schon gelesene Tage
         self._lock = threading.Lock()
         self._today_read = 0
+        self._token = None      # JwtToken aus dem Cookie "session"
+        self._api = None        # Adresse der Daten-API (aus appsettings.Live.json)
+        self._direct_ok = True  # False: Direkt-Abfrage klappt nicht, über die Webseite lesen
 
     def day_url(self, date_str):
         return f"{self.base_url}/zeiterfassung/tageszeiten?date={date_str}"
@@ -150,6 +197,113 @@ class ItmReader(BrowserReader):
 
     def _read_day(self, date_str):
         """Einen Tag lesen. False, wenn eine Anmeldung nötig ist."""
+        if self._direct_ok:
+            try:
+                return self._read_day_direct(date_str)
+            except DirectFailed as e:
+                # Schnittstelle geändert o. Ä.: wie früher über die Webseite lesen
+                self._direct_ok = False
+                self._set_status(f"ITM: Direkt-Abfrage geht nicht ({e}), lese über die Webseite")
+        if not self._tools:
+            self._start_browser()
+        return self._read_day_browser(date_str)
+
+    # ---- direkt (ohne Webseite)
+
+    def _read_day_direct(self, date_str):
+        self._set_status(f"ITM: lese {date_str} …")
+        for attempt in range(2):
+            token = self._valid_token()
+            if not token:
+                self._need_login()
+                return False
+            try:
+                data = self._api_get(f"tagesuebersicht?datum={date_str}", token)
+            except urllib.error.HTTPError as e:
+                if e.code == 401 and attempt == 0:
+                    self._token = None  # abgelaufen: neues holen und noch einmal
+                    continue
+                raise DirectFailed(f"HTTP {e.code}") from e
+            except (OSError, ValueError) as e:
+                raise DirectFailed(str(e)) from e
+            if not isinstance(data, dict) or not isinstance(data.get("personalzeiten"), list):
+                raise DirectFailed("Antwort ohne Personalzeiten")
+            self.needs_login = False
+            self._checked.add(date_str)
+            self._save(date_str, day_from_api(data))
+            self._set_status(f"ITM gelesen {datetime.now():%H:%M}")
+            return True
+        raise DirectFailed("Anmeldung wird nicht angenommen")
+
+    def _api_base(self):
+        """Adresse der Daten-API, so wie die App sie aus ihren Einstellungen liest."""
+        if self._api:
+            return self._api
+        api = None
+        for name in ("appsettings.Live.json", "appsettings.json"):
+            try:
+                with urllib.request.urlopen(f"{self.base_url}/{name}", timeout=15) as resp:
+                    uris = json.load(resp).get("BaseUriConfiguration") or {}
+                api = uris.get("V2BackendUri") or uris.get("ApiUri")
+            except (OSError, ValueError, AttributeError):
+                continue
+            if api and "localhost" not in api:
+                break
+            api = None
+        if not api:
+            raise DirectFailed("Adresse der Schnittstelle nicht gefunden")
+        self._api = api.rstrip("/") + "/"
+        return self._api
+
+    def _api_get(self, path, token):
+        req = urllib.request.Request(self._api_base() + path, headers={
+            "Authorization": f"Bearer {token}", "Accept": "application/json"})
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            return json.load(resp)
+
+    def _valid_token(self):
+        """Gültiges Zugangstoken oder None (dann ist eine Anmeldung nötig)."""
+        if self._token and token_expiry(self._token) > time.time() + 60:
+            return self._token
+        self._token = self._fetch_token()
+        return self._token
+
+    def _fetch_token(self):
+        """Edge kurz unsichtbar starten: Die App erneuert dabei ihr Token und legt es im
+        Cookie "session" ab. Danach wird Edge wieder beendet."""
+        self._set_status("ITM: erneuere Anmeldung …")
+        own = not self._tools
+        if own:
+            self._start_browser()
+        self._tools.call("Page.navigate", url=self.start_url())
+        token = None
+        try:
+            deadline = time.time() + self.TOKEN_TIMEOUT
+            while time.time() < deadline and not self._stop.is_set():
+                time.sleep(1)
+                cookies = self._tools.call("Network.getAllCookies").get("cookies", [])
+                token = session_token(cookies, urlsplit(self.base_url).hostname) or token
+                if token and token_expiry(token) > time.time() + 120:
+                    return token
+                try:
+                    state = json.loads(self._evaluate(STATE_JS % '""', timeout=5) or "null")
+                except (RuntimeError, ValueError):
+                    continue
+                if state and (state["password"] or "login" in state["path"].lower()
+                              or state["host"] != urlsplit(self.base_url).netloc):
+                    return None  # Anmeldeseite: du musst dich anmelden
+            if token and token_expiry(token) > time.time():
+                return token  # gilt nur noch kurz, reicht aber für diesen Durchlauf
+            if token:
+                raise DirectFailed("Anmeldung wurde nicht erneuert")
+            return None
+        finally:
+            if own:
+                self._close_browser()
+
+    # ---- über die Webseite (Rückfall)
+
+    def _read_day_browser(self, date_str):
         self._set_status(f"ITM: lese {date_str} …")
         try:  # Daten der noch angezeigten Seite vergessen, damit nur die neue Seite zählt
             self._evaluate("window.__zz = {}", timeout=5)
