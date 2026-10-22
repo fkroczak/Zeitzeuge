@@ -83,7 +83,7 @@ with open(os.path.join(DATA, "zeitzeuge_config.json"), "w", encoding="utf-8") as
                "rdm_paths": [os.path.join(LOGS, "Connections.log")],
                "teamviewer_timezone_correction": 1,
                "teamviewer_names": {"1076789144": "Müller GmbH"},
-               "dark_mode": DARK, "calls_port": 8797, "close_to_tray": True}, f)
+               "dark_mode": DARK, "close_to_tray": True}, f)
 os.environ["ZEITZEUGE_DATA"] = DATA
 
 # ------------------------------------------------------------- Programm

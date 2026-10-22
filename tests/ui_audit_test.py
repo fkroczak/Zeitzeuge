@@ -31,7 +31,6 @@ from PyQt5.QtWidgets import (QAbstractButton, QAbstractSpinBox, QApplication,
                              QMenu, QTableWidget, QTextEdit, QToolBar,
                              QToolButton)
 
-import browser_setup
 import settings_dialogs
 import timeline_only
 
@@ -188,7 +187,7 @@ for taskbar in ("#F3F3F3", "#1F2329"):
         check_contrast("Infobereich", color, taskbar, minimum=3.0)
 
 # Graue Hinweistexte direkt im Code (nur Farbe "gray" ist auf hellem Grund zu blass)
-for path in ["main_timeline.py", "settings_dialogs.py", "browser_setup.py", "timeline_only.py"]:
+for path in ["main_timeline.py", "settings_dialogs.py", "timeline_only.py"]:
     with open(os.path.join(ROOT, path), encoding="utf-8") as f:
         for no, line in enumerate(f, 1):
             if re.search(r"color:\s*(gray|grey|#999|#aaa)\b", line, re.I):
@@ -231,7 +230,6 @@ dialogs = {
     "Arbeitszeiten": settings_dialogs.WorkHoursDialog(config, window),
     "Logeinstellungen": settings_dialogs.ConnectionSettingsDialog(config, "teamviewer", ["C:\\x"], "TV", window),
     "Aktivitätstypen": settings_dialogs.ActivityTypeSettingsDialog(config, window),
-    "Browser-Anbindung": browser_setup.BrowserSetupDialog(config, 8765, lambda c: None, window),
     "KI-Vorschläge": settings_dialogs.AiSettingsDialog(config, 0.0, window),
 }
 if hasattr(window, "build_pbx_dialog"):
@@ -260,7 +258,13 @@ toolbar = window.findChild(QToolBar)
 ext = toolbar.findChild(QToolButton, "qt_toolbar_ext_button")
 if ext is None or not ext.isVisible() or ext.width() < 20:
     problem("Reflow", "bei 640 px Breite ist der Knopf für ausgeblendete Befehle "
-                      "(Einstellungen usw.) fehlend oder kaum sichtbar")
+                      "fehlend oder kaum sichtbar")
+# Einstellungen müssen auch im schmalen Fenster direkt sichtbar sein, nicht erst im Überlauf
+for width in (640, 480):
+    window.resize(width, 480)
+    QTest.qWait(150)
+    if not window.menu_button.isVisible():
+        problem("Reflow", f"bei {width} px Breite ist „Einstellungen“ nur über » erreichbar")
 
 # --------------------------------------------------------------- Ergebnis
 window.quit_app()

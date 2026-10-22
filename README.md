@@ -293,7 +293,6 @@ Läuft RDM auf einem Server, kann Zeitzeuge dessen Log auch über das Netzwerk l
 | `request_recorder.py` | Mitschnitt der Abfragen einer Seite, mit Schwärzen von Geheimnissen |
 | `ai_classifier.py` | KI-Vorschläge über die Anthropic-API |
 | `storage.py` | Speicherort der Daten |
-| `browser_setup.py` | Einrichtungsassistent für Tampermonkey |
 | `tests/` | Tests, laufen bei jedem Build: Start, Bedienbarkeit, Infobereich, Log-Parser, VPN-Logs, 3CX und ITM mit nachgebauten Seiten, KI-Vorschläge mit nachgebauter API, Fensterabfrage, Anrufliste. Dazu `start_bench.py` (Startzeit messen) und `screenshots.sh` (Bildschirmfotos mit Demodaten) |
 | `settings_dialogs.py` | Dialoge für Logpfade und Aktivitätstypen |
 | `zeitzeuge_anrufe.user.js` | Tampermonkey-Skript für den 3CX-Webclient |
