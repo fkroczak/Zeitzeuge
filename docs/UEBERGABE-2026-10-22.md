@@ -139,7 +139,7 @@ Alles liegt nur auf dem Branch. `main` ist unverändert.
 - **Nach einem Merge alles zurück:** alle Commits dieses Branches seit `39abfb1` außer dem Merge
   `8339294` zurücknehmen, neueste zuerst. Liste: `git log --oneline --no-merges 39abfb1..HEAD`
   (enthält auch den Diagnose-Commit und seine Rücknahme, die sich gegenseitig aufheben). Kern:
-  `git revert 47091c7 0f4c26c 936be8b 41b0103 b39f394 dfee077 01a2940` plus den Absturz-Fix
+  `git revert 47091c7 0f4c26c 936be8b 41b0103 b39f394 dfee077 01a2940` und `d588166` (Absturz-Fix)
   (neueste zuerst; den Merge-Commit `8339294` nicht zurücknehmen, er enthält nur Stand von `main`).
 - **Nur die Oberfläche zurück, Startzeit behalten:** `git revert 0f4c26c 936be8b 41b0103 b39f394`.
 - **Nur die Logo-Zustandsanzeige zurück:** `git revert 0f4c26c` (dann wieder grüner Extra-Punkt).
