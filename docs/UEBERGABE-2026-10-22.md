@@ -43,7 +43,7 @@ oder größer sein.
 | `01a2940` | Messwerkzeuge und Vorher-Bilder | `tests/start_bench.py`, `tests/screenshots.py`, `tests/screenshots.sh`, `docs/screenshots/2026-10-22/vorher/` |
 | `dfee077` | Start: Fenster sofort, Logs im Hintergrund, schneller Parser | `log_parsers.py`, `timeline_only.py`, `main_timeline.py`, `grouping.py`, `settings_dialogs.py` (ungenutzten `TapiSettingsDialog` entfernt) |
 | `b39f394` | Oberfläche, Menü, Infobereich, PC-Band bei Pause, neue Tests | `icons.py` (neu), `main_timeline.py`, `timeline_only.py`, `activity_tracker.py`, `tests/tray_test.py` (neu), `tests/parser_test.py` (neu), `tests/ui_audit_test.py`, `.github/workflows/build.yml` |
-| letzter Commit | Doku, Screenshots, doppelter Aktivitätstyp, kaputte Umlaute in Kommentaren | `README.md`, `docs/…`, `main_timeline.py` |
+| `41b0103` | Doku, Screenshots, doppelter Aktivitätstyp, kaputte Umlaute in Kommentaren | `README.md`, `docs/…`, `main_timeline.py` |
 
 ### Neue Bedienung im Überblick
 
@@ -120,9 +120,9 @@ Ordner [`docs/screenshots/2026-10-22/`](screenshots/2026-10-22/) mit Bildübersi
 Alles liegt nur auf dem Branch. `main` ist unverändert.
 
 - **Alles verwerfen:** Branch nicht mergen (oder löschen). Lokal: `git checkout main`.
-- **Nach einem Merge alles zurück:** `git revert <letzter Commit> b39f394 dfee077 01a2940`
+- **Nach einem Merge alles zurück:** `git revert 41b0103 b39f394 dfee077 01a2940`
   (neueste zuerst), dann pushen.
-- **Nur die Oberfläche zurück, Startzeit behalten:** `git revert <letzter Commit> b39f394`.
+- **Nur die Oberfläche zurück, Startzeit behalten:** `git revert 41b0103 b39f394`.
 - **Nur die Startzeit zurück:** `git revert dfee077` (Konflikte in `main_timeline.py`
   möglich, dann zuerst die Oberflächen-Commits zurücknehmen).
 - **Daten:** Es gibt keine Migration. Config, Anrufe und Aktivitätsprotokoll bleiben
