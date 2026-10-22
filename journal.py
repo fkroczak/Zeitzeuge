@@ -218,7 +218,9 @@ def describe(entry):
     if entry.get("direction") and entry.get("direction") != "Anruf":
         what = f"{entry.get('type', '')} {entry['direction'].lower()}"
     who = entry.get("customer_name") or ""
-    return (f"{what}{' ' + who if who else ''}, {start:%H:%M}–{end:%H:%M} "
+    if who.startswith(what or "\0"):  # "TeamViewer 1 123 …" nicht als "TeamViewer TeamViewer 1 123 …"
+        what = ""
+    return (f"{what}{' ' if what and who else ''}{who}, {start:%H:%M}–{end:%H:%M} "
             f"({duration_text((end - start).total_seconds())})")
 
 

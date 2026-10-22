@@ -133,7 +133,7 @@ def load_config_with_defaults():
                         ("FTP-Verbindung", "#7F8C8D"), ("TeamViewer-Verbindung", "#3460DB"),
                         ("Zugangsdaten", "#9B59B6"), ("Arbeitsblock", "#5B8DEF"),
                         (AI_TYPE, "#A55EEA"), ("Dokumentiert", "#2E9E5B"),
-                        ("Undokumentiert", "#E67E22"), ("Klassifizierung", "#8E7CC3")]:
+                        ("Undokumentiert", "#E67E22"), ("Klassifizierung", "#8395A7")]:
         cfg["type_colors"].setdefault(kind, color)
     # Alte Standardpfade enthielten doppelte Backslashes (C:\Users\x\\TeamViewer)
     for key in ("teamviewer_paths", "rdm_paths", "vpn_paths"):
@@ -217,6 +217,7 @@ class TimelineApp(MenusMixin, DayListMixin, DocsMixin, ReadersMixin, TrayMixin, 
         self.timeline.doc_entries = self.doc_band
         self.timeline.rule_entries = self.rule_band
         self.timeline.doc_request.connect(self.on_doc_request)
+        self.timeline.entry_action.connect(self.on_entry_action)
         self._rule_cache = {}
         self._prompt_window = None
         self._prompt_queue = []
@@ -258,24 +259,9 @@ class TimelineApp(MenusMixin, DayListMixin, DocsMixin, ReadersMixin, TrayMixin, 
         copy_action.setShortcutContext(Qt.WidgetShortcut)
         copy_action.triggered.connect(self.copy_selection)
         self.table.addAction(copy_action)
-        doc_action = QAction("Tätigkeit &eintragen / bearbeiten …", self.table)
-        doc_action.triggered.connect(self.doc_for_row)
-        self.table.addAction(doc_action)
-        doc_delete = QAction("Tätigkeit &löschen", self.table)
-        doc_delete.triggered.connect(self.delete_doc_row)
-        self.table.addAction(doc_delete)
-        self._icon_actions.append((doc_action, "edit"))
-        name_action = QAction("&TeamViewer-ID benennen …", self.table)
-        name_action.triggered.connect(self.name_teamviewer_id)
-        self.table.addAction(name_action)
-        for text, status in [("KI-Vorschlag übernehmen", "übernehmen"),
-                             ("KI-Vorschlag verwerfen", "verwerfen")]:
-            action = QAction(text, self.table)
-            action.triggered.connect(lambda _c=False, s=status: self.ai_action_on_row(s))
-            self.table.addAction(action)
-        self._icon_actions += [(details_action, "details"), (copy_action, "copy"),
-                               (name_action, "tag")]
-        self.table.setContextMenuPolicy(Qt.ActionsContextMenu)
+        # Rechtsklick: dasselbe Menü wie in der Timeline, nur mit passenden Befehlen
+        self.table.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(self.table_menu)
 
         self.timeline.setAccessibleName("Timeline des Tages")
         self.timeline.setAccessibleDescription(
@@ -292,9 +278,27 @@ class TimelineApp(MenusMixin, DayListMixin, DocsMixin, ReadersMixin, TrayMixin, 
 
         # Statuszeile
         self.info_label = QLabel(self)
-        self.calls_label = QLabel(self)
+        self.calls_label = QLabel(self)  # letzter Text des 3CX-Lesers (steht im Hinweis der Anzeige)
+        self.calls_label.hide()  # nur Textspeicher, sonst läge es links oben über dem Datumsfeld
         self.statusBar().addWidget(self.info_label, 1)
-        self.statusBar().addPermanentWidget(self.calls_label)
+        # Datenquellen nebeneinander: grüner Haken = läuft, gelbes Dreieck = keine Daten,
+        # graue Uhr = liest gerade. Ein Klick führt zur Lösung (Anmeldung, Einstellungen).
+        self.source_buttons = {}
+        for kind in ("logs", "pbx", "itm"):
+            button = QToolButton(self)
+            button.setObjectName("source")
+            button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+            button.clicked.connect(lambda _c=False, k=kind: self.on_source_clicked(k))
+            button.hide()
+            self.statusBar().addPermanentWidget(button)
+            self.source_buttons[kind] = button
+        # Wichtigste Aufgabe sichtbar machen: offene Tätigkeiten, ein Klick trägt die erste ein
+        self.open_docs_button = QToolButton(self)
+        self.open_docs_button.setObjectName("cta")
+        self.open_docs_button.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self.open_docs_button.clicked.connect(self.document_next_open)
+        self.open_docs_button.hide()
+        self.statusBar().addPermanentWidget(self.open_docs_button)
         # Zustand der Fensteraufzeichnung, ein Klick schaltet sie um (wie im Infobereich)
         self.tracking_button = QToolButton(self)
         self.tracking_button.setAccessibleName("Fensteraufzeichnung ein- oder ausschalten")

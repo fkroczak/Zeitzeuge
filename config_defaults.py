@@ -124,7 +124,7 @@ def default_config():
         # Klassifizierung ohne KI (rules.py); Reihenfolge = Priorität
         "rules": rules.default_rules(),
         "rules_gap_minutes": 5,
-        "rules_min_minutes": 2,
+        "rules_min_minutes": 5,
         "show_pc_in_list": False,
 
         "pbx_reader_enabled": False,  # 3CX direkt über Edge im Hintergrund lesen

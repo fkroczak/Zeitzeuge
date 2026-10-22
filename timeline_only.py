@@ -6,9 +6,9 @@ from html import escape
 
 from PySide6.QtCore import QDate, QDateTime, Qt, QTimer, Signal
 from PySide6.QtGui import QBrush, QColor, QFont, QFontMetrics, QPainter, QPen
-from PySide6.QtWidgets import (QApplication, QDialog, QDialogButtonBox, QFormLayout,
-                               QGraphicsRectItem, QGraphicsScene, QGraphicsView,
-                               QLabel, QLineEdit, QMenu, QTextEdit, QVBoxLayout)
+from PySide6.QtWidgets import (QDialog, QDialogButtonBox, QFormLayout, QGraphicsRectItem,
+                               QGraphicsScene, QGraphicsView, QLabel, QLineEdit, QMenu,
+                               QTextEdit, QVBoxLayout)
 
 from activity_tracker import app_label, merge_segments, read_segments
 from call_import import load_call_suggestions
@@ -120,6 +120,44 @@ def ai_copy_text(entry):
             f"{who}{entry.get('description', '')}")
 
 
+def entry_menu_items(entry):
+    """Befehle für einen Eintrag: [(Text, Befehl)], None = Trennlinie.
+
+    Timeline und Tagesliste zeigen dasselbe Menü mit denselben Texten, und nur Befehle,
+    die zu diesem Eintrag passen.
+    """
+    if "minute" in entry:  # freie Stelle in der Timeline
+        return [(f"&Tätigkeit ab {hhmm(entry['minute'] // 5 * 5)} eintragen …", "add_at")]
+    if entry.get("open"):
+        return [("Jetzt &eintragen …", "add"), ("&Nicht dokumentieren", "ignore")]
+    if entry.get("doc"):
+        return [("Tätigkeit &bearbeiten …", "edit"), ("Tätigkeit &löschen", "delete"), None,
+                ("Als Ticketzeile &kopieren", "copy")]
+    items = [("&Details öffnen", "details"), None]
+    if entry.get("ai") or entry.get("rule"):
+        items.append(("Als &Tätigkeit eintragen …", "add"))
+    else:
+        items.append(("&Tätigkeit dazu eintragen …", "add"))
+    if entry.get("tv_id"):
+        items.append(("TeamViewer-ID &benennen …", "name_tv"))
+    if entry.get("ai"):
+        items += [None, ("Vorschlag &verwerfen", "reject")]
+    items += [None, ("&Kopieren", "copy")]
+    return items
+
+
+def exec_entry_menu(parent, entry, global_pos):
+    """Menü zu entry zeigen, gewählten Befehl zurückgeben (oder None)."""
+    menu = QMenu(parent)
+    keys = {}
+    for item in entry_menu_items(entry):
+        if item is None:
+            menu.addSeparator()
+        else:
+            keys[menu.addAction(item[0])] = item[1]
+    return keys.get(menu.exec(global_pos))
+
+
 class ActivityViewDialog(QDialog):
     """Nur-Anzeigen-Dialog zum Kopieren von Aktivitätsdaten."""
 
@@ -181,6 +219,8 @@ class TimelineView(QGraphicsView):
     # Tätigkeit eintragen/ändern: (Aktion, Eintrag oder {"minute": …})
     # Aktionen: "add" (zu einem Eintrag), "add_at" (freie Stelle), "edit", "delete", "ignore"
     doc_request = Signal(str, dict)
+    # Rechtsklick-Menü: (Befehl aus entry_menu_items, Eintrag oder {"minute": …})
+    entry_action = Signal(str, dict)
     # Hintergrund-Thread hat TeamViewer- und RDM-Logs gelesen
     logs_loaded = Signal(object, object, object)
 
@@ -761,6 +801,9 @@ class TimelineView(QGraphicsView):
         if w > 28:
             if a.get("open"):
                 label_text = f"? {a.get('customer_name') or 'eintragen'}"
+            elif a.get("doc"):  # Form statt nur Farbe: ✓ dokumentiert, ? offen
+                label_text = "✓ " + (" · ".join(t for t in (a.get("customer_name"), a.get("description"))
+                                                if t) or a.get("category") or "Tätigkeit")
             else:
                 label_text = " · ".join(t for t in (a.get("customer_name"), a.get("category"),
                                                     a.get("description") if a.get("doc") else "")
@@ -996,55 +1039,17 @@ class TimelineView(QGraphicsView):
         super().mouseReleaseEvent(event)
 
     def contextMenuEvent(self, event):
-        """Rechtsklick: Tätigkeit eintragen; auf KI-Vorschlägen übernehmen oder verwerfen."""
+        """Rechtsklick: dasselbe Menü wie in der Tagesliste (entry_menu_items)."""
         a = self._activity_at(event.pos())
         self._hide_hover()
-        menu = QMenu(self)
-        actions = {}
-
-        def add(text, key, enabled=True):
-            action = menu.addAction(text)
-            action.setEnabled(enabled)
-            actions[action] = key
-
         if a is None:
             minute = self._minute_at(event.pos().x()) if self._ppm else -1
             if not 0 <= minute < 24 * 60:
                 return
-            add(f"&Tätigkeit ab {hhmm(minute // 5 * 5)} eintragen …", "add_at")
-        elif a.get("open"):
-            add("Jetzt &eintragen …", "add")
-            add("&Nicht dokumentieren", "ignore")
-        elif a.get("doc"):
-            add("&Bearbeiten …", "edit")
-            add("&Löschen", "delete")
-            menu.addSeparator()
-            add("Text &kopieren", "copy")
-        else:
-            add("Als &Tätigkeit eintragen …" if a.get("ai") or a.get("rule")
-                else "&Tätigkeit dazu eintragen …", "add")
-            if a.get("ai"):
-                menu.addSeparator()
-                add("Vorschlag &übernehmen", "accept", a.get("status") != "übernommen")
-                add("Vorschlag &verwerfen", "reject")
-            if a.get("ai") or a.get("rule"):
-                menu.addSeparator()
-                add("Text &kopieren", "copy")
-        chosen = actions.get(menu.exec(event.globalPos()))
-        if chosen == "add_at":
-            self.doc_request.emit("add_at", {"minute": minute})
-        elif chosen == "add":
-            self.doc_request.emit("add", a.get("source_entry", a))
-        elif chosen in ("edit", "delete"):
-            self.doc_request.emit(chosen, a)
-        elif chosen == "ignore":
-            self.doc_request.emit("ignore", a["source_entry"])
-        elif chosen == "accept":
-            self.ai_action.emit(a, "übernehmen")
-        elif chosen == "reject":
-            self.ai_action.emit(a, "verwerfen")
-        elif chosen == "copy":
-            QApplication.clipboard().setText(ai_copy_text(a))
+            a = {"minute": minute}
+        key = exec_entry_menu(self, a, event.globalPos())
+        if key:
+            self.entry_action.emit(key, a)
 
     def mouseDoubleClickEvent(self, event):
         if event.button() == Qt.LeftButton and not self._activity_at(event.position().toPoint()):

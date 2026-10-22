@@ -16,7 +16,7 @@ from journal_dialogs import DocPromptDialog, EntryDialog, PromptWindow, default_
 from settings_dialogs import AiSettingsDialog
 import rules
 from grouping import group_entries
-from timeline_only import parse_time, row_kind
+from timeline_only import ActivityViewDialog, ai_copy_text, parse_time, row_kind, type_label
 from theme import GERMAN
 import main_timeline as mt  # Pfade und save_config zur Laufzeit von dort (Tests ersetzen sie dort)
 
@@ -80,14 +80,8 @@ class DocsMixin:
             except (OSError, ValueError) as e:
                 self.statusBar().showMessage(str(e), 8000)
         self.timeline.draw_timeline(self.current_date)
-
-    def ai_action_on_row(self, action):
-        row = self.table.currentRow()
-        if not 0 <= row < len(self.list_entries) or not self.list_entries[row].get("ai"):
-            self.statusBar().showMessage("Die markierte Zeile ist kein KI-Vorschlag "
-                                         "(Ansicht „KI-Vorschläge“ wählen)", 4000)
-            return
-        self.on_ai_action(self.list_entries[row], action)
+        self.statusBar().showMessage("KI-Vorschlag übernommen und als Tätigkeit gespeichert"
+                                     if status == "übernommen" else "KI-Vorschlag verworfen", 4000)
 
     def ai_spent(self):
         """Summe der bisherigen Kosten aus allen gespeicherten Tagen."""
@@ -127,13 +121,13 @@ class DocsMixin:
         rule_list = self.config.get("rules") or []
         key = (len(entries), entries[-1]["end"] if entries else "", len(pc),
                pc[-1]["end"] if pc else "", json.dumps(rule_list, sort_keys=True),
-               self.config.get("rules_gap_minutes", 5), self.config.get("rules_min_minutes", 2))
+               self.config.get("rules_gap_minutes", 5), self.config.get("rules_min_minutes", 5))
         cached = self._rule_cache.get(date_str)
         if cached and cached[0] == key:
             return cached[1]
         blocks = rules.classify(entries, pc, rule_list,
                                 gap_minutes=self.config.get("rules_gap_minutes", 5),
-                                min_minutes=self.config.get("rules_min_minutes", 2))
+                                min_minutes=self.config.get("rules_min_minutes", 5))
         self._rule_cache[date_str] = (key, blocks)
         return blocks
 
@@ -163,18 +157,46 @@ class DocsMixin:
         return sorted(entries, key=lambda e: e["start"])
 
     def on_doc_request(self, action, entry):
-        """Aus der Timeline: eintragen, bearbeiten, löschen, nicht dokumentieren."""
-        if action == "add":
-            self.add_doc(entry)
-        elif action == "add_at":
+        """Klick in der Timeline (offen: eintragen, Tätigkeit: bearbeiten)."""
+        self.on_entry_action(action, entry)
+
+    def on_entry_action(self, key, entry):
+        """Befehl aus dem Rechtsklick-Menü (Timeline und Tagesliste gleich)."""
+        if key == "add":
+            self.add_doc(entry.get("source_entry", entry))
+        elif key == "add_at":
             self.add_doc(minute=entry["minute"])
-        elif action == "edit":
+        elif key == "edit":
             self.edit_doc(entry["doc_item"])
-        elif action == "delete":
+        elif key == "delete":
             self.delete_doc(entry["doc_item"])
-        elif action == "ignore":
-            self.journal.ignore(entry)
+        elif key == "ignore":
+            self.journal.ignore(entry.get("source_entry", entry))
             self.timeline.draw_timeline(self.current_date)
+            self.statusBar().showMessage("Wird nicht mehr nachgefragt", 4000)
+        elif key == "reject":
+            self.on_ai_action(entry, "verwerfen")
+        elif key == "details":
+            ActivityViewDialog(entry, self).exec()
+        elif key == "name_tv":
+            self.name_teamviewer_id(entry)
+        elif key == "copy":
+            if entry.get("doc"):
+                text = ticket_line(entry["doc_item"])
+            elif entry.get("ai") or entry.get("rule"):
+                text = ai_copy_text(entry)
+            else:
+                start, end = parse_time(entry["start"]), parse_time(entry["end"])
+                text = (f"{start:%H:%M}–{end:%H:%M}\t{type_label(entry)}\t"
+                        f"{entry.get('customer_name', '')}\t{entry.get('details', '')}").rstrip()
+            QApplication.clipboard().setText(text)
+            self.statusBar().showMessage("In die Zwischenablage kopiert", 3000)
+
+    def document_next_open(self):
+        """Knopf „… offen – jetzt eintragen“: erste offene Tätigkeit des Tages eintragen."""
+        open_items = self.doc_candidates(self.current_date.toString("yyyy-MM-dd"))
+        if open_items:
+            self.add_doc(open_items[0])
 
     def add_doc(self, entry=None, minute=None):
         """Tätigkeit nachtragen, auf Wunsch vorbelegt aus einem erkannten Eintrag."""
@@ -198,8 +220,10 @@ class DocsMixin:
             return
         item = dialog.item()
         if entry:
-            item["source"] = entry.get("type", "")
-        self._save_doc(item, entry, dialog.remember_tv())
+            item["source"] = "KI" if entry.get("ai") else entry.get("type", "")
+        if self._save_doc(item, entry, dialog.remember_tv()) and entry and entry.get("ai"):
+            self.ai_store.set_status(entry["start"][:10], entry["ai_id"], "übernommen")
+            self.timeline.draw_timeline(self.current_date)
 
     def _save_doc(self, item, entry=None, remember_tv=False, old=None):
         try:
@@ -242,9 +266,10 @@ class DocsMixin:
             QMessageBox.warning(self, "Tätigkeit löschen", str(e))
             return
         self.timeline.draw_timeline(self.current_date)
+        self.statusBar().showMessage("Tätigkeit gelöscht", 4000)
 
     def doc_for_row(self):
-        """Tagesliste: Tätigkeit zur markierten Zeile eintragen oder bearbeiten."""
+        """F7 bei markierter Zeile: Tätigkeit dazu eintragen oder bearbeiten."""
         row = self.table.currentRow()
         if not 0 <= row < len(self.list_entries):
             return None
@@ -253,13 +278,6 @@ class DocsMixin:
             self.edit_doc(entry["doc_item"])
         else:
             self.add_doc(entry.get("source_entry", entry))
-
-    def delete_doc_row(self):
-        row = self.table.currentRow()
-        if 0 <= row < len(self.list_entries) and self.list_entries[row].get("doc"):
-            self.delete_doc(self.list_entries[row]["doc_item"])
-        else:
-            self.statusBar().showMessage("Die markierte Zeile ist keine eingetragene Tätigkeit", 4000)
 
     def show_open_docs(self):
         """Fenster zeigen, heute, Ansicht "Dokumentation"."""
@@ -271,6 +289,8 @@ class DocsMixin:
         self.config.setdefault("timeline_rows", {})[key] = on
         mt.save_config(self.config)
         self.timeline.draw_timeline(self.current_date)
+        name = {"doc": "Doku", "rule": "Regel", "ai": "KI"}[key]
+        self.statusBar().showMessage(f"Zeile „{name}“ {'eingeblendet' if on else 'ausgeblendet'}", 3000)
 
     def edit_prompt_settings(self):
         dialog = DocPromptDialog(self.config, self)
@@ -344,9 +364,11 @@ class DocsMixin:
         elif action == "ignore":
             self.journal.ignore(entry)
             self.timeline.draw_timeline(self.current_date)
+            self.statusBar().showMessage("Wird nicht mehr nachgefragt", 4000)
         else:  # später
             snooze = self.config.get("prompt_snooze_minutes", 15)
             self._prompt_asked[key] = datetime.now() + timedelta(minutes=snooze)
+            self.statusBar().showMessage(f"Zeitzeuge fragt in {snooze} Minuten noch einmal", 4000)
         if window:
             window.deleteLater()
         QTimer.singleShot(400, self.show_next_prompt)

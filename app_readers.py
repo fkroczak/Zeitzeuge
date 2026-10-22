@@ -30,6 +30,7 @@ class ReadersMixin:
             days_back=self.config.get("calls_days_back", 14),
         )
         self.pbx_reader.status_changed.connect(self.calls_label.setText)
+        self.pbx_reader.status_changed.connect(lambda _t: self.update_source_indicators())
         self.pbx_reader.calls_added.connect(
             lambda _n: self.timeline.draw_timeline(self.current_date)
         )
@@ -39,12 +40,14 @@ class ReadersMixin:
         self._watch_reader(self.pbx_reader)
         self.pbx_reader.start()
         self.calls_label.setText("3CX: wird geladen …")
+        self.update_source_indicators()
 
     def stop_pbx_reader(self):
         if self.pbx_reader:
             self.pbx_reader.stop()
             self.pbx_reader.deleteLater()
             self.pbx_reader = None
+            self.update_source_indicators()
 
     def on_pbx_login_required(self):
         if self.tray:
@@ -256,9 +259,7 @@ class ReadersMixin:
             return
         from itm_reader import ItmReader
         self.itm_reader = ItmReader(self.config.get("itm_url", ""), mt.ITM_FILE, mt.ITM_PROFILE_DIR, self)
-        self.itm_reader.status_changed.connect(
-            lambda text: self.statusBar().showMessage(text, 5000)
-        )
+        self.itm_reader.status_changed.connect(lambda _t: self.update_source_indicators())
         self.itm_reader.day_read.connect(
             lambda d: self.timeline.draw_timeline(self.current_date)
             if d == self.current_date.toString("yyyy-MM-dd") else None
@@ -282,6 +283,7 @@ class ReadersMixin:
             self.itm_reader.deleteLater()
             self.itm_reader = None
             self.timeline.personal_day = None
+            self.update_source_indicators()
 
     # ---------------------- Absicherung gegen Fehler und Aussetzer -------------
 

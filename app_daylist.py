@@ -9,8 +9,9 @@ from PySide6.QtWidgets import QApplication, QInputDialog, QHeaderView, QTableWid
 from vpn_reader import vpn_sources
 from journal import describe, ticket_line
 from grouping import format_tv_id, work_blocks
-from timeline_only import (ActivityViewDialog, ai_copy_text, entry_color, format_duration,
-                           parse_time, type_label)
+from timeline_only import (ActivityViewDialog, ai_copy_text, entry_color, exec_entry_menu,
+                           format_duration, parse_time, type_label)
+import icons
 from theme import GERMAN
 import main_timeline as mt  # Pfade und save_config zur Laufzeit von dort (Tests ersetzen sie dort)
 
@@ -76,13 +77,9 @@ class DayListMixin:
         self.update_view_button()
         self.timeline.draw_timeline(self.current_date)
 
-    def name_teamviewer_id(self):
-        row = self.table.currentRow()
-        if not 0 <= row < len(self.list_entries):
-            return
-        tv_id = self.list_entries[row].get("tv_id")
+    def name_teamviewer_id(self, entry):
+        tv_id = entry.get("tv_id")
         if not tv_id:
-            self.statusBar().showMessage("Die markierte Zeile ist keine TeamViewer-Verbindung", 4000)
             return
         names = self.config.setdefault("teamviewer_names", {})
         name, ok = QInputDialog.getText(
@@ -97,6 +94,18 @@ class DayListMixin:
             names.pop(tv_id, None)
         mt.save_config(self.config)
         self.timeline.draw_timeline(self.current_date)
+        self.statusBar().showMessage(f"TeamViewer-ID {format_tv_id(tv_id)} heißt jetzt „{name.strip()}“"
+                                     if name.strip() else "Name entfernt", 4000)
+
+    def table_menu(self, pos):
+        row = self.table.rowAt(pos.y())
+        if not 0 <= row < len(self.list_entries):
+            return
+        self.table.selectRow(row)
+        entry = self.list_entries[row]
+        key = exec_entry_menu(self, entry, self.table.viewport().mapToGlobal(pos))
+        if key:
+            self.on_entry_action(key, entry)
 
     def open_details(self, row):
         if 0 <= row < len(self.list_entries):
@@ -134,20 +143,19 @@ class DayListMixin:
             parts.append("Logs werden gelesen …")
         else:
             parts.append("keine Einträge")
-            missing = self.timeline.missing_sources()
-            if missing:
-                parts.append(f"keine Logdatei gefunden: {', '.join(missing)} "
-                             "(Pfade unter Einstellungen → Datenquellen → Einrichten)")
         if self.pc_activities:
             parts.append(f"am PC aktiv {format_duration(mt.merged_seconds(self.pc_activities))}")
         doc = self.doc_band(self.current_date.toString("yyyy-MM-dd"))
         done = [e for e in doc if e.get("doc")]
         open_count = len(doc) - len(done)
         if done or open_count:
-            text = f"dokumentiert {format_duration(mt.merged_seconds(done))}" if done else "nichts dokumentiert"
-            if open_count:
-                text += f", {open_count} offen (F7)"
-            parts.append(text)
+            parts.append(f"dokumentiert {format_duration(mt.merged_seconds(done))}" if done
+                         else "nichts dokumentiert")
+        self.open_docs_button.setVisible(bool(open_count))
+        if open_count:
+            self.open_docs_button.setText(f"{open_count} offen – jetzt eintragen")
+            self.open_docs_button.setToolTip("Erste noch nicht dokumentierte Tätigkeit eintragen (F7)")
+            self.open_docs_button.setAccessibleName(f"{open_count} Tätigkeiten offen, jetzt eintragen")
         itm_day = self.itm_reader.day(self.current_date.toString("yyyy-MM-dd")) if self.itm_reader else None
         if itm_day and itm_day.get("gewertet") is not None:
             text = f"Personalzeit {format_duration(itm_day['gewertet'] * 60)}"
@@ -155,6 +163,56 @@ class DayListMixin:
                 text += f" (Soll {format_duration(itm_day['soll'] * 60)})"
             parts.append(text)
         self.info_label.setText("   ·   ".join(parts))
+        self.update_source_indicators()
+
+    def update_source_indicators(self):
+        """Anzeigen der Datenquellen in der Statuszeile auf den neuesten Stand bringen."""
+        if not hasattr(self, "source_buttons"):
+            return
+        states = {}
+        missing = [] if self.timeline.loading else self.timeline.missing_sources()
+        if missing:
+            states["logs"] = ("warn", f"Logs: {', '.join(missing)} fehlt",
+                              f"Keine Logdatei gefunden: {', '.join(missing)}.\n"
+                              "Klicken, um den Pfad einzustellen.")
+        for kind, name in (("pbx", "3CX"), ("itm", "ITM")):
+            reader = self.pbx_reader if kind == "pbx" else self.itm_reader
+            if not reader:
+                continue
+            state, why = reader.health()
+            hint = {"warn": "Klicken, um dich anzumelden." if reader.needs_login
+                    else "Klicken für die Einstellungen.",
+                    "ok": "Läuft. Klicken für die Einstellungen.",
+                    "busy": "Liest gerade."}[state]
+            text = f"{name} {why}" if state == "ok" else f"{name}: {why}"
+            states[kind] = (state, text, f"{reader.status}\n{hint}")
+        for kind, button in self.source_buttons.items():
+            if kind not in states:
+                button.hide()
+                continue
+            state, text, tip = states[kind]
+            button.setIcon(icons.source_icon(state))
+            button.setText(text)
+            button.setToolTip(tip)
+            label = {"ok": "läuft", "warn": "Problem", "busy": "liest"}[state]
+            button.setAccessibleName(f"{text} ({label})")
+            button.show()
+
+    def on_source_clicked(self, kind):
+        """Klick auf eine Datenquelle: direkt zur Lösung."""
+        if kind == "logs":
+            missing = self.timeline.missing_sources()
+            (self.edit_rdm_settings if missing == ["RDM"] else self.edit_teamviewer_settings)()
+        elif kind == "pbx":
+            if self.pbx_reader and self.pbx_reader.needs_login:
+                self.show_pbx_login()
+            else:
+                self.open_pbx_settings()
+        elif kind == "itm":
+            if self.itm_reader and self.itm_reader.needs_login:
+                self.itm_reader.show_login(self)
+            else:
+                self.open_itm_settings()
 
     # ---------------------- Datum / Navigation --------------------------------
 

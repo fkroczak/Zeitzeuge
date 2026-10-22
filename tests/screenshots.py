@@ -88,6 +88,7 @@ os.environ["ZEITZEUGE_DATA"] = DATA
 
 # ------------------------------------------------------------- Programm
 import main_timeline  # noqa: E402  (nach ZEITZEUGE_DATA)
+import timeline_only  # noqa: E402
 from PySide6.QtCore import QDate, QPoint, QRect, Qt  # noqa: E402
 from PySide6.QtWidgets import QApplication, QMenu, QToolButton  # noqa: E402
 
@@ -172,7 +173,12 @@ menu.hide()
 rect = window.table.visualItemRect(window.table.item(2, 0))
 pos = window.table.viewport().mapToGlobal(rect.center())
 ctx = QMenu(window)
-ctx.addActions(window.table.actions())
+# Dasselbe Menü wie beim Rechtsklick (timeline_only.entry_menu_items)
+for item in timeline_only.entry_menu_items(window.list_entries[2]):
+    if item is None:
+        ctx.addSeparator()
+    else:
+        ctx.addAction(item[0])
 ctx.popup(pos)
 wait()
 shot("04_tagesliste_kontextmenue", with_popup(ctx))

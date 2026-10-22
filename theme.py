@@ -103,6 +103,9 @@ QSpinBox:focus, QListWidget:focus, QTableWidget:focus, QGraphicsView:focus {
     border: 1px solid $accent; }
 QToolButton#qt_toolbar_ext_button { border: 1px solid $border; background-color: $hover; }
 QLabel#hint { color: $muted; }
+QStatusBar QToolButton#cta { background-color: $accent; color: #FFFFFF; font-weight: 600;
+                             border-radius: 6px; padding: 2px 12px; }
+QStatusBar QToolButton#cta:hover { background-color: $accent; border-color: $text; }
 QPushButton:disabled, QToolButton:disabled, QLineEdit:disabled, QDateEdit:disabled,
 QTimeEdit:disabled, QSpinBox:disabled, QCheckBox:disabled { color: $muted; }
 QPushButton:disabled { background-color: $surface; }

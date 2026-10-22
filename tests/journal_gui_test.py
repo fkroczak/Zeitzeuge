@@ -33,6 +33,9 @@ def flush_deletes():
 
 
 def gui_test():
+    # Global halten: Würde QApplication beim Verlassen der Funktion vor den Fenstern
+    # aufgeräumt, stürzt Qt unter Windows ab (Zugriffsfehler).
+    global app, window
     # --------------------------------------------------------------- Oberfläche
 
     import main_timeline  # noqa: E402
@@ -63,7 +66,21 @@ def gui_test():
     # Zeile "Doku" zeigt den offenen Eintrag gestrichelt
     bands = dict((k, e) for k, _t, e in window.timeline._bands)
     assert "doc" in bands and len(bands["doc"]) == 1 and bands["doc"][0]["open"], bands
-    assert "offen" in window.info_label.text(), window.info_label.text()
+    # Offenes fällt auf: Knopf in der Statuszeile, ein Klick öffnet das Eintragen
+    button = window.open_docs_button
+    assert not button.isHidden() and button.text().startswith("1 offen"), button.text()
+    opened = []
+    window.add_doc = lambda entry=None, minute=None: opened.append(entry)
+    button.click()
+    assert opened and opened[0].get("tv_id") == "987654321", opened
+    del window.add_doc  # wieder die echte Methode
+
+    # Rechtsklick-Menü: nur passende Befehle, gleiche Texte in Timeline und Tagesliste
+    from timeline_only import entry_menu_items
+    keys = lambda e: [i[1] for i in entry_menu_items(e) if i]
+    assert keys(bands["doc"][0]) == ["add", "ignore"]
+    tv_keys = keys(opened[0])
+    assert "name_tv" in tv_keys and "reject" not in tv_keys and "delete" not in tv_keys, tv_keys
 
     # Nachfrage erscheint
     window.check_prompts()

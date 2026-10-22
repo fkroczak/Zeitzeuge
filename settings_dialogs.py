@@ -400,6 +400,7 @@ class TrackingFilterDialog(QDialog):
         self.config = config
         self.setWindowTitle("Fenster-Filter")
         self.setMinimumWidth(560)
+        self.resize(620, 820)  # Hinweistexte nicht abschneiden
         layout = QVBoxLayout(self)
 
         hint = QLabel("Ein Eintrag pro Zeile. Er passt auf den Programmnamen (z. B. chrome.exe "
@@ -549,6 +550,7 @@ class RulesDialog(QDialog):
         self._loading = True
         self.setWindowTitle("Regeln (ohne KI)")
         self.setMinimumWidth(720)
+        self.resize(900, 760)  # Knöpfe und Hinweise ganz zeigen
         layout = QVBoxLayout(self)
 
         hint = QLabel("Die Regeln ordnen Verbindungen, Telefonate und Fenster einer Kategorie und "
