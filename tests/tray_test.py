@@ -59,5 +59,18 @@ window.tracking_button.click()
 assert state() == (True, "Aufzeichnung aktiv", "Aufzeichnung aktiv", True, True, True), state()
 assert window.tray_toggle_action.text().replace("&", "") == "Aufzeichnung pausieren"
 
+# Beenden, während die Logs noch gelesen werden: Thread wird abgewartet und meldet nichts mehr
+import time  # noqa: E402
+timeline = window.timeline
+app.processEvents()
+emitted = []
+timeline.logs_loaded.connect(lambda *_: emitted.append(1))
+slow = timeline._tv_parser.parse_logs
+timeline._tv_parser.parse_logs = lambda: (time.sleep(0.5), slow())[1]
+timeline.loading = False
+timeline.refresh()
 window.quit_app()
+app.processEvents()
+assert not timeline._thread.is_alive(), "Log-Thread läuft nach dem Beenden weiter"
+assert not emitted, "Log-Thread hat nach dem Beenden noch gemeldet"
 print("Tray ok")

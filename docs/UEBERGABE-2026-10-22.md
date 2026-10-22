@@ -31,6 +31,7 @@ externen Dienste oder Config-Formate angefasst.
 | Pfeile in Zeit- und Zahlenfeldern wurden durch das Stylesheet kaputt gezeichnet. | Pfeile ausgeblendet; Eingabe per Tastatur, Pfeiltasten, Mausrad. |
 | Menü „Einstellungen“: 12 Einträge flach. Werkzeugleiste mit Unicode-Zeichen, bei 1200 px rutschte „Einstellungen“ in den Überlauf. | Menü nach Aufgaben, Icons, „Dunkel“ ins Menü, „Aktualisieren“ nur als Icon (Tooltip + F5). |
 | Infobereich nur „Öffnen“ und „Beenden“, Aufzeichnung nur tief im Menü schaltbar. | Siehe unten. Eine gemeinsame `QAction` für Menü, Infobereich und Statuszeile, damit der Zustand nie auseinanderläuft. |
+| Windows-CI Lauf 38 (nur Doku geändert): Test meldete „ok“, Prozess endete trotzdem mit Fehler. Ursache in meinem neuen Code: Der Hintergrund-Thread konnte beim Beenden noch laufen und danach ein Signal an die schon gelöschte Timeline senden. | `quit_app` wartet den Thread kurz ab (max. 3 s), danach meldet er nichts mehr. Neuer Test stellt das nach (schlägt ohne Fix fehl). |
 | Architektur: flache Module nach Zuständigkeit (Parser, Tracker, Leser, Dialoge, Timeline, Hauptfenster). | **Kein Umbau.** Die Struktur passt zur Größe (~4.000 Zeilen). Nur die Kopplung Parser→Fenster gelöst. Weitere Aufteilung siehe offene Punkte. |
 
 **Neues Logo (kam während der Nacht über PR #3):** Statt eines zusätzlichen grünen Punkts zeigt
@@ -53,6 +54,7 @@ oder größer sein.
 | `b39f394` | Oberfläche, Menü, Infobereich, PC-Band bei Pause, neue Tests | `icons.py` (neu), `main_timeline.py`, `timeline_only.py`, `activity_tracker.py`, `tests/tray_test.py` (neu), `tests/parser_test.py` (neu), `tests/ui_audit_test.py`, `.github/workflows/build.yml` |
 | `41b0103`, `936be8b` | Doku, Screenshots, doppelter Aktivitätstyp, kaputte Umlaute in Kommentaren | `README.md`, `docs/…`, `main_timeline.py` |
 | `8339294` | Merge von `main`: neues Logo (PR #3), 3CX-Tage einstellbar (PR #4) | `zeitzeuge.ico/.png/.svg`, `pbx_reader.py`, `main_timeline.py`, `README.md` |
+| nächster Commit | Fix: Log-Thread beim Beenden abwarten (siehe Befunde) + Test | `timeline_only.py`, `main_timeline.py`, `tests/tray_test.py` |
 | `0f4c26c` | Neues Logo als Zustandsanzeige im Infobereich, Screenshots neu | `icons.py`, `main_timeline.py`, `ZeitZeuge.spec` (SVG in die EXE), `tests/ui_audit_test.py`, `docs/…` |
 
 ### Neue Bedienung im Überblick
@@ -89,7 +91,7 @@ Unter Windows ist alles langsamer (Virenscanner, EXE-Entpacken), das Verhältnis
 | neu: `tests/tray_test.py` (Menü, pausieren/fortsetzen über Infobereich und Statuszeile, Zustand gespeichert, PC-Daten bei Pause sichtbar) | grün |
 | neu: `tests/parser_test.py` (Zeitzone, zu kurze/ungültige Zeilen, Cache, strenges Zeitformat) | grün |
 | Alter vs. neuer Parser auf 126.000 Logzeilen | identisch |
-| Windows-CI (GitHub Actions, windows-latest): alle 15 Schritte inkl. neuer Tests, 3CX/ITM mit echtem Edge und EXE-Bau | grün (Lauf 33 und 34) |
+| Windows-CI (GitHub Actions, windows-latest): alle 15 Schritte inkl. neuer Tests, 3CX/ITM mit echtem Edge und EXE-Bau | grün: Läufe 33–37. Lauf 38 rot (Absturz beim Beenden, behoben, siehe Befunde) |
 | Echtes Beenden (`Beenden` im Menü, 10× alt und 10× neu) | 0 Abstürze |
 | Sichtprüfung hell und dunkel per Screenshots | ok |
 | Unabhängiges Code-Review durch einen zweiten Agenten (Parser alt/neu mit je 20.000 Zufallszeilen inkl. ungültiger Daten, Stresstest Neu-Einlesen während Pfad- und Datumswechsel, Start/Beenden, Lazy Imports) | keine Fehler gefunden |

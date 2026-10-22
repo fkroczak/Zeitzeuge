@@ -172,6 +172,8 @@ class TimelineView(QGraphicsView):
         self._rdm_index = None
         self.loading = False    # Logs werden gerade im Hintergrund gelesen
         self._reload = False    # während des Lesens erneut angefordert
+        self._thread = None
+        self._closing = False   # beim Beenden: Thread darf nichts mehr melden
         self.logs_loaded.connect(self._on_logs_loaded)
 
         self.zoom_level = 1.0
@@ -237,7 +239,18 @@ class TimelineView(QGraphicsView):
             self._reload = True
             return
         self.loading = True
-        threading.Thread(target=self._load_logs, daemon=True).start()
+        self._thread = threading.Thread(target=self._load_logs, daemon=True)
+        self._thread.start()
+
+    def shutdown(self, timeout=3):
+        """Beim Beenden: laufendes Einlesen abwarten, danach meldet der Thread nichts mehr.
+
+        Sonst kann er nach dem Aufräumen ein Signal an die gelöschte Timeline senden
+        (Absturz beim Beenden unter Windows).
+        """
+        self._closing = True
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout)
 
     def _start_first_load(self):
         self.loading = False
@@ -251,7 +264,8 @@ class TimelineView(QGraphicsView):
             except Exception as e:
                 print(f"Fehler beim Lesen der {name}-Logs: {e}")
                 indexes.append(ConnectionIndex([]))
-        self.logs_loaded.emit(*indexes)  # Qt stellt das im GUI-Thread zu
+        if not self._closing:
+            self.logs_loaded.emit(*indexes)  # Qt stellt das im GUI-Thread zu
 
     def _on_logs_loaded(self, tv_index, rdm_index):
         self._tv_index, self._rdm_index = tv_index, rdm_index

@@ -1159,6 +1159,7 @@ class TimelineApp(QMainWindow):
 
     def quit_app(self):
         self._quitting = True
+        self.timeline.shutdown()
         if self.tracker:
             self.tracker.stop()
         for reader in (self.pbx_reader, self.itm_reader):
