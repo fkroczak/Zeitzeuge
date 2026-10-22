@@ -6,8 +6,8 @@ import warnings
 
 from datetime import datetime
 
-from PyQt5.QtCore import (QDate, QLibraryInfo, QLocale, QObject, QProcess, QSize, Qt,
-                          QTimer, QTranslator, QUrl, pyqtSignal)
+from PyQt5.QtCore import (QDate, QLibraryInfo, QLocale, QProcess, QSize, Qt,
+                          QTimer, QTranslator, QUrl)
 from PyQt5.QtGui import (QColor, QDesktopServices, QFont, QIcon, QKeySequence, QPalette,
                          QPixmap)
 from PyQt5.QtWidgets import (QAbstractItemView, QAction, QApplication, QProxyStyle,
@@ -21,10 +21,10 @@ from PyQt5.QtWidgets import (QAbstractItemView, QAction, QApplication, QProxySty
 
 from activity_tracker import ActivityTracker
 from ai_classifier import AI_TYPE, AiClassifier, AiStore
-from call_import import start_call_server
 import icons
 import storage
 from log_parsers import VpnParser
+from vpn_reader import vpn_sources
 from settings_dialogs import (ActivityTypeSettingsDialog, AiSettingsDialog,
                               ConnectionSettingsDialog, WorkHoursDialog)
 from grouping import format_tv_id, group_entries, work_blocks
@@ -99,11 +99,6 @@ def install_translator(app):
     if translator.load(GERMAN, "qtbase", "_", QLibraryInfo.location(QLibraryInfo.TranslationsPath)):
         app.installTranslator(translator)
     return translator
-
-
-class CallSignal(QObject):
-    # Signal aus dem Server-Thread sicher in den GUI-Thread bringen
-    updated = pyqtSignal()
 
 
 
@@ -186,7 +181,12 @@ def load_config_with_defaults():
                 r"%LOCALAPPDATA%\Devolutions\RemoteDesktopManager\Connections.log"
             )
         ],
-        # VPN-Verbindungen (Logs von VPN-Clients und VPN-Einträge aus RDM)
+        # Datenquellen, einzeln im Menü "Datenquellen" ein- und ausschaltbar
+        "teamviewer_enabled": True,
+        "rdm_enabled": True,
+        "sophos_enabled": True,
+        "forti_enabled": True,
+        # Weitere VPN-Clients (OpenVPN usw.) über ihre Logdateien
         "vpn_enabled": True,
         "vpn_paths": VpnParser().default_paths,  # OpenVPN GUI, OpenVPN Connect, Sophos SSL VPN
         "vpn_timezone_correction": 0,  # VPN-Clients schreiben Ortszeit
@@ -206,9 +206,7 @@ def load_config_with_defaults():
         "dark_mode": False,
         "start_minimized": False,
 
-        # Anrufe aus dem 3CX-Webclient (Tampermonkey-Skript)
-        "calls_enabled": True,
-        "calls_port": 8765,
+        # Anrufe aus 3CX
         "calls_ignore_missed": True,
         "calls_min_duration": 0,
         "calls_days_back": 14,  # 3CX: so viele Tage zurück lesen
@@ -246,6 +244,10 @@ def load_config_with_defaults():
     else:
         cfg = {}
 
+    # Früher schaltete "vpn_enabled" auch Sophos Connect und FortiClient ab
+    for key in ("sophos_enabled", "forti_enabled"):
+        if key not in cfg and "vpn_enabled" in cfg:
+            cfg[key] = cfg["vpn_enabled"]
     # Defaults mergen
     for k, v in defaults.items():
         cfg.setdefault(k, v)
@@ -505,31 +507,16 @@ class TimelineApp(QMainWindow):
         self.statusBar().addPermanentWidget(self.tracking_button)
         self.statusBar().setSizeGripEnabled(False)
 
-        # Anruf-Empfang für das Tampermonkey-Skript starten
         self.timeline.calls_file = CALLS_FILE
         # VPN: eigene Aufzeichnung alle 30 Sekunden, Logs alle 2 Minuten – unabhängig von der Ansicht
         vpn = self.timeline.vpn_reader
         vpn.archive_file = VPN_FILE
         vpn.dirs = self.config.get("sophos_connect_dirs") or vpn.dirs
         vpn.adapters = self.config.get("vpn_adapters") or vpn.adapters
+        vpn.sources = vpn_sources(self.config)
         self.vpn_timer = QTimer(self)
         self.vpn_timer.timeout.connect(self.vpn_sample)
         self.apply_vpn_monitor()
-        self.call_server = None
-        if self.config.get("calls_enabled", True):
-            self.call_signal = CallSignal()
-            self.call_signal.updated.connect(
-                lambda: self.timeline.draw_timeline(self.current_date)
-            )
-            port = self.config.get("calls_port", 8765)
-            self.call_server = start_call_server(
-                CALLS_FILE, port=port, on_update=self.call_signal.updated.emit,
-                script_provider=self.userscript_text,
-            )
-            self.calls_label.setText(
-                f"Anrufempfang aktiv (Port {port})" if self.call_server
-                else f"Anrufempfang: Port {port} belegt"
-            )
 
         # Logs regelmäßig neu prüfen (nur geänderte Dateien werden gelesen)
         self.refresh_timer = QTimer(self)
@@ -579,6 +566,8 @@ class TimelineApp(QMainWindow):
         self.addToolBar(Qt.TopToolBarArea, tb)
         icon_only = []
 
+        tb.addWidget(self._build_settings_button())
+        tb.addSeparator()
         # Gruppe 1: Tag wählen
         prev_day = self._action("Vorheriger Tag", self.show_previous_day, "Ctrl+Left", icon_name="prev")
         next_day = self._action("Nächster Tag", self.show_next_day, "Ctrl+Right", icon_name="next")
@@ -642,8 +631,25 @@ class TimelineApp(QMainWindow):
         self.pc_list_action.toggled.connect(self.toggle_pc_list)
         self._icon_actions.append((self.pc_list_action, "monitor"))
         tb.addAction(self.pc_list_action)
-        tb.addSeparator()
 
+        for action in icon_only:
+            tb.widgetForAction(action).setToolButtonStyle(Qt.ToolButtonIconOnly)
+        # Screenreader lesen sonst nur das Symbol vor
+        for action in tb.actions():
+            button = tb.widgetForAction(action)
+            if isinstance(button, QToolButton) and not button.accessibleName():
+                button.setAccessibleName(action.toolTip().split(" (")[0] or action.text())
+        # Überlauf-Knopf, wenn das Fenster schmal ist (z. B. bei 200 % Anzeige)
+        ext = tb.findChild(QToolButton, "qt_toolbar_ext_button")
+        if ext:
+            ext.setAccessibleName("Weitere Befehle")
+            ext.setToolTip("Weitere Befehle")
+            ext.setText("»")
+            ext.setToolButtonStyle(Qt.ToolButtonTextOnly)
+
+    def _build_settings_button(self):
+        """Knopf "Einstellungen" mit dem Menü. Steht links in der Werkzeugleiste, damit er
+        auch im schmalen Fenster nie im Überlauf (») verschwindet."""
         # Menü nach Aufgaben: Ansicht | Aufzeichnung | Einstellen | Info.
         # Seltenes (Datenquellen, Speicherort) steckt in Untermenüs.
         menu = QMenu(self)
@@ -662,14 +668,7 @@ class TimelineApp(QMainWindow):
             (menu.addAction("Aktivitäts&typen und Farben …", self.edit_activity_types), "palette"),
             (menu.addAction("&KI-Vorschläge …", self.edit_ai_settings), "spark"),
         ]
-        self.sources_menu = menu.addMenu("Daten&quellen")
-        self.sources_menu.addAction("Team&Viewer-Logs …", self.edit_teamviewer_settings)
-        self.sources_menu.addAction("&RDM-Logs …", self.edit_rdm_settings)
-        self.sources_menu.addAction("&VPN-Verbindungen …", self.edit_vpn_settings)
-        self.sources_menu.addSeparator()
-        self.sources_menu.addAction("3CX &direkt auslesen …", self.open_pbx_settings)
-        self.sources_menu.addAction("3CX über &Chrome/Tampermonkey einrichten …", self.open_browser_setup)
-        self.sources_menu.addAction("&ITM-Personalzeiten …", self.open_itm_settings)
+        self.sources_menu = self._build_sources_menu(menu)
         storage_menu = menu.addMenu("Daten&speicher")
         self.open_folder_action = storage_menu.addAction(
             "&Datenordner öffnen", lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(DATA_DIR)))
@@ -689,22 +688,60 @@ class TimelineApp(QMainWindow):
         self.menu_button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
         self.menu_button.setMenu(menu)
         self.menu_button.setPopupMode(QToolButton.InstantPopup)
-        tb.addWidget(self.menu_button)
+        return self.menu_button
 
-        for action in icon_only:
-            tb.widgetForAction(action).setToolButtonStyle(Qt.ToolButtonIconOnly)
-        # Screenreader lesen sonst nur das Symbol vor
-        for action in tb.actions():
-            button = tb.widgetForAction(action)
-            if isinstance(button, QToolButton) and not button.accessibleName():
-                button.setAccessibleName(action.toolTip().split(" (")[0] or action.text())
-        # Überlauf-Knopf, wenn das Fenster schmal ist (z. B. bei 200 % Anzeige)
-        ext = tb.findChild(QToolButton, "qt_toolbar_ext_button")
-        if ext:
-            ext.setAccessibleName("Weitere Befehle")
-            ext.setToolTip("Weitere Befehle")
-            ext.setText("»")
-            ext.setToolButtonStyle(Qt.ToolButtonTextOnly)
+    # Datenquellen: Schlüssel in der Config, Text im Menü (Gruppen mit Trennlinie)
+    SOURCES = [
+        [("teamviewer_enabled", "&TeamViewer"), ("rdm_enabled", "&RDM (Remote Desktop Manager)")],
+        [("sophos_enabled", "&Sophos Connect"), ("forti_enabled", "&FortiClient"),
+         ("vpn_enabled", "&Weitere VPN-Logs (OpenVPN …)")],
+        [("pbx_reader_enabled", "&3CX-Anrufe"), ("itm_reader_enabled", "&ITM-Personalzeiten")],
+    ]
+
+    def _build_sources_menu(self, parent_menu):
+        """Jede Datenquelle als Schalter, die Einrichtung (Pfade, Anmeldung) im Untermenü."""
+        menu = parent_menu.addMenu("Daten&quellen")
+        self.source_actions = {}
+        for i, group in enumerate(self.SOURCES):
+            if i:
+                menu.addSeparator()
+            for key, text in group:
+                action = menu.addAction(text)
+                action.setCheckable(True)
+                action.setChecked(bool(self.config.get(key, key not in ("pbx_reader_enabled",
+                                                                          "itm_reader_enabled"))))
+                action.toggled.connect(lambda on, k=key: self.toggle_source(k, on))
+                self.source_actions[key] = action
+        menu.addSeparator()
+        setup = menu.addMenu("&Einrichten")
+        setup.addAction("Team&Viewer-Logs …", self.edit_teamviewer_settings)
+        setup.addAction("&RDM-Logs …", self.edit_rdm_settings)
+        setup.addAction("&VPN-Logs …", self.edit_vpn_settings)
+        setup.addAction("&3CX …", self.open_pbx_settings)
+        setup.addAction("&ITM-Personalzeiten …", self.open_itm_settings)
+        return menu
+
+    def sync_source_actions(self):
+        """Schalter im Menü an die Einstellungen angleichen (z. B. nach einem Dialog)."""
+        for key, action in self.source_actions.items():
+            action.blockSignals(True)
+            action.setChecked(bool(self.config.get(key, True)))
+            action.blockSignals(False)
+
+    def toggle_source(self, key, on):
+        """Datenquelle ein- oder ausschalten (Menü "Datenquellen")."""
+        if bool(self.config.get(key)) == on and key in self.config:
+            return
+        self.config[key] = on
+        save_config(self.config)
+        if key == "pbx_reader_enabled":
+            self.start_pbx_reader() if on else self.stop_pbx_reader()
+        elif key == "itm_reader_enabled":
+            self.start_itm_reader() if on else self.stop_itm_reader()
+        elif key in ("sophos_enabled", "forti_enabled"):
+            self.timeline.vpn_reader.sources = vpn_sources(self.config)
+            self.apply_vpn_monitor()
+        self.timeline.refresh()  # neu einlesen und zeichnen
 
     def show_about(self):
         icon_path = resource_path("zeitzeuge.png")
@@ -868,7 +905,7 @@ class TimelineApp(QMainWindow):
 
     def auto_refresh(self):
         try:
-            if self.config.get("vpn_enabled", True):
+            if vpn_sources(self.config):
                 self.timeline.vpn_reader.update_from_logs()  # Sophos-Logs sichern, bevor sie überschrieben werden
         except Exception as e:
             print(f"Fehler beim Lesen der VPN-Logs: {e}")
@@ -876,8 +913,8 @@ class TimelineApp(QMainWindow):
             self.timeline.refresh()
 
     def apply_vpn_monitor(self):
-        """Eigene VPN-Aufzeichnung nur, wenn VPN eingeschaltet ist."""
-        if self.config.get("vpn_enabled", True) and self.config.get("vpn_monitor_enabled", True):
+        """Eigene VPN-Aufzeichnung nur, wenn Sophos Connect oder FortiClient eingeschaltet ist."""
+        if vpn_sources(self.config) and self.config.get("vpn_monitor_enabled", True):
             if not self.vpn_timer.isActive():
                 self.vpn_timer.start(30 * 1000)
                 QTimer.singleShot(0, self.vpn_sample)
@@ -1024,24 +1061,6 @@ class TimelineApp(QMainWindow):
         save_config(self.config)
         self.update_day_list(self.day_activities, self.pc_activities)
 
-    # ---------------------- Browser-Anbindung ---------------------------------
-
-    def userscript_text(self):
-        from browser_setup import build_userscript  # erst bei Bedarf laden (Startzeit)
-        with open(resource_path("zeitzeuge_anrufe.user.js"), "r", encoding="utf-8") as f:
-            template = f.read()
-        return build_userscript(template, self.config.get("calls_3cx_url", ""),
-                                self.config.get("calls_port", 8765))
-
-    def open_browser_setup(self):
-        if not self.call_server:
-            QMessageBox.warning(self, "Browser-Anbindung",
-                                "Der Anrufempfang läuft nicht (Port belegt oder ausgeschaltet).")
-            return
-        from browser_setup import BrowserSetupDialog
-        BrowserSetupDialog(self.config, self.config.get("calls_port", 8765),
-                           save_config, self).exec_()
-
     # ---------------------- 3CX direkt auslesen -------------------------------
 
     def start_pbx_reader(self):
@@ -1059,6 +1078,7 @@ class TimelineApp(QMainWindow):
         )
         self.pbx_reader.login_required.connect(self.on_pbx_login_required)
         self.pbx_reader.recording_done.connect(self.on_recording_done)
+        self.pbx_reader.check_done.connect(self.on_pbx_check_done)
         self.pbx_reader.start()
         self.calls_label.setText("3CX: wird geladen …")
 
@@ -1186,6 +1206,7 @@ class TimelineApp(QMainWindow):
                 stop()
             if enabled.isChecked():
                 start()
+            self.sync_source_actions()
             return getattr(self, attr)
 
         def follow_status():
@@ -1223,10 +1244,36 @@ class TimelineApp(QMainWindow):
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.addButton(login_btn, QDialogButtonBox.ActionRole)
         buttons.addButton(record_btn, QDialogButtonBox.ActionRole)
+        if kind == "pbx":
+            def check():
+                enabled.setChecked(True)
+                reader = apply()
+                if reader:
+                    follow_status()
+                    path = os.path.join(DATA_DIR, f"3cx_pruefung_{datetime.now():%Y-%m-%d_%H%M}.json")
+                    reader.check_direct(path)
+            check_btn = QPushButton("Direkt-Abfrage &prüfen")
+            check_btn.setToolTip("Anrufe ohne Webseite direkt vom 3CX-Server holen und mit "
+                                 "der gespeicherten Anrufliste vergleichen")
+            check_btn.clicked.connect(check)
+            buttons.addButton(check_btn, QDialogButtonBox.ActionRole)
         buttons.accepted.connect(lambda: (apply(), dialog.accept()))
         buttons.rejected.connect(dialog.reject)
         layout.addWidget(buttons)
         return dialog
+
+    def on_pbx_check_done(self, path, text):
+        if not path:
+            QMessageBox.warning(self, "3CX-Direkt-Abfrage", text)
+            return
+        box = QMessageBox(QMessageBox.Information, "3CX-Direkt-Abfrage",
+                          f"{text}\n\nBericht: {path}\n\nNamen und Nummern sind maskiert.",
+                          parent=self)
+        open_btn = box.addButton("Ordner öffnen", QMessageBox.ActionRole)
+        box.addButton(QMessageBox.Ok)
+        box.exec_()
+        if box.clickedButton() is open_btn:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(os.path.dirname(path)))
 
     def on_recording_done(self, path):
         if not path:
@@ -1451,6 +1498,7 @@ class TimelineApp(QMainWindow):
                 self.config[f"{key}_enabled"] = dialog.enabled_box.isChecked()
             self.config[f"{key}_timezone_correction"] = dialog.get_timezone_correction()
             save_config(self.config)
+            self.sync_source_actions()
             self.timeline.refresh()
 
     def edit_teamviewer_settings(self):
@@ -1468,7 +1516,7 @@ class TimelineApp(QMainWindow):
     def edit_vpn_settings(self):
         self._edit_log_settings(
             "vpn", VpnParser().default_paths, "VPN-Verbindungen",
-            enabled_text="VPN-Verbindungen auslesen und anzeigen (auch die VPN-Einträge aus RDM)",
+            enabled_text="Diese VPN-Logs auslesen und anzeigen",
             folders=True,
             hint="Logdateien oder Ordner deiner VPN-Clients, z. B. OpenVPN GUI "
                  "(%USERPROFILE%\\OpenVPN\\log), OpenVPN Connect oder Sophos SSL VPN. "

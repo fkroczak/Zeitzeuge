@@ -29,6 +29,7 @@ DATA_TYPES = {"XHR", "Fetch", "Document", "EventSource", "Other", "Preflight"}
 BODY_TYPES = {"XHR", "Fetch", "Other"}
 MAX_TEXT = 300
 MAX_ITEMS = 3
+MAX_PROTO_ITEMS = 200  # Protobuf-Texte sind maskiert, ganze Listen helfen beim Zuordnen der Felder
 
 
 def _jwt_info(token):
@@ -228,8 +229,9 @@ def _proto_group(fields):
     for key, values in out.items():
         if len(values) == 1:
             out[key] = values[0]
-        elif len(values) > MAX_ITEMS:
-            out[key] = values[:MAX_ITEMS] + [f"… {len(values) - MAX_ITEMS} weitere (insgesamt {len(values)})"]
+        elif len(values) > MAX_PROTO_ITEMS:
+            out[key] = values[:MAX_PROTO_ITEMS] + [
+                f"… {len(values) - MAX_PROTO_ITEMS} weitere (insgesamt {len(values)})"]
     return out
 
 

@@ -24,7 +24,7 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
   - Weitere Adapter (z. B. WireGuard) trägst du in der `zeitzeuge_config.json` unter `vpn_adapters` ein: Teil der Adapterbeschreibung und Name der Quelle. Mit `vpn_monitor_enabled: false` schaltest du die Aufzeichnung ab.
 - **VPN aus FortiClient:** steht ebenfalls in Sophos' `charon.log`, weil dort jede Änderung an Netzwerkadaptern landet. Zeitzeuge zeigt die Zeiten als „FortiClient“, aber ohne Namen der Verbindung. Ohne installiertes Sophos Connect gibt es diese Quelle nicht.
   - Andere Ordner trägst du in der `zeitzeuge_config.json` unter `sophos_connect_dirs` ein.
-- **Telefonate aus 3CX:** Zeitzeuge liest die Anrufliste selbst aus dem 3CX-Webclient, ohne API und ohne dass du die Webseite offen haben musst. Alternativ geht es über ein Tampermonkey-Skript in Chrome (siehe unten).
+- **Telefonate aus 3CX:** Zeitzeuge liest die Anrufliste selbst aus dem 3CX-Webclient, ohne dass du die Webseite offen haben musst.
   - Alle gelesenen Anrufe landen in `anrufe.json`. So entsteht eine eigene Anrufliste, die auch offline bleibt.
   - Zeitzeuge scrollt die Liste so viele Tage zurück, wie du einstellst (Standard 14). Blätterst du in Zeitzeuge auf einen älteren Tag, liest es automatisch bis dorthin nach.
 - **Personalzeiten aus der ITM-Zeiterfassung:** Zeitzeuge liest deine gestempelten Zeiten und hebt sie in der Timeline als Arbeitszeit hervor. Pausen sind abgedunkelt. Die Statuszeile zeigt die gewertete Zeit und die Sollzeit.
@@ -109,9 +109,23 @@ Die fertige `ZeitZeuge.exe` liegt danach in `dist/`. Die Einstellungsdatei `zeit
 
 ## Einrichtung
 
+Der Knopf **Einstellungen** steht ganz links in der Werkzeugleiste. So bleibt er auch im schmalen Fenster sichtbar.
+
+### Datenquellen ein- und ausschalten
+
+Unter **Einstellungen → Datenquellen** schaltest du jede Quelle mit einem Klick ein oder aus:
+
+| Gruppe | Quellen |
+|---|---|
+| Fernwartung | TeamViewer, RDM |
+| VPN | Sophos Connect, FortiClient, weitere VPN-Logs (OpenVPN …) |
+| Telefon und Zeiten | 3CX-Anrufe, ITM-Personalzeiten |
+
+Pfade, Zeitzonen und Anmeldungen stellst du unter **Einstellungen → Datenquellen → Einrichten** ein. Das Aufzeichnen der aktiven Fenster schaltest du direkt im Menü **Einstellungen** oder unten rechts in der Statuszeile.
+
 ### TeamViewer und RDM
 
-Unter **Einstellungen → Datenquellen → TeamViewer-Logs …** bzw. **RDM-Logs …** stellst du ein:
+Unter **Einstellungen → Datenquellen → Einrichten → TeamViewer-Logs …** bzw. **RDM-Logs …** stellst du ein:
 - wo die Logdateien liegen,
 - eine Zeitzonenkorrektur, weil TeamViewer seine Zeiten in UTC speichert.
 
@@ -124,9 +138,9 @@ Standardpfade:
 
 ### VPN-Verbindungen
 
-Unter **Einstellungen → Datenquellen → VPN-Verbindungen …** schaltest du ein oder aus, ob Zeitzeuge VPN-Verbindungen liest. Ausgeschaltet verschwinden auch die VPN-Einträge aus RDM, und die eigene Aufzeichnung von Sophos- und Fortinet-Adaptern ruht.
+Sophos Connect und FortiClient erkennt Zeitzeuge von selbst. Es liest ihre Logs und prüft alle 30 Sekunden, ob ihr VPN-Adapter verbunden ist. Beide schaltest du unter **Einstellungen → Datenquellen** einzeln ein oder aus.
 
-Dort legst du auch fest, wo die Logs deiner VPN-Clients liegen. Du kannst einzelne Dateien oder ganze Ordner eintragen. Bei einem Ordner liest Zeitzeuge alle `.log`- und `.txt`-Dateien darin. Der Dateiname wird zum Namen der Verbindung, bei OpenVPN ist das der Profilname.
+Für andere VPN-Clients legst du unter **Einstellungen → Datenquellen → Einrichten → VPN-Logs …** fest, wo ihre Logs liegen. Du kannst einzelne Dateien oder ganze Ordner eintragen. Bei einem Ordner liest Zeitzeuge alle `.log`- und `.txt`-Dateien darin. Der Dateiname wird zum Namen der Verbindung, bei OpenVPN ist das der Profilname.
 
 | VPN-Client | Standardpfad |
 |---|---|
@@ -138,9 +152,9 @@ Erkannt werden Zeilen mit Zeitstempel und „Initialization Sequence Completed�
 
 ### Telefonate aus 3CX
 
-**Variante 1: Zeitzeuge liest selbst (empfohlen).** Zeitzeuge öffnet den 3CX-Webclient unsichtbar mit dem installierten Microsoft Edge und liest jede Minute die Anrufliste. Alle 5 Minuten lädt es die Seite neu, weil 3CX neue Anrufe im Hintergrund sonst nicht nachträgt. Gibt es kein Edge, nimmt es Chrome. Edge läuft dabei mit einem eigenen Profil, getrennt von deinem normalen Browser. Es ist egal, ob du sonst den 3CX-Client, die Webseite oder das Tischtelefon benutzt.
+Zeitzeuge öffnet den 3CX-Webclient unsichtbar mit dem installierten Microsoft Edge und liest jede Minute die Anrufliste. Alle 5 Minuten lädt es die Seite neu, weil 3CX neue Anrufe im Hintergrund sonst nicht nachträgt. Gibt es kein Edge, nimmt es Chrome. Edge läuft dabei mit einem eigenen Profil, getrennt von deinem normalen Browser. Es ist egal, ob du sonst den 3CX-Client, die Webseite oder das Tischtelefon benutzt.
 
-1. **Einstellungen → Datenquellen → 3CX direkt auslesen …** öffnen.
+1. **Einstellungen → Datenquellen → Einrichten → 3CX …** öffnen.
 2. 3CX-Adresse prüfen und **Bei 3CX anmelden …** klicken.
 3. Im Edge-Fenster ganz normal bei 3CX anmelden. Sobald die Anrufliste erscheint, schließt Zeitzeuge das Fenster selbst und liest danach unsichtbar im Hintergrund weiter. Das Fenster muss also nicht offen bleiben.
 
@@ -148,43 +162,24 @@ Die Anmeldung bleibt gespeichert (`%LOCALAPPDATA%\Zeitzeuge\3cx_profil`). Läuft
 
 Zeitzeuge scrollt die Anrufliste so viele Tage zurück, wie unter **Anrufe zurück lesen** im Dialog eingestellt ist (Standard 14, Schlüssel `calls_days_back`). Erhöhst du die Zahl, liest es die fehlenden Tage nach. Bis zu welchem Tag die Anrufe vollständig sind, merkt es sich in `anrufe_stand.json`. Zeigst du einen älteren Tag an, scrollt Zeitzeuge im Hintergrund bis dorthin weiter. Das geht nur so weit zurück, wie 3CX die Anrufe selbst noch anzeigt.
 
-**Variante 2: über Chrome und Tampermonkey.** Das ist sinnvoll, wenn du die 3CX-Webseite ohnehin offen hast. Am einfachsten über **Einstellungen → Datenquellen → 3CX über Chrome/Tampermonkey einrichten …**. Der Assistent öffnet nacheinander die richtigen Seiten in Chrome, und du bestätigst jeweils mit einem Klick:
-
-1. Tampermonkey im Chrome Web Store hinzufügen.
-2. Bei Tampermonkey den Schalter „Nutzerskripte zulassen“ einschalten (ab Chrome 138 nötig).
-3. 3CX-Adresse eintragen, **Skript installieren** klicken und in Tampermonkey bestätigen.
-4. Anrufliste öffnen. Sobald sich das Skript meldet, zeigt der Assistent einen Haken.
-
-Eine vollautomatische Installation ohne Klick lässt Chrome aus Sicherheitsgründen nicht zu. Updates des Skripts holt sich Tampermonkey danach selbst von Zeitzeuge.
-
-So läuft die Übertragung:
-
-```
-3CX-Webclient (Browser) ──Tampermonkey-Skript──▶ Zeitzeuge (127.0.0.1:8765) ──▶ anrufe.json ──▶ Timeline
-```
-
-Wenn Tampermonkey beim ersten Senden fragt, erlaube den Zugriff auf `127.0.0.1` mit „Immer erlauben“.
-
-Solange die Anrufliste offen ist, wird sie jede Minute übertragen. Unten rechts auf der Seite gibt es außerdem den Knopf **„→ Zeitzeuge“** zum Senden von Hand. Der Server nimmt nur Verbindungen vom eigenen Rechner und nur JSON an. So können fremde Webseiten keine Anrufe einschleusen. Doppelte Anrufe werden aussortiert.
+**Direkt-Abfrage prüfen:** Im 3CX-Dialog holt **Direkt-Abfrage prüfen** die Anrufe ohne Webseite direkt vom 3CX-Server und vergleicht sie mit deiner `anrufe.json`. Den Bericht `3cx_pruefung_….json` legt Zeitzeuge in den Datenordner, Namen und Nummern nur maskiert. Damit lässt sich festlegen, welche Felder Dauer und Richtung tragen. Danach kann Zeitzeuge 3CX ganz ohne Edge lesen.
 
 Die Einstellungen für Telefonate stehen in `zeitzeuge_config.json`:
 
 | Schlüssel | Standard | Bedeutung |
 |---|---|---|
-| `calls_enabled` | `true` | Anrufe empfangen ein oder aus |
-| `calls_port` | `8765` | Port, er muss zum Skript passen |
 | `calls_ignore_missed` | `true` | Verpasste Anrufe ausblenden |
 | `calls_min_duration` | `0` | Kürzere Anrufe ausblenden (in Sekunden) |
 | `call_colors` | blau / grün / rot | Farben für eingehende, ausgehende und verpasste Anrufe, z. B. `{"Eingehend": "#3D8BFD"}` |
 | `calls_3cx_url` | `https://voice.visaas.de:5001` | Adresse des 3CX-Webclients |
-| `pbx_reader_enabled` | `false` | Variante 1: Zeitzeuge liest 3CX selbst |
-| `calls_days_back` | `14` | Variante 1: so viele Tage liest Zeitzeuge zurück |
+| `pbx_reader_enabled` | `false` | Zeitzeuge liest 3CX selbst |
+| `calls_days_back` | `14` | So viele Tage liest Zeitzeuge zurück |
 
 ### Personalzeiten aus der ITM-Zeiterfassung
 
-Zeitzeuge öffnet die Tagesübersicht der ITM-Zeiterfassung unsichtbar mit Edge, genauso wie bei 3CX. Es merkt sich die Daten, die die Seite dabei lädt. Heute wird alle 5 Minuten gelesen, andere Tage einmal, sobald du sie in Zeitzeuge anzeigst.
+Zeitzeuge fragt deine Personalzeiten direkt bei der Schnittstelle der ITM-Zeiterfassung ab, ohne die Webseite offen zu halten. Heute liest es alle 5 Minuten, andere Tage einmal, sobald du sie anzeigst. Edge startet nur kurz und unsichtbar, wenn die Anmeldung erneuert werden muss (etwa einmal pro Stunde), und schließt sich danach wieder. Klappt die Direkt-Abfrage nicht, liest Zeitzeuge wie früher über die Webseite.
 
-1. **Einstellungen → Datenquellen → ITM-Personalzeiten …** öffnen.
+1. **Einstellungen → Datenquellen → Einrichten → ITM-Personalzeiten …** öffnen.
 2. Adresse prüfen (`https://app.itm-gruppe.com`) und **Bei ITM anmelden …** klicken.
 3. Im Edge-Fenster anmelden. Sobald die Tagesübersicht geladen ist, schließt Zeitzeuge das Fenster selbst.
 
@@ -194,7 +189,7 @@ Die Anmeldung liegt in `%LOCALAPPDATA%\Zeitzeuge\itm_profil`, die gelesenen Tage
 
 Mit einem Mitschnitt lässt sich prüfen, ob Zeitzeuge die Daten später direkt beim Server abfragen kann, ohne die Seite dauerhaft in Edge offen zu halten. Das spart viel Arbeitsspeicher.
 
-1. **Einstellungen → Datenquellen → 3CX direkt auslesen …** oder **ITM-Personalzeiten …** öffnen.
+1. **Einstellungen → Datenquellen → Einrichten → 3CX …** oder **ITM-Personalzeiten …** öffnen.
 2. **Abfragen mitschneiden …** klicken. Ein Edge-Fenster öffnet sich.
 3. Falls nötig anmelden. Bei 3CX die Anrufliste ein Stück nach unten scrollen, bei ITM zwei oder drei andere Tage aufrufen.
 4. Das Fenster schließen. Zeitzeuge speichert `mitschnitt_pbx_….json` oder `mitschnitt_itm_….json` im Datenordner.
@@ -268,7 +263,7 @@ Damit Zeitzeuge mit Windows startet:
 
 ### RDM im Rechenzentrum
 
-Läuft RDM auf einem Server, kann Zeitzeuge dessen Log auch über das Netzwerk lesen. Trag unter **Einstellungen → Datenquellen → RDM-Logs …** den Netzwerkpfad ein, zum Beispiel `\\server\c$\Users\<name>\AppData\Local\Devolutions\RemoteDesktopManager\Connections.log`. Weicht die Zeitzone des Servers ab, gleichst du das dort mit der Zeitzonenkorrektur aus.
+Läuft RDM auf einem Server, kann Zeitzeuge dessen Log auch über das Netzwerk lesen. Trag unter **Einstellungen → Datenquellen → Einrichten → RDM-Logs …** den Netzwerkpfad ein, zum Beispiel `\\server\c$\Users\<name>\AppData\Local\Devolutions\RemoteDesktopManager\Connections.log`. Weicht die Zeitzone des Servers ab, gleichst du das dort mit der Zeitzonenkorrektur aus.
 
 ### Weitere Einstellungen
 
@@ -293,10 +288,10 @@ Läuft RDM auf einem Server, kann Zeitzeuge dessen Log auch über das Netzwerk l
 | `request_recorder.py` | Mitschnitt der Abfragen einer Seite, mit Schwärzen von Geheimnissen |
 | `ai_classifier.py` | KI-Vorschläge über die Anthropic-API |
 | `storage.py` | Speicherort der Daten |
-| `browser_setup.py` | Einrichtungsassistent für Tampermonkey |
 | `tests/` | Tests, laufen bei jedem Build: Start, Bedienbarkeit, Infobereich, Log-Parser, VPN-Logs, 3CX und ITM mit nachgebauten Seiten, KI-Vorschläge mit nachgebauter API, Fensterabfrage, Anrufliste. Dazu `start_bench.py` (Startzeit messen) und `screenshots.sh` (Bildschirmfotos mit Demodaten) |
 | `settings_dialogs.py` | Dialoge für Logpfade und Aktivitätstypen |
-| `zeitzeuge_anrufe.user.js` | Tampermonkey-Skript für den 3CX-Webclient |
+| `zeitzeuge_anrufe.user.js` | Liest die Anrufliste aus der 3CX-Webseite (für das Lesen über Edge) |
+| `pbx_direct.py` | 3CX direkt abfragen (Anmeldung, Protobuf) |
 | `ZeitZeuge.spec` | Build-Datei für PyInstaller |
 | `build.bat` | EXE auf dem eigenen PC bauen |
 | `.github/workflows/build.yml` | Automatischer EXE-Build auf GitHub |

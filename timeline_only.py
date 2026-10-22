@@ -13,7 +13,7 @@ from activity_tracker import app_label, merge_segments, read_segments
 from call_import import load_call_suggestions
 from grouping import format_tv_id, group_entries
 from log_parsers import ConnectionIndex, RdmParser, TeamViewerParser, VpnParser
-from vpn_reader import VpnReader
+from vpn_reader import VpnReader, vpn_sources
 
 TIME_FMT = "%Y-%m-%d %H:%M:%S"
 
@@ -306,11 +306,12 @@ class TimelineView(QGraphicsView):
 
     def _load_logs(self):
         indexes = []
-        vpn_on = self.config.get("vpn_enabled", True)
-        for name, parser in (("TeamViewer", self._tv_parser), ("RDM", self._rdm_parser),
-                             ("VPN", self._vpn_parser)):
+        # Jede Quelle lässt sich im Menü "Datenquellen" einzeln abschalten
+        for name, parser, key in (("TeamViewer", self._tv_parser, "teamviewer_enabled"),
+                                  ("RDM", self._rdm_parser, "rdm_enabled"),
+                                  ("VPN", self._vpn_parser, "vpn_enabled")):
             try:
-                skip = parser is self._vpn_parser and not vpn_on
+                skip = not self.config.get(key, True)
                 indexes.append(ConnectionIndex([] if skip else parser.parse_logs()))
             except Exception as e:
                 print(f"Fehler beim Lesen der {name}-Logs: {e}")
@@ -341,17 +342,16 @@ class TimelineView(QGraphicsView):
                 QTimer.singleShot(0, self._start_first_load)
             return
 
-        vpn_on = self.config.get("vpn_enabled", True)
         if self._sophos_index is None:
             try:
-                self._sophos_index = ConnectionIndex(self.vpn_reader.connections() if vpn_on else [])
+                self.vpn_reader.sources = vpn_sources(self.config)
+                self._sophos_index = ConnectionIndex(
+                    self.vpn_reader.connections() if self.vpn_reader.sources else [])
             except Exception as e:
                 print(f"Fehler beim Lesen der VPN-Logs: {e}")
                 self._sophos_index = ConnectionIndex([])
 
         day = self._tv_index.get_for_date(date_str) + self._rdm_index.get_for_date(date_str)
-        if not vpn_on:  # VPN abgeschaltet: auch die VPN-Einträge aus RDM weglassen
-            day = [c for c in day if not c.get("type", "").startswith("VPN")]
         day += self._vpn_index.get_for_date(date_str) + self._sophos_index.get_for_date(date_str)
         for conn in day:
             conn["is_suggestion"] = True

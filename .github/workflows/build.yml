@@ -72,6 +72,9 @@ jobs:
           QT_QPA_PLATFORM: offscreen
         run: python tests/list_speed_test.py
 
+      - name: 3CX direkt abfragen (nachgebauter Server)
+        run: python tests/pbx_direct_test.py
+
       - name: Mitschnitt der Abfragen (Schwärzen, Edge gegen nachgebaute Seite)
         run: python tests/recorder_test.py
 

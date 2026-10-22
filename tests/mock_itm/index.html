@@ -5,6 +5,12 @@
 if (location.pathname.startsWith("/ok/")) localStorage.setItem("token", 1);  // Anmeldung simulieren
 const datum = new URLSearchParams(location.search).get("date");
 const app = document.getElementById("app");
+if (localStorage.getItem("token")) {
+  // Wie die echte App: Zugangstoken (JWT, 1 Stunde) im Cookie "session" ablegen
+  const b64 = (o) => btoa(JSON.stringify(o)).replace(/=+$/, "").replace(/\+/g, "-").replace(/\//g, "_");
+  const jwt = b64({alg: "HS256"}) + "." + b64({sub: "test", exp: Math.floor(Date.now() / 1000) + 3600}) + ".c2ln";
+  document.cookie = "session=" + encodeURIComponent(JSON.stringify({JwtToken: jwt, RefreshToken: "r"})) + "; path=/";
+}
 if (!localStorage.getItem("token")) {
   app.innerHTML = '<form><input name="u"><input type="password"><button>Login</button></form>';
 } else if (Number(datum.slice(-2)) % 2) {

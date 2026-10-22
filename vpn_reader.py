@@ -217,6 +217,12 @@ LABELS = {"Sophos": "Sophos Connect"}
 SAMPLE_SECONDS = 30
 
 
+def vpn_sources(config):
+    """Eingeschaltete VPN-Quellen laut Einstellungen (Menü "Datenquellen")."""
+    return {source for source, key in (("Sophos", "sophos_enabled"), ("FortiClient", "forti_enabled"))
+            if config.get(key, True)}
+
+
 def _overlaps(a, b):
     return a["start"] < b["end"] and b["start"] < a["end"]
 
@@ -234,6 +240,7 @@ class VpnReader:
         self.dirs = dirs or DEFAULT_DIRS
         self.adapters = adapters or DEFAULT_ADAPTERS
         self.adapter_func = adapter_func or adapters_up
+        self.sources = None  # eingeschaltete Quellen ("Sophos", "FortiClient"); None = alle
         self.files_read = None
         self._sig = None
         self._data = None
@@ -282,6 +289,8 @@ class VpnReader:
         up = {}
         for desc in up_list:
             for part, source in self.adapters.items():
+                if self.sources is not None and source not in self.sources:
+                    continue
                 if part.lower() in desc.lower():
                     up[desc] = source
                     break
@@ -368,6 +377,8 @@ class VpnReader:
             if any(l.get("vpn_source") == c.get("vpn_source") and _overlaps(l, c) for l in from_logs):
                 continue
             result.append(dict(c))
+        if self.sources is not None:
+            result = [c for c in result if c.get("vpn_source") in self.sources]
         return sorted(result, key=lambda c: c["start"])
 
 
