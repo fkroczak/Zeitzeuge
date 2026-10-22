@@ -47,6 +47,16 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
   - Die Vorschläge stehen in der Timeline in einer eigenen Zeile „KI“, lila und gepunktet.
   - Rechtsklick auf einen Vorschlag: **übernehmen** (dann durchgezogen), **verwerfen** oder **Text kopieren**.
   - In der Tagesliste zeigt die Ansicht **KI-Vorschläge** alle Vorschläge. STRG + C kopiert sie als fertige Ticketzeilen.
+- **Tätigkeiten dokumentieren:** Was du gemacht hast, trägst du direkt in Zeitzeuge ein. Es steht in einer eigenen Zeile „Doku“ ganz oben in der Timeline.
+  - **Nachtragen** (F7): Zeit, Kunde, Kategorie und ein Satz, was du gemacht hast. Ist in der Tagesliste eine Zeile markiert, sind Zeit und Kunde schon ausgefüllt.
+  - Rechtsklick auf einen Eintrag in der Timeline: **Tätigkeit dazu eintragen …**. Rechtsklick auf eine freie Stelle: **Tätigkeit ab hh:mm eintragen …**.
+  - **Offenes fällt auf:** Verbindungen und Telefonate ohne Dokumentation stehen gestrichelt mit „?“ in der Zeile „Doku“. Ein Klick darauf öffnet das Eintragen.
+  - **Zeitzeuge fragt nach:** Endet eine TeamViewer-Sitzung, eine RDP-/SSH-/VPN-Verbindung oder ein Telefonat, erscheint unten rechts ein kleines Fenster: „Was hast du gemacht?“. Zeit, Kunde und Kategorie sind schon ausgefüllt, du schreibst nur noch einen Satz. **Später fragen** fragt in 15 Minuten wieder, **Nicht dokumentieren** fragt für diesen Eintrag nie mehr.
+  - **TeamViewer-ID zum Kunden:** Bei TeamViewer kennt Zeitzeuge oft nur die ID. Trägst du beim Dokumentieren den Kunden ein, merkt es sich den Namen für diese ID. Ab dann steht überall der Name.
+  - **Erinnerung:** Nach Feierabend und beim Beenden sagt Zeitzeuge, wie viele Tätigkeiten heute noch offen sind.
+  - Die Statuszeile zeigt „dokumentiert 3:10 h, 2 offen“. Die Ansicht **Dokumentation** in der Tagesliste zeigt alles, STRG + C kopiert es als fertige Ticketzeilen.
+  - Übernimmst du einen KI-Vorschlag, steht er auch als Tätigkeit in der Zeile „Doku“.
+- **Eigene Zeilen oben in der Timeline:** „Doku“ (deine Tätigkeiten), „Regel“ (Klassifizierung ohne KI) und „KI“. Jede Zeile schaltest du unter **Einstellungen → Zeilen der Timeline** ein oder aus.
 - **Zeitlinie unter der Maus:** Eine gestrichelte senkrechte Linie folgt der Maus, oben steht die genaue Uhrzeit. Der Hinweis daneben zeigt, ob du zu dieser Minute eingestempelt warst (Personalzeit oder Pause) und welche Einträge gerade liefen. Der grüne Streifen unter der Stundenleiste und der helle Hintergrund markieren die Personalzeit (ohne ITM die Arbeitszeit aus den Einstellungen).
 - **Details:** Fährst du über einen Eintrag, siehst du Kunde, Zeitraum und Dauer. Ein Klick in der Timeline, ein Doppelklick oder **Enter** in der Liste öffnet die Details.
 - **Immer aktuell:** Die Logs werden alle 2 Minuten geprüft. Mit F5 liest du sie sofort neu ein. Gelesen werden nur Dateien, die sich geändert haben.
@@ -66,6 +76,7 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
 | STRG + T | Heute |
 | F5 | Logs neu einlesen |
 | F6 | KI-Vorschläge für den Tag erstellen |
+| F7 | Tätigkeit nachtragen (zur markierten Zeile) |
 | STRG + `+` / `-` | Zoom |
 | STRG + 0 | Ganzen Tag zeigen |
 | STRG + 9 | Arbeitszeit zeigen |
@@ -218,6 +229,22 @@ Die Vorschläge liegen pro Tag in `ki_vorschlaege/JJJJ-MM-TT.json` im Datenordne
 | `ai_auto` | `false` | Vergangene Tage ohne Vorschläge beim Anzeigen automatisch einordnen |
 | `ai_categories` | Fernwartung, Telefonsupport, … | Kategorien, aus denen Claude wählt |
 
+### Nachfragen und Erinnerungen
+
+Unter **Einstellungen → Nachfragen und Erinnerungen …** legst du fest, wann Zeitzeuge nachfragt. Deine Tätigkeiten liegen pro Tag in `taetigkeiten/JJJJ-MM-TT.json` im Datenordner.
+
+| Schlüssel | Standard | Bedeutung |
+|---|---|---|
+| `prompt_mode` | `window` | `window`: kleines Fenster unten rechts, `tray`: nur Meldung im Infobereich, `off`: nicht fragen |
+| `prompt_sources` | `["connections", "calls"]` | Wonach gefragt wird: Verbindungen, Telefonate, `rules` (Blöcke aus den Regeln) |
+| `prompt_min_minutes` | `5` | Kürzere Tätigkeiten nicht nachfragen |
+| `prompt_snooze_minutes` | `15` | „Später fragen“ fragt nach so vielen Minuten wieder |
+| `prompt_end_of_day` | `true` | Nach Feierabend einmal an Offenes erinnern |
+| `prompt_on_quit` | `true` | Beim Beenden an Offenes erinnern |
+| `timeline_rows` | alle an | Zeilen „Doku“, „Regel“ und „KI“ zeigen (`doc`, `rule`, `ai`) |
+
+Gefragt wird nur nach Tätigkeiten, die gerade erst geendet haben. Ältere offene Einträge stehen gestrichelt in der Zeile „Doku“, damit nichts verloren geht. Als dokumentiert gilt ein Eintrag, wenn mindestens die Hälfte seiner Zeit in deinen Tätigkeiten steckt.
+
 ### Wenn Zeitzeuge hängt
 
 Reagiert das Fenster länger als 2 Sekunden nicht, schreibt Zeitzeuge in `haenger.log` im Datenordner, an welcher Stelle im Programm es gerade hing. Diese Datei hilft, die Ursache zu finden. Sie enthält nur Programmzeilen, keine Daten aus deinen Logs.
@@ -287,6 +314,8 @@ Läuft RDM auf einem Server, kann Zeitzeuge dessen Log auch über das Netzwerk l
 | `itm_reader.py` | Personalzeiten aus der ITM-Zeiterfassung lesen |
 | `request_recorder.py` | Mitschnitt der Abfragen einer Seite, mit Schwärzen von Geheimnissen |
 | `ai_classifier.py` | KI-Vorschläge über die Anthropic-API |
+| `journal.py` | Eigene Tätigkeiten speichern, offene erkennen |
+| `journal_dialogs.py` | Dialoge zum Nachtragen, Nachfrage-Fenster, Einstellungen dazu |
 | `storage.py` | Speicherort der Daten |
 | `tests/` | Tests, laufen bei jedem Build: Start, Bedienbarkeit, Infobereich, Log-Parser, VPN-Logs, 3CX und ITM mit nachgebauten Seiten, KI-Vorschläge mit nachgebauter API, Fensterabfrage, Anrufliste. Dazu `start_bench.py` (Startzeit messen) und `screenshots.sh` (Bildschirmfotos mit Demodaten) |
 | `settings_dialogs.py` | Dialoge für Logpfade und Aktivitätstypen |
@@ -302,7 +331,7 @@ Zeitzeuge arbeitet nur auf deinem eigenen Rechner. Es liest lokale Logdateien un
 
 **KI-Vorschläge:** Dabei gehen die Einträge des Tages an Anthropic: Uhrzeiten, Kunden- und Verbindungsnamen, Anrufer und, wenn eingeschaltet, die Fenstertitel. Passwörter selbst stehen nicht in den Logs und werden nicht gesendet. Fenster aus `tracking_ignore` gehen nur als „(ausgeblendet)“ mit. Prüfe vorher, ob das zu deinen Verträgen mit Kunden passt. Wenn nicht: Fenstertitel ausschalten oder die Funktion nicht nutzen.
 
-Das Aktivitätsprotokoll speichert Fenstertitel. Darin können Kundennamen, Betreffzeilen von Mails oder Dateinamen stehen. Die Dateien in `aktivitaet/` gehören deshalb nur auf deinen PC. In den Ordnern `3cx_profil` und `itm_profil` liegen deine Anmeldungen bei 3CX und ITM. Sie sind zu schützen wie ein Browserprofil. Alle diese Dateien stehen in `.gitignore`, genauso wie `anrufe.json`, `personalzeiten.json`, `ki_vorschlaege/`, `mitschnitt_*.json` und die persönliche `zeitzeuge_config.json`.
+Das Aktivitätsprotokoll speichert Fenstertitel. Darin können Kundennamen, Betreffzeilen von Mails oder Dateinamen stehen. Die Dateien in `aktivitaet/` gehören deshalb nur auf deinen PC. In den Ordnern `3cx_profil` und `itm_profil` liegen deine Anmeldungen bei 3CX und ITM. Sie sind zu schützen wie ein Browserprofil. Alle diese Dateien stehen in `.gitignore`, genauso wie `anrufe.json`, `personalzeiten.json`, `ki_vorschlaege/`, `taetigkeiten/`, `mitschnitt_*.json` und die persönliche `zeitzeuge_config.json`.
 
 
 ## Lizenz

@@ -4,7 +4,7 @@ import re
 import sys
 import warnings
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from PyQt5.QtCore import (QDate, QLibraryInfo, QLocale, QProcess, QSize, Qt,
                           QTimer, QTranslator, QUrl)
@@ -25,11 +25,13 @@ import icons
 import storage
 from log_parsers import VpnParser
 from vpn_reader import vpn_sources
+from journal import Journal, describe, entry_key as journal_key, open_entry, suggest_category, suggest_customer, ticket_line
+from journal_dialogs import DocPromptDialog, EntryDialog, PromptWindow, default_span
 from settings_dialogs import (ActivityTypeSettingsDialog, AiSettingsDialog,
                               ConnectionSettingsDialog, WorkHoursDialog)
 from grouping import format_tv_id, group_entries, work_blocks
 from timeline_only import (ActivityViewDialog, TimelineView, ai_copy_text, entry_color,
-                           format_duration, parse_time, type_label)
+                           format_duration, parse_time, row_kind, type_label)
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
@@ -67,6 +69,7 @@ PBX_PROFILE_DIR = os.path.join(storage.local_dir(), "3cx_profil")
 ITM_FILE = os.path.join(DATA_DIR, "personalzeiten.json")
 ITM_PROFILE_DIR = os.path.join(storage.local_dir(), "itm_profil")
 AI_DIR = os.path.join(DATA_DIR, "ki_vorschlaege")
+JOURNAL_DIR = os.path.join(DATA_DIR, "taetigkeiten")
 
 
 class AppStyle(QProxyStyle):
@@ -234,6 +237,16 @@ def load_config_with_defaults():
         "ai_effort": "low",
         "ai_send_window_titles": True,
         "ai_auto": False,          # vergangene Tage beim Anzeigen automatisch einordnen
+
+        # Eigene Zeilen oben in der Timeline: Doku (eigene Tätigkeiten), Regeln, KI
+        "timeline_rows": {"doc": True, "rule": True, "ai": True},
+        # Nachfragen nach erkannten Tätigkeiten ("Was hast du gemacht?")
+        "prompt_mode": "window",       # "window" (kleines Fenster), "tray" (nur Meldung), "off"
+        "prompt_min_minutes": 5,       # kürzere Tätigkeiten nicht nachfragen
+        "prompt_sources": ["connections", "calls"],  # auch "rules" (Blöcke aus den Regeln)
+        "prompt_snooze_minutes": 15,   # "Später fragen"
+        "prompt_on_quit": True,        # beim Beenden an offene Tätigkeiten erinnern
+        "prompt_end_of_day": True,     # nach Feierabend an offene Tätigkeiten erinnern
     }
     if os.path.exists(CONFIG_FILE):
             try:
@@ -260,7 +273,8 @@ def load_config_with_defaults():
     for kind, color in [("VPN-Verbindung", "#00B894"), ("SSH-Verbindung", "#E67E22"),
                         ("FTP-Verbindung", "#7F8C8D"), ("TeamViewer-Verbindung", "#3460DB"),
                         ("Zugangsdaten", "#9B59B6"), ("Arbeitsblock", "#5B8DEF"),
-                        (AI_TYPE, "#A55EEA")]:
+                        (AI_TYPE, "#A55EEA"), ("Dokumentiert", "#2E9E5B"),
+                        ("Undokumentiert", "#E67E22"), ("Klassifizierung", "#8E7CC3")]:
         cfg["type_colors"].setdefault(kind, color)
     # Alte Standardpfade enthielten doppelte Backslashes (C:\Users\x\\TeamViewer)
     for key in ("teamviewer_paths", "rdm_paths", "vpn_paths"):
@@ -435,6 +449,18 @@ class TimelineApp(QMainWindow):
         self.timeline.ai_entries = self.ai_store.entries
         self.timeline.ai_action.connect(self.on_ai_action)
 
+        # Eigene Tätigkeiten (nachgetragen oder auf Nachfrage) und Regeln ohne KI
+        self.journal = Journal(JOURNAL_DIR)
+        self.timeline.doc_entries = self.doc_band
+        self.timeline.rule_entries = self.rule_band
+        self.timeline.doc_request.connect(self.on_doc_request)
+        self._rule_cache = {}
+        self._prompt_window = None
+        self._prompt_queue = []
+        self._prompt_asked = {}     # Schlüssel -> frühestens wieder fragen (datetime)
+        self._started_at = datetime.now()
+        self._reminded_day = None   # Feierabend-Erinnerung nur einmal am Tag
+
         # Aktivitätsprotokoll: alle 5 Sekunden aktives Fenster abfragen
         self.tracker = None
         self.track_timer = QTimer(self)
@@ -469,6 +495,13 @@ class TimelineApp(QMainWindow):
         copy_action.setShortcutContext(Qt.WidgetShortcut)
         copy_action.triggered.connect(self.copy_selection)
         self.table.addAction(copy_action)
+        doc_action = QAction("Tätigkeit &eintragen / bearbeiten …", self.table)
+        doc_action.triggered.connect(self.doc_for_row)
+        self.table.addAction(doc_action)
+        doc_delete = QAction("Tätigkeit &löschen", self.table)
+        doc_delete.triggered.connect(self.delete_doc_row)
+        self.table.addAction(doc_delete)
+        self._icon_actions.append((doc_action, "edit"))
         name_action = QAction("&TeamViewer-ID benennen …", self.table)
         name_action.triggered.connect(self.name_teamviewer_id)
         self.table.addAction(name_action)
@@ -522,6 +555,11 @@ class TimelineApp(QMainWindow):
         self.refresh_timer = QTimer(self)
         self.refresh_timer.timeout.connect(self.auto_refresh)
         self.refresh_timer.start(2 * 60 * 1000)
+
+        # Nachfragen nach erkannten Tätigkeiten: jede Minute prüfen
+        self.prompt_timer = QTimer(self)
+        self.prompt_timer.timeout.connect(self.check_prompts)
+        self.prompt_timer.start(60 * 1000)
 
         self._build_tray()
 
@@ -592,6 +630,10 @@ class TimelineApp(QMainWindow):
             "KI-Vorschläge", lambda: self.classify_day(), "F6",
             "Tätigkeiten des Tages von Claude einordnen lassen")
         tb.addAction(self.ai_button_action)
+        self.doc_button_action = self._action(
+            "Nachtragen", lambda: self.add_doc(), "F7",
+            "Tätigkeit nachtragen (zur markierten Zeile oder zur letzten halben Stunde)", "edit")
+        tb.addAction(self.doc_button_action)
         tb.addSeparator()
         # Gruppe 3: Ausschnitt der Timeline
         zoom_out = self._action("Verkleinern", self.zoom_out, "Ctrl+-", icon_name="zoom_out")
@@ -616,6 +658,8 @@ class TimelineApp(QMainWindow):
             "Zusammengefasst: Verbindungen und Passwort-/OTP-Anzeigen werden je Eintrag eine Zeile\n"
             "Einzeln: jede Zeile aus den Logs\n"
             "Arbeitsblöcke: alles mit kurzer Pause dazwischen als ein Block, z. B. fürs Ticket\n"
+            "Dokumentation: deine eingetragenen Tätigkeiten und was noch offen ist (F7)\n"
+            "Regeln (ohne KI): Tätigkeiten, die Zeitzeuge über deine Regeln erkannt hat\n"
             "KI-Vorschläge: Tätigkeiten, die Claude aus dem Tag erkannt hat (F6)")
         for key, text in self.VIEWS:
             self.view_combo.addItem(text, key)
@@ -668,6 +712,20 @@ class TimelineApp(QMainWindow):
             (menu.addAction("Aktivitäts&typen und Farben …", self.edit_activity_types), "palette"),
             (menu.addAction("&KI-Vorschläge …", self.edit_ai_settings), "spark"),
         ]
+        menu.addSeparator()
+        self._icon_actions.append(
+            (menu.addAction("&Nachfragen und Erinnerungen …", self.edit_prompt_settings), "bell"))
+        rows_menu = menu.addMenu("&Zeilen der Timeline")
+        self.row_actions = {}
+        for key, text in [("doc", "&Doku (eigene Tätigkeiten)"), ("rule", "&Regeln (ohne KI)"),
+                          ("ai", "&KI-Vorschläge")]:
+            action = rows_menu.addAction(text)
+            action.setCheckable(True)
+            action.setChecked(self.config.get("timeline_rows", {}).get(key, True))
+            action.toggled.connect(lambda on, k=key: self.toggle_row(k, on))
+            self.row_actions[key] = action
+        self._icon_actions.append((rows_menu.menuAction(), "rows"))
+        menu.addSeparator()
         self.sources_menu = self._build_sources_menu(menu)
         storage_menu = menu.addMenu("Daten&speicher")
         self.open_folder_action = storage_menu.addAction(
@@ -679,7 +737,7 @@ class TimelineApp(QMainWindow):
         menu.addSeparator()
         self._icon_actions += [
             (menu.addAction("Ü&ber Zeitzeuge", self.show_about), "info"),
-            (menu.addAction("Zeitzeuge be&enden", self.quit_app), "power"),
+            (menu.addAction("Zeitzeuge be&enden", self.request_quit), "power"),
         ]
         self.menu_button = QToolButton(self)
         self.menu_button.setText("&Einstellungen")
@@ -763,8 +821,13 @@ class TimelineApp(QMainWindow):
         self.day_activities = activities
         self.pc_activities = pc_activities or []
         entries = list(activities)
+        date_str = self.current_date.toString("yyyy-MM-dd")
         if self.config.get("list_view") == "ai":
-            entries = self.ai_store.entries(self.current_date.toString("yyyy-MM-dd"))
+            entries = self.ai_store.entries(date_str)
+        elif self.config.get("list_view") == "doc":
+            entries = self.doc_band(date_str)
+        elif self.config.get("list_view") == "rules":
+            entries = self.rule_band(date_str)
         elif self.config.get("list_view") == "blocks":
             entries = work_blocks(entries, self.config.get("block_gap_minutes", 10))
         elif self.config.get("show_pc_in_list", False):
@@ -804,7 +867,7 @@ class TimelineApp(QMainWindow):
         self.update_status_text()
 
     VIEWS = [("grouped", "Zusammengefasst"), ("single", "Einzeln"), ("blocks", "Arbeitsblöcke"),
-             ("ai", "KI-Vorschläge")]
+             ("doc", "Dokumentation"), ("rules", "Regeln (ohne KI)"), ("ai", "KI-Vorschläge")]
 
     def change_view(self, _index):
         self.config["list_view"] = self.view_combo.currentData()
@@ -843,8 +906,15 @@ class TimelineApp(QMainWindow):
             rows = range(self.table.rowCount())
         lines = []
         for row in rows:
-            if row < len(self.list_entries) and self.list_entries[row].get("ai"):
-                lines.append(ai_copy_text(self.list_entries[row]))  # fertige Ticketzeile
+            entry = self.list_entries[row] if row < len(self.list_entries) else {}
+            if entry.get("doc"):
+                lines.append(ticket_line(entry["doc_item"]))  # fertige Ticketzeile
+                continue
+            if entry.get("open"):
+                lines.append(f"OFFEN: {describe(entry['source_entry'])}")
+                continue
+            if entry.get("ai") or entry.get("rule"):
+                lines.append(ai_copy_text(entry))
                 continue
             cells = [self.table.item(row, c).text() for c in range(self.table.columnCount())]
             lines.append(f"{cells[0]}–{cells[1]}\t" + "\t".join(cells[2:]).rstrip())
@@ -868,6 +938,14 @@ class TimelineApp(QMainWindow):
                              "(Pfade unter Einstellungen → Datenquellen → Einrichten)")
         if self.pc_activities:
             parts.append(f"am PC aktiv {format_duration(merged_seconds(self.pc_activities))}")
+        doc = self.doc_band(self.current_date.toString("yyyy-MM-dd"))
+        done = [e for e in doc if e.get("doc")]
+        open_count = len(doc) - len(done)
+        if done or open_count:
+            text = f"dokumentiert {format_duration(merged_seconds(done))}" if done else "nichts dokumentiert"
+            if open_count:
+                text += f", {open_count} offen (F7)"
+            parts.append(text)
         itm_day = self.itm_reader.day(self.current_date.toString("yyyy-MM-dd")) if self.itm_reader else None
         if itm_day and itm_day.get("gewertet") is not None:
             text = f"Personalzeit {format_duration(itm_day['gewertet'] * 60)}"
@@ -974,6 +1052,14 @@ class TimelineApp(QMainWindow):
     def on_ai_action(self, entry, action):
         status = "übernommen" if action == "übernehmen" else "verworfen"
         self.ai_store.set_status(entry["start"][:10], entry["ai_id"], status)
+        if status == "übernommen":  # übernommen = dokumentiert, steht dann in der Zeile "Doku"
+            try:
+                self.journal.add({"start": entry["start"], "end": entry["end"],
+                                  "customer": entry.get("customer_name", ""),
+                                  "category": entry.get("category", ""),
+                                  "text": entry.get("description", ""), "source": "KI"})
+            except (OSError, ValueError) as e:
+                self.statusBar().showMessage(str(e), 8000)
         self.timeline.draw_timeline(self.current_date)
 
     def ai_action_on_row(self, action):
@@ -1002,6 +1088,285 @@ class TimelineApp(QMainWindow):
         if dialog.exec_() == dialog.Accepted:
             dialog.apply()
             save_config(self.config)
+
+    # ---------------------- Dokumentation: eigene Tätigkeiten -----------------
+
+    def categories(self):
+        return self.ai.categories()
+
+    def known_customers(self):
+        """Kunden zur Auswahl: zuletzt dokumentierte, benannte TeamViewer-IDs."""
+        names = self.journal.customers()
+        names += sorted(set(self.config.get("teamviewer_names", {}).values()) - set(names))
+        return names
+
+    def rule_band(self, date_str):
+        """Blöcke aus den Regeln (ohne KI), zwischengespeichert bis sich etwas ändert."""
+        try:
+            import rules
+        except ImportError:
+            return []
+        date = QDate.fromString(date_str, "yyyy-MM-dd")
+        entries = self.timeline.activities_for(date)
+        pc = self.timeline.pc_entries_for(date, min_seconds=30)
+        rule_list = self.config.get("rules") or []
+        key = (len(entries), entries[-1]["end"] if entries else "", len(pc),
+               pc[-1]["end"] if pc else "", json.dumps(rule_list, sort_keys=True),
+               self.config.get("merge_gap_minutes", 5))
+        cached = self._rule_cache.get(date_str)
+        if cached and cached[0] == key:
+            return cached[1]
+        blocks = rules.classify(entries, pc, rule_list,
+                                gap_minutes=self.config.get("merge_gap_minutes", 5))
+        self._rule_cache[date_str] = (key, blocks)
+        return blocks
+
+    def doc_candidates(self, date_str):
+        """Erkannte Tätigkeiten des Tages, die noch nicht dokumentiert sind."""
+        sources = self.config.get("prompt_sources", ["connections", "calls"])
+        date = QDate.fromString(date_str, "yyyy-MM-dd")
+        entries = []
+        if "connections" in sources or "calls" in sources:
+            grouped = group_entries(self.timeline.activities_for(date),
+                                    self.config.get("merge_gap_minutes", 5))
+            for e in grouped:
+                is_call = row_kind(e) == "call"
+                if is_call and "calls" in sources:
+                    entries.append(e)
+                elif not is_call and "connections" in sources and e.get("type") != "Zugangsdaten":
+                    entries.append(e)
+        if "rules" in sources:
+            entries += self.rule_band(date_str)
+        return self.journal.open_items(entries, date_str,
+                                       min_minutes=self.config.get("prompt_min_minutes", 5))
+
+    def doc_band(self, date_str):
+        """Zeile "Doku": eigene Tätigkeiten und (gestrichelt) was noch offen ist."""
+        entries = self.journal.entries(date_str)
+        if self.config.get("prompt_mode", "window") != "off" or self.config.get("list_view") == "doc":
+            entries += [open_entry(e) for e in self.doc_candidates(date_str)]
+        return sorted(entries, key=lambda e: e["start"])
+
+    def on_doc_request(self, action, entry):
+        """Aus der Timeline: eintragen, bearbeiten, löschen, nicht dokumentieren."""
+        if action == "add":
+            self.add_doc(entry)
+        elif action == "add_at":
+            self.add_doc(minute=entry["minute"])
+        elif action == "edit":
+            self.edit_doc(entry["doc_item"])
+        elif action == "delete":
+            self.delete_doc(entry["doc_item"])
+        elif action == "ignore":
+            self.journal.ignore(entry)
+            self.timeline.draw_timeline(self.current_date)
+
+    def add_doc(self, entry=None, minute=None):
+        """Tätigkeit nachtragen, auf Wunsch vorbelegt aus einem erkannten Eintrag."""
+        if entry is None and minute is None and self.table.hasFocus():
+            row = self.table.currentRow()
+            if 0 <= row < len(self.list_entries):
+                return self.doc_for_row()
+        categories = self.categories()
+        if entry:
+            start, end = parse_time(entry["start"]), parse_time(entry["end"])
+            info = f"Erkannt: {describe(entry)}"
+            customer = suggest_customer(entry, self.config.get("teamviewer_names", {}))
+            category = suggest_category(entry, categories)
+            text = entry.get("description", "") if entry.get("ai") or entry.get("rule") else ""
+        else:
+            start, end = default_span(self.current_date.toPyDate(), minute)
+            info, customer, category, text = "", "", "", ""
+        dialog = EntryDialog(start, end, self.known_customers(), categories, customer, category,
+                             text, tv_id=(entry or {}).get("tv_id"), info=info, parent=self)
+        if dialog.exec_() != QDialog.Accepted:
+            return
+        item = dialog.item()
+        if entry:
+            item["source"] = entry.get("type", "")
+        self._save_doc(item, entry, dialog.remember_tv())
+
+    def _save_doc(self, item, entry=None, remember_tv=False, old=None):
+        try:
+            if old:
+                self.journal.update(old, item)
+            else:
+                self.journal.add(item)
+        except (OSError, ValueError) as e:
+            QMessageBox.warning(self, "Tätigkeit", str(e))
+            return False
+        tv_id = (entry or {}).get("tv_id")
+        if tv_id and remember_tv and item.get("customer"):
+            self.config.setdefault("teamviewer_names", {})[tv_id] = item["customer"]
+            save_config(self.config)
+        self.timeline.draw_timeline(self.current_date)
+        self.statusBar().showMessage("Tätigkeit gespeichert", 3000)
+        return True
+
+    def edit_doc(self, item):
+        start, end = parse_time(item["start"]), parse_time(item["end"])
+        dialog = EntryDialog(start, end, self.known_customers(), self.categories(),
+                             item.get("customer", ""), item.get("category", ""),
+                             item.get("text", ""), title="Tätigkeit bearbeiten",
+                             can_delete=True, parent=self)
+        if dialog.exec_() != QDialog.Accepted:
+            return
+        if dialog.deleted:
+            self.delete_doc(item, ask=False)
+        else:
+            self._save_doc(dialog.item(), old=item)
+
+    def delete_doc(self, item, ask=True):
+        if ask and QMessageBox.question(
+                self, "Tätigkeit löschen",
+                f"Diese Tätigkeit löschen?\n\n{ticket_line(item)}") != QMessageBox.Yes:
+            return
+        self.journal.delete(item)
+        self.timeline.draw_timeline(self.current_date)
+
+    def doc_for_row(self):
+        """Tagesliste: Tätigkeit zur markierten Zeile eintragen oder bearbeiten."""
+        row = self.table.currentRow()
+        if not 0 <= row < len(self.list_entries):
+            return None
+        entry = self.list_entries[row]
+        if entry.get("doc"):
+            self.edit_doc(entry["doc_item"])
+        else:
+            self.add_doc(entry.get("source_entry", entry))
+
+    def delete_doc_row(self):
+        row = self.table.currentRow()
+        if 0 <= row < len(self.list_entries) and self.list_entries[row].get("doc"):
+            self.delete_doc(self.list_entries[row]["doc_item"])
+        else:
+            self.statusBar().showMessage("Die markierte Zeile ist keine eingetragene Tätigkeit", 4000)
+
+    def show_open_docs(self):
+        """Fenster zeigen, heute, Ansicht "Dokumentation"."""
+        self.show_from_tray()
+        self.show_today()
+        index = self.view_combo.findData("doc")
+        if index >= 0:
+            self.view_combo.setCurrentIndex(index)
+
+    def toggle_row(self, key, on):
+        self.config.setdefault("timeline_rows", {})[key] = on
+        save_config(self.config)
+        self.timeline.draw_timeline(self.current_date)
+
+    def edit_prompt_settings(self):
+        dialog = DocPromptDialog(self.config, self)
+        if dialog.exec_() == QDialog.Accepted:
+            dialog.apply()
+            save_config(self.config)
+            self.timeline.draw_timeline(self.current_date)
+
+    # ---- Nachfragen ("Was hast du gemacht?")
+
+    def check_prompts(self):
+        """Jede Minute: neu erkannte, noch nicht dokumentierte Tätigkeiten nachfragen."""
+        mode = self.config.get("prompt_mode", "window")
+        if mode == "off" or self._quitting:
+            return
+        now = datetime.now()
+        today = now.strftime("%Y-%m-%d")
+        open_items = self.doc_candidates(today)
+        for e in open_items:
+            key = journal_key(e)
+            # Nur frisch beendete fragen (seit dem Start von Zeitzeuge oder in der letzten
+            # Stunde). Ältere stehen gestrichelt in der Zeile "Doku" und in der Liste.
+            ended = parse_time(e["end"])
+            if ended < min(self._started_at, now) - timedelta(hours=1):
+                continue
+            if key in self._prompt_asked and self._prompt_asked[key] > now:
+                continue
+            if key not in (journal_key(q) for q in self._prompt_queue):
+                self._prompt_queue.append(e)
+        keys = {journal_key(e) for e in open_items}  # inzwischen dokumentiert: nicht mehr fragen
+        self._prompt_queue = [q for q in self._prompt_queue if journal_key(q) in keys]
+        if self._prompt_queue:
+            self.show_next_prompt()
+        self.end_of_day_reminder(open_items, now)
+
+    def show_next_prompt(self, force=False):
+        if self._prompt_window or not self._prompt_queue:
+            if self._prompt_window:
+                self._prompt_window.set_pending(len(self._prompt_queue) - 1)
+            return
+        entry = self._prompt_queue[0]
+        if self.config.get("prompt_mode") == "tray" and not force:
+            if self.tray and journal_key(entry) not in self._prompt_asked:
+                self._prompt_asked[journal_key(entry)] = datetime.max
+                self._tray_doc_hint = True
+                self.tray.showMessage("Was hast du gemacht?",
+                                      f"{describe(entry)}\nKlick hier, um es einzutragen.",
+                                      QSystemTrayIcon.Information, 10000)
+            return
+        window = PromptWindow(entry, self.known_customers(), self.categories(),
+                              self.config.get("teamviewer_names", {}),
+                              pending=len(self._prompt_queue) - 1, parent=self)
+        window.answered.connect(self.on_prompt_answered)
+        self._prompt_window = window
+        # unten rechts über dem Infobereich, ohne dir den Fokus wegzunehmen
+        screen = QApplication.primaryScreen()
+        if screen:
+            area = screen.availableGeometry()
+            window.adjustSize()
+            window.move(area.right() - window.width() - 24, area.bottom() - window.height() - 24)
+        window.show()
+
+    def on_prompt_answered(self, action, entry, item):
+        window, self._prompt_window = self._prompt_window, None
+        key = journal_key(entry)
+        self._prompt_queue = [q for q in self._prompt_queue if journal_key(q) != key]
+        if action == "save":
+            item["source"] = entry.get("type", "")
+            if not self._save_doc(item, entry, window.remember_tv() if window else False):
+                self._prompt_queue.insert(0, entry)
+        elif action == "ignore":
+            self.journal.ignore(entry)
+            self.timeline.draw_timeline(self.current_date)
+        else:  # später
+            snooze = self.config.get("prompt_snooze_minutes", 15)
+            self._prompt_asked[key] = datetime.now() + timedelta(minutes=snooze)
+        if window:
+            window.deleteLater()
+        QTimer.singleShot(400, self.show_next_prompt)
+
+    def end_of_day_reminder(self, open_items, now):
+        """Nach Feierabend einmal am Tag an offene Tätigkeiten erinnern."""
+        if not (self.config.get("prompt_end_of_day", True) and open_items and self.tray):
+            return
+        today = now.strftime("%Y-%m-%d")
+        if self._reminded_day == today:
+            return
+        _start, end = self.timeline._work_minutes(QDate.currentDate())
+        if end <= _start or now.hour * 60 + now.minute < end:
+            return
+        self._reminded_day = today
+        self._tray_doc_hint = True
+        self.tray.showMessage(
+            "Feierabend: noch nicht alles dokumentiert",
+            f"Heute sind noch {len(open_items)} Tätigkeiten offen. Klick hier zum Nachtragen.",
+            QSystemTrayIcon.Warning, 15000)
+
+    def request_quit(self):
+        """Beenden über Menü/Infobereich: vorher an offene Tätigkeiten von heute erinnern."""
+        if self.config.get("prompt_on_quit", True) and self.config.get("prompt_mode") != "off":
+            open_items = self.doc_candidates(datetime.now().strftime("%Y-%m-%d"))
+            if open_items:
+                box = QMessageBox(QMessageBox.Question, "Zeitzeuge beenden",
+                                  f"Heute sind noch {len(open_items)} Tätigkeiten nicht "
+                                  "dokumentiert. Jetzt nachtragen?", parent=self)
+                later = box.addButton("&Nachtragen", QMessageBox.AcceptRole)
+                box.addButton("Trotzdem &beenden", QMessageBox.DestructiveRole)
+                box.setDefaultButton(later)
+                box.exec_()
+                if box.clickedButton() is later:
+                    self.show_open_docs()
+                    return
+        self.quit_app()
 
     # ---------------------- Aktivitätsprotokoll -------------------------------
 
@@ -1391,7 +1756,7 @@ class TimelineApp(QMainWindow):
         menu.addMenu(self.sources_menu)
         menu.addAction(self.open_folder_action)
         menu.addSeparator()
-        quit_action = menu.addAction("&Beenden", self.quit_app)
+        quit_action = menu.addAction("&Beenden", self.request_quit)
         self._icon_actions += [(open_action, "window"), (refresh, "refresh"), (quit_action, "power")]
         self.tray.setContextMenu(menu)
         # Klick auf die Meldung "3CX-Anmeldung nötig" öffnet die Anmeldung
@@ -1404,7 +1769,13 @@ class TimelineApp(QMainWindow):
 
     def on_tray_message_clicked(self):
         """Klick auf "Anmeldung nötig" öffnet die passende Anmeldung."""
-        if self.pbx_reader and self.pbx_reader.needs_login:
+        if getattr(self, "_tray_doc_hint", False):  # Meldung zu offenen Tätigkeiten
+            self._tray_doc_hint = False
+            if self._prompt_queue and self.config.get("prompt_mode") == "tray":
+                self.show_next_prompt(force=True)
+            else:
+                self.show_open_docs()
+        elif self.pbx_reader and self.pbx_reader.needs_login:
             self.show_pbx_login()
         elif self.itm_reader and self.itm_reader.needs_login:
             self.itm_reader.show_login(self)
@@ -1417,6 +1788,9 @@ class TimelineApp(QMainWindow):
 
     def quit_app(self):
         self._quitting = True
+        if self._prompt_window:
+            self._prompt_window.blockSignals(True)
+            self._prompt_window.close()
         self.timeline.shutdown()
         if self.tracker:
             self.tracker.stop()

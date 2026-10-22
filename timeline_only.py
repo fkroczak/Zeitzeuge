@@ -82,6 +82,12 @@ def row_kind(activity):
 
 def type_label(activity):
     """Typ-Text für Liste und Details, bei Telefonaten mit Richtung."""
+    if activity.get("doc"):
+        return f"Doku: {activity['category']}" if activity.get("category") else "Doku"
+    if activity.get("open"):
+        return "Undokumentiert"
+    if activity.get("rule"):
+        return f"Regel: {activity.get('category', '')}"
     if activity.get("ai"):
         text = f"KI: {activity.get('category', '')}"
         return text + " (übernommen)" if activity.get("status") == "übernommen" else text
@@ -171,6 +177,9 @@ class TimelineView(QGraphicsView):
     day_loaded = pyqtSignal(list, list)
     # Rechtsklick auf einen KI-Vorschlag: (Eintrag, "übernehmen" | "verwerfen")
     ai_action = pyqtSignal(dict, str)
+    # Tätigkeit eintragen/ändern: (Aktion, Eintrag oder {"minute": …})
+    # Aktionen: "add" (zu einem Eintrag), "add_at" (freie Stelle), "edit", "delete", "ignore"
+    doc_request = pyqtSignal(str, dict)
     # Hintergrund-Thread hat TeamViewer- und RDM-Logs gelesen
     logs_loaded = pyqtSignal(object, object, object)
 
@@ -203,6 +212,8 @@ class TimelineView(QGraphicsView):
         self.activity_dir = None  # Ordner des Protokolls (auch lesbar, wenn pausiert)
         self.personal_day = None  # date_str -> Personalzeiten aus ITM, vom Hauptfenster gesetzt
         self.ai_entries = None    # date_str -> KI-Vorschläge, vom Hauptfenster gesetzt
+        self.rule_entries = None  # date_str -> Blöcke aus den Regeln (ohne KI)
+        self.doc_entries = None   # date_str -> eigene Tätigkeiten und noch offene
 
         self._remote_cache = {}  # date_str -> list[conn]
         self._tv_parser = TeamViewerParser(self.config)
@@ -228,6 +239,7 @@ class TimelineView(QGraphicsView):
         self._day_entries = []     # gezeichnete Einträge (für die Linie)
         self._pc_band = []
         self._ai_band = []
+        self._bands = []           # obere Zeilen: [(Kennung, Text, Einträge)]
         self.dark_mode = self.config.get("dark_mode", False)
 
         self.setRenderHint(QPainter.Antialiasing)
@@ -523,14 +535,18 @@ class TimelineView(QGraphicsView):
             placed.append((a, start, end, n_fixed + idx))
 
         pc_band = self.pc_entries_for(date, min_seconds=5, max_gap=15)
-        ai_band = self.ai_entries(date.toString("yyyy-MM-dd")) if self.ai_entries else []
+        bands = self.band_rows(date)
+        ai_band = next((e for k, _t, e in bands if k == "ai"), [])
         n_lanes = max(self.MIN_LANES, len(lanes_end))
         band_y = self.AXIS_H + 6
         show_band = bool(self.tracker or pc_band)
         top = band_y + (self.PC_BAND_H + 10 if show_band else 2)
-        ai_y = top
-        if ai_band:  # eigene Zeile für die KI-Vorschläge über den Einträgen
-            top += self.LANE_H + self.LANE_GAP + 4
+        band_tops = []
+        for _band in bands:  # eigene Zeilen für Doku, Regeln und KI über den Einträgen
+            band_tops.append(top)
+            top += self.LANE_H + self.LANE_GAP
+        if bands:
+            top += 4
         row_h = self.LANE_H + self.LANE_GAP
         free_top = top + n_fixed * row_h + 6  # kleiner Abstand vor den freien Spuren
         content_h = free_top + n_lanes * row_h + 8
@@ -629,33 +645,13 @@ class TimelineView(QGraphicsView):
                 item.setPos(x1 + 2, y + (self.LANE_H - item.boundingRect().height()) / 2)
                 item.setAcceptedMouseButtons(Qt.NoButton)
 
-        # KI-Vorschläge: gestrichelt, übernommene durchgezogen
-        for a in ai_band:
-            start, end = parse_time(a["start"]), parse_time(a["end"])
-            x1 = self._x(start.hour * 60 + start.minute)
-            w = max(4.0, self._x(end.hour * 60 + end.minute) - x1)
-            base = entry_color(a, self.config)
-            fill = QColor(base)
-            if a.get("status") == "übernommen":
-                fill.setAlpha(150 if self.dark_mode else 110)
-                pen = QPen(base.darker(130), 1.5)
-            else:
-                fill.setAlpha(110 if self.dark_mode else 70)
-                pen = QPen(base, 1.5, Qt.DotLine)
-            rect = self.scene.addRect(x1, ai_y, w, self.LANE_H, pen, QBrush(fill))
-            rect.setCursor(Qt.PointingHandCursor)
-            self.activity_rects[rect] = a
-            if w > 28:
-                label_text = " · ".join(t for t in (a.get("customer_name"), a.get("category")) if t)
-                item = self.scene.addText(metrics.elidedText(label_text, Qt.ElideRight, int(w - 8)),
-                                          label_font)
-                item.setDefaultTextColor(self.text_color)
-                item.setPos(x1 + 2, ai_y + (self.LANE_H - item.boundingRect().height()) / 2)
-                item.setAcceptedMouseButtons(Qt.NoButton)
-        if ai_band:
-            label = self.scene.addText("KI", QFont("Segoe UI", 7))
+        # Obere Zeilen: Doku (eigene Tätigkeiten, offene gestrichelt), Regeln, KI
+        for (kind, text, band), y in zip(bands, band_tops):
+            for a in band:
+                self._draw_band_entry(a, y, label_font, metrics)
+            label = self.scene.addText(text, row_font)
             label.setDefaultTextColor(self.muted_text)
-            label.setPos(self._x(0) - 18, ai_y + 4)
+            label.setPos(0, y + (self.LANE_H - label.boundingRect().height()) / 2)
 
         # PC-Aktivität als schmales Band
         if show_band:
@@ -690,6 +686,7 @@ class TimelineView(QGraphicsView):
         self._day_entries = activities
         self._pc_band = pc_band
         self._ai_band = ai_band
+        self._bands = bands
 
         self.setSceneRect(0, 0, width, height)
 
@@ -704,6 +701,67 @@ class TimelineView(QGraphicsView):
             self.centerOn(self._x(center_min), self.mapToScene(0, 0).y())
 
         self.day_loaded.emit(activities, self.pc_entries_for(date))
+
+    # Obere Zeilen: Kennung, Beschriftung links, Schlüssel in config["timeline_rows"]
+    BAND_ROWS = [("doc", "Doku"), ("rule", "Regel"), ("ai", "KI")]
+
+    def band_rows(self, date: QDate):
+        """Sichtbare obere Zeilen mit ihren Einträgen: [(Kennung, Text, Einträge)].
+
+        Doku steht immer da (auch leer), damit offene Tätigkeiten sofort auffallen.
+        Regeln und KI nur, wenn es Einträge gibt. Jede Zeile lässt sich abschalten.
+        """
+        date_str = date.toString("yyyy-MM-dd")
+        shown = self.config.get("timeline_rows", {})
+        sources = {"doc": self.doc_entries, "rule": self.rule_entries, "ai": self.ai_entries}
+        result = []
+        for kind, text in self.BAND_ROWS:
+            func = sources[kind]
+            if not func or not shown.get(kind, True):
+                continue
+            try:
+                entries = func(date_str) or []
+            except Exception as e:  # eine fehlerhafte Zeile darf die Timeline nicht leeren
+                print(f"Fehler in der Zeile {text}: {e}")
+                entries = []
+            if entries or kind == "doc":
+                result.append((kind, text, entries))
+        return result
+
+    def _draw_band_entry(self, a, y, font, metrics):
+        start, end = parse_time(a["start"]), parse_time(a["end"])
+        x1 = self._x(start.hour * 60 + start.minute)
+        x2 = self._x(24 * 60) if end.date() > start.date() else self._x(end.hour * 60 + end.minute)
+        w = max(4.0, x2 - x1)
+        base = entry_color(a, self.config)
+        fill = QColor(base)
+        light = 110 if self.dark_mode else 70
+        if a.get("doc") or a.get("status") == "übernommen":
+            fill.setAlpha(light)
+            pen = QPen(base.darker(130) if not self.dark_mode else base.lighter(130), 2)
+        elif a.get("open"):  # noch nicht dokumentiert: fällt auf, lädt zum Klicken ein
+            fill.setAlpha(light // 2)
+            pen = QPen(base, 1.5, Qt.DashLine)
+        elif a.get("rule"):
+            fill.setAlpha(light)
+            pen = QPen(base, 1.2, Qt.DashDotLine)
+        else:  # KI-Vorschlag
+            fill.setAlpha(light)
+            pen = QPen(base, 1.5, Qt.DotLine)
+        rect = self.scene.addRect(x1, y, w, self.LANE_H, pen, QBrush(fill))
+        rect.setCursor(Qt.PointingHandCursor)
+        self.activity_rects[rect] = a
+        if w > 28:
+            if a.get("open"):
+                label_text = f"? {a.get('customer_name') or 'eintragen'}"
+            else:
+                label_text = " · ".join(t for t in (a.get("customer_name"), a.get("category"),
+                                                    a.get("description") if a.get("doc") else "")
+                                        if t) or a.get("type", "")
+            item = self.scene.addText(metrics.elidedText(label_text, Qt.ElideRight, int(w - 8)), font)
+            item.setDefaultTextColor(self.text_color)
+            item.setPos(x1 + 2, y + (self.LANE_H - item.boundingRect().height()) / 2)
+            item.setAcceptedMouseButtons(Qt.NoButton)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -862,17 +920,27 @@ class TimelineView(QGraphicsView):
             lines += ["", f"<b>{escape(hovered.get('customer_name') or hovered.get('type'))}</b>",
                       escape(type_label(hovered)),
                       f"{start:%H:%M} – {end:%H:%M}  ({format_duration((end - start).total_seconds())})"]
-            if hovered.get("ai"):
+            if hovered.get("open"):
+                lines.append("<i>Noch nicht dokumentiert · Klick: jetzt eintragen</i>")
+            elif hovered.get("doc"):
+                if hovered.get("description"):
+                    lines.append(escape(hovered["description"]))
+                lines.append("<i>Deine Tätigkeit · Klick: bearbeiten</i>")
+            elif hovered.get("rule"):
+                lines.append(escape(hovered.get("description") or hovered.get("details", "")))
+                lines.append("<i>Aus Regeln erkannt · Rechtsklick: als Tätigkeit eintragen</i>")
+            elif hovered.get("ai"):
                 lines.append(escape(hovered.get("description", "")))
                 lines.append(f"<i>KI-Vorschlag, Sicherheit {round(hovered.get('confidence', 0) * 100)} %"
                              " · Rechtsklick: übernehmen oder verwerfen</i>")
             elif hovered.get("details"):
                 lines.append(escape(hovered["details"]))
-            if hovered.get("is_suggestion") and not hovered.get("ai"):
+            if hovered.get("is_suggestion") and not any(hovered.get(k) for k in ("ai", "rule", "open")):
                 lines.append("<i>Vorschlag aus Log</i>")
 
         # Weitere Einträge, die zu dieser Minute liefen (Minute zählt, nicht die Sekunde)
-        others = [a for a in self._ai_band + self._day_entries if a is not hovered
+        band_entries = [a for _k, _t, band in self._bands for a in band]
+        others = [a for a in band_entries + self._day_entries if a is not hovered
                   and parse_time(a["start"]).replace(second=0) <= moment < parse_time(a["end"])]
         if not any(p is hovered for p in self._pc_band):
             others += [p for p in self._pc_band
@@ -910,29 +978,64 @@ class TimelineView(QGraphicsView):
             a = self._activity_at(event.pos())  # einfacher Klick -> Details
             if a:
                 self.tooltip.hide()
-                ActivityViewDialog(a, self).exec_()
+                if a.get("open"):  # offene Tätigkeit: gleich eintragen
+                    self.doc_request.emit("add", a["source_entry"])
+                elif a.get("doc"):
+                    self.doc_request.emit("edit", a)
+                else:
+                    ActivityViewDialog(a, self).exec_()
             return
         super().mouseReleaseEvent(event)
 
     def contextMenuEvent(self, event):
-        """Rechtsklick auf einen KI-Vorschlag: übernehmen, verwerfen, Text kopieren."""
+        """Rechtsklick: Tätigkeit eintragen; auf KI-Vorschlägen übernehmen oder verwerfen."""
         a = self._activity_at(event.pos())
-        if not a or not a.get("ai"):
-            super().contextMenuEvent(event)
-            return
         self._hide_hover()
         menu = QMenu(self)
-        accept = menu.addAction("Vorschlag &übernehmen")
-        accept.setEnabled(a.get("status") != "übernommen")
-        reject = menu.addAction("Vorschlag &verwerfen")
-        menu.addSeparator()
-        copy = menu.addAction("Text &kopieren")
-        chosen = menu.exec_(event.globalPos())
-        if chosen is accept:
+        actions = {}
+
+        def add(text, key, enabled=True):
+            action = menu.addAction(text)
+            action.setEnabled(enabled)
+            actions[action] = key
+
+        if a is None:
+            minute = self._minute_at(event.pos().x()) if self._ppm else -1
+            if not 0 <= minute < 24 * 60:
+                return
+            add(f"&Tätigkeit ab {hhmm(minute // 5 * 5)} eintragen …", "add_at")
+        elif a.get("open"):
+            add("Jetzt &eintragen …", "add")
+            add("&Nicht dokumentieren", "ignore")
+        elif a.get("doc"):
+            add("&Bearbeiten …", "edit")
+            add("&Löschen", "delete")
+            menu.addSeparator()
+            add("Text &kopieren", "copy")
+        else:
+            add("Als &Tätigkeit eintragen …" if a.get("ai") or a.get("rule")
+                else "&Tätigkeit dazu eintragen …", "add")
+            if a.get("ai"):
+                menu.addSeparator()
+                add("Vorschlag &übernehmen", "accept", a.get("status") != "übernommen")
+                add("Vorschlag &verwerfen", "reject")
+            if a.get("ai") or a.get("rule"):
+                menu.addSeparator()
+                add("Text &kopieren", "copy")
+        chosen = actions.get(menu.exec_(event.globalPos()))
+        if chosen == "add_at":
+            self.doc_request.emit("add_at", {"minute": minute})
+        elif chosen == "add":
+            self.doc_request.emit("add", a.get("source_entry", a))
+        elif chosen in ("edit", "delete"):
+            self.doc_request.emit(chosen, a)
+        elif chosen == "ignore":
+            self.doc_request.emit("ignore", a["source_entry"])
+        elif chosen == "accept":
             self.ai_action.emit(a, "übernehmen")
-        elif chosen is reject:
+        elif chosen == "reject":
             self.ai_action.emit(a, "verwerfen")
-        elif chosen is copy:
+        elif chosen == "copy":
             QApplication.clipboard().setText(ai_copy_text(a))
 
     def mouseDoubleClickEvent(self, event):

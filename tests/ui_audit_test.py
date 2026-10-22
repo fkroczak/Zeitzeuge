@@ -232,6 +232,16 @@ dialogs = {
     "Aktivitätstypen": settings_dialogs.ActivityTypeSettingsDialog(config, window),
     "KI-Vorschläge": settings_dialogs.AiSettingsDialog(config, 0.0, window),
 }
+import journal_dialogs  # noqa: E402
+from datetime import datetime as _dt  # noqa: E402
+_tv = {"start": f"{day} 09:00:00", "end": f"{day} 09:40:00", "type": "TeamViewer",
+       "customer_name": "", "tv_id": "123456789"}
+dialogs["Tätigkeit nachtragen"] = journal_dialogs.EntryDialog(
+    _dt(2026, 10, 20, 9), _dt(2026, 10, 20, 9, 30), ["Musterkunde GmbH"], ["Fernwartung"],
+    tv_id="123456789", info="Erkannt: TeamViewer", can_delete=True, parent=window)
+dialogs["Nachfrage"] = journal_dialogs.PromptWindow(_tv, ["Musterkunde GmbH"], ["Fernwartung"],
+                                                    pending=2, parent=window)
+dialogs["Nachfragen und Erinnerungen"] = journal_dialogs.DocPromptDialog(config, window)
 if hasattr(window, "build_pbx_dialog"):
     dialogs["3CX direkt"] = window.build_pbx_dialog()
 if hasattr(window, "build_itm_dialog"):

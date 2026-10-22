@@ -55,6 +55,11 @@ jobs:
           QT_QPA_PLATFORM: offscreen
         run: python tests/tray_test.py
 
+      - name: Tätigkeiten nachtragen und Nachfragen
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python tests/journal_test.py
+
       - name: Logs einlesen (TeamViewer, RDM)
         run: python tests/parser_test.py
 
