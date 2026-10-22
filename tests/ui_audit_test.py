@@ -254,11 +254,17 @@ if total.text() == "frei":
 # Fenster sehr schmal: wichtige Knöpfe bleiben erreichbar (Reflow)
 window.resize(640, 480)
 QTest.qWait(200)
-toolbar = window.findChild(QToolBar)
+toolbar = getattr(window, "tools_bar", None) or window.findChild(QToolBar)
 ext = toolbar.findChild(QToolButton, "qt_toolbar_ext_button")
 if ext is None or not ext.isVisible() or ext.width() < 20:
     problem("Reflow", "bei 640 px Breite ist der Knopf für ausgeblendete Befehle "
                       "fehlend oder kaum sichtbar")
+# Jeder Knopf der Werkzeugleiste erklärt sich beim Darüberfahren
+for bar in window.findChildren(QToolBar):
+    for action in bar.actions():
+        button = bar.widgetForAction(action)
+        if isinstance(button, QToolButton) and not (button.toolTip() or action.toolTip()):
+            problem("Werkzeugleiste", f"'{action.text() or button.accessibleName()}' ohne Hinweis")
 # Einstellungen müssen auch im schmalen Fenster direkt sichtbar sein, nicht erst im Überlauf
 for width in (640, 480):
     window.resize(width, 480)
