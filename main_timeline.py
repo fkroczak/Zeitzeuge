@@ -9,18 +9,18 @@ import warnings
 
 from datetime import datetime, timedelta
 
-from PyQt5.QtCore import (QDate, QLibraryInfo, QLocale, QProcess, QSize, Qt,
-                          QTimer, QTranslator, QUrl)
-from PyQt5.QtGui import (QColor, QDesktopServices, QFont, QIcon, QKeySequence, QPalette,
-                         QPixmap)
-from PyQt5.QtWidgets import (QAbstractItemView, QAction, QApplication, QProxyStyle,
-                             QStyle, QStyleFactory,
-                             QCheckBox, QComboBox, QDateEdit, QInputDialog, QDialog, QDialogButtonBox,
-                             QFileDialog, QFormLayout, QHeaderView, QLabel, QLineEdit,
-                             QMainWindow, QMenu, QMessageBox, QPushButton,
-                             QSpinBox, QSplitter, QSystemTrayIcon, QTableWidget,
-                             QTableWidgetItem, QToolBar, QToolButton,
-                             QActionGroup, QHBoxLayout, QSizePolicy, QVBoxLayout, QWidget)
+from PySide6.QtCore import (QDate, QLibraryInfo, QLocale, QProcess, QSize, Qt,
+                            QTimer, QTranslator, QUrl)
+from PySide6.QtGui import (QAction, QActionGroup, QColor, QDesktopServices, QFont, QIcon,
+                           QKeySequence, QPalette, QPixmap)
+from PySide6.QtWidgets import (QAbstractItemView, QApplication, QProxyStyle,
+                               QStyle, QStyleFactory,
+                               QCheckBox, QComboBox, QDateEdit, QInputDialog, QDialog, QDialogButtonBox,
+                               QFileDialog, QFormLayout, QHeaderView, QLabel, QLineEdit,
+                               QMainWindow, QMenu, QMessageBox, QPushButton,
+                               QSpinBox, QSplitter, QSystemTrayIcon, QTableWidget,
+                               QTableWidgetItem, QToolBar, QToolButton,
+                               QHBoxLayout, QSizePolicy, QVBoxLayout, QWidget)
 
 from activity_tracker import ActivityTracker, tracking_filters
 from ai_classifier import AI_TYPE, AiClassifier, AiStore
@@ -42,9 +42,7 @@ from timeline_only import (ActivityViewDialog, TimelineView, ai_copy_text, entry
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 # Oberfläche mit der Windows-Anzeigegröße (125 %, 150 %, 200 %) mitskalieren.
-# Muss vor dem Start der QApplication gesetzt werden.
-QApplication.setAttribute(Qt.AA_EnableHighDpiScaling)
-QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps)
+# Qt 6 skaliert immer; nur die Rundung muss vor dem Start der QApplication gesetzt werden.
 QApplication.setHighDpiScaleFactorRoundingPolicy(
     Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
 
@@ -96,10 +94,17 @@ class AppStyle(QProxyStyle):
             return 26
         return super().pixelMetric(metric, option, widget)
 
+    def sizeFromContents(self, ct, option, size, widget=None):
+        # Eingabefelder mit Stylesheet so groß wie unter Qt 5: Rahmen und Abstände rechnet das
+        # Stylesheet selbst dazu, Qt 6 zählt sonst noch Platz für die ausgeblendeten Pfeile mit
+        if ct == QStyle.CT_SpinBox and widget is not None and widget.style() is not self:
+            return QSize(size)
+        return super().sizeFromContents(ct, option, size, widget)
+
     def styleHint(self, hint, option=None, widget=None, data=None):
         # Dialogknöpfe überall wie unter Windows: OK links von Abbrechen, ohne Symbole
         if hint == QStyle.SH_DialogButtonLayout:
-            return QDialogButtonBox.WinLayout
+            return QDialogButtonBox.ButtonLayout.WinLayout.value  # PySide6 erwartet int
         if hint == QStyle.SH_DialogButtonBox_ButtonsHaveIcons:
             return 0
         return super().styleHint(hint, option, widget, data)
@@ -108,7 +113,8 @@ class AppStyle(QProxyStyle):
 def install_translator(app):
     """Qt-eigene Texte (OK/Abbrechen, Ja/Nein, Kalender) auf Deutsch."""
     translator = QTranslator(app)
-    if translator.load(GERMAN, "qtbase", "_", QLibraryInfo.location(QLibraryInfo.TranslationsPath)):
+    folder = QLibraryInfo.path(QLibraryInfo.LibraryPath.TranslationsPath)
+    if translator.load(GERMAN, "qtbase", "_", folder):
         app.installTranslator(translator)
     return translator
 
@@ -358,8 +364,9 @@ QDateEdit, QLineEdit, QTextEdit, QComboBox, QSpinBox, QTimeEdit, QListWidget {
     selection-color: #FFFFFF; }
 QDateEdit, QComboBox { min-height: 22px; }
 QSpinBox, QTimeEdit { padding-right: 6px; }
-QAbstractSpinBox::up-button, QAbstractSpinBox::down-button { width: 0; border: none; }
-QDateEdit { min-width: 120px; }
+QAbstractSpinBox::up-button, QAbstractSpinBox::down-button { width: 0; border: none;
+    subcontrol-origin: content; subcontrol-position: center left; } /* sonst Text ohne Rand links (Qt 6.12) */
+QDateEdit { min-width: 102px; } /* + 18 px Kalenderpfeil (Qt 6) = 120 px wie bisher */
 QComboBox QAbstractItemView { padding: 4px; outline: none; }
 QPushButton { background-color: $hover; color: $text; border: 1px solid $border;
               border-radius: 6px; padding: 6px 14px; min-width: 80px; }
@@ -909,7 +916,7 @@ class TimelineApp(QMainWindow):
         msg.setStandardButtons(QMessageBox.Ok)
         if os.path.exists(icon_path):
             msg.setIconPixmap(QIcon(icon_path).pixmap(64, 64))
-        msg.exec_()
+        msg.exec()
 
     # ---------------------- Tagesliste ----------------------------------------
 
@@ -995,7 +1002,7 @@ class TimelineApp(QMainWindow):
 
     def open_details(self, row):
         if 0 <= row < len(self.list_entries):
-            ActivityViewDialog(self.list_entries[row], self).exec_()
+            ActivityViewDialog(self.list_entries[row], self).exec()
 
     def copy_selection(self):
         rows = sorted({i.row() for i in self.table.selectedIndexes()})
@@ -1182,7 +1189,7 @@ class TimelineApp(QMainWindow):
 
     def edit_ai_settings(self):
         dialog = AiSettingsDialog(self.config, self.ai_spent(), self)
-        if dialog.exec_() == dialog.Accepted:
+        if dialog.exec() == QDialog.Accepted:
             dialog.apply()
             save_config(self.config)
 
@@ -1268,11 +1275,11 @@ class TimelineApp(QMainWindow):
             category = suggest_category(entry, categories)
             text = entry.get("description", "") if entry.get("ai") or entry.get("rule") else ""
         else:
-            start, end = default_span(self.current_date.toPyDate(), minute)
+            start, end = default_span(self.current_date.toPython(), minute)
             info, customer, category, text = "", "", "", ""
         dialog = EntryDialog(start, end, self.known_customers(), categories, customer, category,
                              text, tv_id=(entry or {}).get("tv_id"), info=info, parent=self)
-        if dialog.exec_() != QDialog.Accepted:
+        if dialog.exec() != QDialog.Accepted:
             return
         item = dialog.item()
         if entry:
@@ -1302,7 +1309,7 @@ class TimelineApp(QMainWindow):
                              item.get("customer", ""), item.get("category", ""),
                              item.get("text", ""), title="Tätigkeit bearbeiten",
                              can_delete=True, parent=self)
-        if dialog.exec_() != QDialog.Accepted:
+        if dialog.exec() != QDialog.Accepted:
             return
         if dialog.deleted:
             self.delete_doc(item, ask=False)
@@ -1352,7 +1359,7 @@ class TimelineApp(QMainWindow):
 
     def edit_prompt_settings(self):
         dialog = DocPromptDialog(self.config, self)
-        if dialog.exec_() == QDialog.Accepted:
+        if dialog.exec() == QDialog.Accepted:
             dialog.apply()
             save_config(self.config)
             self.timeline.draw_timeline(self.current_date)
@@ -1463,7 +1470,7 @@ class TimelineApp(QMainWindow):
         later = box.addButton("&Nachtragen", QMessageBox.AcceptRole)
         box.addButton("Trotzdem &beenden", QMessageBox.DestructiveRole)
         box.setDefaultButton(later)
-        box.exec_()
+        box.exec()
         return box.clickedButton() is later
 
     # ---------------------- Aktivitätsprotokoll -------------------------------
@@ -1494,7 +1501,7 @@ class TimelineApp(QMainWindow):
 
     def edit_tracking_filters(self):
         dialog = TrackingFilterDialog(self.config, ACTIVITY_DIR, self)
-        if dialog.exec_() == dialog.Accepted:
+        if dialog.exec() == QDialog.Accepted:
             dialog.apply()
             save_config(self.config)
             if self.tracker:  # neue Regeln gelten sofort
@@ -1503,7 +1510,7 @@ class TimelineApp(QMainWindow):
 
     def edit_rules(self):
         dialog = RulesDialog(self.config, self)
-        if dialog.exec_() == dialog.Accepted:
+        if dialog.exec() == QDialog.Accepted:
             dialog.apply()
             save_config(self.config)
             self.timeline.draw_timeline(self.current_date)
@@ -1637,7 +1644,7 @@ class TimelineApp(QMainWindow):
             QMessageBox.warning(self, self.READER_DIALOGS[kind]["title"],
                                 "Microsoft Edge oder Google Chrome wurde nicht gefunden.")
             return
-        self.build_reader_dialog(kind).exec_()
+        self.build_reader_dialog(kind).exec()
 
     def build_reader_dialog(self, kind):
         """Einstellungen für einen Hintergrund-Leser (3CX oder ITM)."""
@@ -1752,7 +1759,7 @@ class TimelineApp(QMainWindow):
                           parent=self)
         open_btn = box.addButton("Ordner öffnen", QMessageBox.ActionRole)
         box.addButton(QMessageBox.Ok)
-        box.exec_()
+        box.exec()
         if box.clickedButton() is open_btn:
             QDesktopServices.openUrl(QUrl.fromLocalFile(os.path.dirname(path)))
 
@@ -1768,7 +1775,7 @@ class TimelineApp(QMainWindow):
                           "Schau sie vor dem Weitergeben kurz durch.", parent=self)
         open_btn = box.addButton("Ordner öffnen", QMessageBox.ActionRole)
         box.addButton(QMessageBox.Ok)
-        box.exec_()
+        box.exec()
         if box.clickedButton() is open_btn:
             QDesktopServices.openUrl(QUrl.fromLocalFile(os.path.dirname(path)))
 
@@ -1965,7 +1972,8 @@ class TimelineApp(QMainWindow):
                           (QPalette.Text, "text"), (QPalette.Button, "bar"),
                           (QPalette.ButtonText, "text"), (QPalette.Highlight, "accent"),
                           (QPalette.ToolTipBase, "surface"), (QPalette.ToolTipText, "text"),
-                          (QPalette.PlaceholderText, "muted")]:
+                          (QPalette.PlaceholderText, "muted"),
+                          (QPalette.Accent, "accent")]:  # Qt 6 nutzt Accent statt Highlight
             pal.setColor(role, QColor(theme[key]))
         pal.setColor(QPalette.HighlightedText, QColor("#FFFFFF"))
         self.setStyleSheet("")  # alte Farben vollständig entfernen
@@ -1985,7 +1993,7 @@ class TimelineApp(QMainWindow):
         dialog = ConnectionSettingsDialog(
             self.config, key, [os.path.expandvars(p) for p in defaults], title, self, **options
         )
-        if dialog.exec_() == dialog.Accepted:
+        if dialog.exec() == QDialog.Accepted:
             self.config[f"{key}_paths"] = dialog.get_paths()
             if dialog.enabled_box:
                 self.config[f"{key}_enabled"] = dialog.enabled_box.isChecked()
@@ -2021,7 +2029,7 @@ class TimelineApp(QMainWindow):
 
     def edit_work_hours(self):
         dialog = WorkHoursDialog(self.config, self)
-        if dialog.exec_() == dialog.Accepted:
+        if dialog.exec() == QDialog.Accepted:
             self.config["work_days"] = dialog.get_work_days()
             save_config(self.config)
             self.timeline._first_draw = True  # auf die neue Arbeitszeit springen
@@ -2029,7 +2037,7 @@ class TimelineApp(QMainWindow):
 
     def edit_activity_types(self):
         dialog = ActivityTypeSettingsDialog(self.config, self)
-        if dialog.exec_() == dialog.Accepted:
+        if dialog.exec() == QDialog.Accepted:
             self.config["activity_types"] = dialog.get_types()
             save_config(self.config)
             self.timeline.draw_timeline(self.current_date)
@@ -2123,8 +2131,8 @@ def report_exception(exc_type, exc, tb, where=""):
 
 
 def install_error_hooks():
-    """Unbehandelte Ausnahmen abfangen. Ohne das beendet PyQt5 das Programm bei einem
-    Fehler in einem Slot sofort, und Fehler in Threads gingen ungesehen verloren."""
+    """Unbehandelte Ausnahmen abfangen. Ohne das landen Fehler in Slots nur auf der
+    Konsole (in der EXE unsichtbar), und Fehler in Threads gingen ungesehen verloren."""
     def hook(exc_type, exc, tb):
         if issubclass(exc_type, KeyboardInterrupt):
             return sys.__excepthook__(exc_type, exc, tb)
@@ -2148,7 +2156,7 @@ def acquire_single_instance(path=None, wait_ms=500):
     Die Sperre liegt lokal (nicht im oft mit OneDrive synchronisierten Datenordner).
     False, wenn Zeitzeuge schon läuft."""
     global _instance_lock
-    from PyQt5.QtCore import QLockFile
+    from PySide6.QtCore import QLockFile
     path = path or os.path.join(storage.local_dir(), "zeitzeuge.lock")
     os.makedirs(os.path.dirname(path), exist_ok=True)
     lock = QLockFile(path)
@@ -2164,6 +2172,9 @@ if __name__ == "__main__":
     install_error_hooks()
     app = QApplication(sys.argv)
     app.setStyle(AppStyle())
+    # Qt 6 folgt sonst dem Windows-Farbschema (dunkel) bei allem, was das Design nicht selbst
+    # färbt (Rahmen, Schatten, Meldungen vor dem Start). Wie unter Qt 5: Systemfarben hell.
+    app.styleHints().setColorScheme(Qt.ColorScheme.Light)
     install_translator(app)
     app.setQuitOnLastWindowClosed(False)
     if not acquire_single_instance(wait_ms=20000 if "--neustart" in sys.argv else 500):
@@ -2179,10 +2190,10 @@ if __name__ == "__main__":
             window.showMinimized()
     else:
         window.show()
-    code = app.exec_()
+    code = app.exec()
     if not window._quitting:  # z. B. Windows-Abmeldung: laufenden Abschnitt trotzdem speichern
         window.quit_app()
-    # Direkt beenden: PyQt räumt beim Interpreter-Ende sporadisch in falscher Reihenfolge auf
+    # Direkt beenden: die Qt-Bindung räumt beim Interpreter-Ende sporadisch in falscher Reihenfolge auf
     # (Zugriffsfehler unter Windows). quit_app hat da schon alles gespeichert und gestoppt.
     sys.stdout and sys.stdout.flush()
     os._exit(code)

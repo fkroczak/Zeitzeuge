@@ -15,7 +15,7 @@ import time
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from PyQt5.QtCore import QCoreApplication
+from PySide6.QtCore import QCoreApplication
 
 from pbx_direct import LoginRequired, PbxClient, pb_decode, pb_field
 from pbx_reader import PbxReader

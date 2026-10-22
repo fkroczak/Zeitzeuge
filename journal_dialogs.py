@@ -8,10 +8,10 @@ Dialoge zum Eintragen von Tätigkeiten.
 
 from datetime import datetime, timedelta
 
-from PyQt5.QtCore import QDate, Qt, QTime, pyqtSignal
-from PyQt5.QtWidgets import (QCheckBox, QComboBox, QDateEdit, QDialog, QDialogButtonBox,
-                             QFormLayout, QHBoxLayout, QLabel, QPlainTextEdit, QSpinBox,
-                             QTimeEdit, QVBoxLayout, QWidget)
+from PySide6.QtCore import QDate, Qt, QTime, Signal
+from PySide6.QtWidgets import (QCheckBox, QComboBox, QDateEdit, QDialog, QDialogButtonBox,
+                               QFormLayout, QHBoxLayout, QLabel, QPlainTextEdit, QSpinBox,
+                               QTimeEdit, QVBoxLayout, QWidget)
 
 from grouping import format_tv_id
 from journal import TIME_FMT, describe, suggest_category, suggest_customer
@@ -92,9 +92,9 @@ class _EntryForm(QWidget):
         self.validate()
 
     def times(self):
-        day = self.date_edit.date().toPyDate()
-        start = datetime.combine(day, self.start_edit.time().toPyTime().replace(second=0))
-        end = datetime.combine(day, self.end_edit.time().toPyTime().replace(second=0))
+        day = self.date_edit.date().toPython()
+        start = datetime.combine(day, self.start_edit.time().toPython().replace(second=0))
+        end = datetime.combine(day, self.end_edit.time().toPython().replace(second=0))
         return start, end
 
     def validate(self):
@@ -165,7 +165,7 @@ class PromptWindow(QDialog):
 
     Signal answered(action, entry, item): action = "save" | "later" | "ignore".
     """
-    answered = pyqtSignal(str, dict, dict)
+    answered = Signal(str, dict, dict)
 
     def __init__(self, entry, customers, categories, tv_names=None, pending=0, parent=None):
         super().__init__(parent, Qt.Tool | Qt.WindowStaysOnTopHint)

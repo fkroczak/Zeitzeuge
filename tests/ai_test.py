@@ -15,7 +15,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt5.QtCore import QCoreApplication, QEventLoop, QTimer
+from PySide6.QtCore import QCoreApplication, QEventLoop, QTimer
 
 import ai_classifier as ai
 
@@ -86,7 +86,7 @@ def wait():
     timer = QTimer()
     timer.timeout.connect(lambda: results and loop.quit())
     timer.start(20)
-    loop.exec_()
+    loop.exec()
 
 
 assert classifier.start(D, entries, pc)

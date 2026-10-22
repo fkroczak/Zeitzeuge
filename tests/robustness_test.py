@@ -42,8 +42,8 @@ import main_timeline  # noqa: E402
 import net  # noqa: E402
 import pbx_reader  # noqa: E402
 import safe_io  # noqa: E402
-from PyQt5.QtCore import QTimer  # noqa: E402
-from PyQt5.QtWidgets import QApplication, QSystemTrayIcon  # noqa: E402
+from PySide6.QtCore import QTimer  # noqa: E402
+from PySide6.QtWidgets import QApplication, QSystemTrayIcon  # noqa: E402
 
 QSystemTrayIcon.isSystemTrayAvailable = staticmethod(lambda: True)
 app = QApplication(sys.argv)
@@ -318,7 +318,7 @@ net.reachable = real_reachable
 window.quit_app()
 print("Robustheit ok")
 
-# Direkt beenden: PyQt räumt beim Interpreter-Ende sporadisch in falscher Reihenfolge auf
+# Direkt beenden: die Qt-Bindung räumt beim Interpreter-Ende sporadisch in falscher Reihenfolge auf
 # (Zugriffsfehler unter Windows). Alle Prüfungen sind hier gelaufen.
 sys.stdout.flush()
 os._exit(0)

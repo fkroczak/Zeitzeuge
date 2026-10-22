@@ -88,11 +88,12 @@ os.environ["ZEITZEUGE_DATA"] = DATA
 
 # ------------------------------------------------------------- Programm
 import main_timeline  # noqa: E402  (nach ZEITZEUGE_DATA)
-from PyQt5.QtCore import QDate, QPoint, QRect  # noqa: E402
-from PyQt5.QtWidgets import QApplication, QMenu, QToolButton  # noqa: E402
+from PySide6.QtCore import QDate, QPoint, QRect, Qt  # noqa: E402
+from PySide6.QtWidgets import QApplication, QMenu, QToolButton  # noqa: E402
 
 app = QApplication(sys.argv)
 app.setStyle(main_timeline.AppStyle())
+app.styleHints().setColorScheme(Qt.ColorScheme.Light)  # wie die App
 app.setQuitOnLastWindowClosed(False)
 if hasattr(main_timeline, "install_translator"):
     main_timeline.install_translator(app)
@@ -215,5 +216,5 @@ else:
     print("Kein Infobereich gefunden, Tray-Bilder fehlen")
 
 window.quit_app()
-# Ohne Event-Loop stürzt PyQt beim Aufräumen sporadisch ab (auch mit altem Code, nicht in der App)
+# Ohne Event-Loop stürzt die Qt-Bindung beim Aufräumen sporadisch ab (auch mit altem Code, nicht in der App)
 os._exit(0)

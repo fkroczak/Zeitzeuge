@@ -14,7 +14,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ["ZEITZEUGE_DATA"] = tempfile.mkdtemp()
 
 import main_timeline  # noqa: E402
-from PyQt5.QtWidgets import QApplication, QSystemTrayIcon  # noqa: E402
+from PySide6.QtWidgets import QApplication, QSystemTrayIcon  # noqa: E402
 
 QSystemTrayIcon.isSystemTrayAvailable = staticmethod(lambda: True)
 app = QApplication(sys.argv)
@@ -75,7 +75,7 @@ assert not timeline._thread.is_alive(), "Log-Thread läuft nach dem Beenden weit
 assert not emitted, "Log-Thread hat nach dem Beenden noch gemeldet"
 print("Tray ok")
 
-# Direkt beenden: PyQt räumt beim Interpreter-Ende sporadisch in falscher Reihenfolge auf
+# Direkt beenden: die Qt-Bindung räumt beim Interpreter-Ende sporadisch in falscher Reihenfolge auf
 # (Zugriffsfehler unter Windows, auch mit altem Code). Alle Prüfungen sind hier gelaufen.
 sys.stdout.flush()
 os._exit(0)

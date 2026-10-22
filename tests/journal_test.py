@@ -90,8 +90,8 @@ print("Ablage ok")
 
 def flush_deletes():
     """Gelöschte Fenster (deleteLater) jetzt wirklich löschen. In der App passiert das in der
-    Ereignisschleife; der Test läuft ohne app.exec_(), sonst geschähe es erst im nächsten Dialog."""
-    from PyQt5.QtCore import QCoreApplication, QEvent
+    Ereignisschleife; der Test läuft ohne app.exec(), sonst geschähe es erst im nächsten Dialog."""
+    from PySide6.QtCore import QCoreApplication, QEvent
     QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
 
 
@@ -99,9 +99,9 @@ def gui_test():
     # --------------------------------------------------------------- Oberfläche
 
     import main_timeline  # noqa: E402
-    from PyQt5.QtCore import QTimer  # noqa: E402
-    from PyQt5.QtTest import QTest  # noqa: E402
-    from PyQt5.QtWidgets import QApplication, QSystemTrayIcon  # noqa: E402
+    from PySide6.QtCore import QTimer  # noqa: E402
+    from PySide6.QtTest import QTest  # noqa: E402
+    from PySide6.QtWidgets import QApplication, QSystemTrayIcon  # noqa: E402
 
     QSystemTrayIcon.isSystemTrayAvailable = staticmethod(lambda: True)
     app = QApplication(sys.argv)

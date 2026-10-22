@@ -12,7 +12,7 @@ Die 3CX-Anmeldung (Browserprofil) liegt immer lokal unter
 import os
 import shutil
 
-from PyQt5.QtCore import QStandardPaths
+from PySide6.QtCore import QStandardPaths
 
 APP = "Zeitzeuge"
 # Was zu den Daten gehört (wird beim Umziehen mitgenommen)

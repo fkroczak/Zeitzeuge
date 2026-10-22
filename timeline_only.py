@@ -3,11 +3,11 @@ import threading
 from datetime import datetime
 from html import escape
 
-from PyQt5.QtCore import QDate, QDateTime, Qt, QTimer, pyqtSignal
-from PyQt5.QtGui import QBrush, QColor, QFont, QFontMetrics, QPainter, QPen
-from PyQt5.QtWidgets import (QApplication, QDialog, QDialogButtonBox, QFormLayout,
-                             QGraphicsRectItem, QGraphicsScene, QGraphicsView,
-                             QLabel, QLineEdit, QMenu, QTextEdit, QVBoxLayout)
+from PySide6.QtCore import QDate, QDateTime, Qt, QTimer, Signal
+from PySide6.QtGui import QBrush, QColor, QFont, QFontMetrics, QPainter, QPen
+from PySide6.QtWidgets import (QApplication, QDialog, QDialogButtonBox, QFormLayout,
+                               QGraphicsRectItem, QGraphicsScene, QGraphicsView,
+                               QLabel, QLineEdit, QMenu, QTextEdit, QVBoxLayout)
 
 from activity_tracker import app_label, merge_segments, read_segments
 from call_import import load_call_suggestions
@@ -174,14 +174,14 @@ class ActivityViewDialog(QDialog):
 
 class TimelineView(QGraphicsView):
     # Nach jedem Zeichnen: Einträge des Tages und PC-Aktivität (für die Tagesliste)
-    day_loaded = pyqtSignal(list, list)
+    day_loaded = Signal(list, list)
     # Rechtsklick auf einen KI-Vorschlag: (Eintrag, "übernehmen" | "verwerfen")
-    ai_action = pyqtSignal(dict, str)
+    ai_action = Signal(dict, str)
     # Tätigkeit eintragen/ändern: (Aktion, Eintrag oder {"minute": …})
     # Aktionen: "add" (zu einem Eintrag), "add_at" (freie Stelle), "edit", "delete", "ignore"
-    doc_request = pyqtSignal(str, dict)
+    doc_request = Signal(str, dict)
     # Hintergrund-Thread hat TeamViewer- und RDM-Logs gelesen
-    logs_loaded = pyqtSignal(object, object, object)
+    logs_loaded = Signal(object, object, object)
 
     APP_COLORS = ["#5B8DEF", "#E67E22", "#27AE60", "#9B59B6", "#E84393",
                   "#16A085", "#C0392B", "#F1C40F", "#2C3E50", "#7F8C8D"]
@@ -679,7 +679,7 @@ class TimelineView(QGraphicsView):
         self._hover_line = self.scene.addLine(0, 0, 0, height, QPen(self.text_color, 1, Qt.DashLine))
         self._hover_line.setZValue(90)
         self._hover_line.hide()
-        self._hover_label = self.scene.addText("", QFont("Segoe UI", 8, QFont.Bold))
+        self._hover_label = self.scene.addText("", QFont("Segoe UI", 8, QFont.Weight.Bold))
         self._hover_label.setDefaultTextColor(self.text_color)
         self._hover_label.setZValue(91)
         self._hover_label.hide()
@@ -828,7 +828,7 @@ class TimelineView(QGraphicsView):
         delta = event.angleDelta().y()
         if event.modifiers() & Qt.ControlModifier:
             factor = 1.15 if delta > 0 else 1 / 1.15
-            self.set_zoom(self.zoom_level * factor, event.pos().x())
+            self.set_zoom(self.zoom_level * factor, event.position().x())
         elif delta:
             bar = self.horizontalScrollBar()
             bar.setValue(bar.value() - delta)
@@ -845,11 +845,12 @@ class TimelineView(QGraphicsView):
         return (self.mapToScene(int(viewport_x), 0).x() - self.LEFT) / self._ppm
 
     def mouseMoveEvent(self, event):
+        pos = event.position().toPoint()
         # Klicken und ziehen: Bereich markieren
-        if self._drag_start is not None and abs(event.pos().x() - self._drag_start.x()) > 5:
+        if self._drag_start is not None and abs(pos.x() - self._drag_start.x()) > 5:
             self._hide_hover()
             x1 = self.mapToScene(self._drag_start).x()
-            x2 = self.mapToScene(event.pos()).x()
+            x2 = self.mapToScene(pos).x()
             rect = self.sceneRect()
             if self._drag_item is None:
                 color = QColor("#0078D7")
@@ -857,21 +858,21 @@ class TimelineView(QGraphicsView):
                 self._drag_item = self.scene.addRect(0, 0, 0, 0, QPen(QColor("#0078D7"), 1), QBrush(color))
                 self._drag_item.setZValue(100)
             self._drag_item.setRect(min(x1, x2), 0, abs(x2 - x1), rect.height())
-            a, b = sorted((self._minute_at(self._drag_start.x()), self._minute_at(event.pos().x())))
+            a, b = sorted((self._minute_at(self._drag_start.x()), self._minute_at(pos.x())))
             a, b = max(0, int(a)), min(24 * 60, int(b))
             self.tooltip.setText(f"{a // 60:02d}:{a % 60:02d} – {b // 60:02d}:{b % 60:02d}")
             self.tooltip.adjustSize()
-            gp = self.mapToGlobal(event.pos())
+            gp = self.mapToGlobal(pos)
             self.tooltip.move(gp.x() + 15, gp.y() + 15)
             self.tooltip.show()
             return
 
-        minute = self._minute_at(event.pos().x()) if self._ppm else -1
+        minute = self._minute_at(pos.x()) if self._ppm else -1
         if 0 <= minute < 24 * 60:
             self._show_hover_line(minute)
-            self.tooltip.setText(self._hover_text(minute, self._activity_at(event.pos())))
+            self.tooltip.setText(self._hover_text(minute, self._activity_at(pos)))
             self.tooltip.adjustSize()
-            self._move_tooltip(event.pos())
+            self._move_tooltip(pos)
             self.tooltip.show()
         else:
             self._hide_hover()
@@ -962,7 +963,7 @@ class TimelineView(QGraphicsView):
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
-            self._drag_start = event.pos()
+            self._drag_start = event.position().toPoint()
             return
         super().mousePressEvent(event)
 
@@ -973,9 +974,9 @@ class TimelineView(QGraphicsView):
                 self.scene.removeItem(self._drag_item)
                 self._drag_item = None
                 self.tooltip.hide()
-                self.show_range(self._minute_at(start.x()), self._minute_at(event.pos().x()))
+                self.show_range(self._minute_at(start.x()), self._minute_at(event.position().x()))
                 return
-            a = self._activity_at(event.pos())  # einfacher Klick -> Details
+            a = self._activity_at(event.position().toPoint())  # einfacher Klick -> Details
             if a:
                 self.tooltip.hide()
                 if a.get("open"):  # offene Tätigkeit: gleich eintragen
@@ -983,7 +984,7 @@ class TimelineView(QGraphicsView):
                 elif a.get("doc"):
                     self.doc_request.emit("edit", a)
                 else:
-                    ActivityViewDialog(a, self).exec_()
+                    ActivityViewDialog(a, self).exec()
             return
         super().mouseReleaseEvent(event)
 
@@ -1022,7 +1023,7 @@ class TimelineView(QGraphicsView):
             if a.get("ai") or a.get("rule"):
                 menu.addSeparator()
                 add("Text &kopieren", "copy")
-        chosen = actions.get(menu.exec_(event.globalPos()))
+        chosen = actions.get(menu.exec(event.globalPos()))
         if chosen == "add_at":
             self.doc_request.emit("add_at", {"minute": minute})
         elif chosen == "add":
@@ -1039,7 +1040,7 @@ class TimelineView(QGraphicsView):
             QApplication.clipboard().setText(ai_copy_text(a))
 
     def mouseDoubleClickEvent(self, event):
-        if event.button() == Qt.LeftButton and not self._activity_at(event.pos()):
+        if event.button() == Qt.LeftButton and not self._activity_at(event.position().toPoint()):
             self.show_whole_day()
             return
         super().mouseDoubleClickEvent(event)
