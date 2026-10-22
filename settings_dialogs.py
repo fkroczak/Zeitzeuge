@@ -1,12 +1,12 @@
 import os
 
-from PyQt5.QtCore import Qt, QTime
+from PyQt5.QtCore import QTime
 from PyQt5.QtGui import QColor
-from PyQt5.QtWidgets import *
+from PyQt5.QtWidgets import (QCheckBox, QColorDialog, QDialog, QDialogButtonBox,
+                             QFileDialog, QFormLayout, QGridLayout, QGroupBox,
+                             QHBoxLayout, QInputDialog, QLabel, QListWidget,
+                             QPushButton, QSpinBox, QTimeEdit, QVBoxLayout)
 
-DEBUG = False
-
-# In settings_dialogs.py
 class ConnectionSettingsDialog(QDialog):
     def __init__(self, config, config_key, default_paths, title, parent=None):
         super().__init__(parent)
@@ -180,90 +180,6 @@ class ActivityTypeSettingsDialog(QDialog):
     
     def get_types(self):
         return [self.type_list.item(i).text() for i in range(self.type_list.count())]
-
-class TapiSettingsDialog(QDialog):
-    def __init__(self, config, parent=None):
-        super().__init__(parent)
-        self.config = config
-        self.setWindowTitle("Telefonie-Einstellungen")
-        self.setMinimumWidth(400)
-        self.init_ui()
-
-    def init_ui(self):
-        layout = QVBoxLayout()
-        
-        # Aktivierung
-        enable_group = QGroupBox("Telefonie-Integration")
-        enable_layout = QVBoxLayout()
-        self.enable_check = QCheckBox("Telefonie-Integration aktivieren")
-        self.enable_check.setChecked(self.config.get('tapi_enabled', True))
-        enable_layout.addWidget(self.enable_check)
-        enable_group.setLayout(enable_layout)
-        layout.addWidget(enable_group)
-        
-        # Automatische Übernahme
-        auto_add_group = QGroupBox("Anrufverarbeitung")
-        auto_add_layout = QVBoxLayout()  # Diese Variable wurde hinzugefügt
-        
-        self.auto_add_check = QCheckBox("Anrufe automatisch als Aktivitäten speichern")
-        self.auto_add_check.setChecked(self.config.get('tapi_auto_add', False))
-        auto_add_layout.addWidget(self.auto_add_check)
-        
-        self.ignore_missed = QCheckBox("Verpasste Anrufe ignorieren (kürzer als Mindestdauer)")
-        self.ignore_missed.setChecked(self.config.get('tapi_ignore_missed', True))
-        auto_add_layout.addWidget(self.ignore_missed)
-        
-        min_duration_layout = QHBoxLayout()
-        min_duration_layout.addWidget(QLabel("Minimale Anrufdauer (Sekunden):"))
-        self.min_duration = QSpinBox()
-        self.min_duration.setRange(0, 300)
-        self.min_duration.setValue(self.config.get('tapi_min_duration', 10))
-        min_duration_layout.addWidget(self.min_duration)
-        auto_add_layout.addLayout(min_duration_layout)
-        
-        auto_add_group.setLayout(auto_add_layout)
-        layout.addWidget(auto_add_group)
-
-        error_group = QGroupBox("Fehlerbehandlung")
-        error_layout = QFormLayout()
-
-        self.max_errors = QSpinBox()
-        self.max_errors.setRange(1, 100)
-        self.max_errors.setValue(self.config.get('tapi_max_errors', 5))
-        error_layout.addRow("Maximale Fehler vor Deaktivierung:", self.max_errors)
-
-        error_group.setLayout(error_layout)
-        layout.addWidget(error_group)
-        
-        # Polling-Einstellungen
-        polling_group = QGroupBox("Abfrageeinstellungen")
-        polling_layout = QFormLayout()
-        
-        self.poll_interval = QSpinBox()
-        self.poll_interval.setRange(1, 60)
-        self.poll_interval.setValue(self.config.get('tapi_poll_interval', 5))
-        self.poll_interval.setSuffix(" Sekunden")
-        polling_layout.addRow("Abfrageintervall:", self.poll_interval)
-        
-        polling_group.setLayout(polling_layout)
-        layout.addWidget(polling_group)
-        
-        # Buttons
-        button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        button_box.accepted.connect(self.accept)
-        button_box.rejected.connect(self.reject)
-        layout.addWidget(button_box)
-        
-        self.setLayout(layout)
-
-    def get_settings(self):
-        return {
-            'tapi_enabled': self.enable_check.isChecked(),
-            'tapi_auto_add': self.auto_add_check.isChecked(),
-            'tapi_ignore_missed': self.ignore_missed.isChecked(),
-            'tapi_min_duration': self.min_duration.value(),
-            'tapi_poll_interval': self.poll_interval.value()
-        }
 
 class WorkHoursDialog(QDialog):
     """Arbeitszeiten pro Wochentag festlegen."""

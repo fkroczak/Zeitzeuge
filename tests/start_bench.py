@@ -1,4 +1,4 @@
-"""Startzeit messen: Import, Fenster bauen, erstes Zeichnen.
+"""Startzeit messen: Import, Fenster bauen, Fenster sichtbar, Logs gezeichnet.
 
 Aufruf:  python tests/start_bench.py [Durchläufe] [Ordner mit Connections.txt/.log]
 Jeder Durchlauf ist ein frischer Python-Prozess (kalter Import wie beim echten Start).
@@ -30,12 +30,18 @@ app = QApplication(sys.argv)
 w = main_timeline.TimelineApp()
 t2 = time.perf_counter()
 w.show()
-app.processEvents()
-for _ in range(20):  # verzögert geladene Daten abwarten (Fenster ist da schon sichtbar)
+while draws[0] == 0:  # Fenster sichtbar und Timeline einmal gezeichnet
     app.processEvents()
-    time.sleep(0.005)
 t3 = time.perf_counter()
-print(json.dumps({"import": t1 - t0, "build": t2 - t1, "show": t3 - t2, "total": t3 - t0, "draws": draws[0]}))
+tl = w.timeline
+# Alte Version liest die Logs beim ersten Zeichnen, neue im Hintergrund
+while getattr(tl, "loading", False) or tl._tv_index is None:
+    app.processEvents()
+    time.sleep(0.001)
+app.processEvents()
+t4 = time.perf_counter()
+print(json.dumps({"import": t1 - t0, "build": t2 - t1, "visible": t3 - t0, "data": t4 - t0,
+                  "draws": draws[0]}))
 w.quit_app()
 """
 
@@ -59,7 +65,7 @@ def main():
             sys.exit(out.stderr)
         results.append(json.loads(line[-1]))
     print(f"Zeichnen beim Start: {results[0]['draws']}x")
-    for key in ("import", "build", "show", "total"):
+    for key in ("import", "build", "visible", "data"):
         values = [r[key] * 1000 for r in results]
         print(f"{key:7s} Median {statistics.median(values):7.1f} ms   "
               f"(min {min(values):6.1f}, max {max(values):6.1f})")

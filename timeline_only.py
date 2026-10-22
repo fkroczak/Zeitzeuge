@@ -1,8 +1,9 @@
 # timeline_only.py
+import threading
 from datetime import datetime
 from html import escape
 
-from PyQt5.QtCore import QDate, QDateTime, Qt, pyqtSignal
+from PyQt5.QtCore import QDate, QDateTime, Qt, QTimer, pyqtSignal
 from PyQt5.QtGui import QBrush, QColor, QFont, QFontMetrics, QPainter, QPen
 from PyQt5.QtWidgets import (QDialog, QDialogButtonBox, QFormLayout,
                              QGraphicsRectItem, QGraphicsScene, QGraphicsView,
@@ -13,12 +14,14 @@ from call_import import load_call_suggestions
 from grouping import format_tv_id, group_entries
 from log_parsers import ConnectionIndex, RdmParser, TeamViewerParser
 
-DEBUG = False  # bei Bedarf auf True setzen
 TIME_FMT = "%Y-%m-%d %H:%M:%S"
 
 
 def parse_time(text):
-    return datetime.strptime(text, TIME_FMT)
+    """'JJJJ-MM-TT hh:mm:ss' -> datetime. Streng wie strptime, aber viel schneller."""
+    if len(text) != 19 or text[10] != " ":
+        raise ValueError(f"Ungültige Zeit: {text!r}")
+    return datetime.fromisoformat(text)
 
 
 WEEKDAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
@@ -130,6 +133,8 @@ class ActivityViewDialog(QDialog):
 class TimelineView(QGraphicsView):
     # Nach jedem Zeichnen: Einträge des Tages und PC-Aktivität (für die Tagesliste)
     day_loaded = pyqtSignal(list, list)
+    # Hintergrund-Thread hat TeamViewer- und RDM-Logs gelesen
+    logs_loaded = pyqtSignal(object, object)
 
     APP_COLORS = ["#5B8DEF", "#E67E22", "#27AE60", "#9B59B6", "#E84393",
                   "#16A085", "#C0392B", "#F1C40F", "#2C3E50", "#7F8C8D"]
@@ -160,10 +165,13 @@ class TimelineView(QGraphicsView):
         self.personal_day = None  # date_str -> Personalzeiten aus ITM, vom Hauptfenster gesetzt
 
         self._remote_cache = {}  # date_str -> list[conn]
-        self._tv_parser = TeamViewerParser(debug=DEBUG)
-        self._rdm_parser = RdmParser(debug=DEBUG)
-        self._tv_index = None
+        self._tv_parser = TeamViewerParser(self.config)
+        self._rdm_parser = RdmParser(self.config)
+        self._tv_index = None   # None = Logs noch nicht gelesen
         self._rdm_index = None
+        self.loading = False    # Logs werden gerade im Hintergrund gelesen
+        self._reload = False    # während des Lesens erneut angefordert
+        self.logs_loaded.connect(self._on_logs_loaded)
 
         self.zoom_level = 1.0
         self.fit_day = True        # ganzen Tag ins Fenster einpassen
@@ -202,7 +210,8 @@ class TimelineView(QGraphicsView):
     def set_dark_mode(self, enabled: bool):
         self.dark_mode = enabled
         self.init_timeline_colors()
-        self.draw_timeline(self.current_date)
+        if self._ppm:  # erst neu zeichnen, wenn schon einmal gezeichnet wurde
+            self.draw_timeline(self.current_date)
 
     # ----------------------------- Tooltip -----------------------------------
 
@@ -218,34 +227,52 @@ class TimelineView(QGraphicsView):
     # ----------------------------- Daten laden --------------------------------
 
     def refresh(self):
-        """Logdateien neu einlesen (nur geänderte Dateien werden wirklich gelesen)."""
-        self._tv_index = None
-        self._rdm_index = None
-        self._remote_cache.clear()
-        self.draw_timeline(self.current_date)
+        """Logdateien im Hintergrund neu einlesen (nur geänderte Dateien werden wirklich gelesen).
 
-    # Alter Name, falls noch irgendwo verwendet
-    update_realtime_connections = refresh
+        Große Logs oder Netzwerkpfade blockieren so weder den Start noch die Bedienung.
+        Danach wird die Timeline neu gezeichnet.
+        """
+        if self.loading:
+            self._reload = True
+            return
+        self.loading = True
+        threading.Thread(target=self._load_logs, daemon=True).start()
+
+    def _start_first_load(self):
+        self.loading = False
+        self.refresh()
+
+    def _load_logs(self):
+        indexes = []
+        for name, parser in (("TeamViewer", self._tv_parser), ("RDM", self._rdm_parser)):
+            try:
+                indexes.append(ConnectionIndex(parser.parse_logs()))
+            except Exception as e:
+                print(f"Fehler beim Lesen der {name}-Logs: {e}")
+                indexes.append(ConnectionIndex([]))
+        self.logs_loaded.emit(*indexes)  # Qt stellt das im GUI-Thread zu
+
+    def _on_logs_loaded(self, tv_index, rdm_index):
+        self._tv_index, self._rdm_index = tv_index, rdm_index
+        self._remote_cache.clear()
+        self.loading = False
+        if self._reload:
+            self._reload = False
+            self.refresh()
+        self.draw_timeline(self.current_date)
 
     def load_remote_connections(self, date: QDate):
         date_str = date.toString("yyyy-MM-dd")
         if date_str in self._remote_cache:
             self.remote_suggestions = self._remote_cache[date_str]
             return
-
-        if self._tv_index is None:
-            try:
-                self._tv_index = ConnectionIndex(self._tv_parser.parse_logs())
-            except Exception as e:
-                print(f"Fehler im TeamViewerParser: {e}")
-                self._tv_index = ConnectionIndex([])
-
-        if self._rdm_index is None:
-            try:
-                self._rdm_index = ConnectionIndex(self._rdm_parser.parse_logs())
-            except Exception as e:
-                print(f"Fehler im RdmParser: {e}")
-                self._rdm_index = ConnectionIndex([])
+        if self._tv_index is None:  # erster Start: ohne Logs zeichnen, sie kommen gleich nach
+            self.remote_suggestions = []
+            if not self.loading:
+                self.loading = True
+                # Erst lesen, wenn dieses Zeichnen fertig ist (sonst bremst der Thread es aus)
+                QTimer.singleShot(0, self._start_first_load)
+            return
 
         day = self._tv_index.get_for_date(date_str) + self._rdm_index.get_for_date(date_str)
         for conn in day:

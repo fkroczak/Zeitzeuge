@@ -20,10 +20,7 @@ from PyQt5.QtWidgets import (QAbstractItemView, QAction, QApplication, QProxySty
                              QVBoxLayout, QWidget)
 
 from activity_tracker import ActivityTracker
-from browser_setup import BrowserSetupDialog, build_userscript
 from call_import import start_call_server
-from itm_reader import ItmReader
-from pbx_reader import PbxReader, find_browser
 import storage
 from settings_dialogs import (ActivityTypeSettingsDialog,
                               ConnectionSettingsDialog, WorkHoursDialog)
@@ -465,8 +462,11 @@ class TimelineApp(QMainWindow):
         if self.config.get("itm_reader_enabled", False):
             self.start_itm_reader()
 
-        self.apply_style()  # zeichnet die Timeline
+        self.apply_style()
         self.timeline.setFocus()
+        # Erst zeichnen, wenn das Fenster seine echte Größe hat (spart ein Zeichnen beim Start).
+        # Die Logs liest die Timeline dabei im Hintergrund.
+        QTimer.singleShot(0, lambda: self.timeline.draw_timeline(self.current_date))
 
     # ---------------------- Werkzeugleiste ------------------------------------
 
@@ -682,6 +682,8 @@ class TimelineApp(QMainWindow):
         if n:
             parts.append(f"{n} Einträge")
             parts.append(f"belegt {format_duration(merged_seconds(self.day_activities))}")
+        elif self.timeline.loading:
+            parts.append("Logs werden gelesen …")
         else:
             parts.append("keine Einträge")
             missing = self.timeline.missing_sources()
@@ -719,7 +721,7 @@ class TimelineApp(QMainWindow):
 
     def refresh(self):
         self.timeline.refresh()
-        self.statusBar().showMessage("Logs neu eingelesen", 2000)
+        self.statusBar().showMessage("Logs werden neu eingelesen …", 2000)
 
     def auto_refresh(self):
         if self.current_date == QDate.currentDate():
@@ -765,6 +767,7 @@ class TimelineApp(QMainWindow):
     # ---------------------- Browser-Anbindung ---------------------------------
 
     def userscript_text(self):
+        from browser_setup import build_userscript  # erst bei Bedarf laden (Startzeit)
         with open(resource_path("zeitzeuge_anrufe.user.js"), "r", encoding="utf-8") as f:
             template = f.read()
         return build_userscript(template, self.config.get("calls_3cx_url", ""),
@@ -775,14 +778,16 @@ class TimelineApp(QMainWindow):
             QMessageBox.warning(self, "Browser-Anbindung",
                                 "Der Anrufempfang läuft nicht (Port belegt oder ausgeschaltet).")
             return
+        from browser_setup import BrowserSetupDialog
         BrowserSetupDialog(self.config, self.config.get("calls_port", 8765),
                            save_config, self).exec_()
 
     # ---------------------- 3CX direkt auslesen -------------------------------
 
     def start_pbx_reader(self):
-        if self.pbx_reader or PbxReader is None:
+        if self.pbx_reader:
             return
+        from pbx_reader import PbxReader  # Edge-Steuerung nur laden, wenn sie gebraucht wird
         self.pbx_reader = PbxReader(
             self.config.get("calls_3cx_url", ""), CALLS_FILE, PBX_PROFILE_DIR,
             open(resource_path("zeitzeuge_anrufe.user.js"), encoding="utf-8").read(), self,
@@ -853,6 +858,7 @@ class TimelineApp(QMainWindow):
         return self.build_reader_dialog("itm")
 
     def _open_reader_settings(self, kind):
+        from pbx_reader import find_browser
         if not find_browser():
             QMessageBox.warning(self, self.READER_DIALOGS[kind]["title"],
                                 "Microsoft Edge oder Google Chrome wurde nicht gefunden.")
@@ -928,6 +934,7 @@ class TimelineApp(QMainWindow):
     def start_itm_reader(self):
         if self.itm_reader:
             return
+        from itm_reader import ItmReader
         self.itm_reader = ItmReader(self.config.get("itm_url", ""), ITM_FILE, ITM_PROFILE_DIR, self)
         self.itm_reader.status_changed.connect(
             lambda text: self.statusBar().showMessage(text, 5000)
