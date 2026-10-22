@@ -265,5 +265,3 @@ if problems:
             print(f"::error title=Bedienbarkeit::{p}")
     sys.exit(1)
 print("Bedienbarkeit ok")
-import threading  # noqa: E402  DIAG: vorübergehend, Absturz beim Beenden unter Windows
-print("DIAG Threads:", [(t.name, t.daemon) for t in threading.enumerate()], flush=True)
