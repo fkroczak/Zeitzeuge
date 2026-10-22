@@ -60,6 +60,22 @@ def entry_color(activity, config):
     return QColor(config.get("type_colors", {}).get(activity.get("type"), "#4682B4"))
 
 
+# Eigene Zeile je Quelle (Kennung, Beschriftung links); nur RDM und der Rest teilen sich mehrere Spuren
+FIXED_ROWS = [("call", "Tel"), ("vpn", "VPN"), ("tv", "TV")]
+
+
+def row_kind(activity):
+    """Feste Zeile eines Eintrags ("call", "vpn", "tv") oder None für die freien Spuren."""
+    kind = activity.get("type", "")
+    if activity.get("direction") or kind == "Telefonat":
+        return "call"
+    if kind.startswith("VPN"):
+        return "vpn"
+    if kind.startswith("TeamViewer"):
+        return "tv"
+    return None
+
+
 def type_label(activity):
     """Typ-Text für Liste und Details, bei Telefonaten mit Richtung."""
     direction = activity.get("direction")
@@ -139,12 +155,12 @@ class TimelineView(QGraphicsView):
     APP_COLORS = ["#5B8DEF", "#E67E22", "#27AE60", "#9B59B6", "#E84393",
                   "#16A085", "#C0392B", "#F1C40F", "#2C3E50", "#7F8C8D"]
 
-    LEFT = 20          # Rand links in Pixeln
+    LEFT = 30          # Rand links in Pixeln (Platz für die Zeilenbeschriftung)
     AXIS_H = 26        # Höhe der Stundenleiste oben
     PC_BAND_H = 14     # Band für die PC-Aktivität
     LANE_H = 26        # Höhe eines Eintrags
     LANE_GAP = 6
-    MIN_LANES = 4
+    MIN_LANES = 2      # freie Spuren unter den festen Zeilen (RDM, eigene Einträge)
     MAX_LANES = 10
     BASE_PX_PER_MIN = 1.2
 
@@ -397,11 +413,18 @@ class TimelineView(QGraphicsView):
 
         activities = self.view_entries(date)
 
-        # Spuren verteilen: überlappende Einträge kommen in die nächste Zeile
+        # Telefonate, VPN und TeamViewer je in eine feste Zeile; der Rest (v. a. RDM)
+        # wird auf Spuren verteilt: überlappende Einträge kommen in die nächste Spur
+        fixed_index = {kind: i for i, (kind, _label) in enumerate(FIXED_ROWS)}
+        n_fixed = len(FIXED_ROWS)
         lanes_end = []
         placed = []
         for a in activities:
             start, end = parse_time(a["start"]), parse_time(a["end"])
+            kind = row_kind(a)
+            if kind is not None:
+                placed.append((a, start, end, fixed_index[kind]))
+                continue
             for idx, lane_end in enumerate(lanes_end):
                 if start >= lane_end:
                     lanes_end[idx] = end
@@ -413,13 +436,15 @@ class TimelineView(QGraphicsView):
                 else:
                     lanes_end.append(end)
                     idx = len(lanes_end) - 1
-            placed.append((a, start, end, idx))
+            placed.append((a, start, end, n_fixed + idx))
 
         pc_band = self.pc_entries_for(date, min_seconds=5, max_gap=15)
         n_lanes = max(self.MIN_LANES, len(lanes_end))
         band_y = self.AXIS_H + 6
         top = band_y + (self.PC_BAND_H + 10 if self.tracker else 2)
-        content_h = top + n_lanes * (self.LANE_H + self.LANE_GAP) + 8
+        row_h = self.LANE_H + self.LANE_GAP
+        free_top = top + n_fixed * row_h + 6  # kleiner Abstand vor den freien Spuren
+        content_h = free_top + n_lanes * row_h + 8
         # Platz für die horizontale Scrollleiste lassen, sonst erscheint eine senkrechte
         free_h = self.maximumViewportSize().height() - self.horizontalScrollBar().sizeHint().height()
         height = max(content_h, free_h)
@@ -465,6 +490,15 @@ class TimelineView(QGraphicsView):
             self.scene.addRect(self._x(span_start), self.AXIS_H - 3, self._x(span_end) - self._x(span_start),
                                3, no_pen, QBrush(work_color))
 
+        # Beschriftung der festen Zeilen und Trennlinie zu den freien Spuren
+        row_font = QFont("Segoe UI", 7)
+        for i, (_kind, text) in enumerate(FIXED_ROWS):
+            label = self.scene.addText(text, row_font)
+            label.setDefaultTextColor(self.muted_text)
+            label.setPos(0, top + i * row_h + (self.LANE_H - label.boundingRect().height()) / 2)
+        sep_y = free_top - (6 + self.LANE_GAP) / 2
+        self.scene.addLine(0, sep_y, width, sep_y, QPen(self.hour_line, 1))
+
         # Einträge
         label_font = QFont("Segoe UI", 8)
         metrics = QFontMetrics(label_font)
@@ -474,7 +508,7 @@ class TimelineView(QGraphicsView):
             if end.date() > start.date():  # über Mitternacht
                 x2 = self._x(24 * 60)
             w = max(4.0, x2 - x1)
-            y = top + lane * (self.LANE_H + self.LANE_GAP)
+            y = top + lane * row_h + (6 if lane >= n_fixed else 0)
 
             base = entry_color(a, self.config)
             fill = QColor(base)
@@ -512,7 +546,7 @@ class TimelineView(QGraphicsView):
                 self.activity_rects[rect] = p
             label = self.scene.addText("PC", QFont("Segoe UI", 7))
             label.setDefaultTextColor(self.muted_text)
-            label.setPos(self._x(0) - 18, band_y - 3)
+            label.setPos(0, band_y - 3)
 
         # Jetzt-Linie
         if date == QDate.currentDate():
