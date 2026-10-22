@@ -139,4 +139,17 @@ assert "Neu Anrufer" not in {c["name"] for c in calls()}, "neuer Anruf schon vor
 PbxReader.RELOAD_INTERVAL = 3
 run("http://127.0.0.1:8812", lambda r: "Neu Anrufer" in {c["name"] for c in calls()},
     "nach dem Neuladen neuen Anruf gelesen")
+
+# 6. Anmeldefenster schließt sich nach der Anmeldung von selbst, die Anmeldung bleibt erhalten
+profile = os.path.join(tmp, "profil_anmeldung")
+os.remove(calls_file)
+login = PbxReader("http://127.0.0.1:8812/?login=1", calls_file, profile, script)
+login.show_login()
+deadline = time.time() + 25  # ohne Automatik bliebe das Fenster offen
+while time.time() < deadline and login._login_open:
+    time.sleep(0.5)
+if login._login_open or profile_in_use(profile):
+    fail("Anmeldefenster nach der Anmeldung nicht geschlossen", login)
+print("ok: Anmeldefenster nach der Anmeldung geschlossen |", login.status)
+run("http://127.0.0.1:8812", lambda r: len(calls()) >= 8, "nach dem Anmeldefenster gelesen")
 print("3CX-Test ok")

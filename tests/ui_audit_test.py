@@ -181,6 +181,12 @@ for dark in (False, True):
 window.timeline.dark_mode = window.dark_mode
 window.timeline.init_timeline_colors()
 
+# Zustand im Infobereich: auf heller und dunkler Windows-Taskleiste erkennbar (Grafik, 3 : 1)
+import icons  # noqa: E402
+for taskbar in ("#F3F3F3", "#1F2329"):
+    for color in (icons.ACTIVE_COLOR, icons.PAUSED_COLOR):
+        check_contrast("Infobereich", color, taskbar, minimum=3.0)
+
 # Graue Hinweistexte direkt im Code (nur Farbe "gray" ist auf hellem Grund zu blass)
 for path in ["main_timeline.py", "settings_dialogs.py", "browser_setup.py", "timeline_only.py"]:
     with open(os.path.join(ROOT, path), encoding="utf-8") as f:
@@ -214,7 +220,8 @@ for menu in window.findChildren(QMenu):
         if group > 5:
             problem("Menü", f"mehr als 5 Einträge ohne Trennlinie (ab '{action.text()}')")
             group = -99
-        if "&" not in action.text() and menu.parent() is window:
+        # Reine Anzeigen (deaktiviert, z. B. Zustand im Infobereich) brauchen keinen Alt-Buchstaben
+        if "&" not in action.text() and menu.parent() is window and action.isEnabled():
             problem("Menü", f"'{action.text()}' ohne Alt-Buchstaben")
 
 # Dialoge: Namen, Hinweise
@@ -263,5 +270,11 @@ if problems:
         print(" -", p)
         if os.environ.get("GITHUB_ACTIONS"):
             print(f"::error title=Bedienbarkeit::{p}")
-    sys.exit(1)
+    sys.stdout.flush()
+    os._exit(1)
 print("Bedienbarkeit ok")
+
+# Direkt beenden: PyQt räumt beim Interpreter-Ende sporadisch in falscher Reihenfolge auf
+# (Zugriffsfehler unter Windows, auch mit altem Code). Alle Prüfungen sind hier gelaufen.
+sys.stdout.flush()
+os._exit(0)

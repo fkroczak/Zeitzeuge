@@ -1,366 +1,308 @@
+"""TeamViewer- und RDM-Logs einlesen.
+
+Beide Parser lesen eine Datei nur neu, wenn sie sich geändert hat (Cache nach
+Pfad, Änderungszeit und Zeitzonenkorrektur).
+"""
 import os
 import re
-import sys
-from abc import ABC, abstractmethod
 from collections import defaultdict
 from datetime import datetime, timedelta
-from typing import Dict, List
-
-from PyQt5.QtWidgets import QApplication
-
-DEBUG = False
 
 
-class BaseConnectionParser(ABC):
-    def __init__(self, debug=False):
-        self.DEBUG = debug
-        # Cache: (path, tz) -> (mtime, [connections])
-        self._cache = {}
+def _dmy(text):
+    """'21-10-2026 08:12:00' oder '21.10.2026 08:12:00' -> datetime.
+
+    Etwa 10x schneller als strptime; bei großen Logs entscheidet das über die Startzeit.
+    Das Format ist durch die Regex vorher schon geprüft, ungültige Werte geben ValueError.
+    """
+    return datetime(int(text[6:10]), int(text[3:5]), int(text[0:2]),
+                    int(text[11:13]), int(text[14:16]), int(text[17:19]))
+
+
+class BaseConnectionParser:
+    config_key = ""      # "teamviewer" oder "rdm": Schlüssel in der Config
+    default_paths = []
+
+    def __init__(self, config=None):
+        self.config = config if config is not None else {}
+        self._cache = {}        # (path, tz) -> (mtime, [connections])
         self.files_read = None  # None = noch nicht gelesen
 
-    def get_config_values(self, config_key):
-        app = QApplication.instance()
-        if not app:
-            return self.default_paths, 2
-
-        for widget in app.topLevelWidgets():
-            if hasattr(widget, "config") and isinstance(widget.config, dict):
-                paths = widget.config.get(f"{config_key}_paths", self.default_paths)
-                tz_correction = widget.config.get(
-                    f"{config_key}_timezone_correction",
-                    widget.config.get("timezone_correction", 2),
-                )
-                return paths, tz_correction
-
-        return self.default_paths, 2
-
-    @property
-    @abstractmethod
-    def default_paths(self):
-        pass
-
-    @abstractmethod
-    def parse_line(self, line, tz_correction):
-        pass
+    def settings(self):
+        paths = self.config.get(f"{self.config_key}_paths", self.default_paths)
+        tz = self.config.get(f"{self.config_key}_timezone_correction",
+                             self.config.get("timezone_correction", 2))
+        return paths, tz
 
     def parse_logs(self):
         connections = []
-        config_key = self.__class__.__name__.replace("Parser", "").lower()
-        log_paths, tz_correction = self.get_config_values(config_key)
+        log_paths, tz_correction = self.settings()
         self.files_read = 0  # für den Hinweis "keine Logdatei gefunden"
-
-        if DEBUG:
-            print(f"\n{self.__class__.__name__} sucht in Pfaden: {log_paths}")
-            print(f"Zeitzonenkorrektur: {tz_correction}h")
-
         for log_path in log_paths:
-            expanded_path = os.path.expandvars(log_path)
-
-            if DEBUG:
-                print(f"\nPrüfe Pfad: {expanded_path}")
-                print(f"Existiert: {os.path.exists(expanded_path)}")
-
-            if not os.path.exists(expanded_path):
-                if DEBUG:
-                    print(f"Log nicht gefunden: {expanded_path}")
+            path = os.path.expandvars(log_path)
+            if not os.path.exists(path):
                 continue
-
-            cache_key = (expanded_path, tz_correction)
             try:
-                mtime = os.path.getmtime(expanded_path)
-
-                # Cache-Hit?
-                if cache_key in self._cache and self._cache[cache_key][0] == mtime:
-                    file_connections = self._cache[cache_key][1]
-                    if DEBUG:
-                        print(
-                            f"Cache-Hit für {expanded_path}, "
-                            f"{len(file_connections)} Einträge"
-                        )
+                mtime = os.path.getmtime(path)
+                cached = self._cache.get((path, tz_correction))
+                if cached and cached[0] == mtime:
+                    file_connections = cached[1]
                 else:
-                    if DEBUG:
-                        print(f"Lese Logdatei neu: {expanded_path}")
-                    file_connections = []
-                    with open(
-                        expanded_path, "r", encoding="utf-8", errors="ignore"
-                    ) as f:
-                        for line in f:
-                            connection = self.parse_line(line, tz_correction)
-                            if connection:
-                                file_connections.append(connection)
-                    self._cache[cache_key] = (mtime, file_connections)
-                    if DEBUG:
-                        print(
-                            f"Gefundene Verbindungen in dieser Datei: "
-                            f"{len(file_connections)}"
-                        )
-
+                    with open(path, "r", encoding="utf-8", errors="ignore") as f:
+                        file_connections = self.parse_file(f, tz_correction)
+                    self._cache[(path, tz_correction)] = (mtime, file_connections)
                 connections.extend(file_connections)
                 self.files_read += 1
-
             except Exception as e:
-                print(f"Fehler beim Lesen der Logdatei {expanded_path}: {str(e)}")
-
-        if DEBUG:
-            print(f"\n{self.__class__.__name__} Ergebnis:")
-            print(f"Gesamtverbindungen gefunden: {len(connections)}")
-            for i, conn in enumerate(connections[:3], 1):
-                print(f"Beispiel {i}: {conn}")
-
+                print(f"Fehler beim Lesen der Logdatei {path}: {e}")
         return connections
+
+    def parse_file(self, lines, tz_correction):
+        raise NotImplementedError
 
 
 class TeamViewerParser(BaseConnectionParser):
-    @property
-    def default_paths(self):
-        paths = [
-            os.path.expandvars(r"%APPDATA%\TeamViewer\Connections.txt"),
-            os.path.expandvars(r"%PROGRAMDATA%\TeamViewer\Connections.txt"),
-            r"C:\Program Files (x86)\TeamViewer\Connections.txt",
-            r"C:\Program Files\TeamViewer\Connections.txt",
-        ]
-        if DEBUG:
-            print(f"TeamViewer Standardpfade: {paths}")
-        return paths
+    config_key = "teamviewer"
+    default_paths = [
+        os.path.expandvars(r"%APPDATA%\TeamViewer\Connections.txt"),
+        os.path.expandvars(r"%PROGRAMDATA%\TeamViewer\Connections.txt"),
+        r"C:\Program Files (x86)\TeamViewer\Connections.txt",
+        r"C:\Program Files\TeamViewer\Connections.txt",
+    ]
+    LINE = re.compile(r"^(\d+)\s+(\d{2}-\d{2}-\d{4} \d{2}:\d{2}:\d{2})\s+"
+                      r"(\d{2}-\d{2}-\d{4} \d{2}:\d{2}:\d{2})")
+
+    def parse_file(self, lines, tz_correction):
+        result = []
+        for line in lines:
+            conn = self.parse_line(line, tz_correction)
+            if conn:
+                result.append(conn)
+        return result
 
     def parse_line(self, line, tz_correction):
-        pattern = (
-            r"^(\d+)\s+(\d{2}-\d{2}-\d{4} \d{2}:\d{2}:\d{2})\s+"
-            r"(\d{2}-\d{2}-\d{4} \d{2}:\d{2}:\d{2})"
-        )
-        match = re.search(pattern, line)
+        match = self.LINE.match(line)
         if not match:
-            if DEBUG and line.strip():
-                print(f"Kein Match für Zeile: {line.strip()}")
             return None
-
         session_id, start_str, end_str = match.groups()
-
         try:
-            if DEBUG:
-                print(f"Rohe Zeiten - Start: {start_str}, Ende: {end_str}")
-
-            start_utc = datetime.strptime(start_str, "%d-%m-%Y %H:%M:%S")
-            end_utc = datetime.strptime(end_str, "%d-%m-%Y %H:%M:%S")
-
-            if DEBUG:
-                print(f"UTC Zeiten - Start: {start_utc}, Ende: {end_utc}")
-
-            start_local = start_utc + timedelta(hours=tz_correction)
-            end_local = end_utc + timedelta(hours=tz_correction)
-
-            duration = (end_local - start_local).total_seconds()
-            if duration >= 60:
-                result = {
-                    "start": start_local.strftime("%Y-%m-%d %H:%M:%S"),
-                    "end": end_local.strftime("%Y-%m-%d %H:%M:%S"),
-                    "type": "TeamViewer",
-                    "customer_name": f"TeamViewer (ID: {session_id})",
-                    "tv_id": session_id,
-                    "is_suggestion": True,
-                }
-                if DEBUG:
-                    print(f"Erfolgreich geparst: {result}")
-                return result
-            elif DEBUG:
-                print(f"Verbindung zu kurz ({duration}s), ignoriert")
-
-        except ValueError as e:
-            if DEBUG:
-                print(f"Fehler beim Parsen der Zeiten: {str(e)}")
-                print(f"Problemzeile: {line.strip()}")
-
-        return None
+            shift = timedelta(hours=tz_correction)  # TeamViewer speichert UTC
+            start, end = _dmy(start_str) + shift, _dmy(end_str) + shift
+        except ValueError:
+            return None
+        if (end - start).total_seconds() < 60:
+            return None
+        return {
+            "start": str(start), "end": str(end),  # str(datetime) = "JJJJ-MM-TT hh:mm:ss"
+            "type": "TeamViewer",
+            "customer_name": f"TeamViewer (ID: {session_id})",
+            "tv_id": session_id,
+            "is_suggestion": True,
+        }
 
 
 class RdmParser(BaseConnectionParser):
-    def __init__(self, debug=False):
-        super().__init__(debug)
-        self.current_sessions = {}
+    config_key = "rdm"
+    default_paths = [os.path.expandvars(
+        r"%LOCALAPPDATA%\Devolutions\RemoteDesktopManager\Connections.log")]
+    LINE = re.compile(r"^\[(\d{2}\.\d{2}\.\d{4} \d{2}:\d{2}:\d{2})\] (.*?) - '(.*?)' \((.*?)\)")
 
-    @property
-    def default_paths(self):
-        return [
-            os.path.expandvars(
-                r"%LOCALAPPDATA%\Devolutions\RemoteDesktopManager\Connections.log"
-            )
-        ]
+    # Anzeigen von Zugangsdaten -> Typ in der Timeline
+    ACTIONS = {
+        "passwort angezeigt": "Passwortaktion",
+        "one-time password angezeigt": "OTP-Anzeige",
+        "benutzername angezeigt": "Benutzername angezeigt",
+        "eintrag angezeigt": "Eintrag angezeigt",
+    }
+    # Teil des RDM-Eintragstyps -> Protokoll (erster Treffer zählt)
+    PROTOCOLS = {
+        "rdp": "RDP", "remote desktop": "RDP", "ssh": "SSH", "terminal": "SSH",
+        "ftp": "FTP", "sftp": "FTP", "scp": "FTP", "website": "Website",
+        "vpn": "VPN", "tunnel": "VPN", "gateway": "VPN", "teamviewer": "TeamViewer",
+    }
+    CONNECT = ("verbinden", "connect")
+    DISCONNECT = ("getrennt", "disconnect")
 
     def parse_line(self, line, tz_correction):
-        pattern = (
-            r"^\[(\d{2}\.\d{2}\.\d{4} \d{2}:\d{2}:\d{2})\] "
-            r"(.*?) - '(.*?)' \((.*?)\)"
-        )
-        match = re.search(pattern, line)
+        match = self.LINE.match(line)
         if not match:
             return None
-
         timestamp_str, action, entry_name, entry_type = match.groups()
         try:
-            timestamp = datetime.strptime(timestamp_str, "%d.%m.%Y %H:%M:%S")
-            timestamp += timedelta(hours=tz_correction)
-            return {
-                "timestamp": timestamp,
-                "action": action.strip(),
-                "entry_name": entry_name,
-                "entry_type": entry_type,
-                "raw_line": line.strip(),
-            }
-        except ValueError as e:
-            if self.DEBUG:
-                print(f"Fehler beim Parsen der Zeit: {timestamp_str} - {str(e)}")
+            timestamp = _dmy(timestamp_str) + timedelta(hours=tz_correction)
+        except ValueError:
             return None
+        return {"timestamp": timestamp, "action": action.strip(),
+                "entry_name": entry_name, "entry_type": entry_type}
 
-    def parse_logs(self):
-        connections = []
-        config_key = self.__class__.__name__.replace("Parser", "").lower()
-        log_paths, tz_correction = self.get_config_values(config_key)
-        self.files_read = 0
-
-        for log_path in log_paths:
-            expanded_path = os.path.expandvars(log_path)
-            if not os.path.exists(expanded_path):
-                if self.DEBUG:
-                    print(f"RDM Log nicht gefunden: {expanded_path}")
-                continue
-
-            cache_key = (expanded_path, tz_correction)
-            try:
-                mtime = os.path.getmtime(expanded_path)
-
-                if cache_key in self._cache and self._cache[cache_key][0] == mtime:
-                    if self.DEBUG:
-                        print(f"Cache-Hit für {expanded_path}")
-                    file_connections = self._cache[cache_key][1]
-                else:
-                    file_connections = []
-                    with open(
-                        expanded_path, "r", encoding="utf-8", errors="ignore"
-                    ) as f:
-                        for line in f:
-                            data = self.parse_line(line, tz_correction)
-                            if not data:
-                                continue
-                            self._process_activity(data, file_connections)
-                    self._finalize_sessions(file_connections)
-                    self._cache[cache_key] = (mtime, file_connections)
-
-                connections.extend(file_connections)
-                self.files_read += 1
-
-            except Exception as e:
-                print(f"Fehler beim Lesen der RDM-Logdatei {expanded_path}: {str(e)}")
-
-        if self.DEBUG:
-            print(f"RDM Parser: {len(connections)} Verbindungen gefunden")
+    def parse_file(self, lines, tz_correction):
+        connections, sessions = [], {}
+        for line in lines:
+            data = self.parse_line(line, tz_correction)
+            if data:
+                self._process(data, connections, sessions)
+        # Nicht getrennte Verbindungen: 1 Minute anzeigen
+        for session in sessions.values():
+            connections.append(self._connection(
+                session["start"], session["start"] + timedelta(seconds=60), session["entry_name"],
+                f"{session['entry_type']}-Sitzung", f"Aktive Sitzung {session['entry_name']}"))
         return connections
 
-    def _process_activity(self, data, connections):
-        entry_key = f"{data['entry_name']}_{data['entry_type']}"
-        action_lower = data["action"].lower()
-        entry_type_lower = data["entry_type"].lower()
-
-        action_map = {
-            "passwort angezeigt": "Passwortaktion",
-            "one-time password angezeigt": "OTP-Anzeige",
-            "benutzername angezeigt": "Benutzername angezeigt",
-            "eintrag angezeigt": "Eintrag angezeigt",
-        }
-
-        if action_lower in action_map:
-            start = data["timestamp"]
-            end = start + timedelta(seconds=10)
-            connections.append(
-                self._create_connection(
-                    start,
-                    end,
-                    data["entry_name"],
-                    action_map[action_lower],
-                    f"{action_map[action_lower]}: "
-                    f"{data['entry_name']} ({data['entry_type']})",
-                )
-            )
+    def _process(self, data, connections, sessions):
+        action = data["action"].lower()
+        name, entry_type = data["entry_name"], data["entry_type"]
+        if action in self.ACTIONS:
+            kind = self.ACTIONS[action]
+            connections.append(self._connection(
+                data["timestamp"], data["timestamp"] + timedelta(seconds=10), name, kind,
+                f"{kind}: {name} ({entry_type})"))
             return
+        if action not in self.CONNECT + self.DISCONNECT:
+            return
+        type_lower = entry_type.lower()
+        protocol = next((p for key, p in self.PROTOCOLS.items() if key in type_lower), None)
+        if protocol is None:
+            return
+        key = f"{name}_{entry_type}"
+        if action in self.CONNECT:
+            sessions[key] = {"start": data["timestamp"], "entry_name": name, "entry_type": protocol}
+        elif key in sessions:
+            session = sessions.pop(key)
+            conn = self._connection(session["start"], data["timestamp"], name,
+                                    f"{protocol}-Verbindung", f"{protocol}-Verbindung {name}")
+            if protocol == "TeamViewer" and name.replace(" ", "").isdigit():
+                conn["tv_id"] = name.replace(" ", "")
+            connections.append(conn)
 
-        connection_types = {
-            "rdp": "RDP",
-            "remote desktop": "RDP",
-            "ssh": "SSH",
-            "terminal": "SSH",
-            "ftp": "FTP",
-            "sftp": "FTP",
-            "scp": "FTP",
-            "website": "Website",
-            "vpn": "VPN",
-            "tunnel": "VPN",
-            "gateway": "VPN",
-            "teamviewer": "TeamViewer",
-        }
-
-        for key, protocol in connection_types.items():
-            if key in entry_type_lower and action_lower in ("verbinden", "connect", "getrennt", "disconnect"):
-                if action_lower in ("verbinden", "connect"):
-                    self.current_sessions[entry_key] = {
-                        "start": data["timestamp"],
-                        "entry_name": data["entry_name"],
-                        "entry_type": protocol,
-                    }
-                elif entry_key in self.current_sessions:
-                    session = self.current_sessions[entry_key]
-                    conn = self._create_connection(
-                        session["start"],
-                        data["timestamp"],
-                        session["entry_name"],
-                        f"{protocol}-Verbindung",
-                        f"{protocol}-Verbindung {session['entry_name']}",
-                    )
-                    if protocol == "TeamViewer" and session["entry_name"].replace(" ", "").isdigit():
-                        conn["tv_id"] = session["entry_name"].replace(" ", "")
-                    connections.append(conn)
-                    del self.current_sessions[entry_key]
-                return
-
-    def _finalize_sessions(self, connections):
-        for entry_key, session in list(self.current_sessions.items()):
-            endtime = session["start"] + timedelta(seconds=60)
-            connections.append(
-                self._create_connection(
-                    session["start"],
-                    endtime,
-                    session["entry_name"],
-                    f"{session['entry_type']}-Sitzung",
-                    f"Aktive Sitzung {session['entry_name']}",
-                )
-            )
-            del self.current_sessions[entry_key]
-
-    def _create_connection(self, start, end, entry_name, connection_type, details):
-        return {
-            "start": start.strftime("%Y-%m-%d %H:%M:%S"),
-            "end": end.strftime("%Y-%m-%d %H:%M:%S"),
-            "type": connection_type,
-            "customer_name": entry_name,
-            "is_suggestion": True,
-            "details": details,
-        }
-
+    @staticmethod
+    def _connection(start, end, entry_name, connection_type, details):
+        return {"start": str(start), "end": str(end), "type": connection_type,
+                "customer_name": entry_name, "is_suggestion": True, "details": details}
 
 
 class ConnectionIndex:
-    """
-    Baut einen Index nach Datum (YYYY-MM-DD) für schnellere Abfragen
-    in der Timeline.
-    """
+    """Verbindungen nach Datum (JJJJ-MM-TT) für schnelle Abfragen in der Timeline."""
 
-    def __init__(self, connections: List[dict]) -> None:
-        self.by_date: Dict[str, List[dict]] = defaultdict(list)
+    def __init__(self, connections):
+        self.by_date = defaultdict(list)
         for conn in connections:
             start = conn.get("start")
-            if not start or len(start) < 10:
-                continue
-            date_str = start[:10]  # 'YYYY-MM-DD'
-            self.by_date[date_str].append(conn)
+            if start and len(start) >= 10:
+                self.by_date[start[:10]].append(conn)
 
-    def get_for_date(self, date_str: str) -> List[dict]:
-        """Alle Verbindungen für ein bestimmtes Datum."""
+    def get_for_date(self, date_str):
         return self.by_date.get(date_str, [])
+
+
+class VpnParser(BaseConnectionParser):
+    """VPN-Verbindungen aus den Logdateien von VPN-Clients (OpenVPN, Sophos SSL VPN, …).
+
+    Ein Pfad darf eine Datei oder ein Ordner sein (dann zählen alle .log/.txt darin).
+    Der Name der Verbindung ist der Dateiname, bei OpenVPN also der Profilname.
+    """
+
+    TIME_FORMATS = [
+        (re.compile(r"(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2})"), ["%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"]),
+        (re.compile(r"(\d{2}\.\d{2}\.\d{4},? \d{2}:\d{2}:\d{2})"), ["%d.%m.%Y %H:%M:%S", "%d.%m.%Y, %H:%M:%S"]),
+        (re.compile(r"(\d{2}/\d{2}/\d{4},? \d{2}:\d{2}:\d{2})"), ["%m/%d/%Y %H:%M:%S", "%m/%d/%Y, %H:%M:%S"]),
+        (re.compile(r"([A-Z][a-z]{2} \d{1,2}, \d{4},? \d{2}:\d{2}:\d{2})"),
+         ["%b %d, %Y, %H:%M:%S", "%b %d, %Y %H:%M:%S"]),                       # OpenVPN Connect
+        (re.compile(r"[A-Z][a-z]{2} ([A-Z][a-z]{2} +\d{1,2} \d{2}:\d{2}:\d{2} \d{4})"),
+         ["%b %d %H:%M:%S %Y"]),                                                 # OpenVPN (Linux/alt)
+    ]
+    UP = re.compile(r"initialization sequence completed|event: connected|\bstatus[=: ]+connected"
+                    r"|\btunnel (is )?up\b|verbindung hergestellt", re.I)
+    DOWN = re.compile(r"process exiting|process restarting|event: disconnected|\bdisconnected\b"
+                      r"|\bstatus[=: ]+disconnected|tunnel (is )?down|verbindung getrennt", re.I)
+
+    config_key = "vpn"
+    default_paths = [os.path.expandvars(p) for p in (
+        r"%USERPROFILE%\OpenVPN\log",                                # OpenVPN GUI
+        r"%APPDATA%\OpenVPN Connect\logs",                           # OpenVPN Connect
+        r"%PROGRAMFILES(X86)%\Sophos\Sophos SSL VPN Client\log",      # Sophos SSL VPN
+    )]
+
+    def parse_time(self, line, tz_correction):
+        head = line[:60]
+        for pattern, formats in self.TIME_FORMATS:
+            m = pattern.search(head)
+            if not m:
+                continue
+            text = re.sub(r" +", " ", m.group(1))
+            for fmt in formats:
+                try:
+                    return datetime.strptime(text, fmt) + timedelta(hours=tz_correction)
+                except ValueError:
+                    pass
+        return None
+
+    def parse_line(self, line, tz_correction):
+        """(Zeit, "up"/"down"/None) oder None ohne Zeitstempel."""
+        when = self.parse_time(line, tz_correction)
+        if not when:
+            return None
+        if self.UP.search(line):
+            return when, "up"
+        if self.DOWN.search(line):
+            return when, "down"
+        return when, None
+
+    def files(self, paths):
+        for path in paths:
+            path = os.path.expandvars(path)
+            if os.path.isdir(path):
+                for name in sorted(os.listdir(path)):
+                    if name.lower().endswith((".log", ".txt")):
+                        yield os.path.join(path, name)
+            elif os.path.isfile(path):
+                yield path
+
+    def parse_vpn_file(self, path, tz_correction):
+        name = os.path.splitext(os.path.basename(path))[0]
+        found, start, last = [], None, None
+
+        def close(end):
+            end = max(end, start + timedelta(minutes=1))
+            found.append({
+                "start": start.strftime("%Y-%m-%d %H:%M:%S"),
+                "end": end.strftime("%Y-%m-%d %H:%M:%S"),
+                "type": "VPN-Verbindung",
+                "customer_name": name,
+                "is_suggestion": True,
+                "details": f"VPN {name} ({os.path.basename(path)})",
+            })
+
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                data = self.parse_line(line, tz_correction)
+                if not data:
+                    continue
+                when, event = data
+                if start and when.date() != start.date() and event != "down":
+                    close(last)  # über Nacht ohne Ende: am letzten Eintrag abschließen
+                    start = None
+                if event == "up" and not start:
+                    start = when
+                elif event == "down" and start:
+                    close(when)
+                    start = None
+                last = when
+        if start:  # noch verbunden: bis zum letzten Eintrag in der Datei
+            close(last)
+        return found
+
+    def parse_logs(self):
+        paths, tz_correction = self.settings()
+        connections = []
+        self.files_read = 0
+        for path in self.files(paths):
+            key = (path, tz_correction)
+            try:
+                mtime = os.path.getmtime(path)
+                if key not in self._cache or self._cache[key][0] != mtime:
+                    self._cache[key] = (mtime, self.parse_vpn_file(path, tz_correction))
+                connections.extend(self._cache[key][1])
+                self.files_read += 1
+            except OSError as e:
+                print(f"Fehler beim Lesen der VPN-Logdatei {path}: {e}")
+        return connections
