@@ -96,6 +96,9 @@ def flush_deletes():
 
 
 def gui_test():
+    # Global halten: Würde QApplication beim Verlassen der Funktion vor den Fenstern
+    # aufgeräumt, stürzt Qt unter Windows ab (Zugriffsfehler).
+    global app, window
     # --------------------------------------------------------------- Oberfläche
 
     import main_timeline  # noqa: E402
