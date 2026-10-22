@@ -490,6 +490,14 @@ class TimelineView(QGraphicsView):
             self.scene.addRect(self._x(span_start), self.AXIS_H - 3, self._x(span_end) - self._x(span_start),
                                3, no_pen, QBrush(work_color))
 
+        # Jede zweite Zeile leicht hinterlegt, damit die Zeilen unterscheidbar sind
+        stripe = QColor(255, 255, 255, 10) if self.dark_mode else QColor(0, 0, 0, 10)
+        row_tops = [top + i * row_h for i in range(n_fixed)]
+        row_tops += [free_top + i * row_h for i in range(n_lanes)]
+        for i, y in enumerate(row_tops):
+            if i % 2 == 0:
+                self.scene.addRect(0, y - self.LANE_GAP / 2, width, row_h, no_pen, QBrush(stripe))
+
         # Beschriftung der festen Zeilen und Trennlinie zu den freien Spuren
         row_font = QFont("Segoe UI", 7)
         for i, (_kind, text) in enumerate(FIXED_ROWS):
