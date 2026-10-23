@@ -22,14 +22,14 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-import main_timeline  # setzt die Hi-DPI-Attribute vor dem QApplication-Start
-from PyQt5.QtCore import QCoreApplication, Qt, QTimer
-from PyQt5.QtGui import QColor
-from PyQt5.QtTest import QTest
-from PyQt5.QtWidgets import (QAbstractButton, QAbstractSpinBox, QApplication,
-                             QComboBox, QLabel, QLineEdit, QListWidget,
-                             QMenu, QTableWidget, QTextEdit, QToolBar,
-                             QToolButton)
+import main_timeline  # setzt die Hi-DPI-Rundung vor dem QApplication-Start
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QColor
+from PySide6.QtTest import QTest
+from PySide6.QtWidgets import (QAbstractButton, QAbstractSpinBox, QApplication,
+                               QComboBox, QLabel, QLineEdit, QListWidget,
+                               QMenu, QTableWidget, QTextEdit, QToolBar,
+                               QToolButton, QWidget)
 
 import settings_dialogs
 import timeline_only
@@ -46,7 +46,7 @@ def problem(area, text):
 def accessible_name(widget):
     """Name, den Qt an Screenreader meldet (wie QAccessibleWidget::text).
 
-    PyQt5 bietet QAccessible nicht an, daher die Regeln von Qt nachgebaut:
+    Ohne Screenreader liefert QAccessible nichts Verlässliches, daher die Regeln von Qt nachgebaut:
     accessibleName, sonst Knopftext, sonst Text eines Labels mit setBuddy().
     """
     if widget.accessibleName():
@@ -72,7 +72,9 @@ CONTROLS = (QAbstractButton, QLineEdit, QAbstractSpinBox, QComboBox, QListWidget
 
 def check_names(area, root):
     """Jedes sichtbare Bedienelement braucht einen sprechenden Namen."""
-    for w in root.findChildren(CONTROLS):
+    for w in root.findChildren(QWidget):  # PySide6: findChildren nimmt kein Tupel
+        if not isinstance(w, CONTROLS):
+            continue
         if not w.isVisibleTo(root) or w.focusPolicy() == Qt.NoFocus and not isinstance(w, QAbstractButton):
             continue
         if type(w).__name__.startswith("QCalendar") or w.parent().inherits("QCalendarWidget"):
@@ -127,8 +129,9 @@ opened = []
 app = QApplication(sys.argv)
 app.setStyle(main_timeline.AppStyle())
 
-if not QCoreApplication.testAttribute(Qt.AA_EnableHighDpiScaling):
-    problem("Skalierung", "Hi-DPI-Skalierung aus: bei 125 %/150 % Windows-Anzeige bleibt Text zu klein")
+# Qt 6 skaliert immer; mit gerundetem Faktor wären 125 %/150 % aber 100 %/200 %
+if QApplication.highDpiScaleFactorRoundingPolicy() != Qt.HighDpiScaleFactorRoundingPolicy.PassThrough:
+    problem("Skalierung", "Hi-DPI-Faktor gerundet: bei 125 %/150 % Windows-Anzeige passt die Größe nicht")
 
 window = main_timeline.TimelineApp()
 window.resize(1200, 720)
@@ -187,7 +190,8 @@ for taskbar in ("#F3F3F3", "#1F2329"):
         check_contrast("Infobereich", color, taskbar, minimum=3.0)
 
 # Graue Hinweistexte direkt im Code (nur Farbe "gray" ist auf hellem Grund zu blass)
-for path in ["main_timeline.py", "settings_dialogs.py", "timeline_only.py"]:
+for path in ["main_timeline.py", "theme.py", "app_menus.py", "app_daylist.py", "app_docs.py",
+             "app_readers.py", "app_tray.py", "settings_dialogs.py", "timeline_only.py"]:
     with open(os.path.join(ROOT, path), encoding="utf-8") as f:
         for no, line in enumerate(f, 1):
             if re.search(r"color:\s*(gray|grey|#999|#aaa)\b", line, re.I):
@@ -316,7 +320,7 @@ if problems:
     os._exit(1)
 print("Bedienbarkeit ok")
 
-# Direkt beenden: PyQt räumt beim Interpreter-Ende sporadisch in falscher Reihenfolge auf
+# Direkt beenden: die Qt-Bindung räumt beim Interpreter-Ende sporadisch in falscher Reihenfolge auf
 # (Zugriffsfehler unter Windows, auch mit altem Code). Alle Prüfungen sind hier gelaufen.
 sys.stdout.flush()
 os._exit(0)

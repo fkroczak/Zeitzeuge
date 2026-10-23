@@ -15,7 +15,7 @@ import time
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from PyQt5.QtCore import QCoreApplication
+from PySide6.QtCore import QCoreApplication
 
 from pbx_reader import BrowserReader, find_browser, profile_processes
 from request_recorder import redact_url, summarize_body

@@ -21,7 +21,7 @@ import os
 import threading
 from datetime import datetime
 
-from PyQt5.QtCore import QObject, pyqtSignal
+from PySide6.QtCore import QObject, Signal
 
 import net
 import safe_io
@@ -327,8 +327,8 @@ def error_text(exc):
 class AiClassifier(QObject):
     """Startet Aufrufe im Hintergrund und meldet das Ergebnis per Signal."""
 
-    finished = pyqtSignal(str, int, float)  # Tag, Zahl der Vorschläge, Kosten in $
-    failed = pyqtSignal(str, str)           # Tag, Fehlermeldung
+    finished = Signal(str, int, float)  # Tag, Zahl der Vorschläge, Kosten in $
+    failed = Signal(str, str)           # Tag, Fehlermeldung
 
     def __init__(self, store, config, parent=None):
         super().__init__(parent)

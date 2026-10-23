@@ -101,7 +101,7 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
 
 - Windows 10 oder 11
 - Python 3.10 oder neuer, wenn du das Programm aus dem Quellcode startest
-- PyQt5
+- PySide6 (Qt 6)
 
 ## Installation
 
@@ -117,7 +117,7 @@ python main_timeline.py
 GitHub baut die EXE bei jeder Änderung automatisch:
 
 - **Neuester Stand:** Öffne im Repository den Reiter **Actions**, dann den obersten Lauf „EXE bauen“. Unter **Artifacts** liegt die `ZeitZeuge.exe` als ZIP.
-- **Feste Version:** Bei einem Tag wie `v3.3` entsteht ein Eintrag unter **Releases**, mit der EXE als Download.
+- **Feste Version:** Bei einem Tag wie `v4.0.0` entsteht ein Eintrag unter **Releases**, mit der EXE als Download.
 
 ### EXE selbst bauen
 
@@ -128,7 +128,19 @@ pip install -r requirements.txt
 pyinstaller --noconfirm --clean ZeitZeuge.spec
 ```
 
-Die fertige `ZeitZeuge.exe` liegt danach in `dist/`. Die Einstellungsdatei `zeitzeuge_config.json` legt Zeitzeuge beim ersten Start unter `Dokumente\Zeitzeuge` an.
+Die fertige `ZeitZeuge.exe` liegt danach in `dist/`. Die Versionsnummer steht nur in `version.py`; sie erscheint unter **Info** und in den Dateieigenschaften der EXE. Ein Tag `v…` muss dazu passen, sonst bricht der Build ab.
+
+**Signieren:** Unsignierte EXE-Dateien melden Virenscanner und Windows SmartScreen öfter als verdächtig. Hinterlegst du im Repository unter **Settings → Secrets and variables → Actions** ein Code-Signing-Zertifikat als `SIGN_PFX_BASE64` (PFX-Datei Base64-kodiert) und `SIGN_PFX_PASSWORD`, signiert GitHub die EXE automatisch. Ohne Zertifikat bleibt sie unsigniert.
+
+### Tests
+
+```bash
+pip install -r requirements.txt -r requirements-dev.txt
+pytest                     # alles (Qt- und Browser-Tests laufen je in eigenem Prozess)
+pytest -m "not skript"     # nur die schnellen Logik-Tests
+```
+
+Browser-Tests (3CX, ITM, Mitschnitt) brauchen Edge oder Chrome; ohne Browser werden sie lokal übersprungen. Die Einstellungsdatei `zeitzeuge_config.json` legt Zeitzeuge beim ersten Start unter `Dokumente\Zeitzeuge` an.
 
 ## Einrichtung
 
@@ -375,7 +387,15 @@ Läuft RDM auf einem Server, kann Zeitzeuge dessen Log auch über das Netzwerk l
 
 | Datei | Inhalt |
 |---|---|
-| `main_timeline.py` | Hauptfenster, Werkzeugleiste, Einstellungen, Design |
+| `main_timeline.py` | Start, Config laden/speichern, Hauptfenster (setzt sich aus den `app_*.py` zusammen) |
+| `app_menus.py` | Werkzeugleiste, Menü „Einstellungen“, Dialoge dazu |
+| `app_daylist.py` | Tagesliste, Statuszeile, Tageswechsel |
+| `app_docs.py` | Tätigkeiten dokumentieren, Nachfragen, KI-Vorschläge |
+| `app_readers.py` | 3CX- und ITM-Leser im Hauptfenster |
+| `app_tray.py` | Infobereich, Fensteraufzeichnung, Beenden |
+| `theme.py` | Design: Farben (hell/dunkel), Stylesheet, Qt-Stil, deutsche Dialogknöpfe |
+| `config_defaults.py` | Standardwerte der Einstellungen |
+| `version.py` | Versionsnummer |
 | `timeline_only.py` | Zeichnen der Timeline, Tooltips, Zoom, Logs im Hintergrund lesen |
 | `icons.py` | Linien-Icons (Lucide, ISC-Lizenz) und Zustandspunkt der Aufzeichnung |
 | `log_parsers.py` | Einlesen der TeamViewer- und RDM-Logs |
@@ -391,7 +411,7 @@ Läuft RDM auf einem Server, kann Zeitzeuge dessen Log auch über das Netzwerk l
 | `storage.py` | Speicherort der Daten |
 | `safe_io.py` | Dateien sicher lesen und schreiben, kaputte Dateien beiseitelegen, große Logs nur am Ende lesen, `fehler.log` |
 | `net.py` | Prüfen, ob ein Server erreichbar ist, und Wartezeit nach Fehlern |
-| `tests/` | Tests, laufen bei jedem Build: Start, Bedienbarkeit, Infobereich, Log-Parser, VPN-Logs, 3CX und ITM mit nachgebauten Seiten, KI-Vorschläge mit nachgebauter API, Fensterabfrage, Anrufliste. Dazu `start_bench.py` (Startzeit messen) und `screenshots.sh` (Bildschirmfotos mit Demodaten) |
+| `tests/` | Tests (pytest), laufen bei jedem Build: Start, Bedienbarkeit, Infobereich, Log-Parser, VPN-Logs, 3CX und ITM mit nachgebauten Seiten, KI-Vorschläge mit nachgebauter API, Fensterabfrage, Anrufliste. Dazu `start_bench.py` (Startzeit messen) und `screenshots.sh` (Bildschirmfotos mit Demodaten) |
 | `settings_dialogs.py` | Dialoge für Logpfade, Aktivitätstypen, Arbeitszeiten, KI, Fenster-Filter und Regeln |
 | `zeitzeuge_anrufe.user.js` | Liest die Anrufliste aus der 3CX-Webseite (für das Lesen über Edge) |
 | `pbx_direct.py` | 3CX direkt abfragen (Anmeldung, Protobuf) |

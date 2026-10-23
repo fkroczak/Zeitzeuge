@@ -13,7 +13,7 @@ import time
 import traceback
 from datetime import datetime
 
-from PyQt5.QtCore import QTimer
+from PySide6.QtCore import QTimer
 
 LIMIT = 2.0          # Sekunden ohne Rückmeldung, ab denen es als Hänger zählt
 MAX_LOG = 512 * 1024  # haenger.log nicht endlos wachsen lassen

@@ -1,15 +1,15 @@
 import os
 
-from PyQt5.QtCore import QTime
-from PyQt5.QtGui import QColor
-from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import (QAbstractItemView, QButtonGroup, QCheckBox, QColorDialog,
-                             QComboBox, QDialog, QDialogButtonBox,
-                             QFileDialog, QFormLayout, QGridLayout, QGroupBox,
-                             QHBoxLayout, QHeaderView, QInputDialog, QLabel, QLineEdit,
-                             QListWidget, QListWidgetItem, QMessageBox, QPlainTextEdit,
-                             QPushButton, QRadioButton, QSpinBox, QTableWidget,
-                             QTableWidgetItem, QTimeEdit, QVBoxLayout)
+from PySide6.QtCore import QTime
+from PySide6.QtGui import QColor
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import (QAbstractItemView, QButtonGroup, QCheckBox, QColorDialog,
+                               QComboBox, QDialog, QDialogButtonBox,
+                               QFileDialog, QFormLayout, QGridLayout, QGroupBox,
+                               QHBoxLayout, QHeaderView, QInputDialog, QLabel, QLineEdit,
+                               QListWidget, QListWidgetItem, QMessageBox, QPlainTextEdit,
+                               QPushButton, QRadioButton, QSpinBox, QTableWidget,
+                               QTableWidgetItem, QTimeEdit, QVBoxLayout)
 
 class ConnectionSettingsDialog(QDialog):
     def __init__(self, config, config_key, default_paths, title, parent=None,

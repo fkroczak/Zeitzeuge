@@ -20,7 +20,7 @@ import urllib.error
 import urllib.request
 from urllib.parse import unquote, urlsplit
 
-from PyQt5.QtCore import pyqtSignal
+from PySide6.QtCore import Signal
 
 import safe_io
 from pbx_reader import BrowserReader
@@ -130,7 +130,7 @@ def load_days(path):
 
 
 class ItmReader(BrowserReader):
-    day_read = pyqtSignal(str)  # Datum (YYYY-MM-DD), dessen Personalzeiten neu sind
+    day_read = Signal(str)  # Datum (YYYY-MM-DD), dessen Personalzeiten neu sind
 
     NAME = "ITM"
     READ_INTERVAL = 5 * 60  # heute alle 5 Minuten neu lesen

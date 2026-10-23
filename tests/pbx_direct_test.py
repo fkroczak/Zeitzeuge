@@ -8,17 +8,17 @@ import http.server
 import json
 import os
 import sys
-import tempfile
 import threading
 import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from PyQt5.QtCore import QCoreApplication
+import pytest  # noqa: E402
+from PySide6.QtCore import QCoreApplication  # noqa: E402
 
-from pbx_direct import LoginRequired, PbxClient, pb_decode, pb_field
-from pbx_reader import PbxReader
+from pbx_direct import LoginRequired, PbxClient, pb_decode, pb_field  # noqa: E402
+from pbx_reader import PbxReader  # noqa: E402
 
 COOKIE = "refresh-4711"
 SESSION = "sitzung-0815"
@@ -77,57 +77,64 @@ class Handler(http.server.BaseHTTPRequestHandler):
         pass
 
 
-def fail(problem):
-    print(f"::error title=3CX-Direkt-Test::{problem}")
-    sys.exit(1)
+@pytest.fixture(scope="module")
+def base():
+    """Nachgebauter 3CX-Server auf einem freien Port."""
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    yield f"http://127.0.0.1:{server.server_port}"
+    server.shutdown()
+    server.server_close()
 
 
-server = http.server.ThreadingHTTPServer(("127.0.0.1", 8816), Handler)
-threading.Thread(target=server.serve_forever, daemon=True).start()
-base = "http://127.0.0.1:8816"
+def test_falsches_cookie(base):
+    """1. Falsches Cookie: Anmeldung nötig."""
+    with pytest.raises(LoginRequired):
+        PbxClient(base, "falsch").login()
 
-# 1. Falsches Cookie: Anmeldung nötig
-try:
-    PbxClient(base, "falsch").login()
-    fail("falsches Cookie wurde angenommen")
-except LoginRequired:
-    print("ok: falsches Cookie erkannt")
 
-# 2. Anmelden und blättern
-client = PbxClient(base, COOKIE)
-first, second = client.call_history(0), client.call_history(80)
-if client.extension != "769" or len(first) != 80 or len(second) != 40:
-    fail(f"Blättern: Nebenstelle {client.extension}, {len(first)} + {len(second)} Anrufe")
-c = first[0]
-if c["name"] != "Müller 0" or c["number"] != "02510000" or c["end"] is None or c["start"] >= c["end"]:
-    fail(f"Anruf falsch zerlegt: {c}")
-print("ok: 120 Anrufe auf zwei Seiten, Felder zerlegt")
+def test_anmelden_und_blaettern(base):
+    """2. Anmelden und blättern."""
+    client = PbxClient(base, COOKIE)
+    first, second = client.call_history(0), client.call_history(80)
+    assert client.extension == "769" and len(first) == 80 and len(second) == 40, \
+        f"Blättern: Nebenstelle {client.extension}, {len(first)} + {len(second)} Anrufe"
+    c = first[0]
+    assert c["name"] == "Müller 0" and c["number"] == "02510000" and c["end"] is not None \
+        and c["start"] < c["end"], f"Anruf falsch zerlegt: {c}"
 
-# 3. Prüfbericht über den 3CX-Leser (Cookie kommt sonst aus dem Edge-Profil)
-app = QCoreApplication(sys.argv)
-tmp = tempfile.mkdtemp()
-calls_file = os.path.join(tmp, "anrufe.json")
-start = first[0]["start"].strftime("%Y-%m-%d %H:%M:%S")
-json.dump([{"start": start, "duration_s": 100, "name": "Müller 0", "number": "02510000",
-            "direction": "Anruf", "via": ""}], open(calls_file, "w", encoding="utf-8"))
-script = open(os.path.join(ROOT, "zeitzeuge_anrufe.user.js"), encoding="utf-8").read()
-reader = PbxReader(base, calls_file, os.path.join(tmp, "profil"), script)
-reader.browser_cookies = lambda: [{"name": "RefreshTokenCookie", "value": COOKIE}]
-results = []
-reader.check_done.connect(lambda path, text: results.append((path, text)))
-out = os.path.join(tmp, "pruefung.json")
-reader.check_direct(out)
-deadline = time.time() + 20
-while time.time() < deadline and not results:
-    app.processEvents()
-    time.sleep(0.1)
-if not results or not results[0][0]:
-    fail(f"kein Prüfbericht: {results} | {reader.status}")
-text = open(out, encoding="utf-8").read()
-report = json.loads(text)
-if "Müller" in text or "0251" in text:
-    fail("Prüfbericht enthält Namen oder Nummern im Klartext")
-if report["anrufe"] != 120 or not report["vergleich"][0]["in_anrufe_json"]:
-    fail(f"Prüfbericht unvollständig: {report['anrufe']} Anrufe, {report['vergleich'][0]}")
-print("ok: Prüfbericht |", results[0][1])
-print("3CX-Direkt-Test ok")
+
+def test_pruefbericht(base, tmp_path):
+    """3. Prüfbericht über den 3CX-Leser (Cookie kommt sonst aus dem Edge-Profil)."""
+    first = PbxClient(base, COOKIE).call_history(0)
+    app = QCoreApplication.instance() or QCoreApplication(sys.argv)
+    tmp = str(tmp_path)
+    calls_file = os.path.join(tmp, "anrufe.json")
+    start = first[0]["start"].strftime("%Y-%m-%d %H:%M:%S")
+    with open(calls_file, "w", encoding="utf-8") as f:
+        json.dump([{"start": start, "duration_s": 100, "name": "Müller 0", "number": "02510000",
+                    "direction": "Anruf", "via": ""}], f)
+    with open(os.path.join(ROOT, "zeitzeuge_anrufe.user.js"), encoding="utf-8") as f:
+        script = f.read()
+    reader = PbxReader(base, calls_file, os.path.join(tmp, "profil"), script)
+    reader.browser_cookies = lambda: [{"name": "RefreshTokenCookie", "value": COOKIE}]
+    results = []
+    reader.check_done.connect(lambda path, text: results.append((path, text)))
+    out = os.path.join(tmp, "pruefung.json")
+    reader.check_direct(out)
+    deadline = time.time() + 20
+    while time.time() < deadline and not results:
+        app.processEvents()
+        time.sleep(0.1)
+    assert results and results[0][0], f"kein Prüfbericht: {results} | {reader.status}"
+    with open(out, encoding="utf-8") as f:
+        text = f.read()
+    report = json.loads(text)
+    assert "Müller" not in text and "0251" not in text, "Prüfbericht enthält Namen oder Nummern im Klartext"
+    assert report["anrufe"] == 120 and report["vergleich"][0]["in_anrufe_json"], \
+        f"Prüfbericht unvollständig: {report['anrufe']} Anrufe, {report['vergleich'][0]}"
+    print("ok: Prüfbericht |", results[0][1])
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main([__file__, "-q"]))

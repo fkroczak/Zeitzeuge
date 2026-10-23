@@ -28,7 +28,7 @@ with open(os.path.join(data, "zeitzeuge_config.json"), "w", encoding="utf-8") as
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import main_timeline  # noqa: E402  (erst nach ZEITZEUGE_DATA laden)
-from PyQt5.QtWidgets import QApplication  # noqa: E402
+from PySide6.QtWidgets import QApplication  # noqa: E402
 
 app = QApplication(sys.argv)
 window = main_timeline.TimelineApp()

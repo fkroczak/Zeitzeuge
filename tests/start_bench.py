@@ -17,7 +17,7 @@ import os, sys, time, json
 t0 = time.perf_counter()
 sys.path.insert(0, ROOT)
 import main_timeline
-from PyQt5.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication
 import timeline_only
 draws = [0]
 _orig = timeline_only.TimelineView.draw_timeline

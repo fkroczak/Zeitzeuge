@@ -5,9 +5,9 @@ Textfarbe des aktuellen Designs gezeichnet, deshalb passen sie zu Hell und Dunke
 """
 import re
 
-from PyQt5.QtCore import QByteArray, QRectF, Qt
-from PyQt5.QtGui import QColor, QIcon, QPainter, QPixmap
-from PyQt5.QtSvg import QSvgRenderer  # explizit importiert, damit PyInstaller QtSvg einpackt
+from PySide6.QtCore import QByteArray, QRectF, Qt
+from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
+from PySide6.QtSvg import QSvgRenderer  # explizit importiert, damit PyInstaller QtSvg einpackt
 
 PATHS = {
     "prev": '<path d="m15 18-6-6 6-6"/>',

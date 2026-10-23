@@ -19,7 +19,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # Untergrenzen (Ratchet): nur anheben, nie senken. Stand der Baseline 21.10.2026:
 # README Flesch-Amstad 61, UI-Texte 55.
 MIN_FLESCH = {"README.md": 55, "UI-Texte": 50}
-UI_FILES = ["main_timeline.py", "settings_dialogs.py",
+UI_FILES = ["main_timeline.py", "app_menus.py", "app_daylist.py", "app_docs.py",
+            "app_readers.py", "app_tray.py", "settings_dialogs.py",
             "timeline_only.py", "pbx_reader.py"]
 
 

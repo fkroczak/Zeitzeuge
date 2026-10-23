@@ -29,7 +29,7 @@ from datetime import date, datetime, timedelta
 
 import psutil
 import websocket  # Paket websocket-client
-from PyQt5.QtCore import QObject, pyqtSignal
+from PySide6.QtCore import QObject, Signal
 
 import net
 import safe_io
@@ -269,10 +269,10 @@ class BrowserReader(QObject):
     Unterklassen setzen start_url() und _tick() (einmal lesen).
     """
     # Signale werden aus dem Hintergrund-Thread gesendet (Qt stellt sie zu)
-    status_changed = pyqtSignal(str)
-    login_required = pyqtSignal()
-    recording_done = pyqtSignal(str)  # Pfad der Mitschnitt-Datei, leer bei Fehler
-    trouble = pyqtSignal(str)  # einmal nach TROUBLE_AFTER Fehlschlägen in Folge (Infobereich)
+    status_changed = Signal(str)
+    login_required = Signal()
+    recording_done = Signal(str)  # Pfad der Mitschnitt-Datei, leer bei Fehler
+    trouble = Signal(str)  # einmal nach TROUBLE_AFTER Fehlschlägen in Folge (Infobereich)
 
     READ_INTERVAL = 60  # Sekunden zwischen zwei Durchläufen
     START_BROWSER = True  # False: der Leser startet Edge selbst nur bei Bedarf
@@ -767,8 +767,8 @@ class BrowserReader(QObject):
 
 
 class PbxReader(BrowserReader):
-    calls_added = pyqtSignal(int)
-    check_done = pyqtSignal(str, str)  # Pfad des Prüfberichts (leer bei Fehler), Ergebnis
+    calls_added = Signal(int)
+    check_done = Signal(str, str)  # Pfad des Prüfberichts (leer bei Fehler), Ergebnis
 
     # 3CX aktualisiert die Anrufliste im unsichtbaren Edge nicht zuverlässig von selbst,
     # darum die Seite regelmäßig neu laden
