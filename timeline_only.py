@@ -68,6 +68,11 @@ def entry_color(activity, config):
 
 # Eigene Zeile je Quelle (Kennung, Beschriftung links); nur RDM und der Rest teilen sich mehrere Spuren
 FIXED_ROWS = [("call", "Tel"), ("vpn", "VPN"), ("tv", "TV")]
+# Legende links: Name der Zeile und Schlüssel in config["type_colors"] für das Farbfeld
+LEGEND_FIXED = {"call": ("Telefon", "Telefonat"), "vpn": ("VPN", "VPN-Verbindung"),
+                "tv": ("TeamViewer", "TeamViewer")}
+LEGEND_BANDS = {"doc": ("Dokumentation", "Dokumentiert"), "rule": ("Regeln", "Klassifizierung"),
+                "ai": ("KI-Vorschläge", "KI-Vorschlag")}
 
 
 def row_kind(activity):
@@ -228,11 +233,13 @@ class TimelineView(QGraphicsView):
     APP_COLORS = ["#5B8DEF", "#E67E22", "#27AE60", "#9B59B6", "#E84393",
                   "#16A085", "#C0392B", "#F1C40F", "#2C3E50", "#7F8C8D"]
 
-    LEFT = 30          # Rand links in Pixeln (Platz für die Zeilenbeschriftung)
+    LEFT = 136         # Rand links in Pixeln: Platz für die schwebende Beschriftung (Legende)
+    RIGHT = 34         # Rand rechts
     AXIS_H = 26        # Höhe der Stundenleiste oben
     PC_BAND_H = 14     # Band für die PC-Aktivität
-    LANE_H = 26        # Höhe eines Eintrags
+    LANE_H = 26        # Höhe eines Eintrags (wird kleiner, wenn sonst nicht alles ins Fenster passt)
     LANE_GAP = 6
+    MIN_LANE_H = 16
     MIN_LANES = 2      # freie Spuren unter den festen Zeilen (RDM, eigene Einträge)
     MAX_LANES = 10
     BASE_PX_PER_MIN = 1.2
@@ -287,6 +294,10 @@ class TimelineView(QGraphicsView):
 
         self.setRenderHint(QPainter.Antialiasing)
         self.setMinimumHeight(200)
+        # Keine senkrechte Scrollleiste: die Zeilen werden niedriger, bis alles passt
+        # (reicht das nicht, blättert UMSCHALT + Mausrad nach oben und unten)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._legend = []          # [(y, Höhe, Name, Farbe oder None)] für die Legende links
         self.setAlignment(Qt.AlignLeft | Qt.AlignTop)
         self.setMouseTracking(True)
 
@@ -589,6 +600,16 @@ class TimelineView(QGraphicsView):
         band_y = self.AXIS_H + 6
         show_band = bool(self.tracker or pc_band)
         top = band_y + (self.PC_BAND_H + 10 if show_band else 2)
+        # Zeilenhöhe so wählen, dass alle Zeilen ohne senkrechte Scrollleiste ins Fenster passen;
+        # Platz für die horizontale Scrollleiste lassen
+        free_h = self.maximumViewportSize().height() - self.horizontalScrollBar().sizeHint().height()
+        n_rows = len(bands) + n_fixed + n_lanes
+        fit = (free_h - top - (4 if bands else 0) - 6 - 8) / max(1, n_rows)
+        lane_h, gap = type(self).LANE_H, type(self).LANE_GAP
+        if fit < lane_h + gap:
+            gap = 4
+            lane_h = max(self.MIN_LANE_H, int(fit - gap))
+        self.LANE_H, self.LANE_GAP = lane_h, gap
         band_tops = []
         for _band in bands:  # eigene Zeilen für Doku, Regeln und KI über den Einträgen
             band_tops.append(top)
@@ -598,13 +619,8 @@ class TimelineView(QGraphicsView):
         row_h = self.LANE_H + self.LANE_GAP
         free_top = top + n_fixed * row_h + 6  # kleiner Abstand vor den freien Spuren
         content_h = free_top + n_lanes * row_h + 8
-        # Platz für die horizontale Scrollleiste lassen, sonst erscheint eine senkrechte
-        free_h = self.maximumViewportSize().height() - self.horizontalScrollBar().sizeHint().height()
         height = max(content_h, free_h)
-        self.setVerticalScrollBarPolicy(
-            Qt.ScrollBarAsNeeded if content_h > free_h else Qt.ScrollBarAlwaysOff
-        )
-        width = self._x(24 * 60) + self.LEFT
+        width = self._x(24 * 60) + self.RIGHT
 
         # Außerhalb der Arbeitszeit abdunkeln (mit ITM-Personalzeiten auch die Pausen)
         spans = self._work_spans(date)
@@ -650,13 +666,19 @@ class TimelineView(QGraphicsView):
             if i % 2 == 0:
                 self.scene.addRect(0, y - self.LANE_GAP / 2, width, row_h, no_pen, QBrush(stripe))
 
-        # Beschriftung der festen Zeilen und Trennlinie zu den freien Spuren
-        row_font = QFont("Segoe UI", 7, QFont.Weight.DemiBold)  # Metro: Zeilennamen in Großbuchstaben
-        row_font.setLetterSpacing(QFont.PercentageSpacing, 108)
-        for i, (_kind, text) in enumerate(FIXED_ROWS):
-            label = self.scene.addText(text.upper(), row_font)
-            label.setDefaultTextColor(self.muted_text)
-            label.setPos(0, top + i * row_h + (self.LANE_H - label.boundingRect().height()) / 2)
+        # Legende links (schwebt über den Zeilen, siehe drawForeground) und Trennlinie
+        colors = self.config.get("type_colors", {})
+        legend = []
+        if show_band:
+            legend.append((band_y, self.PC_BAND_H, "PC-Aktivität", None))
+        for (kind, _text, _band), y in zip(bands, band_tops):
+            name, key = LEGEND_BANDS[kind]
+            legend.append((y, self.LANE_H, name, colors.get(key)))
+        for i, (kind, _text) in enumerate(FIXED_ROWS):
+            name, key = LEGEND_FIXED[kind]
+            legend.append((top + i * row_h, self.LANE_H, name, colors.get(key)))
+        legend.append((free_top, self.LANE_H, "Remote / Weitere", colors.get("RDP-Verbindung")))
+        self._legend = legend
         sep_y = free_top - (6 + self.LANE_GAP) / 2
         self.scene.addLine(0, sep_y, width, sep_y, QPen(self.hour_line, 1))
 
@@ -694,9 +716,6 @@ class TimelineView(QGraphicsView):
         for (kind, text, band), y in zip(bands, band_tops):
             for a in band:
                 self._draw_band_entry(a, y, label_font, metrics)
-            label = self.scene.addText(text.upper(), row_font)
-            label.setDefaultTextColor(self.muted_text)
-            label.setPos(0, y + (self.LANE_H - label.boundingRect().height()) / 2)
 
         # PC-Aktivität als schmales Band
         if show_band:
@@ -710,9 +729,6 @@ class TimelineView(QGraphicsView):
                 rect = self.scene.addRect(x1, band_y, max(1.5, x2 - x1), self.PC_BAND_H,
                                           QPen(Qt.NoPen), QBrush(fill))
                 self.activity_rects[rect] = p
-            label = self.scene.addText("PC", row_font)
-            label.setDefaultTextColor(self.muted_text)
-            label.setPos(0, band_y - 3)
 
         # Jetzt-Linie
         if date == QDate.currentDate():
@@ -825,7 +841,7 @@ class TimelineView(QGraphicsView):
 
     def _fit_ppm(self):
         """Pixel pro Minute, damit 0–24 Uhr genau ins Fenster passt."""
-        width = self.maximumViewportSize().width() - 2 * self.LEFT - 4
+        width = self.maximumViewportSize().width() - self.LEFT - self.RIGHT - 4
         return max(0.2, width / (24 * 60))
 
     def show_whole_day(self):
@@ -837,7 +853,7 @@ class TimelineView(QGraphicsView):
         start_min, end_min = max(0, min(start_min, end_min)), min(24 * 60, max(start_min, end_min))
         if end_min - start_min < 5:
             return
-        width = self.maximumViewportSize().width() - 2 * self.LEFT - 4
+        width = self.maximumViewportSize().width() - self.LEFT - self.RIGHT - 4
         self.fit_day = False
         self.zoom_level = max(1.0, width / (end_min - start_min)) / self.BASE_PX_PER_MIN
         self.zoom_level = min(self.zoom_level, 30.0)
@@ -872,12 +888,52 @@ class TimelineView(QGraphicsView):
         target = self._x(minute) - anchor_viewport_x
         self.horizontalScrollBar().setValue(int(target))
 
+    def drawForeground(self, painter, rect):
+        """Legende links: Name und Farbe jeder Zeile, bleibt beim Blättern stehen."""
+        super().drawForeground(painter, rect)
+        if not self._legend:
+            return
+        painter.save()
+        painter.resetTransform()  # ab hier Koordinaten des Fensters, nicht der Szene
+        font = QFont("Segoe UI", 8, QFont.Weight.DemiBold)
+        painter.setFont(font)
+        fm = QFontMetrics(font)
+        width = self.LEFT - 6
+        top = self.mapFromScene(0, self.AXIS_H).y()
+        last_y, last_h = self._legend[-1][0], self._legend[-1][1]
+        bottom = min(self.viewport().height(), self.mapFromScene(0, last_y + last_h).y() + 6)
+        panel = QColor(self.background_color)
+        panel.setAlpha(232)
+        painter.fillRect(0, top, width, max(0, bottom - top), panel)
+        painter.setPen(QPen(self.hour_line, 1))
+        painter.drawLine(width, top, width, bottom)
+        for y, h, name, color in self._legend:
+            center = self.mapFromScene(0, y + h / 2).y()
+            if center < top or center > bottom:
+                continue
+            if color:
+                painter.fillRect(8, center - 4, 8, 8, QColor(color))
+            else:  # PC: mehrere Programme, kleine Streifen
+                for i, c in enumerate(self.APP_COLORS[:3]):
+                    painter.fillRect(8 + i * 3, center - 4, 2, 8, QColor(c))
+            painter.setPen(self.text_color)
+            painter.drawText(22, center + (fm.ascent() - fm.descent()) // 2,
+                             fm.elidedText(name, Qt.ElideRight, width - 26))
+        painter.restore()
+
+    def scrollContentsBy(self, dx, dy):
+        super().scrollContentsBy(dx, dy)
+        self.viewport().update()  # Legende neu zeichnen, sonst wandert sie beim Blättern mit
+
     def wheelEvent(self, event):
-        """STRG + Mausrad: Zoom, Mausrad: horizontal blättern."""
+        """STRG + Mausrad: Zoom, UMSCHALT + Mausrad: Zeilen, Mausrad: horizontal blättern."""
         delta = event.angleDelta().y()
         if event.modifiers() & Qt.ControlModifier:
             factor = 1.15 if delta > 0 else 1 / 1.15
             self.set_zoom(self.zoom_level * factor, event.position().x())
+        elif delta and event.modifiers() & Qt.ShiftModifier:  # ohne Scrollleiste: Zeilen blättern
+            bar = self.verticalScrollBar()
+            bar.setValue(bar.value() - delta)
         elif delta:
             bar = self.horizontalScrollBar()
             bar.setValue(bar.value() - delta)
