@@ -172,6 +172,7 @@ class Journal:
         """Erkannte Tätigkeiten des Tages, die noch nicht (zur Hälfte) dokumentiert sind.
 
         entries: zusammengefasste Einträge des Tages (Verbindungen, Telefonate, Regel-Blöcke).
+        min_minutes: Mindestdauer, als Zahl oder Funktion (Eintrag -> Minuten).
         Laufende (Ende nahe jetzt) zählen noch nicht, ignorierte nie.
         """
         now = now or datetime.now()
@@ -186,9 +187,12 @@ class Journal:
             if start.strftime("%Y-%m-%d") != date_str:
                 continue
             seconds = (end - start).total_seconds()
+            # Telefonate werden mindestens 1 min breit gezeichnet: echte Dauer nehmen
+            length = e.get("duration_s", seconds)
+            limit = min_minutes(e) if callable(min_minutes) else min_minutes
             # Läuft noch (VPN offen, Ende = letzter Blick): erst nach dem Ende fragen
             running = e.get("running") or any(p.get("running") for p in e.get("parts", []))
-            if seconds < min_minutes * 60 or running or end > now - timedelta(minutes=3):
+            if length < limit * 60 or running or end > now - timedelta(minutes=3):
                 continue
             if self.is_ignored(e):
                 continue

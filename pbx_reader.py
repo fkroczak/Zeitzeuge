@@ -774,6 +774,7 @@ class PbxReader(BrowserReader):
     # darum die Seite regelmäßig neu laden
     RELOAD_INTERVAL = 5 * 60
     NAME = "3CX"
+    STATE_VERSION = 2
     def __init__(self, base_url, calls_file, profile_dir, userscript_text, parent=None,
                  days_back=14):
         super().__init__(base_url, profile_dir, parent)
@@ -786,7 +787,12 @@ class PbxReader(BrowserReader):
         self._last_load = 0
         # Ab diesem Tag (YYYY-MM-DD) sind alle Anrufe in anrufe.json
         self.state_file = os.path.join(os.path.dirname(calls_file), "anrufe_stand.json")
-        done = safe_io.read_json(self.state_file, {}, expect=dict).get("vollstaendig_ab")
+        state = safe_io.read_json(self.state_file, {}, expect=dict)
+        done = state.get("vollstaendig_ab")
+        # Ältere Stände einmal neu lesen: bis Version 2 gingen Gespräche verloren, wenn
+        # in derselben Minute ein nicht angenommener Versuch derselben Nummer stand
+        if state.get("version", 1) < self.STATE_VERSION:
+            done = None
         self.complete_from = done if isinstance(done, str) else None
         self._back_to = None   # angezeigter Tag, für den nachgelesen werden soll
         self._list_end = None  # ältester Tag, den 3CX noch zeigt (nur diese Sitzung)
@@ -852,7 +858,8 @@ class PbxReader(BrowserReader):
         done = target if data.get("erreicht") else self._list_end
         if not self.complete_from or done < self.complete_from:
             self.complete_from = done
-            safe_io.write_json(self.state_file, {"vollstaendig_ab": done}, indent=None)
+            safe_io.write_json(self.state_file, {"vollstaendig_ab": done, "version": self.STATE_VERSION},
+                               indent=None)
         self._set_status(f"3CX gelesen {datetime.now():%H:%M} (vollständig ab {done})")
         if added:
             self.calls_added.emit(added)

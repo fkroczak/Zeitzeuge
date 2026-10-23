@@ -34,5 +34,16 @@ def test_anrufe_zusammenfuehren(tmp_path):
     assert load_call_suggestions(calls_file, "2026-10-21") == []
 
 
+def test_versuch_und_gespraech_in_derselben_minute(tmp_path):
+    """Nicht angenommener Versuch darf das Gespräch derselben Minute nicht überschreiben."""
+    calls_file = os.path.join(str(tmp_path), "anrufe.json")
+    talk = {"start": "2026-10-23 10:58:00", "duration_s": 360, "name": "M B", "number": "0492"}
+    attempt = dict(talk, duration_s=0, direction="Verpasst")
+    assert merge_calls(calls_file, [talk, attempt]) == 2  # 3CX: neuester zuerst
+    assert merge_calls(calls_file, [talk, attempt]) == 0
+    suggestions = load_call_suggestions(calls_file, "2026-10-23")
+    assert len(suggestions) == 1 and "Dauer 6:00" in suggestions[0]["details"], suggestions
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-q"]))

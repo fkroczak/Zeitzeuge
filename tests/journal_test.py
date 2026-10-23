@@ -32,6 +32,15 @@ def test_ablage(tmp_path):
     open_ = j.open_items([tv, call, vpn], day, min_minutes=5, now=now)
     assert open_ == [tv], open_  # Anruf zu kurz, VPN läuft noch
 
+    # Schwelle je Art: Telefonate ab 1 min, Verbindungen ab 60 min
+    def limit(e):
+        return 1 if e["type"] == "Telefonat" else 60
+    assert j.open_items([tv, call], day, min_minutes=limit, now=now) == [call]
+    # Telefonat mit 40 s (Balken 1 min breit) zählt nach echter Dauer
+    short = dict(call, end=f"{day} 11:01:00", duration_s=40)
+    assert j.open_items([short], day, min_minutes=1, now=now) == []
+    assert j.open_items([short], day, min_minutes=0, now=now) == [short]
+
     item = j.add({"start": f"{day} 10:00:00", "end": f"{day} 10:30:00", "customer": "Müller GmbH",
                   "category": "Fernwartung", "text": "Drucker eingerichtet"})
     assert j.open_items([tv], day, now=now) == [], "zu 3/4 dokumentiert gilt als erledigt"

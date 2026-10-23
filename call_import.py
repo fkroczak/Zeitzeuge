@@ -15,8 +15,14 @@ TIME_FMT = "%Y-%m-%d %H:%M:%S"
 _lock = threading.Lock()
 
 def _key(call):
-    # Gleicher Anruf = gleiche Startminute + gleiche Nummer/Name
-    return f"{call['start'][:16]}|{call.get('number') or call.get('name')}"
+    # Gleicher Anruf = gleiche Startminute + gleiche Nummer/Name + angenommen ja/nein.
+    # 3CX listet oft einen nicht angenommenen Versuch und das eigentliche Gespräch in
+    # derselben Minute; ohne "angenommen" überschrieb der Versuch das Gespräch.
+    try:
+        talked = int(call.get("duration_s") or 0) > 0
+    except (TypeError, ValueError):
+        talked = False
+    return f"{call['start'][:16]}|{call.get('number') or call.get('name')}|{int(talked)}"
 
 
 def _valid(call):
@@ -105,6 +111,7 @@ def load_call_suggestions(path, date_str, ignore_missed=True, min_seconds=0):
             "start": start.strftime(TIME_FMT),
             "end": end.strftime(TIME_FMT),
             "type": "Telefonat",
+            "duration_s": seconds,  # echte Dauer (der Balken ist min. 1 min breit)
             "direction": c.get("direction", "Anruf"),  # für die Farbe (ein/aus/verpasst)
             "customer_name": customer,
             "details": ", ".join(details),
