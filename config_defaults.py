@@ -154,7 +154,8 @@ def default_config():
         "timeline_rows": {"doc": True, "rule": True, "ai": True},
         # Nachfragen nach erkannten Tätigkeiten ("Was hast du gemacht?")
         "prompt_mode": "window",       # "window" (kleines Fenster), "tray" (nur Meldung), "off"
-        "prompt_min_minutes": 5,       # kürzere Tätigkeiten nicht nachfragen
+        # Erst ab dieser Dauer (Minuten) nachfragen, je Art der Tätigkeit
+        "prompt_thresholds": {"connections": 1, "calls": 1, "rules": 1},
         "prompt_sources": ["connections", "calls"],  # auch "rules" (Blöcke aus den Regeln)
         "prompt_snooze_minutes": 15,   # "Später fragen"
         "prompt_on_quit": True,        # beim Beenden an offene Tätigkeiten erinnern

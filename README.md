@@ -56,7 +56,7 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
   - Rechtsklick auf einen Eintrag: **Tätigkeit dazu eintragen …**. Rechtsklick auf eine freie Stelle der Timeline: **Tätigkeit ab hh:mm eintragen …**.
   - Timeline und Tagesliste haben dasselbe Rechtsklick-Menü. Es zeigt nur Befehle, die zum Eintrag passen.
   - **Offenes fällt auf:** Verbindungen und Telefonate ohne Dokumentation stehen gestrichelt mit „?“ in der Zeile „Doku“. Ein Klick darauf öffnet das Eintragen.
-  - **Zeitzeuge fragt nach:** Endet eine TeamViewer-Sitzung, eine RDP-/SSH-/VPN-Verbindung oder ein Telefonat, erscheint unten rechts ein kleines Fenster: „Was hast du gemacht?“. Zeit, Kunde und Kategorie sind schon ausgefüllt, du schreibst nur noch einen Satz. **Später fragen** fragt in 15 Minuten wieder, **Nicht dokumentieren** fragt für diesen Eintrag nie mehr.
+  - **Zeitzeuge fragt nach:** Endet eine TeamViewer-Sitzung, eine RDP-/SSH-/VPN-Verbindung oder ein Telefonat, erscheint unten rechts ein kleines Fenster: „Was hast du gemacht?“. Zeit, Kunde und Kategorie sind schon ausgefüllt, du schreibst nur noch einen Satz. **Später fragen** fragt in 15 Minuten wieder, **Nicht dokumentieren** fragt für diesen Eintrag nie mehr. Ab welcher Dauer gefragt wird (Standard: 1 Minute), stellst du unter **Nachfragen und Erinnerungen …** getrennt für Verbindungen, Telefonate und Regel-Blöcke ein.
   - **TeamViewer-ID zum Kunden:** Bei TeamViewer kennt Zeitzeuge oft nur die ID. Trägst du beim Dokumentieren den Kunden ein, merkt es sich den Namen für diese ID. Ab dann steht überall der Name.
   - **Erinnerung:** Nach Feierabend und beim Beenden sagt Zeitzeuge, wie viele Tätigkeiten heute noch offen sind.
   - Sind Tätigkeiten offen, steht rechts unten der blaue Knopf **2 offen – jetzt eintragen**. Ein Klick öffnet die erste offene Tätigkeit zum Eintragen. Die Statuszeile zeigt daneben „dokumentiert 3:10 h“.
@@ -277,7 +277,7 @@ Unter **Einstellungen → Nachfragen und Erinnerungen …** legst du fest, wann 
 |---|---|---|
 | `prompt_mode` | `window` | `window`: kleines Fenster unten rechts, `tray`: nur Meldung im Infobereich, `off`: nicht fragen |
 | `prompt_sources` | `["connections", "calls"]` | Wonach gefragt wird: Verbindungen, Telefonate, `rules` (Blöcke aus den Regeln) |
-| `prompt_min_minutes` | `5` | Kürzere Tätigkeiten nicht nachfragen |
+| `prompt_thresholds` | `{"connections": 1, "calls": 1, "rules": 1}` | Erst ab dieser Dauer (Minuten) nachfragen, je Art: Verbindungen, Telefonate, Regel-Blöcke. 0 = immer. Einstellbar unter *Nachfragen und Erinnerungen …* |
 | `prompt_snooze_minutes` | `15` | „Später fragen“ fragt nach so vielen Minuten wieder |
 | `prompt_end_of_day` | `true` | Nach Feierabend einmal an Offenes erinnern |
 | `prompt_on_quit` | `true` | Beim Beenden an Offenes erinnern |

@@ -256,6 +256,20 @@ def default_span(date, minute=None):
     return start, start + timedelta(minutes=30)
 
 
+PROMPT_THRESHOLDS = {"connections": 1, "calls": 1, "rules": 1}
+
+
+def prompt_thresholds(config):
+    """Mindestdauer (Minuten) fürs Nachfragen je Art: Verbindungen, Telefonate, Regel-Blöcke."""
+    saved = config.get("prompt_thresholds")
+    result = dict(PROMPT_THRESHOLDS)
+    if isinstance(saved, dict):
+        for key, value in saved.items():
+            if key in result and isinstance(value, (int, float)) and value >= 0:
+                result[key] = value
+    return result
+
+
 class DocPromptDialog(QDialog):
     """Einstellungen: Nachfragen nach erkannten Tätigkeiten und Erinnerungen."""
 
@@ -284,19 +298,28 @@ class DocPromptDialog(QDialog):
         self.mode.setCurrentIndex(max(0, self.mode.findData(config.get("prompt_mode", "window"))))
         form.addRow("&Nachfragen als:", self.mode)
 
-        self.sources = {}
+        # Je Art: an/aus und ab welcher Dauer gefragt wird
+        self.sources, self.thresholds = {}, {}
         sources = config.get("prompt_sources", ["connections", "calls"])
+        limits = prompt_thresholds(config)
         for i, (key, text) in enumerate(self.SOURCES):
             box = QCheckBox(text)
             box.setChecked(key in sources)
-            self.sources[key] = box
-            form.addRow("Fragen bei:" if i == 0 else "", box)
-
-        self.min_minutes = QSpinBox()
-        self.min_minutes.setRange(1, 240)
-        self.min_minutes.setSuffix(" min")
-        self.min_minutes.setValue(config.get("prompt_min_minutes", 5))
-        form.addRow("&Erst ab Dauer:", self.min_minutes)
+            spin = QSpinBox()
+            spin.setRange(0, 240)
+            spin.setPrefix("ab ")
+            spin.setSuffix(" min")
+            spin.setSpecialValueText("immer")
+            spin.setValue(int(limits[key]))
+            spin.setToolTip("Kürzere Tätigkeiten dieser Art nicht nachfragen")
+            spin.setAccessibleName(f"Mindestdauer für {text.replace('&', '').split(' (')[0]}")
+            spin.setEnabled(box.isChecked())
+            box.toggled.connect(spin.setEnabled)
+            row = QHBoxLayout()
+            row.addWidget(box, 1)
+            row.addWidget(spin)
+            self.sources[key], self.thresholds[key] = box, spin
+            form.addRow("Fragen bei:" if i == 0 else "", row)
 
         self.snooze = QSpinBox()
         self.snooze.setRange(1, 480)
@@ -320,7 +343,7 @@ class DocPromptDialog(QDialog):
     def apply(self):
         self.config["prompt_mode"] = self.mode.currentData()
         self.config["prompt_sources"] = [k for k, box in self.sources.items() if box.isChecked()]
-        self.config["prompt_min_minutes"] = self.min_minutes.value()
+        self.config["prompt_thresholds"] = {k: spin.value() for k, spin in self.thresholds.items()}
         self.config["prompt_snooze_minutes"] = self.snooze.value()
         self.config["prompt_end_of_day"] = self.end_of_day.isChecked()
         self.config["prompt_on_quit"] = self.on_quit.isChecked()

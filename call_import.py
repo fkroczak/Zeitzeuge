@@ -111,6 +111,7 @@ def load_call_suggestions(path, date_str, ignore_missed=True, min_seconds=0):
             "start": start.strftime(TIME_FMT),
             "end": end.strftime(TIME_FMT),
             "type": "Telefonat",
+            "duration_s": seconds,  # echte Dauer (der Balken ist min. 1 min breit)
             "direction": c.get("direction", "Anruf"),  # für die Farbe (ein/aus/verpasst)
             "customer_name": customer,
             "details": ", ".join(details),

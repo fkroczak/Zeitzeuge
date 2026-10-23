@@ -12,7 +12,7 @@ from PySide6.QtWidgets import QApplication, QDialog, QMessageBox, QSystemTrayIco
 
 from journal import (describe, entry_key as journal_key, open_entry, suggest_category,
                      suggest_customer, ticket_line)
-from journal_dialogs import DocPromptDialog, EntryDialog, PromptWindow, default_span
+from journal_dialogs import DocPromptDialog, prompt_thresholds, EntryDialog, PromptWindow, default_span
 from settings_dialogs import AiSettingsDialog
 import rules
 from grouping import group_entries
@@ -147,8 +147,12 @@ class DocsMixin:
                     entries.append(e)
         if "rules" in sources:
             entries += self.rule_band(date_str)
-        return self.journal.open_items(entries, date_str,
-                                       min_minutes=self.config.get("prompt_min_minutes", 5))
+        return self.journal.open_items(entries, date_str, min_minutes=self.prompt_threshold)
+
+    def prompt_threshold(self, entry):
+        """Ab wie vielen Minuten nach diesem Eintrag gefragt wird (Einstellung je Art)."""
+        kind = "rules" if entry.get("rule") else "calls" if row_kind(entry) == "call" else "connections"
+        return prompt_thresholds(self.config)[kind]
 
     def doc_band(self, date_str):
         """Zeile "Doku": eigene Tätigkeiten und (gestrichelt) was noch offen ist."""
