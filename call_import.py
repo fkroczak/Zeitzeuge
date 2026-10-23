@@ -15,8 +15,14 @@ TIME_FMT = "%Y-%m-%d %H:%M:%S"
 _lock = threading.Lock()
 
 def _key(call):
-    # Gleicher Anruf = gleiche Startminute + gleiche Nummer/Name
-    return f"{call['start'][:16]}|{call.get('number') or call.get('name')}"
+    # Gleicher Anruf = gleiche Startminute + gleiche Nummer/Name + angenommen ja/nein.
+    # 3CX listet oft einen nicht angenommenen Versuch und das eigentliche Gespräch in
+    # derselben Minute; ohne "angenommen" überschrieb der Versuch das Gespräch.
+    try:
+        talked = int(call.get("duration_s") or 0) > 0
+    except (TypeError, ValueError):
+        talked = False
+    return f"{call['start'][:16]}|{call.get('number') or call.get('name')}|{int(talked)}"
 
 
 def _valid(call):
