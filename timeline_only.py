@@ -14,6 +14,7 @@ from activity_tracker import app_label, merge_segments, read_segments
 from call_import import load_call_suggestions
 from grouping import format_tv_id, group_entries
 from log_parsers import ConnectionIndex, RdmParser, TeamViewerParser, VpnParser
+from theme import THEMES, readable_on
 from vpn_reader import VpnReader, vpn_sources
 
 TIME_FMT = "%Y-%m-%d %H:%M:%S"
@@ -52,7 +53,7 @@ def work_hours(config, weekday):
 
 
 # Farben für Telefonate wie im 3CX-Client (in der Config unter "call_colors" änderbar)
-DEFAULT_CALL_COLORS = {"Eingehend": "#3D8BFD", "Ausgehend": "#27AE60", "Verpasst": "#E74C3C"}
+DEFAULT_CALL_COLORS = {"Eingehend": "#3D8BFD", "Ausgehend": "#2E9E5B", "Verpasst": "#E5484D"}
 
 
 def entry_color(activity, config):
@@ -295,22 +296,22 @@ class TimelineView(QGraphicsView):
     # ----------------------------- Farben / Dark-Mode -------------------------
 
     def init_timeline_colors(self):
+        """Grundfarben aus dem Design (theme.THEMES), Balken in den Typfarben."""
+        t = THEMES["dark" if self.dark_mode else "light"]
+        self.background_color = QColor(t["surface"])
+        self.text_color = QColor(t["text"])
+        self.muted_text = QColor(t["muted"])
+        self.accent = QColor(t["accent"])
+        self.now_color = QColor(t["now"])
         if self.dark_mode:
-            self.background_color = QColor("#1E1E1E")
-            self.text_color = QColor("#E8E8E8")
-            self.muted_text = QColor("#9A9A9A")
-            self.hour_line = QColor(255, 255, 255, 28)
-            self.half_line = QColor(255, 255, 255, 12)
-            self.non_work_color = QColor(0, 0, 0, 70)
-            self.axis_bg = QColor("#252526")
+            self.hour_line = QColor(255, 255, 255, 22)
+            self.half_line = QColor(255, 255, 255, 9)
+            self.non_work_color = QColor(0, 0, 0, 80)
         else:
-            self.background_color = QColor("#FFFFFF")
-            self.text_color = QColor("#222222")
-            self.muted_text = QColor("#707070")
-            self.hour_line = QColor(0, 0, 0, 30)
-            self.half_line = QColor(0, 0, 0, 12)
-            self.non_work_color = QColor(0, 0, 0, 12)
-            self.axis_bg = QColor("#F5F6F8")
+            self.hour_line = QColor(27, 31, 36, 26)
+            self.half_line = QColor(27, 31, 36, 10)
+            self.non_work_color = QColor(27, 31, 36, 14)
+        self.axis_bg = QColor(t["surface"])
 
     def set_dark_mode(self, enabled: bool):
         self.dark_mode = enabled
@@ -323,8 +324,8 @@ class TimelineView(QGraphicsView):
     def _create_tooltip(self):
         tooltip = QLabel(self.parent(), Qt.ToolTip)
         tooltip.setStyleSheet(
-            "QLabel { background-color: #2b2b2b; color: #f0f0f0; "
-            "border: 1px solid #555; padding: 5px 8px; border-radius: 4px; }"
+            "QLabel { background-color: #1B1F24; color: #F2F4F7; "
+            "border: 1px solid #3A424C; padding: 5px 8px; border-radius: 0; }"
         )
         tooltip.hide()
         return tooltip
@@ -634,8 +635,7 @@ class TimelineView(QGraphicsView):
                 label.setPos(x + 2, 3)
 
         # Personalzeit/Arbeitszeit als schmaler Streifen unter der Stundenleiste
-        work_color = QColor("#27AE60")
-        work_color.setAlpha(200)
+        work_color = QColor(self.accent)
         for span_start, span_end in spans:
             if span_end <= span_start:
                 continue
@@ -651,9 +651,10 @@ class TimelineView(QGraphicsView):
                 self.scene.addRect(0, y - self.LANE_GAP / 2, width, row_h, no_pen, QBrush(stripe))
 
         # Beschriftung der festen Zeilen und Trennlinie zu den freien Spuren
-        row_font = QFont("Segoe UI", 7)
+        row_font = QFont("Segoe UI", 7, QFont.Weight.DemiBold)  # Metro: Zeilennamen in Großbuchstaben
+        row_font.setLetterSpacing(QFont.PercentageSpacing, 108)
         for i, (_kind, text) in enumerate(FIXED_ROWS):
-            label = self.scene.addText(text, row_font)
+            label = self.scene.addText(text.upper(), row_font)
             label.setDefaultTextColor(self.muted_text)
             label.setPos(0, top + i * row_h + (self.LANE_H - label.boundingRect().height()) / 2)
         sep_y = free_top - (6 + self.LANE_GAP) / 2
@@ -670,14 +671,11 @@ class TimelineView(QGraphicsView):
             w = max(4.0, x2 - x1)
             y = top + lane * row_h + (6 if lane >= n_fixed else 0)
 
+            # Metro: volle Kachel ohne Rand, Schrift hell oder dunkel je nach Farbe
             base = entry_color(a, self.config)
             fill = QColor(base)
-            if a["is_suggestion"]:
-                fill.setAlpha(110 if self.dark_mode else 70)
-                pen = QPen(base, 1.2)
-            else:
-                fill.setAlpha(220)
-                pen = QPen(base.darker(130), 1.5)
+            pen = QPen(Qt.NoPen)
+            label_color = readable_on(base)
 
             rect = self.scene.addRect(x1, y, w, self.LANE_H, pen, QBrush(fill))
             rect.setData(0, a)
@@ -688,7 +686,7 @@ class TimelineView(QGraphicsView):
             if w > 28:
                 text = metrics.elidedText(label_text, Qt.ElideRight, int(w - 8))
                 item = self.scene.addText(text, label_font)
-                item.setDefaultTextColor(self.text_color)
+                item.setDefaultTextColor(label_color)
                 item.setPos(x1 + 2, y + (self.LANE_H - item.boundingRect().height()) / 2)
                 item.setAcceptedMouseButtons(Qt.NoButton)
 
@@ -696,7 +694,7 @@ class TimelineView(QGraphicsView):
         for (kind, text, band), y in zip(bands, band_tops):
             for a in band:
                 self._draw_band_entry(a, y, label_font, metrics)
-            label = self.scene.addText(text, row_font)
+            label = self.scene.addText(text.upper(), row_font)
             label.setDefaultTextColor(self.muted_text)
             label.setPos(0, y + (self.LANE_H - label.boundingRect().height()) / 2)
 
@@ -712,7 +710,7 @@ class TimelineView(QGraphicsView):
                 rect = self.scene.addRect(x1, band_y, max(1.5, x2 - x1), self.PC_BAND_H,
                                           QPen(Qt.NoPen), QBrush(fill))
                 self.activity_rects[rect] = p
-            label = self.scene.addText("PC", QFont("Segoe UI", 7))
+            label = self.scene.addText("PC", row_font)
             label.setDefaultTextColor(self.muted_text)
             label.setPos(0, band_y - 3)
 
@@ -720,7 +718,7 @@ class TimelineView(QGraphicsView):
         if date == QDate.currentDate():
             now = QDateTime.currentDateTime().time()
             x = self._x(now.hour() * 60 + now.minute())
-            self.scene.addLine(x, 0, x, height, QPen(QColor("#E74C3C"), 1.5))
+            self.scene.addLine(x, 0, x, height, QPen(self.now_color, 2))
 
         # Senkrechte Linie unter der Maus (erst bei Mausbewegung sichtbar)
         self._hover_line = self.scene.addLine(0, 0, 0, height, QPen(self.text_color, 1, Qt.DashLine))
@@ -783,9 +781,10 @@ class TimelineView(QGraphicsView):
         base = entry_color(a, self.config)
         fill = QColor(base)
         light = 110 if self.dark_mode else 70
-        if a.get("doc") or a.get("status") == "übernommen":
-            fill.setAlpha(light)
-            pen = QPen(base.darker(130) if not self.dark_mode else base.lighter(130), 2)
+        label_color = self.text_color
+        if a.get("doc") or a.get("status") == "übernommen":  # Metro: volle Kachel
+            pen = QPen(Qt.NoPen)
+            label_color = readable_on(base)
         elif a.get("open"):  # noch nicht dokumentiert: fällt auf, lädt zum Klicken ein
             fill.setAlpha(light // 2)
             pen = QPen(base, 1.5, Qt.DashLine)
@@ -809,7 +808,7 @@ class TimelineView(QGraphicsView):
                                                     a.get("description") if a.get("doc") else "")
                                         if t) or a.get("type", "")
             item = self.scene.addText(metrics.elidedText(label_text, Qt.ElideRight, int(w - 8)), font)
-            item.setDefaultTextColor(self.text_color)
+            item.setDefaultTextColor(label_color)
             item.setPos(x1 + 2, y + (self.LANE_H - item.boundingRect().height()) / 2)
             item.setAcceptedMouseButtons(Qt.NoButton)
 

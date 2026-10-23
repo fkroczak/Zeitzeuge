@@ -100,12 +100,6 @@ def contrast(fg, bg):
     return (a + 0.05) / (b + 0.05)
 
 
-def blend(fg, alpha, bg):
-    fg, bg = QColor(fg), QColor(bg)
-    mix = lambda f, b: round(f * alpha / 255 + b * (1 - alpha / 255))
-    return QColor(mix(fg.red(), bg.red()), mix(fg.green(), bg.green()), mix(fg.blue(), bg.blue()))
-
-
 def check_contrast(area, fg, bg, minimum=4.5):
     ratio = contrast(fg, bg)
     if ratio < minimum:
@@ -167,7 +161,10 @@ for theme_name, t in main_timeline.THEMES.items():
     check_contrast(area, t["text"], t["surface"])
     check_contrast(area, t["muted"], t["bar"])
     check_contrast(area, t["muted"], t["surface"])
-    check_contrast(area, "#FFFFFF", t["accent"])
+    check_contrast(area, t["onaccent"], t["accent"])
+    check_contrast(area, t["bandtext"], t["band"])  # Werkzeugleiste als farbiges Band
+    check_contrast(area, t["bandtext"], t["bandhover"])
+    check_contrast(area, t["seltext"], t["sel"])  # markierte Zeile
     check_contrast(area, t["muted"], t["bg"])  # Hinweistexte (QLabel#hint)
 for dark in (False, True):
     window.timeline.dark_mode = dark
@@ -176,10 +173,9 @@ for dark in (False, True):
     area = f"Kontrast Timeline {'dunkel' if dark else 'hell'}"
     check_contrast(area, tl.muted_text, tl.axis_bg)
     check_contrast(area, tl.text_color, tl.axis_bg)
-    # Beschriftung auf Vorschlag-Balken (halbtransparent) in jeder Typfarbe
+    # Balken sind volle Kacheln (Metro): Schrift wählt readable_on, mindestens 4.5 : 1
     for type_name, color in window.config.get("type_colors", {}).items():
-        bar = blend(color, 110 if dark else 70, tl.background_color)
-        check_contrast(f"{area}, Balken {type_name}", tl.text_color, bar)
+        check_contrast(f"{area}, Balken {type_name}", timeline_only.readable_on(color), color)
 window.timeline.dark_mode = window.dark_mode
 window.timeline.init_timeline_colors()
 
