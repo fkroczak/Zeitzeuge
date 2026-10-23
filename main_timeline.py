@@ -352,13 +352,14 @@ class TimelineApp(MenusMixin, DayListMixin, DocsMixin, ReadersMixin, TrayMixin, 
 
         self._build_tray()
 
-        # 3CX direkt auslesen (Edge im Hintergrund)
+        # Erst beide anlegen: Beim Start eines Lesers fragt die Statuszeile schon beide ab
         self.pbx_reader = None
+        self.itm_reader = None
+        # 3CX direkt auslesen (Edge im Hintergrund)
         if self.config.get("pbx_reader_enabled", False):
             self.start_pbx_reader()
 
         # Personalzeiten aus der ITM-Zeiterfassung (Edge im Hintergrund)
-        self.itm_reader = None
         if self.config.get("itm_reader_enabled", False):
             self.start_itm_reader()
 
