@@ -132,6 +132,10 @@ def default_config():
         "pbx_reader_enabled": False,  # 3CX direkt über Edge im Hintergrund lesen
         "itm_url": "https://app.itm-gruppe.com",
         "itm_reader_enabled": False,  # Personalzeiten aus der ITM-Zeiterfassung lesen
+        # Anmeldung ohne Edge: Benutzer und Mandant (Passwort wird nie gespeichert)
+        "itm_user": "",
+        "itm_mandant": 0,
+        "itm_auth_url": "",  # leer: Anmeldedienst aus den Einstellungen der App (ApiUri)
         "close_to_tray": True,
 
         # Tagesliste: "grouped" (zusammengefasst), "single" (einzeln), "blocks" (Arbeitsblöcke)

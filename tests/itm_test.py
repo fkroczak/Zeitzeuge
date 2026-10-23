@@ -32,7 +32,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if path.endswith("/zeiterfassung/tageszeiten"):
             body, kind = open(os.path.join(MOCK, "index.html"), "rb").read(), "text/html"
         elif path.endswith("/appsettings.Live.json"):
-            body = json.dumps({"BaseUriConfiguration": {"V2BackendUri": "http://127.0.0.1:8814/api/"}})
+            body = json.dumps({"BaseUriConfiguration": {"V2BackendUri": "http://127.0.0.1:8814/api/",
+                                                       "ApiUri": "http://127.0.0.1:8814/"}})
             body, kind = body.encode("utf-8"), "application/json"
         elif path == "/api/tagesuebersicht":
             if not self.headers.get("Authorization", "").startswith("Bearer eyJ"):

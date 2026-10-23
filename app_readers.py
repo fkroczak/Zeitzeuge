@@ -10,8 +10,9 @@ from datetime import datetime
 
 from PySide6.QtCore import QTimer, QUrl
 from PySide6.QtGui import QDesktopServices
-from PySide6.QtWidgets import (QCheckBox, QDialog, QDialogButtonBox, QFormLayout, QLabel, QLineEdit,
-                               QMessageBox, QPushButton, QSpinBox, QSystemTrayIcon, QVBoxLayout)
+from PySide6.QtWidgets import (QCheckBox, QDialog, QDialogButtonBox, QFormLayout, QInputDialog, QLabel,
+                               QLineEdit, QMessageBox, QPushButton, QSpinBox, QSystemTrayIcon,
+                               QVBoxLayout)
 
 import safe_io
 import main_timeline as mt  # Pfade und save_config zur Laufzeit von dort (Tests ersetzen sie dort)
@@ -84,10 +85,13 @@ class ReadersMixin:
         ),
         "itm": dict(
             title="ITM-Personalzeiten",
-            text="Zeitzeuge öffnet die ITM-Zeiterfassung unsichtbar mit Microsoft Edge (eigenes Profil) "
-                 "und liest deine Personalzeiten: heute alle 5 Minuten, andere Tage beim Blättern. "
-                 "Die Timeline hebt dann deine gestempelte Arbeitszeit hervor, Pausen sind abgedunkelt."
-                 "\n\nZum Anmelden öffnet sich ein Edge-Fenster: anmelden und das Fenster schließen.",
+            text="Zeitzeuge liest deine Personalzeiten aus der ITM-Zeiterfassung: heute alle 5 Minuten, "
+                 "andere Tage beim Blättern. Die Timeline hebt dann deine gestempelte Arbeitszeit hervor, "
+                 "Pausen sind abgedunkelt. Offene oder fehlerhafte Buchungen meldet Zeitzeuge.\n\n"
+                 "Anmelden: Mit Benutzername und Mandant fragt Zeitzeuge einmal nach dem Passwort und "
+                 "braucht kein Edge. Ohne Benutzername öffnet sich ein Edge-Fenster zum Anmelden. "
+                 "Die Anmeldung erneuert Zeitzeuge selbst; sie hält, solange es mindestens einmal "
+                 "pro Woche läuft. Das Passwort wird nie gespeichert.",
             url_label="ITM-Adresse:", url_key="itm_url", enabled_key="itm_reader_enabled",
             enabled_text="Personalzeiten automatisch im Hintergrund lesen",
             login_text="Bei ITM anmelden …", attr="itm_reader",
@@ -113,7 +117,7 @@ class ReadersMixin:
 
     def _open_reader_settings(self, kind):
         from pbx_reader import find_browser
-        if not find_browser():
+        if kind == "pbx" and not find_browser():  # ITM geht auch mit Passwort ohne Edge
             QMessageBox.warning(self, self.READER_DIALOGS[kind]["title"],
                                 "Microsoft Edge oder Google Chrome wurde nicht gefunden.")
             return
@@ -148,6 +152,15 @@ class ReadersMixin:
             days.setValue(self.config.get("calls_days_back", 14))
             days.setToolTip("Ältere Tage liest Zeitzeuge nach, sobald du sie anzeigst.")
             form.addRow("Anrufe zurück lesen:", days)
+        user_edit = mandant = None
+        if kind == "itm":
+            user_edit = QLineEdit(self.config.get("itm_user", ""))
+            user_edit.setPlaceholderText("leer: Anmeldung im Edge-Fenster")
+            form.addRow("Benutzername:", user_edit)
+            mandant = QSpinBox()
+            mandant.setRange(0, 999999)
+            mandant.setValue(int(self.config.get("itm_mandant") or 0))
+            form.addRow("Mandant:", mandant)
         layout.addLayout(form)
 
         status = QLabel("Aus")
@@ -160,6 +173,11 @@ class ReadersMixin:
             if days and days.value() != self.config.get("calls_days_back", 14):
                 self.config["calls_days_back"] = days.value()
                 changed = True  # Leser mit der neuen Zahl neu starten
+            if user_edit is not None:
+                user = user_edit.text().strip()
+                changed = changed or (user, mandant.value()) != (
+                    self.config.get("itm_user", ""), self.config.get("itm_mandant", 0))
+                self.config["itm_user"], self.config["itm_mandant"] = user, mandant.value()
             self.config[url_key] = url
             self.config[enabled_key] = enabled.isChecked()
             mt.save_config(self.config)
@@ -178,11 +196,14 @@ class ReadersMixin:
                 reader.status_changed.connect(status.setText)
 
         def login():
+            if user_edit is not None and user_edit.text().strip() and not mandant.value():
+                QMessageBox.warning(dialog, spec["title"], "Bitte auch den Mandanten eintragen.")
+                return
             enabled.setChecked(True)
             reader = apply()
             if reader:
                 follow_status()
-                reader.show_login(self)
+                reader.show_login(dialog)
 
         def record():
             enabled.setChecked(True)
@@ -218,6 +239,19 @@ class ReadersMixin:
                                  "der gespeicherten Anrufliste vergleichen")
             check_btn.clicked.connect(check)
             buttons.addButton(check_btn, QDialogButtonBox.ActionRole)
+        if kind == "itm":
+            def forget():
+                reader = getattr(self, attr)
+                if reader:
+                    reader.auth.forget()
+                else:
+                    from itm_auth import ItmAuth
+                    ItmAuth("", mt.ITM_AUTH_FILE).forget()
+                status.setText("ITM: gespeicherte Anmeldung gelöscht")
+            forget_btn = QPushButton("Anmeldung &löschen")
+            forget_btn.setToolTip("Gespeicherte Anmeldung (refreshToken) auf diesem PC löschen")
+            forget_btn.clicked.connect(forget)
+            buttons.addButton(forget_btn, QDialogButtonBox.ActionRole)
         buttons.accepted.connect(lambda: (apply(), dialog.accept()))
         buttons.rejected.connect(dialog.reject)
         layout.addWidget(buttons)
@@ -258,7 +292,15 @@ class ReadersMixin:
         if self.itm_reader:
             return
         from itm_reader import ItmReader
-        self.itm_reader = ItmReader(self.config.get("itm_url", ""), mt.ITM_FILE, mt.ITM_PROFILE_DIR, self)
+        self.itm_reader = ItmReader(self.config.get("itm_url", ""), mt.ITM_FILE, mt.ITM_PROFILE_DIR, self,
+                                    auth_file=mt.ITM_AUTH_FILE, auth_url=self.config.get("itm_auth_url", ""))
+        self.itm_reader.username = (self.config.get("itm_user") or "").strip()
+        self.itm_reader.mandant = self.config.get("itm_mandant") or 0
+        self.itm_reader.password_prompt = self.ask_itm_password
+        self.itm_reader.issues_found.connect(self.on_itm_issues)
+        self.itm_reader.login_finished.connect(
+            lambda error: error and QMessageBox.warning(self, "ITM-Anmeldung",
+                                                        f"Anmeldung fehlgeschlagen:\n{error}"))
         self.itm_reader.status_changed.connect(lambda _t: self.update_source_indicators())
         self.itm_reader.day_read.connect(
             lambda d: self.timeline.draw_timeline(self.current_date)
@@ -276,6 +318,26 @@ class ReadersMixin:
         self._watch_reader(self.itm_reader)
         self.itm_reader.start()
         self.itm_reader.want(self.current_date.toString("yyyy-MM-dd"))
+
+    def ask_itm_password(self, parent=None):
+        """Passwort für die ITM-Anmeldung abfragen (wird nicht gespeichert)."""
+        reader = self.itm_reader
+        if not reader or not reader.username:
+            return
+        password, ok = QInputDialog.getText(
+            parent or self, "ITM-Anmeldung",
+            f"Passwort für {reader.username} (Mandant {reader.mandant}):\n"
+            "Zeitzeuge speichert das Passwort nicht, nur die Anmeldung für 7 Tage.",
+            QLineEdit.Password)
+        if ok and password:
+            reader.login_password(reader.username, password, reader.mandant)
+
+    def on_itm_issues(self, texts):
+        """Fehlerhafte Buchungen in ITM (je Buchung einmal)."""
+        text = "\n".join(texts[:3]) + (f"\n(und {len(texts) - 3} weitere)" if len(texts) > 3 else "")
+        self.statusBar().showMessage("ITM: " + texts[0], 30000)
+        if self.tray:
+            self.tray.showMessage("ITM-Zeiterfassung prüfen", text, QSystemTrayIcon.Warning, 10000)
 
     def stop_itm_reader(self):
         if self.itm_reader:
