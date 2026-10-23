@@ -51,9 +51,9 @@ def install_translator(app):
 
 GERMAN = QLocale(QLocale.German, QLocale.Germany)
 
-# Design "Metro Klar": Form aus Metro (eckig, blaues Band oben, Großbuchstaben, volle Balken),
+# Design "Metro Klar": Form aus Metro (eckig, Großbuchstaben, volle Balken),
 # Farben aus "Klar" (ruhige Flächen, tonale Auswahl). Zusätzliche Tokens gegenüber früher:
-#   band/bandtext/bandhover/bandpressed  Werkzeugleiste als farbiges Band
+#   band/bandtext/bandhover/bandpressed  Werkzeugleiste (in "Klar"-Farben: ruhig wie der Hintergrund)
 #   sel/seltext                          markierte Zeile (tonal statt Vollton)
 #   onaccent                             Schrift auf Akzentfarbe (Standardknopf, "offen"-Knopf)
 #   line                                 feine Linie zwischen den Zeilen der Tagesliste
@@ -64,7 +64,7 @@ THEMES = {
         "border": "#2A323C", "text": "#E6EAF0", "muted": "#9AA4B1",
         "accent": "#4EA1FF", "onaccent": "#06121F", "hover": "#222A33", "pressed": "#2B3440",
         "alt": "#181D23", "handle": "#3E4854", "line": "#20262E",
-        "band": "#0B4F8F", "bandtext": "#FFFFFF", "bandhover": "#165FA6", "bandpressed": "#083D70",
+        "band": "#12161B", "bandtext": "#E6EAF0", "bandhover": "#222A33", "bandpressed": "#2B3440",
         "sel": "#1F3B5C", "seltext": "#FFFFFF", "now": "#FF6369",
     },
     "light": {
@@ -72,7 +72,7 @@ THEMES = {
         "border": "#DDE2E8", "text": "#1B1F24", "muted": "#5F6873",
         "accent": "#0067C0", "onaccent": "#FFFFFF", "hover": "#E9EDF2", "pressed": "#DDE3EA",
         "alt": "#FFFFFF", "handle": "#C2CAD3", "line": "#EEF1F4",
-        "band": "#0067C0", "bandtext": "#FFFFFF", "bandhover": "#1A79CC", "bandpressed": "#00508F",
+        "band": "#F4F6F8", "bandtext": "#1B1F24", "bandhover": "#E9EDF2", "bandpressed": "#DDE3EA",
         "sel": "#DCEBFA", "seltext": "#0A3B6B", "now": "#E5484D",
     },
 }
@@ -94,15 +94,11 @@ QToolBar#main_toolbar QToolButton { color: $bandtext; }
 QToolBar#main_toolbar QToolButton:hover { background-color: $bandhover; }
 QToolBar#main_toolbar QToolButton:pressed, QToolBar#main_toolbar QToolButton:checked {
     background-color: $bandpressed; border-color: $bandpressed; }
-QToolBar#main_toolbar QToolButton:focus { border: 2px solid $bandtext; }
+QToolBar#main_toolbar QToolButton:focus { border: 2px solid $accent; }
 QToolBar#main_toolbar::separator, QToolBar#main_toolbar QToolBar::separator {
-    background: $bandhover; width: 1px; margin: 6px 6px; }
-QToolBar#main_toolbar QToolButton#qt_toolbar_ext_button { border: 1px solid $bandhover;
-    background-color: $bandpressed; color: $bandtext; }
-QToolBar#main_toolbar QDateEdit { background-color: $bandpressed; color: $bandtext;
-    border: 1px solid $bandpressed; selection-background-color: $bandtext; selection-color: $band; }
-QToolBar#main_toolbar QDateEdit:hover { background-color: $bandhover; }
-QToolBar#main_toolbar QDateEdit:focus { border: 1px solid $bandtext; }
+    background: $border; width: 1px; margin: 6px 6px; }
+QToolBar#main_toolbar QToolButton#qt_toolbar_ext_button { border: 1px solid $border;
+    background-color: $bandhover; color: $bandtext; }
 QStatusBar { background-color: $bg; color: $muted; border-top: 1px solid $border; }
 QStatusBar QLabel { background: transparent; color: $muted; padding: 3px 8px; }
 QStatusBar QToolButton { color: $text; padding: 2px 8px; margin: 2px 4px; }
