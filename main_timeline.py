@@ -47,7 +47,7 @@ from app_tray import TrayMixin
 __all__ = [
     "TimelineApp", "AppStyle", "install_translator", "GERMAN", "THEMES", "STYLESHEET",
     "resource_path", "APP_DIR", "DATA_DIR", "CONFIG_FILE", "CALLS_FILE", "VPN_FILE",
-    "ACTIVITY_DIR", "PBX_PROFILE_DIR", "ITM_FILE", "ITM_PROFILE_DIR", "AI_DIR", "JOURNAL_DIR",
+    "ACTIVITY_DIR", "PBX_PROFILE_DIR", "ITM_FILE", "ITM_PROFILE_DIR", "ITM_AUTH_FILE", "AI_DIR", "JOURNAL_DIR",
     "CONFIG_LOCKED", "clean_path", "load_config_with_defaults", "save_config", "merged_seconds",
     "report_exception", "install_error_hooks", "acquire_single_instance",
     "ActivityViewDialog", "ActivityTypeSettingsDialog", "ConnectionSettingsDialog", "WorkHoursDialog",
@@ -87,6 +87,8 @@ ACTIVITY_DIR = os.path.join(DATA_DIR, "aktivitaet")
 PBX_PROFILE_DIR = os.path.join(storage.local_dir(), "3cx_profil")
 ITM_FILE = os.path.join(DATA_DIR, "personalzeiten.json")
 ITM_PROFILE_DIR = os.path.join(storage.local_dir(), "itm_profil")
+# ITM-Anmeldung (refreshToken, unter Windows verschlüsselt), ebenfalls nur lokal
+ITM_AUTH_FILE = os.path.join(storage.local_dir(), "itm_anmeldung.json")
 AI_DIR = os.path.join(DATA_DIR, "ki_vorschlaege")
 JOURNAL_DIR = os.path.join(DATA_DIR, "taetigkeiten")
 # Fehler und beiseitegelegte Dateien stehen in fehler.log (siehe safe_io)

@@ -8,10 +8,20 @@ Die Adresse dieser Abfrage muss Zeitzeuge dafür nicht kennen.
 
 Gelesene Tage landen in personalzeiten.json. Heute wird alle 5 Minuten neu
 gelesen, andere Tage einmal, sobald sie angezeigt werden.
+
+Anmeldung (itm_auth.py): Zeitzeuge erneuert das Zugangstoken selbst mit dem
+refreshToken (gilt 7 Tage, wird bei jedem Erneuern verlängert). Das refreshToken kommt
+aus einer Anmeldung mit Benutzer, Mandant und Passwort oder aus dem Cookie der Web-App
+nach einer Anmeldung im Edge-Fenster. Edge startet nur noch, wenn das nicht klappt.
+
+Aus dem alten ITM-Backend holt Zeitzeuge alle 30 Minuten die eigenen Buchungen der
+letzten 45 Tage: fehlende Tage werden damit aufgefüllt, und fehlerhafte Buchungen
+(offen seit über 12 Stunden, Ende vor Start …) meldet Zeitzeuge einmal.
 """
 
 import base64
 import json
+import os
 import re
 import threading
 import time
@@ -23,6 +33,8 @@ from urllib.parse import unquote, urlsplit
 from PySide6.QtCore import Signal
 
 import safe_io
+from itm_auth import (AuthError, AuthNetworkError, ItmAuth, booking_issues, bookings_from_legacy,
+                      days_from_bookings)
 from pbx_reader import BrowserReader
 
 # Läuft in der Seite vor deren eigenem Code und merkt sich jede Antwort mit Tagesdaten
@@ -92,6 +104,11 @@ TEMPORARY_HTTP = {408, 429, 500, 502, 503, 504}
 
 def session_token(cookies, host):
     """JwtToken aus dem Cookie "session" der App (JSON, evtl. URL- oder Base64-kodiert)."""
+    return session_data(cookies, host).get("JwtToken")
+
+
+def session_data(cookies, host):
+    """Inhalt des Cookies "session" der App (JwtToken, RefreshToken), {} wenn keins."""
     for c in cookies:
         if c.get("name") != "session" or not host.endswith(c.get("domain", "").lstrip(".")):
             continue
@@ -103,8 +120,8 @@ def session_token(cookies, host):
                 except ValueError:
                     continue
                 if isinstance(data, dict) and data.get("JwtToken"):
-                    return data["JwtToken"]
-    return None
+                    return data
+    return {}
 
 
 def _b64(text):
@@ -131,6 +148,8 @@ def load_days(path):
 
 class ItmReader(BrowserReader):
     day_read = Signal(str)  # Datum (YYYY-MM-DD), dessen Personalzeiten neu sind
+    issues_found = Signal(list)  # neue fehlerhafte Buchungen (Texte), je Buchung einmal
+    login_finished = Signal(str)  # Anmeldung mit Passwort: "" = geklappt, sonst Fehlertext
 
     NAME = "ITM"
     READ_INTERVAL = 5 * 60  # heute alle 5 Minuten neu lesen
@@ -139,8 +158,10 @@ class ItmReader(BrowserReader):
     # Edge läuft nicht dauerhaft: Die Daten fragt Zeitzeuge direkt ab, Edge startet nur
     # kurz, wenn das Zugangstoken (gilt etwa 1 Stunde) erneuert werden muss.
     START_BROWSER = False
+    LEGACY_INTERVAL = 30 * 60  # eigene Buchungen aus dem alten Backend so oft holen
+    LEGACY_DAYS = 45
 
-    def __init__(self, base_url, data_file, profile_dir, parent=None):
+    def __init__(self, base_url, data_file, profile_dir, parent=None, auth_file=None, auth_url=""):
         # Steht in der Einstellung schon die Seite (…/zeiterfassung/tageszeiten), würde
         # sie sonst doppelt angehängt und ITM zeigt "Not found".
         base_url = base_url.strip().split("?")[0].split("#")[0]
@@ -155,6 +176,19 @@ class ItmReader(BrowserReader):
         self._token = None      # JwtToken aus dem Cookie "session"
         self._api = None        # Adresse der Daten-API (aus appsettings.Live.json)
         self._direct_ok = True  # False: Direkt-Abfrage klappt nicht, über die Webseite lesen
+        # Anmeldung ohne Edge (refreshToken). Adresse: Einstellung, sonst ApiUri der App
+        self._auth_url = (auth_url or "").strip().rstrip("/")
+        self.auth = ItmAuth(self._auth_url, auth_file or os.path.join(
+            os.path.dirname(os.path.abspath(profile_dir)), "itm_anmeldung.json"))
+        self._auth_for_v2 = True   # False: die Tages-API nimmt das Token des Anmeldedienstes nicht
+        self._token_from_auth = False
+        self.username = ""         # gesetzt: Anmeldung mit Passwort statt Edge-Fenster
+        self.mandant = 0
+        self.password_prompt = None  # Funktion(parent), fragt das Passwort ab (Hauptfenster)
+        self._legacy_next = 0
+        self._legacy_bookings = []
+        self._issues_told = set()
+        self.issues = []           # aktuelle fehlerhafte Buchungen (Texte)
 
     def day_url(self, date_str):
         return f"{self.base_url}/zeiterfassung/tageszeiten?date={date_str}"
@@ -207,6 +241,8 @@ class ItmReader(BrowserReader):
                 return
             if date_str == today:
                 self._today_read = time.time()
+        self._read_legacy()
+        self._check_issues()
 
     def _read_day(self, date_str):
         """Einen Tag lesen. False, wenn eine Anmeldung nötig ist."""
@@ -225,7 +261,8 @@ class ItmReader(BrowserReader):
 
     def _read_day_direct(self, date_str):
         self._set_status(f"ITM: lese {date_str} …")
-        for attempt in range(2):
+        retried = False
+        for _ in range(3):
             token = self._valid_token()
             if not token:
                 self._need_login()
@@ -233,7 +270,13 @@ class ItmReader(BrowserReader):
             try:
                 data = self._api_get(f"tagesuebersicht?datum={date_str}", token)
             except urllib.error.HTTPError as e:
-                if e.code == 401 and attempt == 0:
+                if e.code == 401 and self._token_from_auth:
+                    # Token des Anmeldedienstes gilt hier nicht: wie bisher über Edge
+                    self._auth_for_v2 = False
+                    safe_io.log("ITM: Tagesübersicht nimmt das erneuerte Token nicht an, nehme Edge")
+                    continue
+                if e.code == 401 and not retried:
+                    retried = True
                     self._token = None  # abgelaufen: neues holen und noch einmal
                     continue
                 if e.code in TEMPORARY_HTTP:
@@ -263,6 +306,10 @@ class ItmReader(BrowserReader):
                 with urllib.request.urlopen(f"{self.base_url}/{name}", timeout=15) as resp:
                     uris = json.load(resp).get("BaseUriConfiguration") or {}
                 api = uris.get("V2BackendUri") or uris.get("ApiUri")
+                legacy = uris.get("ApiUri") or ""
+                if legacy and "localhost" not in legacy and not self._auth_url:
+                    # Altes Backend mit Anmeldedienst ({url}/auth, {url}/api)
+                    self.auth.base_url = re.sub(r"/api/?$", "", legacy.rstrip("/"))
             except urllib.error.HTTPError as e:
                 if e.code in TEMPORARY_HTTP:
                     network_error = e
@@ -289,11 +336,34 @@ class ItmReader(BrowserReader):
             return json.load(resp)
 
     def _valid_token(self):
-        """Gültiges Zugangstoken oder None (dann ist eine Anmeldung nötig)."""
+        """Gültiges Zugangstoken oder None (dann ist eine Anmeldung nötig).
+
+        Zuerst ohne Edge mit dem refreshToken, sonst wie bisher über Edge. Wer sich mit
+        Passwort anmeldet (username gesetzt), braucht Edge gar nicht."""
+        self._token_from_auth = False
+        if self._auth_for_v2 and self.auth.has_login:
+            try:
+                token = self._auth_token()
+            except NetworkError as e:  # Anmeldedienst nicht erreichbar: wie bisher über Edge
+                safe_io.log(f"ITM: {e}")
+                token = None
+            if token:
+                self._token_from_auth = True
+                return token
         if self._token and token_expiry(self._token) > time.time() + 60:
             return self._token
+        if self.username and self._auth_for_v2:
+            return None  # Passwort nötig (show_login fragt danach)
         self._token = self._fetch_token()
         return self._token
+
+    def _auth_token(self):
+        """Token vom Anmeldedienst (erneuert bei Bedarf), None ohne gültige Anmeldung."""
+        self._api_base()  # liest die Adresse des Anmeldedienstes mit
+        try:
+            return self.auth.token()
+        except AuthNetworkError as e:
+            raise NetworkError(str(e)) from e
 
     def _fetch_token(self):
         """Edge kurz unsichtbar starten: Die App erneuert dabei ihr Token und legt es im
@@ -309,7 +379,10 @@ class ItmReader(BrowserReader):
             while time.time() < deadline and not self._stop.is_set():
                 time.sleep(1)
                 cookies = self._tools.call("Network.getAllCookies").get("cookies", [])
-                token = session_token(cookies, urlsplit(self.base_url).hostname) or token
+                session = session_data(cookies, urlsplit(self.base_url).hostname)
+                token = session.get("JwtToken") or token
+                # Mit dem refreshToken der App erneuert Zeitzeuge künftig selbst, ohne Edge
+                self.auth.adopt(session.get("RefreshToken"))
                 if token and token_expiry(token) > time.time() + 120:
                     return token
                 try:
@@ -365,6 +438,73 @@ class ItmReader(BrowserReader):
             return False
         self._set_status(f"ITM: keine Personalzeiten für {date_str} gefunden")
         return True
+
+    # ---- altes Backend: eigene Buchungen, fehlerhafte Buchungen
+
+    def _read_legacy(self):
+        """Eigene Buchungen der letzten Tage aus dem alten Backend (alle 30 Minuten).
+        Fehler hier stören das normale Lesen nicht."""
+        if time.time() < self._legacy_next or self._stop.is_set():
+            return
+        self._legacy_next = time.time() + self.LEGACY_INTERVAL
+        try:
+            token = self._auth_token() if self.auth.has_login else None
+            if not token and self._token and token_expiry(self._token) > time.time() + 30:
+                token = self._token  # Token aus Edge; ob das alte Backend es nimmt, zeigt sich
+            if not token:
+                return
+            rows = self.auth.get(f"Personalzeit/view/minimal/tage/{self.LEGACY_DAYS}", token)
+        except (AuthError, DirectFailed, NetworkError, OSError, ValueError) as e:
+            safe_io.log(f"ITM: eigene Buchungen aus dem alten Backend nicht gelesen ({e})")
+            return
+        self._legacy_bookings = bookings_from_legacy(rows)
+        today = date.today().isoformat()
+        for day, data in days_from_bookings(self._legacy_bookings).items():
+            known = self.days.get(day)
+            # Nur auffüllen: Tage aus der Tagesübersicht haben Soll und Pause und bleiben
+            if day < today and (known is None or known.get("quelle") == "ITM alt"):
+                self._save(day, data)
+
+    def _check_issues(self):
+        """Fehlerhafte Buchungen suchen und neue einmal melden."""
+        today = (self.days.get(date.today().isoformat()) or {}).get("zeiten") or []
+        found = dict(booking_issues(self._legacy_bookings) + booking_issues(today))
+        self.issues = list(found.values())
+        new = [text for key, text in found.items() if key not in self._issues_told]
+        self._issues_told.update(found)
+        if new:
+            self.issues_found.emit(new)
+
+    # ---- Anmeldung mit Passwort (ohne Edge)
+
+    def show_login(self, parent=None):
+        """Mit Benutzername: Passwort abfragen. Sonst Edge-Fenster wie bisher."""
+        if self.username and self.password_prompt:
+            self.password_prompt(parent)
+        else:
+            super().show_login(parent)
+
+    def login_password(self, username, password, mandant):
+        """Im Hintergrund anmelden. Ergebnis über login_finished."""
+        def run():
+            self._set_status("ITM: melde an …")
+            try:
+                try:
+                    self._api_base()  # Adresse des Anmeldedienstes aus der App
+                except (DirectFailed, NetworkError):
+                    pass  # dann die Standardadresse
+                profile = self.auth.login(username, password, mandant)
+            except (AuthError, AuthNetworkError, ValueError) as e:
+                self._set_status(f"ITM: Anmeldung fehlgeschlagen ({e})")
+                self.login_finished.emit(str(e))
+                return
+            self._auth_for_v2 = True
+            self.needs_login = False
+            name = f"{profile.get('firstName') or ''} {profile.get('lastName') or ''}".strip()
+            self._set_status(f"ITM: angemeldet{' als ' + name if name else ''}, lese …")
+            self.login_finished.emit("")
+            self._wake.set()
+        threading.Thread(target=run, daemon=True, name="ITM-Anmeldung").start()
 
     def _save(self, date_str, day):
         if self.days.get(date_str) == day:
