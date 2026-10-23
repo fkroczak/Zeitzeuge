@@ -78,7 +78,7 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
   - Mit **Klicken und Ziehen** markierst du einen Zeitraum. Beim Loslassen wird genau dieser Zeitraum angezeigt.
   - Ein Doppelklick auf eine freie Stelle oder **Ganzer Tag** führt zurück zur Tagesansicht. **Arbeitszeit** zeigt die Arbeitszeit des Tages.
   - STRG + Mausrad zoomt an der Mausposition, das Mausrad allein blättert durch den Tag.
-  - Dunkles und helles Design (**Einstellungen → Dunkles Design**), eigene Aktivitätstypen mit frei wählbaren Farben.
+  - Design „Metro Klar“: eckige Formen, blaue Werkzeugleiste, Verbindungen als volle Farbbalken, ruhige hellblaue Auswahl. Hell und dunkel (**Einstellungen → Dunkles Design**), eigene Aktivitätstypen mit frei wählbaren Farben.
 
 ### Tastenkürzel
 

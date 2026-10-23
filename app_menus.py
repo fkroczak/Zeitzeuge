@@ -53,7 +53,9 @@ class MenusMixin:
         outer.setFloatable(False)
         self.addToolBar(Qt.TopToolBarArea, outer)
         header = QWidget(outer)
-        header.setStyleSheet("background: transparent;")
+        header.setObjectName("band_row")
+        # Nur die Zeile selbst durchsichtig, sonst erben auch Datum und Knöpfe "transparent"
+        header.setStyleSheet("#band_row { background: transparent; }")
         row = QHBoxLayout(header)
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(4)
@@ -354,26 +356,28 @@ class MenusMixin:
     def apply_style(self):
         theme = THEMES["dark" if self.dark_mode else "light"]
         sheet = STYLESHEET
-        for key, value in theme.items():
-            sheet = sheet.replace(f"${key}", value)
+        for key in sorted(theme, key=len, reverse=True):  # $bandtext vor $band ersetzen
+            sheet = sheet.replace(f"${key}", theme[key])
         # Palette passend setzen, sonst nutzen Tabellen/Scrollbars die Systemfarben
         pal = QPalette()
         for role, key in [(QPalette.Window, "bg"), (QPalette.WindowText, "text"),
                           (QPalette.Base, "surface"), (QPalette.AlternateBase, "alt"),
                           (QPalette.Text, "text"), (QPalette.Button, "bar"),
-                          (QPalette.ButtonText, "text"), (QPalette.Highlight, "accent"),
+                          (QPalette.ButtonText, "text"), (QPalette.Highlight, "sel"),
+                          (QPalette.HighlightedText, "seltext"),
                           (QPalette.ToolTipBase, "surface"), (QPalette.ToolTipText, "text"),
                           (QPalette.PlaceholderText, "muted"),
                           (QPalette.Accent, "accent")]:  # Qt 6 nutzt Accent statt Highlight
             pal.setColor(role, QColor(theme[key]))
-        pal.setColor(QPalette.HighlightedText, QColor("#FFFFFF"))
         self.setStyleSheet("")  # alte Farben vollständig entfernen
         QApplication.instance().setPalette(pal)
         self.setStyleSheet(sheet)
+        # Symbole im farbigen Band oben in dessen Schriftfarbe, in Menüs in der normalen
         for action, name in self._icon_actions:
-            action.setIcon(icons.icon(name, theme["text"]))
-        self.menu_button.setIcon(icons.icon("menu", theme["text"]))
-        self.view_button.setIcon(icons.icon("eye", theme["text"]))
+            in_menu = any(isinstance(o, QMenu) for o in action.associatedObjects())
+            action.setIcon(icons.icon(name, theme["text" if in_menu else "bandtext"]))
+        self.menu_button.setIcon(icons.icon("menu", theme["bandtext"]))
+        self.view_button.setIcon(icons.icon("eye", theme["bandtext"]))
         self.update_tracking_state()
         self.timeline.set_dark_mode(self.dark_mode)
 

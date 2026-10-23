@@ -24,7 +24,7 @@ if __name__ == "__main__":
 from datetime import datetime
 
 from PySide6.QtCore import QDate, QLocale, Qt, QTimer
-from PySide6.QtGui import QAction, QIcon, QKeySequence
+from PySide6.QtGui import QAction, QFont, QIcon, QKeySequence
 from PySide6.QtWidgets import (QAbstractItemView, QApplication, QHeaderView, QLabel,
                                QMainWindow, QMessageBox, QSplitter, QTableWidget, QToolButton)
 
@@ -101,6 +101,17 @@ def clean_path(path):
     return re.sub(r"\\{2,}", r"\\", path)
 
 
+# Frühere Standard-Typfarben -> Farben aus "Metro Klar" (nur genau diese Werte werden ersetzt)
+OLD_TYPE_COLORS = {
+    "#00B894": "#0F9D8A",  # VPN
+    "#F1C40F": "#D99A00",  # RDP
+    "#E67E22": "#E06D10",  # SSH, Undokumentiert
+    "#1ABC9C": "#139FB3",  # Website
+    "#27AE60": "#2E9E5B",  # Telefonat
+    "#2980B9": "#2272AD",  # M365-Admin (Schrift auf vollem Balken sonst zu blass)
+}
+
+
 def load_config_with_defaults():
     defaults = default_config()
     # Kaputte Datei wird beiseitegelegt (zeitzeuge_config.json.defekt-…), nicht überschrieben
@@ -128,13 +139,20 @@ def load_config_with_defaults():
         span = f"{cfg['work_start']}-{cfg['work_end']}"
         cfg["work_days"] = {d: (span if i < 5 else "")
                             for i, d in enumerate(["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"])}
-    cfg["type_colors"].setdefault("Telefonat", "#27AE60")
-    for kind, color in [("VPN-Verbindung", "#00B894"), ("SSH-Verbindung", "#E67E22"),
+    cfg["type_colors"].setdefault("Telefonat", "#2E9E5B")
+    for kind, color in [("VPN-Verbindung", "#0F9D8A"), ("SSH-Verbindung", "#E06D10"),
                         ("FTP-Verbindung", "#7F8C8D"), ("TeamViewer-Verbindung", "#3460DB"),
                         ("Zugangsdaten", "#9B59B6"), ("Arbeitsblock", "#5B8DEF"),
                         (AI_TYPE, "#A55EEA"), ("Dokumentiert", "#2E9E5B"),
-                        ("Undokumentiert", "#E67E22"), ("Klassifizierung", "#8395A7")]:
+                        ("Undokumentiert", "#E06D10"), ("Klassifizierung", "#8395A7")]:
         cfg["type_colors"].setdefault(kind, color)
+    # Design "Metro Klar": alte Standardfarben einmalig umstellen, selbst gewählte Farben bleiben.
+    # Nur einmal, damit eine später bewusst gewählte alte Farbe nicht wieder ersetzt wird.
+    if cfg.get("type_colors_version", 1) < 2:
+        for kind, color in list(cfg["type_colors"].items()):
+            if isinstance(color, str) and color.upper() in OLD_TYPE_COLORS:
+                cfg["type_colors"][kind] = OLD_TYPE_COLORS[color.upper()]
+        cfg["type_colors_version"] = 2
     # Alte Standardpfade enthielten doppelte Backslashes (C:\Users\x\\TeamViewer)
     for key in ("teamviewer_paths", "rdm_paths", "vpn_paths"):
         cfg[key] = [clean_path(p) for p in cfg.get(key, []) if isinstance(p, str)]
@@ -232,7 +250,11 @@ class TimelineApp(MenusMixin, DayListMixin, DocsMixin, ReadersMixin, TrayMixin, 
         self.set_tracking(self.config.get("tracking_enabled", True))
 
         self.table = QTableWidget(0, len(self.COLUMNS), self)
-        self.table.setHorizontalHeaderLabels(self.COLUMNS)
+        # Metro: Spaltenköpfe in Großbuchstaben mit etwas Sperrung
+        self.table.setHorizontalHeaderLabels([c.upper() for c in self.COLUMNS])
+        header_font = self.table.horizontalHeader().font()
+        header_font.setLetterSpacing(QFont.PercentageSpacing, 106)
+        self.table.horizontalHeader().setFont(header_font)
         self.table.verticalHeader().setVisible(False)
         self.table.setAlternatingRowColors(True)
         self.table.setShowGrid(False)

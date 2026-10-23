@@ -36,18 +36,20 @@ def default_config():
             "Passwort angezeigt",
 
         ],
+        # Typfarben aus dem Design "Metro Klar" (alte Standardwerte stellt
+        # load_config_with_defaults in main_timeline.py um, siehe OLD_TYPE_COLORS)
         "type_colors": {
             # Remote / Zugänge
-            "VPN-Sitzung":           "#00B894",  # Türkis
-            "RDP-Sitzung":           "#F1C40F",  # Gelb
-            "SSH-Sitzung":           "#E67E22",  # Orange
+            "VPN-Sitzung":           "#0F9D8A",  # Türkis
+            "RDP-Sitzung":           "#D99A00",  # Gelb
+            "SSH-Sitzung":           "#E06D10",  # Orange
 
             # Admin-Oberflächen / Dienste
             "Nextcloud-Admin":       "#3498DB",  # Blau
             "NAS-Admin":             "#16A085",  # Petrol
-            "Website-Admin":         "#1ABC9C",  # Türkisgrün
+            "Website-Admin":         "#139FB3",  # Türkisgrün
             "Hosting-Admin":         "#9B59B6",  # Lila (z.B. Netcup/goneo)
-            "M365-Admin":            "#2980B9",  # Dunkelblau
+            "M365-Admin":            "#2272AD",  # Dunkelblau
             "Mail-Administration":   "#C0392B",  # Rot
 
             # Sicherheits-/Zugangsthemen
@@ -58,10 +60,10 @@ def default_config():
 
             # Parser-Typen aus TeamViewer/RDM
             "TeamViewer":            "#3460DB",
-            "RDP-Verbindung":        "#F1C40F",
-            "SSH":                   "#E67E22",
-            "VPN":                   "#00B894",
-            "Website-Verbindung":    "#1ABC9C",
+            "RDP-Verbindung":        "#D99A00",
+            "SSH":                   "#E06D10",
+            "VPN":                   "#0F9D8A",
+            "Website-Verbindung":    "#139FB3",
         },
 
         "suggestion_colors": {
