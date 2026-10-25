@@ -277,7 +277,7 @@ class DocPromptDialog(QDialog):
              ("off", "Aus (nur in der Zeile „Doku“ zeigen)")]
     SOURCES = [("connections", "&Verbindungen (TeamViewer, RDP, SSH, VPN …)"),
                ("calls", "&Telefonate"),
-               ("rules", "Blöcke aus den &Regeln (z. B. Outlook, M365-Admin)")]
+               ("rules", "Blöcke der &Zuordnung ohne KI (z. B. Outlook, M365-Admin)")]
 
     def __init__(self, config, parent=None):
         super().__init__(parent)

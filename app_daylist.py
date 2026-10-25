@@ -69,7 +69,7 @@ class DayListMixin:
         self.update_status_text()
 
     VIEWS = [("grouped", "Zusammengefasst"), ("single", "Einzeln"), ("blocks", "Arbeitsblöcke"),
-             ("doc", "Dokumentation"), ("rules", "Regeln (ohne KI)"), ("ai", "KI-Vorschläge")]
+             ("doc", "Dokumentation"), ("rules", "Zuordnung ohne KI"), ("ai", "KI-Vorschläge")]
 
     def change_view(self, key):
         self.config["list_view"] = key
@@ -165,8 +165,30 @@ class DayListMixin:
         self.info_label.setText("   ·   ".join(parts))
         self.update_source_indicators()
 
+    def update_busy_bar(self):
+        """Ladeanzeige oben: alles, was gerade im Hintergrund lädt."""
+        bar = getattr(self, "busy_bar", None)
+        if bar is None:
+            return
+        items, urgent = [], False
+        if self.timeline.loading:
+            items.append("Logs (TeamViewer, RDM, VPN)")
+            urgent = True
+        for name, reader in (("3CX-Anrufe", getattr(self, "pbx_reader", None)),
+                             ("ITM-Zeiterfassung", getattr(self, "itm_reader", None)),
+                             ("Matrix42-Buchungen", getattr(self, "m42_reader", None))):
+            if reader and getattr(reader, "busy", None) and reader.busy():
+                items.append(name)
+                urgent = urgent or reader.first_load()
+        for date_str in sorted(getattr(self, "_ai_busy", ())):
+            items.append(f"KI-Vorschläge (Claude ordnet {date_str[8:10]}.{date_str[5:7]}. ein)")
+            urgent = True
+        # Kurze Lesevorgänge im Hintergrund (jede Minute) erst nach 1,5 s zeigen, sonst flackert es
+        bar.set_items(items, delay=0 if urgent else 1500)
+
     def update_source_indicators(self):
         """Anzeigen der Datenquellen in der Statuszeile auf den neuesten Stand bringen."""
+        self.update_busy_bar()
         if not hasattr(self, "source_buttons"):
             return
         states = {}

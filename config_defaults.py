@@ -150,8 +150,9 @@ def default_config():
         "ai_send_window_titles": True,
         "ai_auto": False,          # vergangene Tage beim Anzeigen automatisch einordnen
 
-        # Eigene Zeilen oben in der Timeline: Doku (eigene Tätigkeiten), Regeln, KI
-        "timeline_rows": {"doc": True, "rule": True, "ai": True},
+        # Zeilen der Timeline, jede einzeln aus- und einblendbar (timeline_only.TIMELINE_ROWS)
+        "timeline_rows": {"pc": True, "doc": True, "rule": True, "ai": True,
+                          "call": True, "vpn": True, "tv": True, "other": True},
         # Nachfragen nach erkannten Tätigkeiten ("Was hast du gemacht?")
         "prompt_mode": "window",       # "window" (kleines Fenster), "tray" (nur Meldung), "off"
         # Erst ab dieser Dauer (Minuten) nachfragen, je Art der Tätigkeit

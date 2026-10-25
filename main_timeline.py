@@ -26,9 +26,11 @@ from datetime import datetime
 from PySide6.QtCore import QDate, QLocale, Qt, QTimer
 from PySide6.QtGui import QAction, QFont, QIcon, QKeySequence
 from PySide6.QtWidgets import (QAbstractItemView, QApplication, QHeaderView, QLabel,
-                               QMainWindow, QMessageBox, QSplitter, QTableWidget, QToolButton)
+                               QMainWindow, QMessageBox, QSplitter, QTableWidget, QToolButton,
+                               QVBoxLayout, QWidget)
 
 from ai_classifier import AI_TYPE, AiClassifier, AiStore
+from busy_bar import BusyBar
 import safe_io
 import storage
 from vpn_reader import vpn_sources
@@ -298,7 +300,17 @@ class TimelineApp(MenusMixin, DayListMixin, DocsMixin, ReadersMixin, TrayMixin, 
         splitter.setStretchFactor(1, 2)
         splitter.setSizes([260, 400])
         splitter.setContentsMargins(8, 8, 8, 8)
-        self.setCentralWidget(splitter)
+        # Ladeanzeige über der Timeline: was gerade lädt (Logs, 3CX, ITM, KI)
+        self.busy_bar = BusyBar(self)
+        self._ai_busy = set()  # Tage, für die Claude gerade Vorschläge erstellt
+        self.timeline.loading_changed.connect(lambda _on: self.update_busy_bar())
+        central = QWidget(self)
+        central_layout = QVBoxLayout(central)
+        central_layout.setContentsMargins(0, 0, 0, 0)
+        central_layout.setSpacing(0)
+        central_layout.addWidget(self.busy_bar)
+        central_layout.addWidget(splitter, 1)
+        self.setCentralWidget(central)
 
         # Statuszeile
         self.info_label = QLabel(self)

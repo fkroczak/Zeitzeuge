@@ -127,6 +127,8 @@ QSpinBox:focus, QListWidget:focus, QTableWidget:focus, QGraphicsView:focus {
     border: 1px solid $accent; }
 QToolButton#qt_toolbar_ext_button { border: 1px solid $border; background-color: $hover; }
 QLabel#hint { color: $muted; }
+QWidget#busy_bar { background-color: $sel; border-bottom: 1px solid $accent; }
+QLabel#busy_text { color: $seltext; background: transparent; font-weight: 600; padding: 2px 0; }
 QStatusBar QToolButton#cta { background-color: $accent; color: $onaccent; font-weight: 600;
                              border-radius: 0; padding: 2px 12px; }
 QStatusBar QToolButton#cta:hover { background-color: $accent; border-color: $text; }

@@ -17,6 +17,7 @@ from log_parsers import VpnParser
 from vpn_reader import vpn_sources
 from settings_dialogs import ActivityTypeSettingsDialog, ConnectionSettingsDialog, WorkHoursDialog
 from theme import GERMAN, STYLESHEET, THEMES
+from timeline_only import TIMELINE_ROWS
 from version import VERSION
 import main_timeline as mt  # Pfade und save_config zur Laufzeit von dort (Tests ersetzen sie dort)
 
@@ -196,7 +197,8 @@ class MenusMixin:
             "Einzeln: jede Zeile aus den Logs\n"
             "Arbeitsblöcke: alles mit kurzer Pause dazwischen als ein Block, z. B. fürs Ticket\n"
             "Dokumentation: deine eingetragenen Tätigkeiten und was noch offen ist (F7)\n"
-            "Regeln (ohne KI): Tätigkeiten, die Zeitzeuge über deine Regeln erkannt hat\n"
+            "Zuordnung ohne KI: Tätigkeiten, die Zeitzeuge über feste Regeln erkannt hat\n"
+            "  (z. B. Outlook → E-Mail, TeamViewer → Fernwartung)\n"
             "KI-Vorschläge: Tätigkeiten, die Claude aus dem Tag erkannt hat")
         self.view_button.setAccessibleDescription(f"Aktuell: {current}")
 
@@ -222,7 +224,7 @@ class MenusMixin:
         self.tracking_action.toggled.connect(self.toggle_tracking)
         self._icon_actions += [
             (menu.addAction("Fenster-F&ilter …", self.edit_tracking_filters), "filter"),
-            (menu.addAction("&Regeln (ohne KI) …", self.edit_rules), "rules"),
+            (menu.addAction("&Zuordnung ohne KI (Regeln) …", self.edit_rules), "rules"),
         ]
         menu.addSeparator()
         self._icon_actions += [
@@ -235,13 +237,16 @@ class MenusMixin:
             (menu.addAction("&Nachfragen und Erinnerungen …", self.edit_prompt_settings), "bell"))
         rows_menu = menu.addMenu("&Zeilen der Timeline")
         self.row_actions = {}
-        for key, text in [("doc", "&Doku (eigene Tätigkeiten)"), ("rule", "&Regeln (ohne KI)"),
-                          ("ai", "&KI-Vorschläge")]:
+        for key, text in TIMELINE_ROWS:
+            if key == "call":  # Leiste oben (eigene Zeilen) und feste Zeilen trennen
+                rows_menu.addSeparator()
             action = rows_menu.addAction(text)
             action.setCheckable(True)
             action.setChecked(self.config.get("timeline_rows", {}).get(key, True))
             action.toggled.connect(lambda on, k=key: self.toggle_row(k, on))
             self.row_actions[key] = action
+        rows_menu.addSeparator()
+        rows_menu.addAction("&Alle einblenden", self.show_all_rows)
         self._icon_actions.append((rows_menu.menuAction(), "rows"))
         menu.addSeparator()
         self.sources_menu = self._build_sources_menu(menu)
@@ -378,6 +383,7 @@ class MenusMixin:
             action.setIcon(icons.icon(name, theme["text" if in_menu else "bandtext"]))
         self.menu_button.setIcon(icons.icon("menu", theme["bandtext"]))
         self.view_button.setIcon(icons.icon("eye", theme["bandtext"]))
+        self.busy_bar.set_color(theme["accent"])
         self.update_tracking_state()
         self.timeline.set_dark_mode(self.dark_mode)
 

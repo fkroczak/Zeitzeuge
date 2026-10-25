@@ -273,6 +273,7 @@ class BrowserReader(QObject):
     login_required = Signal()
     recording_done = Signal(str)  # Pfad der Mitschnitt-Datei, leer bei Fehler
     trouble = Signal(str)  # einmal nach TROUBLE_AFTER Fehlschlägen in Folge (Infobereich)
+    busy_changed = Signal()  # ein Durchlauf beginnt oder endet (für die Ladeanzeige)
 
     READ_INTERVAL = 60  # Sekunden zwischen zwei Durchläufen
     START_BROWSER = True  # False: der Leser startet Edge selbst nur bei Bedarf
@@ -651,6 +652,17 @@ class BrowserReader(QObject):
             return "busy", "lädt …"
         return "ok", f"{self.last_ok:%H:%M}"
 
+    def busy(self):
+        """Lädt gerade (für die Ladeanzeige). Wartet auf Anmeldung oder Netz: nicht."""
+        if self.needs_login or self._login_open or self._offline or self._stop.is_set():
+            return False
+        return self._step_started is not None or (not getattr(self, "last_ok", None)
+                                                   and not self._failed)
+
+    def first_load(self):
+        """Noch nie erfolgreich gelesen (Start): Ladeanzeige sofort zeigen."""
+        return not getattr(self, "last_ok", None)
+
     def _need_login(self):
         if not self.needs_login:
             self.needs_login = True
@@ -672,10 +684,12 @@ class BrowserReader(QObject):
                             self._cleaned = True
                             kill_profile_processes(self.profile_dir)
                         self._step_started = time.time()
+                        self.busy_changed.emit()
                         try:
                             self._step()
                         finally:
                             self._step_started = None
+                            self.busy_changed.emit()
             except Exception as e:  # unerwartet (z. B. Fehler beim Aufräumen)
                 if self._stop.is_set():
                     break

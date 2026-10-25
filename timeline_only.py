@@ -71,8 +71,24 @@ FIXED_ROWS = [("call", "Tel"), ("vpn", "VPN"), ("tv", "TV")]
 # Legende links: Name der Zeile und Schlüssel in config["type_colors"] für das Farbfeld
 LEGEND_FIXED = {"call": ("Telefon", "Telefonat"), "vpn": ("VPN", "VPN-Verbindung"),
                 "tv": ("TeamViewer", "TeamViewer")}
-LEGEND_BANDS = {"doc": ("Dokumentation", "Dokumentiert"), "rule": ("Regeln", "Klassifizierung"),
+LEGEND_BANDS = {"doc": ("Dokumentation", "Dokumentiert"), "rule": ("Zuordnung o. KI", "Klassifizierung"),
                 "ai": ("KI-Vorschläge", "KI-Vorschlag")}
+
+# Alle Zeilen der Timeline in der Reihenfolge von oben nach unten: Schlüssel in
+# config["timeline_rows"], Text im Menü. Jede lässt sich einzeln aus- und einblenden.
+TIMELINE_ROWS = [
+    ("pc", "&PC-Aktivität (aktive Fenster)"),
+    ("doc", "&Dokumentation (eigene Tätigkeiten)"),
+    ("rule", "&Zuordnung ohne KI (feste Regeln)"),
+    ("ai", "&KI-Vorschläge"),
+    ("call", "&Telefon (3CX)"),
+    ("vpn", "&VPN"),
+    ("tv", "T&eamViewer"),
+    ("other", "&Remote / Weitere (RDM, SSH, RDP …)"),
+]
+ROW_NAMES = {"pc": "PC-Aktivität", "doc": "Dokumentation", "rule": "Zuordnung ohne KI",
+             "ai": "KI-Vorschläge", "call": "Telefon", "vpn": "VPN", "tv": "TeamViewer",
+             "other": "Remote / Weitere"}
 
 
 def row_kind(activity):
@@ -94,7 +110,7 @@ def type_label(activity):
     if activity.get("open"):
         return "Undokumentiert"
     if activity.get("rule"):
-        return f"Regel: {activity.get('category', '')}"
+        return f"Zuordnung: {activity.get('category', '')}"
     if activity.get("ai"):
         text = f"KI: {activity.get('category', '')}"
         return text + " (übernommen)" if activity.get("status") == "übernommen" else text
@@ -229,6 +245,8 @@ class TimelineView(QGraphicsView):
     entry_action = Signal(str, dict)
     # Hintergrund-Thread hat TeamViewer- und RDM-Logs gelesen
     logs_loaded = Signal(object, object, object)
+    # Logs werden gelesen (True) oder sind fertig (False) – für die Ladeanzeige
+    loading_changed = Signal(bool)
 
     APP_COLORS = ["#5B8DEF", "#E67E22", "#27AE60", "#9B59B6", "#E84393",
                   "#16A085", "#C0392B", "#F1C40F", "#2C3E50", "#7F8C8D"]
@@ -353,6 +371,7 @@ class TimelineView(QGraphicsView):
             self._reload = True
             return
         self.loading = True
+        self.loading_changed.emit(True)
         self._thread = threading.Thread(target=self._load_logs, daemon=True)
         self._threads = [t for t in self._threads if t.is_alive()] + [self._thread]
         self._thread.start()
@@ -395,6 +414,7 @@ class TimelineView(QGraphicsView):
         self._sophos_index = None  # Archiv der VPN-Aufzeichnung beim nächsten Zeichnen neu lesen
         self._remote_cache.clear()
         self.loading = False
+        self.loading_changed.emit(False)
         if self._reload:
             self._reload = False
             self.refresh()
@@ -409,6 +429,7 @@ class TimelineView(QGraphicsView):
             self.remote_suggestions = []
             if not self.loading:
                 self.loading = True
+                self.loading_changed.emit(True)
                 # Erst lesen, wenn dieses Zeichnen fertig ist (sonst bremst der Thread es aus)
                 QTimer.singleShot(0, self._start_first_load)
             return
@@ -569,16 +590,23 @@ class TimelineView(QGraphicsView):
         activities = self.view_entries(date)
 
         # Telefonate, VPN und TeamViewer je in eine feste Zeile; der Rest (v. a. RDM)
-        # wird auf Spuren verteilt: überlappende Einträge kommen in die nächste Spur
-        fixed_index = {kind: i for i, (kind, _label) in enumerate(FIXED_ROWS)}
-        n_fixed = len(FIXED_ROWS)
+        # wird auf Spuren verteilt: überlappende Einträge kommen in die nächste Spur.
+        # Ausgeblendete Zeilen (Menü "Zeilen der Timeline") fallen ganz weg.
+        shown = self.config.get("timeline_rows", {})
+        fixed_rows = [(kind, label) for kind, label in FIXED_ROWS if shown.get(kind, True)]
+        show_other = shown.get("other", True)
+        fixed_index = {kind: i for i, (kind, _label) in enumerate(fixed_rows)}
+        n_fixed = len(fixed_rows)
         lanes_end = []
         placed = []
         for a in activities:
             start, end = parse_time(a["start"]), parse_time(a["end"])
             kind = row_kind(a)
             if kind is not None:
-                placed.append((a, start, end, fixed_index[kind]))
+                if kind in fixed_index:
+                    placed.append((a, start, end, fixed_index[kind]))
+                continue
+            if not show_other:
                 continue
             for idx, lane_end in enumerate(lanes_end):
                 if start >= lane_end:
@@ -593,12 +621,13 @@ class TimelineView(QGraphicsView):
                     idx = len(lanes_end) - 1
             placed.append((a, start, end, n_fixed + idx))
 
-        pc_band = self.pc_entries_for(date, min_seconds=5, max_gap=15)
+        show_pc = shown.get("pc", True)
+        pc_band = self.pc_entries_for(date, min_seconds=5, max_gap=15) if show_pc else []
         bands = self.band_rows(date)
         ai_band = next((e for k, _t, e in bands if k == "ai"), [])
-        n_lanes = max(self.MIN_LANES, len(lanes_end))
+        n_lanes = max(self.MIN_LANES, len(lanes_end)) if show_other else 0
         band_y = self.AXIS_H + 6
-        show_band = bool(self.tracker or pc_band)
+        show_band = show_pc and bool(self.tracker or pc_band)
         top = band_y + (self.PC_BAND_H + 10 if show_band else 2)
         # Zeilenhöhe so wählen, dass alle Zeilen ohne senkrechte Scrollleiste ins Fenster passen;
         # Platz für die horizontale Scrollleiste lassen
@@ -660,7 +689,7 @@ class TimelineView(QGraphicsView):
 
         # Jede zweite Zeile leicht hinterlegt, damit die Zeilen unterscheidbar sind
         stripe = QColor(255, 255, 255, 10) if self.dark_mode else QColor(0, 0, 0, 10)
-        row_tops = [top + i * row_h for i in range(n_fixed)]
+        row_tops = [top + i * row_h for i in range(n_fixed)]  # nur sichtbare Zeilen
         row_tops += [free_top + i * row_h for i in range(n_lanes)]
         for i, y in enumerate(row_tops):
             if i % 2 == 0:
@@ -674,13 +703,15 @@ class TimelineView(QGraphicsView):
         for (kind, _text, _band), y in zip(bands, band_tops):
             name, key = LEGEND_BANDS[kind]
             legend.append((y, self.LANE_H, name, colors.get(key)))
-        for i, (kind, _text) in enumerate(FIXED_ROWS):
+        for i, (kind, _text) in enumerate(fixed_rows):
             name, key = LEGEND_FIXED[kind]
             legend.append((top + i * row_h, self.LANE_H, name, colors.get(key)))
-        legend.append((free_top, self.LANE_H, "Remote / Weitere", colors.get("RDP-Verbindung")))
+        if show_other:
+            legend.append((free_top, self.LANE_H, "Remote / Weitere", colors.get("RDP-Verbindung")))
+            sep_y = free_top - (6 + self.LANE_GAP) / 2
+            if n_fixed:
+                self.scene.addLine(0, sep_y, width, sep_y, QPen(self.hour_line, 1))
         self._legend = legend
-        sep_y = free_top - (6 + self.LANE_GAP) / 2
-        self.scene.addLine(0, sep_y, width, sep_y, QPen(self.hour_line, 1))
 
         # Einträge
         label_font = QFont("Segoe UI", 8)
@@ -744,7 +775,7 @@ class TimelineView(QGraphicsView):
         self._hover_label.setDefaultTextColor(self.text_color)
         self._hover_label.setZValue(91)
         self._hover_label.hide()
-        self._day_entries = activities
+        self._day_entries = [a for a, _s, _e, _l in placed]  # nur die gezeichneten
         self._pc_band = pc_band
         self._ai_band = ai_band
         self._bands = bands
@@ -764,13 +795,13 @@ class TimelineView(QGraphicsView):
         self.day_loaded.emit(activities, self.pc_entries_for(date))
 
     # Obere Zeilen: Kennung, Beschriftung links, Schlüssel in config["timeline_rows"]
-    BAND_ROWS = [("doc", "Doku"), ("rule", "Regel"), ("ai", "KI")]
+    BAND_ROWS = [("doc", "Doku"), ("rule", "Zuordnung"), ("ai", "KI")]
 
     def band_rows(self, date: QDate):
         """Sichtbare obere Zeilen mit ihren Einträgen: [(Kennung, Text, Einträge)].
 
         Doku steht immer da (auch leer), damit offene Tätigkeiten sofort auffallen.
-        Regeln und KI nur, wenn es Einträge gibt. Jede Zeile lässt sich abschalten.
+        Zuordnung (Regeln) und KI nur, wenn es Einträge gibt. Jede Zeile lässt sich abschalten.
         """
         date_str = date.toString("yyyy-MM-dd")
         shown = self.config.get("timeline_rows", {})
@@ -1034,7 +1065,8 @@ class TimelineView(QGraphicsView):
                 lines.append("<i>Deine Tätigkeit · Klick: bearbeiten</i>")
             elif hovered.get("rule"):
                 lines.append(escape(hovered.get("description") or hovered.get("details", "")))
-                lines.append("<i>Aus Regeln erkannt · Rechtsklick: als Tätigkeit eintragen</i>")
+                lines.append("<i>Automatisch zugeordnet (feste Regel, ohne KI)"
+                             " · Rechtsklick: als Tätigkeit eintragen</i>")
             elif hovered.get("ai"):
                 lines.append(escape(hovered.get("description", "")))
                 lines.append(f"<i>KI-Vorschlag, Sicherheit {round(hovered.get('confidence', 0) * 100)} %"

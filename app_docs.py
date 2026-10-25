@@ -16,7 +16,7 @@ from journal_dialogs import DocPromptDialog, prompt_thresholds, EntryDialog, Pro
 from settings_dialogs import AiSettingsDialog
 import rules
 from grouping import group_entries
-from timeline_only import ActivityViewDialog, ai_copy_text, parse_time, row_kind, type_label
+from timeline_only import ROW_NAMES, ActivityViewDialog, ai_copy_text, parse_time, row_kind, type_label
 from theme import GERMAN
 import main_timeline as mt  # Pfade und save_config zur Laufzeit von dort (Tests ersetzen sie dort)
 
@@ -49,11 +49,15 @@ class DocsMixin:
             started = self.ai.start(date_str, entries, pc)
         if started:
             self.ai_button_action.setEnabled(False)
+            self._ai_busy.add(date_str)
+            self.update_busy_bar()
             self.statusBar().showMessage(
                 f"Claude ordnet {GERMAN.toString(date, 'dd.MM.')} ein …", 60000)
 
     def on_ai_finished(self, date_str, count, cost):
         self.ai_button_action.setEnabled(True)
+        self._ai_busy.discard(date_str)
+        self.update_busy_bar()
         cost_text = f"{cost:.3f}".replace(".", ",")
         self.statusBar().showMessage(
             f"KI: {count} Vorschläge für {date_str[8:10]}.{date_str[5:7]}., "
@@ -63,6 +67,8 @@ class DocsMixin:
 
     def on_ai_failed(self, date_str, message):
         self.ai_button_action.setEnabled(True)
+        self._ai_busy.discard(date_str)
+        self.update_busy_bar()
         self.statusBar().showMessage(f"KI-Vorschläge: {message}", 10000)
         if not self.isVisible() or self.config.get("ai_auto"):
             return
@@ -293,8 +299,12 @@ class DocsMixin:
         self.config.setdefault("timeline_rows", {})[key] = on
         mt.save_config(self.config)
         self.timeline.draw_timeline(self.current_date)
-        name = {"doc": "Doku", "rule": "Regel", "ai": "KI"}[key]
+        name = ROW_NAMES.get(key, key)
         self.statusBar().showMessage(f"Zeile „{name}“ {'eingeblendet' if on else 'ausgeblendet'}", 3000)
+
+    def show_all_rows(self):
+        for action in self.row_actions.values():
+            action.setChecked(True)  # löst toggle_row aus
 
     def edit_prompt_settings(self):
         dialog = DocPromptDialog(self.config, self)

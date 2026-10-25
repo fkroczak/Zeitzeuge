@@ -32,6 +32,7 @@ class ReadersMixin:
         )
         self.pbx_reader.status_changed.connect(self.calls_label.setText)
         self.pbx_reader.status_changed.connect(lambda _t: self.update_source_indicators())
+        self.pbx_reader.busy_changed.connect(self.update_busy_bar)
         self.pbx_reader.calls_added.connect(
             lambda _n: self.timeline.draw_timeline(self.current_date)
         )
@@ -302,6 +303,7 @@ class ReadersMixin:
             lambda error: error and QMessageBox.warning(self, "ITM-Anmeldung",
                                                         f"Anmeldung fehlgeschlagen:\n{error}"))
         self.itm_reader.status_changed.connect(lambda _t: self.update_source_indicators())
+        self.itm_reader.busy_changed.connect(self.update_busy_bar)
         self.itm_reader.day_read.connect(
             lambda d: self.timeline.draw_timeline(self.current_date)
             if d == self.current_date.toString("yyyy-MM-dd") else None
@@ -345,7 +347,7 @@ class ReadersMixin:
             self.itm_reader.deleteLater()
             self.itm_reader = None
             self.timeline.personal_day = None
-            self.update_source_indicators()
+            self.update_source_indicators()  # zieht auch die Ladeanzeige mit
 
     # ---------------------- Absicherung gegen Fehler und Aussetzer -------------
 
