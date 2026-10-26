@@ -15,8 +15,10 @@ from journal import (describe, entry_key as journal_key, open_entry, suggest_cat
 from journal_dialogs import DocPromptDialog, prompt_thresholds, EntryDialog, PromptWindow, default_span
 from settings_dialogs import AiSettingsDialog
 import rules
+import m42_data as m42
 from grouping import group_entries
-from timeline_only import ROW_NAMES, ActivityViewDialog, ai_copy_text, parse_time, row_kind, type_label
+from timeline_only import (ROW_NAMES, ActivityViewDialog, ai_copy_text, format_duration, parse_time,
+                           row_kind, type_label)
 from theme import GERMAN
 import main_timeline as mt  # Pfade und save_config zur Laufzeit von dort (Tests ersetzen sie dort)
 
@@ -136,6 +138,76 @@ class DocsMixin:
                                 min_minutes=self.config.get("rules_min_minutes", 5))
         self._rule_cache[date_str] = (key, blocks)
         return blocks
+
+    # ---------------------- Matrix42: gebucht / nicht gebucht -----------------
+
+    def _m42_bookings(self, date_str):
+        reader = getattr(self, "m42_reader", None)
+        return reader.day(date_str) if reader else None
+
+    def m42_band(self, date_str):
+        """Zeile "Matrix42": Buchungen und (rot gestrichelt) Personalzeit ohne Buchung."""
+        bookings = self._m42_bookings(date_str)
+        if bookings is None:  # Tag (noch) nicht gelesen: nichts behaupten
+            return []
+        result = []
+        for b in bookings:
+            result.append({
+                "start": b["start"], "end": b["end"], "type": "Matrix42-Buchung", "m42": True,
+                "customer_name": b.get("customer", ""), "category": b.get("ticket", ""),
+                "description": b.get("subject", ""),
+                "details": " · ".join(t for t in (b.get("ticket"), b.get("subject"), b.get("entry")) if t),
+            })
+        date = QDate.fromString(date_str, "yyyy-MM-dd")
+        day = datetime.strptime(date_str, "%Y-%m-%d")
+        now = datetime.now()
+        if day.date() > now.date():
+            return result
+        spans, from_itm, _open = self.timeline._work_info(date)
+        work = []
+        for a, b in spans:
+            start, end = day + timedelta(minutes=a), day + timedelta(minutes=b)
+            end = min(end, now)  # heute nur bis jetzt
+            if end > start:
+                work.append((start, end))
+        name = "Personalzeit" if from_itm else "Arbeitszeit"
+        for a, b in m42.gaps(work, bookings, self.config.get("m42_gap_minutes", 5)):
+            result.append({
+                "start": a.strftime("%Y-%m-%d %H:%M:%S"), "end": b.strftime("%Y-%m-%d %H:%M:%S"),
+                "type": "Nicht gebucht", "m42_gap": True, "customer_name": "nicht gebucht",
+                "details": f"{name} ohne Buchung in Matrix42",
+                "minute": a.hour * 60 + a.minute,  # für "Tätigkeit ab … eintragen"
+            })
+        return sorted(result, key=lambda e: e["start"])
+
+    def m42_unbooked(self, date_str):
+        """Verbindungen und Telefonate, die (fast) keine Buchung abdeckt."""
+        bookings = self._m42_bookings(date_str)
+        if bookings is None:
+            return []
+        date = QDate.fromString(date_str, "yyyy-MM-dd")
+        entries = [e for e in group_entries(self.timeline.activities_for(date),
+                                            self.config.get("merge_gap_minutes", 5))
+                   if e.get("type") != "Zugangsdaten"]
+        return [dict(e, m42_unbooked=True)
+                for e in m42.unbooked(entries, bookings, self.config.get("m42_gap_minutes", 5))]
+
+    def m42_summary(self, date_str):
+        """Kurztext für die Statuszeile, z. B. "Matrix42 gebucht 6:10 h, nicht gebucht 1:35 h"."""
+        bookings = self._m42_bookings(date_str)
+        if bookings is None:
+            return ""
+        band = self.m42_band(date_str)
+        booked = mt.merged_seconds([e for e in band if e.get("m42")])
+        missing = sum((parse_time(e["end"]) - parse_time(e["start"])).total_seconds()
+                      for e in band if e.get("m42_gap"))
+        text = f"Matrix42 gebucht {format_duration(booked)}"
+        if missing:
+            text += f", nicht gebucht {format_duration(missing)}"
+        unbooked = len(self.m42_unbooked(date_str))
+        if unbooked:
+            text += f", {unbooked} Verbindung{'en' if unbooked > 1 else ''} ohne Buchung"
+        return text
 
     def doc_candidates(self, date_str):
         """Erkannte Tätigkeiten des Tages, die noch nicht dokumentiert sind."""

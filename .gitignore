@@ -10,6 +10,9 @@ anrufe_stand.json
 personalzeiten.json
 personalzeiten.json.tmp
 itm_profil/
+m42_profil/
+m42_buchungen.json
+m42_buchungen.json.tmp
 mitschnitt_*.json
 mitschnitt_*.json.tmp
 ki_vorschlaege/

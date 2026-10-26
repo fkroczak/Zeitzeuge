@@ -136,6 +136,13 @@ def default_config():
         "itm_user": "",
         "itm_mandant": 0,
         "itm_auth_url": "",  # leer: Anmeldedienst aus den Einstellungen der App (ApiUri)
+        # Matrix42 (nur im Firmennetz): gebuchte Zeiten aus dem Service-Desk-Kalender
+        # Adresse der Kalenderseite (Service Desk → Kalender, aus der Adresszeile kopieren)
+        "m42_url": "https://support.itm-gruppe.com/wm/app-ServiceDesk/search-page/"
+                   "c2b533af-5764-ef11-debc-0050569e2f05",
+        "m42_reader_enabled": False,
+        "m42_weeks_back": 4,          # so viele Wochen zurück einmal pro Sitzung lesen
+        "m42_gap_minutes": 5,         # kürzere Lücken ohne Buchung zählen nicht
         "close_to_tray": True,
 
         # Tagesliste: "grouped" (zusammengefasst), "single" (einzeln), "blocks" (Arbeitsblöcke)
@@ -151,7 +158,7 @@ def default_config():
         "ai_auto": False,          # vergangene Tage beim Anzeigen automatisch einordnen
 
         # Zeilen der Timeline, jede einzeln aus- und einblendbar (timeline_only.TIMELINE_ROWS)
-        "timeline_rows": {"pc": True, "doc": True, "rule": True, "ai": True,
+        "timeline_rows": {"pc": True, "doc": True, "m42": True, "rule": True, "ai": True,
                           "call": True, "vpn": True, "tv": True, "other": True},
         # Nachfragen nach erkannten Tätigkeiten ("Was hast du gemacht?")
         "prompt_mode": "window",       # "window" (kleines Fenster), "tray" (nur Meldung), "off"

@@ -30,6 +30,13 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
 - **Personalzeiten aus der ITM-Zeiterfassung:** Zeitzeuge liest deine gestempelten Zeiten und hebt sie in der Timeline als Arbeitszeit hervor. Pausen sind abgedunkelt. Die Statuszeile zeigt die gewertete Zeit und die Sollzeit.
   - Offene oder fehlerhafte Buchungen meldet Zeitzeuge einmal im Infobereich, zum Beispiel „Buchung vom 21.10. 08:02 ist seit über 12 Stunden offen – Ausstempeln vergessen?“ oder „Ende liegt vor dem Start“.
   - Die letzten 45 Tage holt Zeitzeuge in einer Abfrage. Tage, die noch fehlen, sind damit auch offline da.
+- **Gebuchte Zeiten aus Matrix42 (nur im Firmennetz):** Zeitzeuge liest deine Buchungen aus dem Matrix42-Kalender (Service Desk → Kalender) und gleicht sie mit dem Tag ab.
+  - Einrichten: **Einstellungen → Datenquellen → Einrichten → Matrix42 …**, dort die Adresse der Kalenderseite aus der Adresszeile einfügen. Die Windows-Anmeldung klappt meist von selbst, sonst einmal **Bei Matrix42 anmelden …**.
+  - Edge liest die Wochenansicht unsichtbar mit eigenem Profil (`m42_profil`): die aktuelle Woche alle 10 Minuten, die letzten 4 Wochen einmal pro Sitzung (einstellbar), ältere Wochen beim Blättern. Alles landet in `m42_buchungen.json` und bleibt auch außerhalb des Firmennetzes da.
+  - Außerhalb des Firmennetzes steht in der Statuszeile „M42: nicht im Firmennetz“; Zeitzeuge liest weiter, sobald du wieder im Netz oder im VPN bist.
+  - **Zeile „Matrix42“** in der Timeline: graue Blöcke sind gebucht (Kunde · Betreff), rot gestrichelte Lücken sind Personalzeit (ohne ITM: Arbeitszeit) ohne Buchung. Ein Klick auf eine Lücke trägt ab dort eine Tätigkeit ein.
+  - **Tagesliste → Matrix42-Abgleich:** Buchungen mit Ticketnummer, Lücken ohne Buchung und Verbindungen/Telefonate, die höchstens zur Hälfte gebucht sind („Nicht gebucht: TeamViewer“).
+  - Die Statuszeile zeigt z. B. „Matrix42 gebucht 7:05 h, nicht gebucht 1:55 h, 1 Verbindung ohne Buchung“.
 - **Aktivitätsprotokoll:** Alle 5 Sekunden merkt sich Zeitzeuge das aktive Fenster, zum Beispiel eine RDP-Sitzung, einen Browser-Tab, Outlook oder PuTTY.
   - Es erscheint als farbiges Band „PC“ oben in der Timeline, eine Farbe pro Programm.
   - Mit **PC-Verlauf** (Bildschirm-Symbol) in der Werkzeugleiste stehen die Fenster auch in der Tagesliste.
@@ -282,7 +289,11 @@ Unter **Einstellungen → Nachfragen und Erinnerungen …** legst du fest, wann 
 | `prompt_snooze_minutes` | `15` | „Später fragen“ fragt nach so vielen Minuten wieder |
 | `prompt_end_of_day` | `true` | Nach Feierabend einmal an Offenes erinnern |
 | `prompt_on_quit` | `true` | Beim Beenden an Offenes erinnern |
-| `timeline_rows` | alle an | Sichtbare Zeilen der Timeline: `pc`, `doc`, `rule` (Zuordnung ohne KI), `ai`, `call`, `vpn`, `tv`, `other` (Remote / Weitere) |
+| `m42_url` | ITM-Kalenderseite (support.itm-gruppe.com) | Adresse der Matrix42-Kalenderseite |
+| `m42_reader_enabled` | `false` | Gebuchte Zeiten aus Matrix42 lesen |
+| `m42_weeks_back` | `4` | So viele Wochen zurück einmal pro Sitzung lesen |
+| `m42_gap_minutes` | `5` | Kürzere Lücken ohne Buchung zählen nicht |
+| `timeline_rows` | alle an | Sichtbare Zeilen der Timeline: `pc`, `doc`, `m42`, `rule` (Zuordnung ohne KI), `ai`, `call`, `vpn`, `tv`, `other` (Remote / Weitere) |
 
 Gefragt wird nur nach Tätigkeiten, die gerade erst geendet haben. Ältere offene Einträge stehen gestrichelt in der Zeile „Doku“, damit nichts verloren geht. Als dokumentiert gilt ein Eintrag, wenn mindestens die Hälfte seiner Zeit in deinen Tätigkeiten steckt.
 
@@ -317,7 +328,7 @@ Zeitzeuge soll nie Daten verlieren und nie dauerhaft hängen. Das passiert bei P
 - **Kein Internet:** Zeitzeuge prüft kurz, ob der 3CX- oder ITM-Server erreichbar ist. Wenn nicht, startet es kein Edge. Die Statuszeile zeigt dann zum Beispiel „3CX: offline, nächster Versuch 10:42“. Nach jedem Fehlversuch wartet Zeitzeuge länger: 20 Sekunden, 40 Sekunden, 80 Sekunden und so weiter, höchstens 10 Minuten. Ist das Netz wieder da, liest es sofort weiter. Klappt es fünfmal hintereinander nicht, meldet sich Zeitzeuge einmal im Infobereich.
 - **Edge abgestürzt oder beendet:** Hast du Edge im Task-Manager beendet oder ist er abgestürzt, merkt Zeitzeuge das. Es räumt auf und startet Edge beim nächsten Durchlauf neu. Hängt ein Durchlauf länger als 15 Minuten, beendet Zeitzeuge Edge hart und fängt neu an. Jede Minute prüft ein Wächter, ob die Leser für 3CX und ITM noch laufen, und startet sie bei Bedarf neu.
 - **Anmeldefenster:** Meldest du dich 10 Minuten lang nicht an, schließt sich das Fenster von selbst. In der Statuszeile steht dann „Anmeldung abgebrochen (Zeitüberschreitung)“. Über die Meldung im Infobereich öffnest du es wieder. Schaltest du 3CX oder ITM unter **Datenquellen** aus, gehen auch ihr Edge und ihr Anmeldefenster zu.
-- **Edge-Reste:** Beim Start und beim Beenden schließt Zeitzeuge alle Edge-Fenster mit seinen eigenen Profilen (`3cx_profil`, `itm_profil`). Dein normaler Edge bleibt immer offen.
+- **Edge-Reste:** Beim Start und beim Beenden schließt Zeitzeuge alle Edge-Fenster mit seinen eigenen Profilen (`3cx_profil`, `itm_profil`, `m42_profil`). Dein normaler Edge bleibt immer offen.
 - **Kaputte Dateien:** Ist eine Datei wie `zeitzeuge_config.json` oder `anrufe.json` beschädigt, überschreibt Zeitzeuge sie nicht. Es benennt sie um in `<Name>.defekt-<Datum>-<Uhrzeit>` und sagt dir das nach dem Start. Danach macht es mit Standardwerten weiter. Deine alten Daten stecken in der umbenannten Datei. Einzelne kaputte Einträge in einer sonst guten Datei überspringt Zeitzeuge einfach.
 - **Gesperrte Dateien:** Hält OneDrive oder ein Virenscanner eine Datei kurz fest, versucht Zeitzeuge es gleich noch einmal. Alle Dateien schreibt es so, dass bei einem Absturz die alte Fassung heil bleibt.
 - **Sehr große Logs:** Von Logdateien über 100 MB liest Zeitzeuge nur die letzten 20 MB und sagt dir das einmal. Logs in UTF-16 erkennt es von selbst. Kaputte Zeilen werden übersprungen.
@@ -419,6 +430,9 @@ Läuft RDM auf einem Server, kann Zeitzeuge dessen Log auch über das Netzwerk l
 | `ai_classifier.py` | KI-Vorschläge über die Anthropic-API |
 | `journal.py` | Eigene Tätigkeiten speichern, offene erkennen |
 | `journal_dialogs.py` | Dialoge zum Nachtragen, Nachfrage-Fenster, Einstellungen dazu |
+| `m42_reader.py` | Matrix42: Kalender im unsichtbaren Edge lesen (Wochenansicht, Blättern, Anmeldung) |
+| `m42_data.py` | Matrix42: Einträge umwandeln, Abgleich gebucht / nicht gebucht (ohne Qt) |
+| `busy_bar.py` | Ladeanzeige oben im Fenster |
 | `rules.py` | Klassifizierung ohne KI: Regeln, Blöcke bilden, Vorrang (ohne Qt) |
 | `storage.py` | Speicherort der Daten |
 | `safe_io.py` | Dateien sicher lesen und schreiben, kaputte Dateien beiseitelegen, große Logs nur am Ende lesen, `fehler.log` |
@@ -437,7 +451,7 @@ Zeitzeuge arbeitet nur auf deinem eigenen Rechner. Es liest lokale Logdateien un
 
 **KI-Vorschläge:** Dabei gehen die Einträge des Tages an Anthropic: Uhrzeiten, Kunden- und Verbindungsnamen, Anrufer und, wenn eingeschaltet, die Fenstertitel. Passwörter selbst stehen nicht in den Logs und werden nicht gesendet. Fenster aus `tracking_ignore` gehen nur als „(ausgeblendet)“ mit. Prüfe vorher, ob das zu deinen Verträgen mit Kunden passt. Wenn nicht: Fenstertitel ausschalten oder die Funktion nicht nutzen.
 
-Das Aktivitätsprotokoll speichert Fenstertitel. Darin können Kundennamen, Betreffzeilen von Mails oder Dateinamen stehen. Die Dateien in `aktivitaet/` gehören deshalb nur auf deinen PC. In den Ordnern `3cx_profil` und `itm_profil` und in `itm_anmeldung.json` liegen deine Anmeldungen bei 3CX und ITM. Sie sind zu schützen wie ein Browserprofil. Alle diese Dateien stehen in `.gitignore`, genauso wie `anrufe.json`, `personalzeiten.json`, `ki_vorschlaege/`, `taetigkeiten/`, `mitschnitt_*.json` und die persönliche `zeitzeuge_config.json`.
+Das Aktivitätsprotokoll speichert Fenstertitel. Darin können Kundennamen, Betreffzeilen von Mails oder Dateinamen stehen. Die Dateien in `aktivitaet/` gehören deshalb nur auf deinen PC. In den Ordnern `3cx_profil`, `itm_profil` und `m42_profil` und in `itm_anmeldung.json` liegen deine Anmeldungen bei 3CX, ITM und Matrix42. Sie sind zu schützen wie ein Browserprofil. Alle diese Dateien stehen in `.gitignore`, genauso wie `anrufe.json`, `personalzeiten.json`, `m42_buchungen.json`, `ki_vorschlaege/`, `taetigkeiten/`, `mitschnitt_*.json` und die persönliche `zeitzeuge_config.json`.
 
 
 ## Lizenz

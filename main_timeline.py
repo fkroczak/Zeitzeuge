@@ -49,7 +49,8 @@ from app_tray import TrayMixin
 __all__ = [
     "TimelineApp", "AppStyle", "install_translator", "GERMAN", "THEMES", "STYLESHEET",
     "resource_path", "APP_DIR", "DATA_DIR", "CONFIG_FILE", "CALLS_FILE", "VPN_FILE",
-    "ACTIVITY_DIR", "PBX_PROFILE_DIR", "ITM_FILE", "ITM_PROFILE_DIR", "ITM_AUTH_FILE", "AI_DIR", "JOURNAL_DIR",
+    "ACTIVITY_DIR", "PBX_PROFILE_DIR", "ITM_FILE", "ITM_PROFILE_DIR", "ITM_AUTH_FILE",
+    "M42_FILE", "M42_PROFILE_DIR", "AI_DIR", "JOURNAL_DIR",
     "CONFIG_LOCKED", "clean_path", "load_config_with_defaults", "save_config", "merged_seconds",
     "report_exception", "install_error_hooks", "acquire_single_instance",
     "ActivityViewDialog", "ActivityTypeSettingsDialog", "ConnectionSettingsDialog", "WorkHoursDialog",
@@ -91,6 +92,8 @@ ITM_FILE = os.path.join(DATA_DIR, "personalzeiten.json")
 ITM_PROFILE_DIR = os.path.join(storage.local_dir(), "itm_profil")
 # ITM-Anmeldung (refreshToken, unter Windows verschlüsselt), ebenfalls nur lokal
 ITM_AUTH_FILE = os.path.join(storage.local_dir(), "itm_anmeldung.json")
+M42_FILE = os.path.join(DATA_DIR, "m42_buchungen.json")
+M42_PROFILE_DIR = os.path.join(storage.local_dir(), "m42_profil")
 AI_DIR = os.path.join(DATA_DIR, "ki_vorschlaege")
 JOURNAL_DIR = os.path.join(DATA_DIR, "taetigkeiten")
 # Fehler und beiseitegelegte Dateien stehen in fehler.log (siehe safe_io)
@@ -148,7 +151,8 @@ def load_config_with_defaults():
                         ("FTP-Verbindung", "#7F8C8D"), ("TeamViewer-Verbindung", "#3460DB"),
                         ("Zugangsdaten", "#9B59B6"), ("Arbeitsblock", "#5B8DEF"),
                         (AI_TYPE, "#A55EEA"), ("Dokumentiert", "#2E9E5B"),
-                        ("Undokumentiert", "#E06D10"), ("Klassifizierung", "#8395A7")]:
+                        ("Undokumentiert", "#E06D10"), ("Klassifizierung", "#8395A7"),
+                        ("Matrix42-Buchung", "#6E7781"), ("Nicht gebucht", "#E5484D")]:
         cfg["type_colors"].setdefault(kind, color)
     # Design "Metro Klar": alte Standardfarben einmalig umstellen, selbst gewählte Farben bleiben.
     # Nur einmal, damit eine später bewusst gewählte alte Farbe nicht wieder ersetzt wird.
@@ -238,6 +242,7 @@ class TimelineApp(MenusMixin, DayListMixin, DocsMixin, ReadersMixin, TrayMixin, 
         self.journal = Journal(JOURNAL_DIR)
         self.timeline.doc_entries = self.doc_band
         self.timeline.rule_entries = self.rule_band
+        self.timeline.m42_entries = self.m42_band
         self.timeline.doc_request.connect(self.on_doc_request)
         self.timeline.entry_action.connect(self.on_entry_action)
         self._rule_cache = {}
@@ -320,7 +325,7 @@ class TimelineApp(MenusMixin, DayListMixin, DocsMixin, ReadersMixin, TrayMixin, 
         # Datenquellen nebeneinander: grüner Haken = läuft, gelbes Dreieck = keine Daten,
         # graue Uhr = liest gerade. Ein Klick führt zur Lösung (Anmeldung, Einstellungen).
         self.source_buttons = {}
-        for kind in ("logs", "pbx", "itm"):
+        for kind in ("logs", "pbx", "itm", "m42"):
             button = QToolButton(self)
             button.setObjectName("source")
             button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
@@ -369,6 +374,7 @@ class TimelineApp(MenusMixin, DayListMixin, DocsMixin, ReadersMixin, TrayMixin, 
         # Erst beide anlegen: Beim Start eines Lesers fragt die Statuszeile schon beide ab
         self.pbx_reader = None
         self.itm_reader = None
+        self.m42_reader = None
         # 3CX direkt auslesen (Edge im Hintergrund)
         if self.config.get("pbx_reader_enabled", False):
             self.start_pbx_reader()
@@ -376,6 +382,10 @@ class TimelineApp(MenusMixin, DayListMixin, DocsMixin, ReadersMixin, TrayMixin, 
         # Personalzeiten aus der ITM-Zeiterfassung (Edge im Hintergrund)
         if self.config.get("itm_reader_enabled", False):
             self.start_itm_reader()
+
+        # Gebuchte Zeiten aus Matrix42 (nur im Firmennetz erreichbar)
+        if self.config.get("m42_reader_enabled", False):
+            self.start_m42_reader()
 
         self.apply_style()  # setzt auch Icons und Aufzeichnungs-Zustand
         self.timeline.setFocus()

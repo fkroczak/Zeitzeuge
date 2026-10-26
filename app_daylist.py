@@ -30,6 +30,8 @@ class DayListMixin:
             entries = self.doc_band(date_str)
         elif self.config.get("list_view") == "rules":
             entries = self.rule_band(date_str)
+        elif self.config.get("list_view") == "m42":
+            entries = self.m42_band(date_str) + self.m42_unbooked(date_str)
         elif self.config.get("list_view") == "blocks":
             entries = work_blocks(entries, self.config.get("block_gap_minutes", 10))
         elif self.config.get("show_pc_in_list", False):
@@ -69,7 +71,8 @@ class DayListMixin:
         self.update_status_text()
 
     VIEWS = [("grouped", "Zusammengefasst"), ("single", "Einzeln"), ("blocks", "Arbeitsblöcke"),
-             ("doc", "Dokumentation"), ("rules", "Zuordnung ohne KI"), ("ai", "KI-Vorschläge")]
+             ("doc", "Dokumentation"), ("rules", "Zuordnung ohne KI"), ("ai", "KI-Vorschläge"),
+             ("m42", "Matrix42-Abgleich")]
 
     def change_view(self, key):
         self.config["list_view"] = key
@@ -162,6 +165,9 @@ class DayListMixin:
             if itm_day.get("soll"):
                 text += f" (Soll {format_duration(itm_day['soll'] * 60)})"
             parts.append(text)
+        m42 = self.m42_summary(self.current_date.toString("yyyy-MM-dd"))
+        if m42:
+            parts.append(m42)
         self.info_label.setText("   ·   ".join(parts))
         self.update_source_indicators()
 
@@ -197,8 +203,8 @@ class DayListMixin:
             states["logs"] = ("warn", f"Logs: {', '.join(missing)} fehlt",
                               f"Keine Logdatei gefunden: {', '.join(missing)}.\n"
                               "Klicken, um den Pfad einzustellen.")
-        for kind, name in (("pbx", "3CX"), ("itm", "ITM")):
-            reader = self.pbx_reader if kind == "pbx" else self.itm_reader
+        for kind, name in (("pbx", "3CX"), ("itm", "ITM"), ("m42", "M42")):
+            reader = getattr(self, {"pbx": "pbx_reader", "itm": "itm_reader", "m42": "m42_reader"}[kind], None)
             if not reader:
                 continue
             state, why = reader.health()
@@ -235,6 +241,11 @@ class DayListMixin:
                 self.itm_reader.show_login(self)
             else:
                 self.open_itm_settings()
+        elif kind == "m42":
+            if self.m42_reader and self.m42_reader.needs_login:
+                self.m42_reader.show_login(self)
+            else:
+                self.open_m42_settings()
 
     # ---------------------- Datum / Navigation --------------------------------
 
@@ -242,7 +253,7 @@ class DayListMixin:
         self.current_date = date
         self.timeline.draw_timeline(self.current_date)
         # Fehlende Daten für diesen Tag im Hintergrund nachlesen
-        for reader in (self.pbx_reader, self.itm_reader):
+        for reader in self.all_readers():
             if reader:
                 reader.want(date.toString("yyyy-MM-dd"))
         # Vergangene Tage auf Wunsch automatisch einordnen (nur ohne vorhandene Vorschläge)

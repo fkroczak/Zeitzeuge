@@ -144,6 +144,8 @@ class TrayMixin:
             self.show_pbx_login()
         elif self.itm_reader and self.itm_reader.needs_login:
             self.itm_reader.show_login(self)
+        elif self.m42_reader and self.m42_reader.needs_login:
+            self.m42_reader.show_login(self)
 
     def show_from_tray(self):
         self.showNormal()
@@ -159,7 +161,7 @@ class TrayMixin:
         self.timeline.shutdown()
         if self.tracker:
             self.tracker.stop()
-        for reader in (self.pbx_reader, self.itm_reader):
+        for reader in self.all_readers():
             if reader:
                 reader.stop()
         QApplication.instance().quit()

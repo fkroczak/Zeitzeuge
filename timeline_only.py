@@ -71,14 +71,15 @@ FIXED_ROWS = [("call", "Tel"), ("vpn", "VPN"), ("tv", "TV")]
 # Legende links: Name der Zeile und Schlüssel in config["type_colors"] für das Farbfeld
 LEGEND_FIXED = {"call": ("Telefon", "Telefonat"), "vpn": ("VPN", "VPN-Verbindung"),
                 "tv": ("TeamViewer", "TeamViewer")}
-LEGEND_BANDS = {"doc": ("Dokumentation", "Dokumentiert"), "rule": ("Zuordnung o. KI", "Klassifizierung"),
-                "ai": ("KI-Vorschläge", "KI-Vorschlag")}
+LEGEND_BANDS = {"doc": ("Dokumentation", "Dokumentiert"), "m42": ("Matrix42", "Matrix42-Buchung"),
+                "rule": ("Zuordnung o. KI", "Klassifizierung"), "ai": ("KI-Vorschläge", "KI-Vorschlag")}
 
 # Alle Zeilen der Timeline in der Reihenfolge von oben nach unten: Schlüssel in
 # config["timeline_rows"], Text im Menü. Jede lässt sich einzeln aus- und einblenden.
 TIMELINE_ROWS = [
     ("pc", "&PC-Aktivität (aktive Fenster)"),
     ("doc", "&Dokumentation (eigene Tätigkeiten)"),
+    ("m42", "&Matrix42 (gebucht / nicht gebucht)"),
     ("rule", "&Zuordnung ohne KI (feste Regeln)"),
     ("ai", "&KI-Vorschläge"),
     ("call", "&Telefon (3CX)"),
@@ -86,7 +87,7 @@ TIMELINE_ROWS = [
     ("tv", "T&eamViewer"),
     ("other", "&Remote / Weitere (RDM, SSH, RDP …)"),
 ]
-ROW_NAMES = {"pc": "PC-Aktivität", "doc": "Dokumentation", "rule": "Zuordnung ohne KI",
+ROW_NAMES = {"pc": "PC-Aktivität", "doc": "Dokumentation", "m42": "Matrix42", "rule": "Zuordnung ohne KI",
              "ai": "KI-Vorschläge", "call": "Telefon", "vpn": "VPN", "tv": "TeamViewer",
              "other": "Remote / Weitere"}
 
@@ -109,15 +110,20 @@ def type_label(activity):
         return f"Doku: {activity['category']}" if activity.get("category") else "Doku"
     if activity.get("open"):
         return "Undokumentiert"
+    if activity.get("m42"):
+        return f"Matrix42: {activity['category']}" if activity.get("category") else "Matrix42"
+    if activity.get("m42_gap"):
+        return "Nicht gebucht"
     if activity.get("rule"):
         return f"Zuordnung: {activity.get('category', '')}"
     if activity.get("ai"):
         text = f"KI: {activity.get('category', '')}"
         return text + " (übernommen)" if activity.get("status") == "übernommen" else text
     direction = activity.get("direction")
+    text = activity.get("type", "")
     if direction and direction != "Anruf":
-        return f"{activity.get('type', '')} {direction.lower()}"
-    return activity.get("type", "")
+        text = f"{text} {direction.lower()}"
+    return f"Nicht gebucht: {text}" if activity.get("m42_unbooked") else text
 
 
 def hhmm(minutes):
@@ -148,6 +154,11 @@ def entry_menu_items(entry):
     Timeline und Tagesliste zeigen dasselbe Menü mit denselben Texten, und nur Befehle,
     die zu diesem Eintrag passen.
     """
+    if entry.get("m42"):  # Buchung aus Matrix42: nur ansehen und kopieren
+        return [("&Details öffnen", "details"), None, ("&Kopieren", "copy")]
+    if entry.get("m42_gap"):  # Zeit ohne Buchung
+        return [(f"&Tätigkeit ab {hhmm(entry['minute'])} eintragen …", "add_at"), None,
+                ("&Kopieren", "copy")]
     if "minute" in entry:  # freie Stelle in der Timeline
         return [(f"&Tätigkeit ab {hhmm(entry['minute'] // 5 * 5)} eintragen …", "add_at")]
     if entry.get("open"):
@@ -281,6 +292,7 @@ class TimelineView(QGraphicsView):
         self.ai_entries = None    # date_str -> KI-Vorschläge, vom Hauptfenster gesetzt
         self.rule_entries = None  # date_str -> Blöcke aus den Regeln (ohne KI)
         self.doc_entries = None   # date_str -> eigene Tätigkeiten und noch offene
+        self.m42_entries = None   # date_str -> Buchungen aus Matrix42 und Lücken ohne Buchung
 
         self._remote_cache = {}  # date_str -> list[conn]
         self._tv_parser = TeamViewerParser(self.config)
@@ -795,17 +807,18 @@ class TimelineView(QGraphicsView):
         self.day_loaded.emit(activities, self.pc_entries_for(date))
 
     # Obere Zeilen: Kennung, Beschriftung links, Schlüssel in config["timeline_rows"]
-    BAND_ROWS = [("doc", "Doku"), ("rule", "Zuordnung"), ("ai", "KI")]
+    BAND_ROWS = [("doc", "Doku"), ("m42", "Matrix42"), ("rule", "Zuordnung"), ("ai", "KI")]
 
     def band_rows(self, date: QDate):
         """Sichtbare obere Zeilen mit ihren Einträgen: [(Kennung, Text, Einträge)].
 
         Doku steht immer da (auch leer), damit offene Tätigkeiten sofort auffallen.
-        Zuordnung (Regeln) und KI nur, wenn es Einträge gibt. Jede Zeile lässt sich abschalten.
+        Matrix42, Zuordnung (Regeln) und KI nur, wenn es Einträge gibt. Jede Zeile lässt sich abschalten.
         """
         date_str = date.toString("yyyy-MM-dd")
         shown = self.config.get("timeline_rows", {})
-        sources = {"doc": self.doc_entries, "rule": self.rule_entries, "ai": self.ai_entries}
+        sources = {"doc": self.doc_entries, "m42": self.m42_entries, "rule": self.rule_entries,
+                   "ai": self.ai_entries}
         result = []
         for kind, text in self.BAND_ROWS:
             func = sources[kind]
@@ -829,7 +842,10 @@ class TimelineView(QGraphicsView):
         fill = QColor(base)
         light = 110 if self.dark_mode else 70
         label_color = self.text_color
-        if a.get("doc") or a.get("status") == "übernommen":  # Metro: volle Kachel
+        if a.get("m42_gap"):  # Personalzeit ohne Buchung: fällt auf
+            fill.setAlpha(light // 2)
+            pen = QPen(base, 1.5, Qt.DashLine)
+        elif a.get("doc") or a.get("m42") or a.get("status") == "übernommen":  # Metro: volle Kachel
             pen = QPen(Qt.NoPen)
             label_color = readable_on(base)
         elif a.get("open"):  # noch nicht dokumentiert: fällt auf, lädt zum Klicken ein
@@ -845,7 +861,12 @@ class TimelineView(QGraphicsView):
         rect.setCursor(Qt.PointingHandCursor)
         self.activity_rects[rect] = a
         if w > 28:
-            if a.get("open"):
+            if a.get("m42_gap"):
+                label_text = "nicht gebucht"
+            elif a.get("m42"):
+                label_text = " · ".join(t for t in (a.get("customer_name"), a.get("description")) if t) \
+                    or a.get("category") or "Buchung"
+            elif a.get("open"):
                 label_text = f"? {a.get('customer_name') or 'eintragen'}"
             elif a.get("doc"):  # Form statt nur Farbe: ✓ dokumentiert, ? offen
                 label_text = "✓ " + (" · ".join(t for t in (a.get("customer_name"), a.get("description"))
@@ -1057,7 +1078,13 @@ class TimelineView(QGraphicsView):
             lines += ["", f"<b>{escape(hovered.get('customer_name') or hovered.get('type'))}</b>",
                       escape(type_label(hovered)),
                       f"{start:%H:%M} – {end:%H:%M}  ({format_duration((end - start).total_seconds())})"]
-            if hovered.get("open"):
+            if hovered.get("m42"):
+                lines.append(escape(hovered.get("details", "")))
+                lines.append("<i>In Matrix42 gebucht</i>")
+            elif hovered.get("m42_gap"):
+                lines.append(escape(hovered.get("details", "")))
+                lines.append("<i>Nicht gebucht · Rechtsklick: Tätigkeit eintragen</i>")
+            elif hovered.get("open"):
                 lines.append("<i>Noch nicht dokumentiert · Klick: jetzt eintragen</i>")
             elif hovered.get("doc"):
                 if hovered.get("description"):
@@ -1073,7 +1100,8 @@ class TimelineView(QGraphicsView):
                              " · Rechtsklick: übernehmen oder verwerfen</i>")
             elif hovered.get("details"):
                 lines.append(escape(hovered["details"]))
-            if hovered.get("is_suggestion") and not any(hovered.get(k) for k in ("ai", "rule", "open")):
+            if hovered.get("is_suggestion") and not any(hovered.get(k) for k in ("ai", "rule", "open",
+                                                                                 "m42", "m42_gap")):
                 lines.append("<i>Vorschlag aus Log</i>")
 
         # Weitere Einträge, die zu dieser Minute liefen (Minute zählt, nicht die Sekunde)
@@ -1118,6 +1146,8 @@ class TimelineView(QGraphicsView):
                 self.tooltip.hide()
                 if a.get("open"):  # offene Tätigkeit: gleich eintragen
                     self.doc_request.emit("add", a["source_entry"])
+                elif a.get("m42_gap"):  # nicht gebucht: Tätigkeit ab hier eintragen
+                    self.doc_request.emit("add_at", a)
                 elif a.get("doc"):
                     self.doc_request.emit("edit", a)
                 else:
