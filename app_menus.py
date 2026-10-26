@@ -239,7 +239,7 @@ class MenusMixin:
         rows_menu = menu.addMenu("&Zeilen der Timeline")
         self.row_actions = {}
         for key, text in TIMELINE_ROWS:
-            if key == "call":  # Leiste oben (eigene Zeilen) und feste Zeilen trennen
+            if key in ("doc", "call"):  # Gruppen: Zeit | Auswertung | Verbindungen
                 rows_menu.addSeparator()
             action = rows_menu.addAction(text)
             action.setCheckable(True)

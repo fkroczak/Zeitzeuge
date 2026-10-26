@@ -161,7 +161,7 @@ def default_config():
         "ai_auto": False,          # vergangene Tage beim Anzeigen automatisch einordnen
 
         # Zeilen der Timeline, jede einzeln aus- und einblendbar (timeline_only.TIMELINE_ROWS)
-        "timeline_rows": {"pc": True, "doc": True, "m42": True, "rule": True, "ai": True,
+        "timeline_rows": {"pc": True, "work": True, "doc": True, "m42": True, "rule": True, "ai": True,
                           "call": True, "vpn": True, "tv": True, "other": True},
         # Nachfragen nach erkannten Tätigkeiten ("Was hast du gemacht?")
         "prompt_mode": "window",       # "window" (kleines Fenster), "tray" (nur Meldung), "off"

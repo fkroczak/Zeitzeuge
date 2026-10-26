@@ -156,7 +156,8 @@ def load_config_with_defaults():
                         ("Zugangsdaten", "#9B59B6"), ("Arbeitsblock", "#5B8DEF"),
                         (AI_TYPE, "#A55EEA"), ("Dokumentiert", "#2E9E5B"),
                         ("Undokumentiert", "#E06D10"), ("Klassifizierung", "#8395A7"),
-                        ("Matrix42-Buchung", "#6E7781"), ("Nicht gebucht", "#E5484D")]:
+                        ("Matrix42-Buchung", "#6E7781"), ("Personalzeit", "#3D8BFD"),
+                        ("Arbeitszeit", "#3D8BFD"), ("Nicht gebucht", "#E5484D")]:
         cfg["type_colors"].setdefault(kind, color)
     # Design "Metro Klar": alte Standardfarben einmalig umstellen, selbst gewählte Farben bleiben.
     # Nur einmal, damit eine später bewusst gewählte alte Farbe nicht wieder ersetzt wird.
