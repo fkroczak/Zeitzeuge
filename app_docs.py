@@ -14,6 +14,9 @@ from ai_classifier import to_entries
 from journal import (describe, entry_key as journal_key, open_entry, suggest_category,
                      suggest_customer, ticket_line)
 from journal_dialogs import DocPromptDialog, prompt_thresholds, EntryDialog, PromptWindow, default_span
+import snippets
+import tickets
+from snippets_dialogs import SnippetsDialog
 from settings_dialogs import AiSettingsDialog
 import rules
 import m42_data as m42
@@ -295,7 +298,7 @@ class DocsMixin:
             self.name_teamviewer_id(entry)
         elif key == "copy":
             if entry.get("doc"):
-                text = ticket_line(entry["doc_item"])
+                text = ticket_line(entry["doc_item"], self.config.get("ticket_format", ""))
             elif entry.get("ai") or entry.get("rule"):
                 text = ai_copy_text(entry)
             else:
@@ -328,7 +331,8 @@ class DocsMixin:
             start, end = default_span(self.current_date.toPython(), minute)
             info, customer, category, text = "", "", "", ""
         dialog = EntryDialog(start, end, self.known_customers(), categories, customer, category,
-                             text, tv_id=(entry or {}).get("tv_id"), info=info, parent=self)
+                             text, tv_id=(entry or {}).get("tv_id"), info=info, parent=self,
+                             **self.entry_form_options(start, end))
         if dialog.exec() != QDialog.Accepted:
             return
         item = dialog.item()
@@ -371,7 +375,8 @@ class DocsMixin:
         dialog = EntryDialog(start, end, self.known_customers(), self.categories(),
                              item.get("customer", ""), item.get("category", ""),
                              item.get("text", ""), title="Tätigkeit bearbeiten",
-                             can_delete=True, parent=self)
+                             can_delete=True, parent=self,
+                             **self.entry_form_options(start, end, item.get("ticket", "")))
         if dialog.exec() != QDialog.Accepted:
             return
         if dialog.deleted:
@@ -429,6 +434,40 @@ class DocsMixin:
             mt.save_config(self.config)
             self.timeline.draw_timeline(self.current_date)
 
+    # ---- Eintragen: Textbausteine, zuletzt benutzte Texte, Ticket (snippets.py, tickets.py)
+
+    def entry_form_options(self, start, end, ticket=""):
+        """Zusätze für den Eintragen-Dialog: Bausteine, letzte Texte je Kunde, Ticket-Vorschläge."""
+        recent = None
+        if self.config.get("snippets_recent", True):
+            items = None
+
+            def recent(customer):
+                nonlocal items
+                if items is None:  # erst beim Öffnen des Menüs lesen
+                    items = self.journal.recent_items()
+                return snippets.recent_texts(items, customer)
+        return {"snippets": snippets.from_config(self.config), "recent_texts": recent,
+                "ticket": ticket, "ticket_suggestions": self.ticket_suggestions(start, end)}
+
+    def ticket_suggestions(self, start, end):
+        """Ticketnummern aus Fenstertiteln und Matrix42-Buchungen rund um die Tätigkeit."""
+        patterns = self.config.get("ticket_patterns", tickets.DEFAULT_PATTERNS)
+        if not patterns:
+            return []
+        date = QDate(start.year, start.month, start.day)
+        segments = [{"start": e["start"], "end": e["end"], "title": e.get("customer_name", ""),
+                     "app": e.get("type", "")[4:]}  # "PC: Outlook" -> "Outlook"
+                    for e in self.timeline.pc_entries_for(date, min_seconds=0)]
+        bookings = self._m42_bookings(start.strftime("%Y-%m-%d")) or []
+        return tickets.suggest(start, end, segments, bookings, patterns)
+
+    def edit_snippets(self):
+        dialog = SnippetsDialog(self.config, self)
+        if dialog.exec() == QDialog.Accepted:
+            dialog.apply()
+            mt.save_config(self.config)
+
     # ---- Nachfragen ("Was hast du gemacht?")
 
     def check_prompts(self):
@@ -472,7 +511,9 @@ class DocsMixin:
             return
         window = PromptWindow(entry, self.known_customers(), self.categories(),
                               self.config.get("teamviewer_names", {}),
-                              pending=len(self._prompt_queue) - 1, parent=self)
+                              pending=len(self._prompt_queue) - 1, parent=self,
+                              **self.entry_form_options(parse_time(entry["start"]),
+                                                        parse_time(entry["end"])))
         window.answered.connect(self.on_prompt_answered)
         self._prompt_window = window
         # unten rechts über dem Infobereich, ohne dir den Fokus wegzunehmen

@@ -122,7 +122,8 @@ class DayListMixin:
         for row in rows:
             entry = self.list_entries[row] if row < len(self.list_entries) else {}
             if entry.get("doc"):
-                lines.append(ticket_line(entry["doc_item"]))  # fertige Ticketzeile
+                lines.append(ticket_line(entry["doc_item"],  # fertige Ticketzeile
+                                         self.config.get("ticket_format", "")))
                 continue
             if entry.get("open"):
                 lines.append(f"OFFEN: {describe(entry['source_entry'])}")

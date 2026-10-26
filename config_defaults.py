@@ -5,6 +5,8 @@ Laden, Ergänzen und Speichern: load_config_with_defaults/save_config in main_ti
 import os
 
 import rules
+import snippets
+import tickets
 from log_parsers import VpnParser
 
 
@@ -171,4 +173,11 @@ def default_config():
         "prompt_snooze_minutes": 15,   # "Später fragen"
         "prompt_on_quit": True,        # beim Beenden an offene Tätigkeiten erinnern
         "prompt_end_of_day": True,     # nach Feierabend an offene Tätigkeiten erinnern
+
+        # Eintragen: Textbausteine, zuletzt benutzte Texte, Ticket-Format, Ticketnummern
+        # (snippets.py, tickets.py, Dialog snippets_dialogs.py)
+        "snippets": list(snippets.DEFAULT_SNIPPETS),  # Textbausteine im Eintragen-Dialog
+        "snippets_recent": True,       # zuletzt benutzte Texte zum gewählten Kunden anbieten
+        "ticket_format": "",           # Kopieren: "" = wie eingegeben, "dash" = "- " / "-- "
+        "ticket_patterns": list(tickets.DEFAULT_PATTERNS),  # Ticketnummern vorschlagen (Regex)
     }
