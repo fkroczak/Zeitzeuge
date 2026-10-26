@@ -11,6 +11,7 @@ from PySide6.QtGui import (QAction, QActionGroup, QColor, QDesktopServices, QIco
 from PySide6.QtWidgets import (QApplication, QDateEdit, QDialog, QFileDialog, QMenu, QMessageBox,
                                QToolBar, QToolButton, QHBoxLayout, QSizePolicy, QWidget)
 
+import datastore
 import icons
 import storage
 from log_parsers import VpnParser
@@ -255,6 +256,7 @@ class MenusMixin:
         self.open_folder_action = storage_menu.addAction(
             "&Datenordner öffnen", lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(mt.DATA_DIR)))
         storage_menu.addAction("&Speicherort ändern …", self.change_data_dir)
+        self._icon_actions.append((storage_menu.addAction("Sc&hutz …", self.show_protection), "lock"))
         storage_menu.addSeparator()  # zwei PCs, z. B. Arbeits-PC und PAW
         storage_menu.addAction("Daten &exportieren (für einen anderen PC) …", self.export_data)
         storage_menu.addAction("Daten &übernehmen (von einem anderen PC) …", self.import_data)
@@ -476,7 +478,7 @@ class MenusMixin:
             return
         answer = QMessageBox.question(
             self, "Speicherort ändern",
-            f"Config, Anrufe und Aktivitätsprotokoll werden nach\n{new_dir}\n"
+            f"Einstellungen und die Sicherung der Datenbank werden nach\n{new_dir}\n"
             "verschoben. Zeitzeuge startet danach neu.",
         )
         if answer != QMessageBox.Yes:
@@ -488,6 +490,9 @@ class MenusMixin:
             if reader:
                 reader.stop()
         mt.save_config(self.config)
+        mt.backup_store(force=True)  # Sicherung auf den neuesten Stand, sie zieht mit um
+        if not mt.BACKUP_FILE:  # Datenbank liegt im Datenordner: vor dem Verschieben schließen
+            datastore.unregister(mt.DATA_DIR)
         try:
             storage.move_data(mt.DATA_DIR, new_dir)
             storage.set_data_dir(new_dir)

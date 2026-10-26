@@ -16,7 +16,7 @@ sys.path.insert(0, ROOT)
 
 from PySide6.QtCore import QCoreApplication
 
-from itm_reader import ItmReader
+from itm_reader import ItmReader, load_days
 from pbx_reader import profile_processes
 
 MOCK = os.path.join(ROOT, "tests", "mock_itm")
@@ -78,10 +78,7 @@ yesterday = (date.today() - timedelta(days=1)).isoformat()
 
 
 def saved():
-    try:
-        return json.load(open(data_file, encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
+    return load_days(data_file)  # aus der Datenbank (früher personalzeiten.json)
 
 
 def run(url, until, what, linger=0):

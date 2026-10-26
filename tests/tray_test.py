@@ -41,10 +41,8 @@ assert state() == (True, "Aufzeichnung aktiv", "Aufzeichnung aktiv", True, True,
 
 # Bisher Aufgezeichnetes von heute
 today = datetime.now().strftime("%Y-%m-%d")
-os.makedirs(main_timeline.ACTIVITY_DIR, exist_ok=True)
-with open(os.path.join(main_timeline.ACTIVITY_DIR, f"{today}.jsonl"), "w", encoding="utf-8") as f:
-    f.write(json.dumps({"start": f"{today} 00:00:01", "end": f"{today} 00:10:00",
-                        "app": "outlook.exe", "title": "Posteingang"}) + "\n")
+window.data_store.append("aktivitaet", today, {"start": f"{today} 00:00:01", "end": f"{today} 00:10:00",
+                                              "app": "outlook.exe", "title": "Posteingang"})
 
 # Pausieren über das Tray-Menü
 window.tray_toggle_action.trigger()

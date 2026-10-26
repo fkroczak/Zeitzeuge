@@ -23,3 +23,11 @@ taetigkeiten/
 *.defekt-*
 fehler.log
 fehler.log.alt
+zeitzeuge.db
+zeitzeuge.db-wal
+zeitzeuge.db-shm
+zeitzeuge-sicherung.db
+zeitzeuge-sicherung.db.tmp
+alt-*/
+uebernommen.json
+vpn_verbindungen.json

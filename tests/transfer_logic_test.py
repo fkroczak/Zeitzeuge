@@ -8,6 +8,7 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import datakey  # noqa: E402
 import transfer  # noqa: E402
 
 D = "2026-10-20"
@@ -35,16 +36,45 @@ def test_roundtrip_file_and_clipboard():
     e = export()
     assert e["von"] == "2026-10-19" and e["bis"] == D and "2026-10-19" not in e["tage"]
     assert e["tage"][D]["m42"] == []  # gelesen, nichts gebucht: bleibt erhalten
-    assert transfer.parse(transfer.to_bytes(e)) == e
-    text = transfer.to_clipboard_text(e)
+    code = datakey.new_code()
+    data = transfer.to_bytes(e, code)
+    assert transfer.is_encrypted(data) and b"M\xc3\xbcller" not in data and b"Drucker" not in data
+    assert transfer.parse(data, code) == e
+    text = transfer.to_clipboard_text(e, code)
+    assert text.startswith("ZEITZEUGE-EXPORT:2:") and transfer.is_encrypted(text)
     wrapped = "\n".join(text[i:i + 76] for i in range(0, len(text), 76))  # Umbrüche beim Kopieren
-    assert transfer.parse(wrapped) == e
+    assert transfer.parse(wrapped, code) == e
     assert "1 Verbindungen" in transfer.summary(e) and "1 Tätigkeiten" in transfer.summary(e)
     assert "1 KI-Vorschläge" in transfer.summary(e), "verworfene zählen nicht"
 
 
+def test_encrypted_needs_right_key():
+    e = export()
+    code = datakey.new_code()
+    data = transfer.to_bytes(e, code)
+    with pytest.raises(transfer.NeedKey):
+        transfer.parse(data)
+    with pytest.raises(transfer.WrongTransferKey):
+        transfer.parse(data, datakey.new_code())
+    with pytest.raises(transfer.TransferError, match="Block"):
+        transfer.parse(data, code[:-1] + ("1" if code[-1] != "1" else "2"))
+    with pytest.raises(transfer.WrongTransferKey):  # abgeschnitten
+        transfer.parse(data[:len(data) // 2], code)
+
+
+def test_old_unencrypted_format_still_accepted():
+    """Exporte älterer Versionen (Format 1, nur gepackt) gehen weiter, mit Hinweis."""
+    e = export()
+    old = transfer.to_bytes(e)  # ohne Schlüssel = altes Format
+    assert not transfer.is_encrypted(old)
+    got = transfer.parse(old)
+    assert got.pop("unverschluesselt") is True and got == e
+    got = transfer.parse(transfer.to_clipboard_text(e))
+    assert got["unverschluesselt"] and got["tage"] == e["tage"]
+
+
 @pytest.mark.parametrize("bad", [b"", b"kaputt", "Hallo", "ZEITZEUGE-EXPORT:1:@@@",
-                                 b'{"format": "anders"}'])
+                                 "ZEITZEUGE-EXPORT:2:@@@", b'{"format": "anders"}'])
 def test_rejects_garbage(bad):
     with pytest.raises(transfer.TransferError):
         transfer.parse(bad)

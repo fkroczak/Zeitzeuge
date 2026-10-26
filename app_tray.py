@@ -164,6 +164,7 @@ class TrayMixin:
         for reader in self.all_readers():
             if reader:
                 reader.stop()
+        self.close_store()
         QApplication.instance().quit()
 
     def closeEvent(self, event):

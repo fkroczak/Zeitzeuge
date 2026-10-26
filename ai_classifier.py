@@ -24,6 +24,7 @@ from datetime import datetime
 from PySide6.QtCore import QObject, Signal
 
 import net
+import datastore
 import safe_io
 import storage
 
@@ -222,26 +223,35 @@ def to_entries(date_str, items):
 # ---------------------------------------------------------------- Ablage
 
 class AiStore:
-    """Vorschläge pro Tag in ki_vorschlaege/JJJJ-MM-TT.json."""
+    """Vorschläge pro Tag (Ablage "ki_vorschlaege" in der Datenbank)."""
 
     def __init__(self, folder):
         self.folder = folder
         self._cache = {}
 
-    def _path(self, date_str):
-        return os.path.join(self.folder, f"{date_str}.json")
+    def _db(self):
+        return datastore.locate(self.folder, "day_files")
 
     def load(self, date_str):
         if date_str not in self._cache:
-            # Kaputte Datei wird beiseitegelegt (safe_io) statt beim nächsten Speichern überschrieben
-            data = safe_io.read_json(self._path(date_str), None, expect=dict)
-            if data is not None and not isinstance(data.get("items", []), list):
+            try:
+                store, name = self._db()
+                data = store.get(name, date_str)
+            except (datastore.Busy, datastore.Locked):
+                return None  # gerade nicht lesbar: nicht merken
+            if not isinstance(data, dict):
+                data = None
+            elif not isinstance(data.get("items", []), list):
                 data["items"] = []
             self._cache[date_str] = data
         return self._cache[date_str]
 
     def save(self, date_str, data):
-        safe_io.write_json(self._path(date_str), data, indent=2)
+        try:
+            store, name = self._db()
+            store.put(name, date_str, data)
+        except (datastore.Busy, datastore.Locked) as e:
+            safe_io.report(f"KI-Vorschläge: Speichern fehlgeschlagen ({e})")
         self._cache[date_str] = data
 
     def entries(self, date_str):

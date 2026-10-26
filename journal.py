@@ -1,7 +1,8 @@
 """
 Tätigkeiten, die du selbst einträgst (nachträglich oder auf Nachfrage von Zeitzeuge).
 
-Pro Tag eine Datei taetigkeiten/JJJJ-MM-TT.json:
+Pro Tag ein Eintrag in der Datenbank (Ablage "taetigkeiten", früher
+taetigkeiten/JJJJ-MM-TT.json):
     {"items": [{"id", "start", "end", "customer", "category", "text",
                 "source", "created", "updated"}],
      "ignored": ["<Schlüssel eines Eintrags, nach dem nicht mehr gefragt wird>"]}
@@ -10,11 +11,11 @@ Dazu die Logik, welche erkannten Tätigkeiten noch nicht dokumentiert sind
 (open_items). Daraus entstehen die Nachfrage-Fenster und die Zeile "Doku".
 """
 
-import os
 import re
 import uuid
 from datetime import datetime, timedelta
 
+import datastore
 import safe_io
 
 TIME_FMT = "%Y-%m-%d %H:%M:%S"
@@ -56,18 +57,20 @@ class Journal:
 
     # ------------------------------------------------------------ Ablage
 
-    def _path(self, date_str):
-        return os.path.join(self.folder, f"{date_str}.json")
+    def _db(self):
+        return datastore.locate(self.folder, "day_files")
 
     def load(self, date_str):
         if date_str not in self._cache:
             try:
-                data = safe_io.read_json(self._path(date_str), None, expect=dict,
-                                         raise_locked=True) or {}
-            except safe_io.FileLocked:
-                # Gesperrt (OneDrive, Virenscanner): nichts merken, sonst überschriebe das
-                # nächste Speichern die Datei mit nur dem neuen Eintrag
+                store, name = self._db()
+                data = store.get(name, date_str) or {}
+            except (datastore.Busy, datastore.Locked):
+                # Gerade nicht lesbar: nichts merken, sonst überschriebe das nächste Speichern
+                # den Tag mit nur dem neuen Eintrag
                 return {"items": [], "ignored": [], "locked": True}
+            if not isinstance(data, dict):
+                data = {}
             items = [i for i in data.get("items", []) if self._valid(i)]
             self._cache[date_str] = {"items": items, "ignored": list(data.get("ignored", []))}
         return self._cache[date_str]
@@ -80,7 +83,14 @@ class Journal:
             return False
 
     def _save(self, date_str):
-        return safe_io.write_json(self._path(date_str), self._cache[date_str], indent=1)
+        try:
+            store, name = self._db()
+            store.put(name, date_str, self._cache[date_str])
+            return True
+        except (datastore.Busy, datastore.Locked) as e:
+            safe_io.report(f"Tätigkeiten: Speichern fehlgeschlagen ({e})")
+            self._cache.pop(date_str, None)  # beim nächsten Lesen wieder den gespeicherten Stand
+            return False
 
     def items(self, date_str):
         """Eigene Tätigkeiten und (nur lesen) die von anderen PCs übernommenen."""
@@ -101,8 +111,7 @@ class Journal:
         date_str = item["start"][:10]
         data = self.load(date_str)
         if data.get("locked"):
-            raise OSError("Die Datei des Tages ist gerade gesperrt (z. B. von OneDrive). "
-                          "Bitte gleich noch einmal speichern.")
+            raise OSError("Die Datenbank ist gerade gesperrt. Bitte gleich noch einmal speichern.")
         data["items"] = [i for i in data["items"] if i.get("id") != item["id"]]
         data["items"].append(item)
         if not self._save(date_str):
@@ -120,7 +129,7 @@ class Journal:
         date_str = item["start"][:10]
         data = self.load(date_str)
         if data.get("locked"):
-            raise OSError("Die Datei des Tages ist gerade gesperrt. Bitte gleich noch einmal versuchen.")
+            raise OSError("Die Datenbank ist gerade gesperrt. Bitte gleich noch einmal versuchen.")
         data["items"] = [i for i in data["items"] if i.get("id") != item.get("id")]
         self._save(date_str)
 
@@ -141,9 +150,14 @@ class Journal:
         """Kunden der letzten Tage, häufigste zuerst (für die Auswahl im Dialog)."""
         today = today or datetime.now()
         counts = {}
+        try:
+            store, name = self._db()
+            stored = set(store.days(name))
+        except (datastore.Busy, datastore.Locked):
+            stored = set()
         for i in range(days):
             date_str = (today - timedelta(days=i)).strftime("%Y-%m-%d")
-            if not os.path.exists(self._path(date_str)) and date_str not in self._cache:
+            if date_str not in stored and date_str not in self._cache:
                 continue
             for item in self.load(date_str)["items"]:
                 if item.get("customer"):

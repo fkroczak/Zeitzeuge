@@ -1,5 +1,4 @@
 """VPN-Zeiten aus Sophos Connect (scvpn.log, scgui.log) und FortiClient (charon.log)."""
-import json
 import os
 import sys
 import tempfile
@@ -9,6 +8,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pytest  # noqa: E402
 
+import datastore  # noqa: E402
 from vpn_reader import VpnReader, adapters_up, parse_fortinet, parse_sophos  # noqa: E402
 
 SCVPN = """\
@@ -76,8 +76,8 @@ def test_archiv_bleibt_erhalten(same):
         for name in os.listdir(logs):
             os.remove(os.path.join(logs, name))
         same("nach Überschreiben", len(VpnReader(archive, [logs]).connections()), 3)
-        with open(archive, encoding="utf-8") as f:
-            same("Archiv-Namen", json.load(f)["names"], {"203.0.113.20": "Kunde Nord"})
+        store, name = datastore.locate(archive, "single")
+        same("Archiv-Namen", store.get(name)["names"], {"203.0.113.20": "Kunde Nord"})
 
 
 def test_eigene_aufzeichnung(same):

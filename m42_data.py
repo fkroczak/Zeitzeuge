@@ -7,6 +7,7 @@ das Hauptfenster beim Start nichts von der Browser-Steuerung.
 import re
 from datetime import date, datetime, timedelta
 
+import datastore
 import safe_io
 
 TIME_FMT = "%Y-%m-%d %H:%M:%S"
@@ -129,9 +130,28 @@ def unbooked(entries, bookings, min_minutes=5, share=0.5):
 
 
 def load_store(path):
-    data = safe_io.read_json(path, {}, expect=dict)
-    days = data.get("tage") if isinstance(data.get("tage"), dict) else {}
-    read = data.get("gelesen") if isinstance(data.get("gelesen"), dict) else {}
-    days = {k: [b for b in v if isinstance(b, dict) and "start" in b and "end" in b]
-            for k, v in days.items() if isinstance(k, str) and isinstance(v, list)}
+    """Gespeicherte Buchungen (Ablage "m42_buchungen", je Tag {items, gelesen})
+    -> ({Tag: [Buchungen]}, {Tag: gelesen um})."""
+    try:
+        store, name = datastore.locate(path, "m42")
+        data = store.all(name)
+    except (datastore.Busy, datastore.Locked) as e:
+        safe_io.log(f"Matrix42-Buchungen gerade nicht lesbar: {e}")
+        return {}, {}
+    days, read = {}, {}
+    for d, doc in data.items():
+        if not isinstance(doc, dict) or not isinstance(doc.get("items"), list):
+            continue
+        days[d] = [b for b in doc["items"] if isinstance(b, dict) and "start" in b and "end" in b]
+        if doc.get("gelesen"):
+            read[d] = doc["gelesen"]
     return days, read
+
+
+def save_days(path, days, read):
+    """Tage {Tag: [Buchungen]} mit Lesezeit speichern."""
+    try:
+        store, name = datastore.locate(path, "m42")
+        store.put_many(name, {d: {"items": items, "gelesen": read.get(d, "")} for d, items in days.items()})
+    except (datastore.Busy, datastore.Locked) as e:
+        safe_io.report(f"Matrix42-Buchungen: Speichern fehlgeschlagen ({e})")

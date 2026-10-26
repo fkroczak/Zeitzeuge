@@ -55,6 +55,7 @@ PATHS = {
             'C19.41 13.96 18 12.5 18 8A6 6 0 0 0 6 8c0 4.5-1.41 5.96-2.74 7.33"/>',
     "rows": '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M21 9H3M21 15H3"/>',
     "filter": '<path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/>',
+    "lock": '<rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
     "rules": '<path d="m3 17 2 2 4-4M3 7l2 2 4-4M13 6h8M13 12h8M13 18h8"/>',
 }
 
