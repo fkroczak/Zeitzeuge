@@ -82,9 +82,9 @@ class _EntryForm(QWidget):
         # andere Spuren erst, wenn du den vorgeschlagenen Kunden änderst.
         self.remember_tv = None
         if trace:
-            text = (f"Name für TeamViewer-ID {format_tv_id(trace[1])} merken" if trace[0] == "tv"
-                    else f"Kunde für {customer_list.display(*trace)} &merken")
-            self.remember_tv = QCheckBox(text)
+            label = (f"Name für TeamViewer-ID {format_tv_id(trace[1])} merken" if trace[0] == "tv"
+                     else f"Kunde für {customer_list.display(*trace)} &merken")
+            self.remember_tv = QCheckBox(label)
             self.remember_tv.setChecked(True)
             form.addRow("", self.remember_tv)
             if trace[0] != "tv":

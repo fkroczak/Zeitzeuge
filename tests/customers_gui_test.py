@@ -141,6 +141,15 @@ def gui_test():
     assert not any(t["kind"] == "tv" for t in names["Müller AG"]["traces"])
     dialog.close()
 
+    # Merken-Haken dürfen das Textfeld nicht vorbelegen (Text bleibt leer bzw. wie übergeben)
+    import journal_dialogs
+    for trace in (("tv", "123456789"), ("rdm", "srv01")):
+        d = journal_dialogs.EntryDialog(datetime(2026, 10, 20, 9), datetime(2026, 10, 20, 9, 30),
+                                        ["Müller AG"], ["Fernwartung"], trace=trace,
+                                        rule_subject="srv01", parent=window)
+        assert d.form.text_edit.toPlainText() == "", d.form.text_edit.toPlainText()
+        d.close()
+
     window.quit_app()
 
 
