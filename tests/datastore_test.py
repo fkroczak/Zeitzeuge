@@ -423,3 +423,89 @@ def test_kaputte_alte_datei_wird_beiseitegelegt():
         assert store.days("anrufe") == []
     finally:
         datastore.unregister(folder)
+
+
+# ---------------------------------------------------------------- PIN beim Start (Schritt 3)
+
+PIN = "Grüne Wiese 42"
+
+
+def test_pin_noetig_auch_mit_windows_anmeldung(monkeypatch):
+    """Mit PIN reicht die Windows-Anmeldung (DPAPI, auch der Domänen-Sicherungsschlüssel) nicht."""
+    store = new_store()
+    store.put("anrufe", D, [{"name": SECRET}])
+    with pytest.raises(ValueError, match="Wiederherstellungsschlüssel"):
+        store.enable_pin(PIN)  # ohne Wiederherstellungsschlüssel wäre eine vergessene PIN das Ende
+    code = store.new_recovery_code()
+    with pytest.raises(datakey.BadPin):
+        store.enable_pin("123")
+    store.enable_pin(PIN)
+    kinds = [k for k, _l, _c in store.protection()["auto"]]
+    assert kinds == [datakey.pin_kind()], "kein Fach ohne PIN mehr übrig"
+    store.close()
+
+    # „Admin“: kann jedes DPAPI-Fach öffnen, kennt aber die PIN nicht
+    s = datastore.Store(store.path)
+    with pytest.raises(datastore.NeedPin):
+        s.unlock()
+    with pytest.raises(datakey.WrongKey):
+        s.unlock_with_pin("falsche PIN 1")
+    assert not s.unlocked
+    assert s.unlock_with_pin(PIN).get("anrufe", D)[0]["name"] == SECRET
+    s.close()
+
+    # Wiederherstellungsschlüssel geht weiter; mit PIN legt er kein Fach ohne PIN an
+    s = datastore.Store(store.path).unlock_with_code(code)
+    assert [k for k, _l, _c in s.protection()["auto"]] == [datakey.pin_kind()]
+    s.set_pin("Neue PIN 2026")
+    s.close()
+    with pytest.raises(datakey.WrongKey):
+        datastore.Store(store.path).unlock_with_pin(PIN)
+    assert datastore.Store(store.path).unlock_with_pin("Neue PIN 2026").unlocked
+
+
+def test_pin_fehlversuche_bremsen(monkeypatch):
+    store = new_store()
+    store.new_recovery_code()
+    store.enable_pin(PIN)
+    store.close()
+    s = datastore.Store(store.path)
+    for _ in range(store.PIN_FREE_TRIES - 1):
+        with pytest.raises(datakey.WrongKey, match="stimmt nicht"):
+            s.unlock_with_pin("falsch falsch")
+    assert s.pin_wait() == 0
+    with pytest.raises(datakey.WrongKey, match="Sekunden"):
+        s.unlock_with_pin("falsch falsch")
+    assert s.pin_wait() > 0
+    with pytest.raises(datakey.WrongKey, match="warte"):
+        s.unlock_with_pin(PIN)  # auch die richtige PIN erst nach der Wartezeit
+    real = datastore.time.time
+    monkeypatch.setattr(datastore.time, "time", lambda: real() + 3600)
+    assert s.unlock_with_pin(PIN).unlocked
+    assert s.pin_wait() == 0, "nach Erfolg keine Wartezeit mehr"
+
+
+def test_pin_anderes_konto_braucht_wiederherstellung(monkeypatch):
+    store = new_store()
+    code = store.new_recovery_code()
+    store.enable_pin(PIN)
+    store.close()
+    monkeypatch.setattr(datakey, "auto_unwrap",
+                        lambda k, b: (_ for _ in ()).throw(datakey.WrongKey("anderes Konto")))
+    s = datastore.Store(store.path)
+    with pytest.raises(datastore.NeedPin):
+        s.unlock()
+    with pytest.raises(datastore.Locked) as info:
+        s.unlock_with_pin(PIN)
+    assert not isinstance(info.value, datastore.NeedPin) and "keine PIN" in str(info.value)
+    assert s.unlock_with_code(code).unlocked
+
+
+def test_pin_ausschalten():
+    store = new_store()
+    store.new_recovery_code()
+    store.enable_pin(PIN)
+    store.disable_pin()
+    assert not store.pin_required()
+    store.close()
+    assert datastore.Store(store.path).unlock().unlocked, "wieder ohne Abfrage"
