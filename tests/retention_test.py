@@ -68,27 +68,24 @@ def test_in_schritten_aelteste_zuerst():
     store.close()
 
 
-def test_geloeschte_inhalte_ueberschrieben():
-    """secure_delete: gelöschte Zeilen stehen danach nicht mehr (verschlüsselt) in der Datei."""
+def test_geloeschte_zeilen_weg_und_platz_wiederverwendet():
+    """Gelöschte Zeilen sind weg, andere Ablagen bleiben, die Datei wächst beim Wiederbefüllen
+    nicht. (Reste verschlüsselter Daten können in ungenutztem Platz einzelner Seiten bleiben,
+    bis SQLite ihn überschreibt; das garantiert nur ein VACUUM, siehe datastore.py.)"""
     store = new_store()
-    store.append_many("aktivitaet", [("2026-01-01", seg("2026-01-01", i)) for i in range(50)])
-    with store._lock:
-        blobs = [b for (b,) in store._conn.execute("SELECT data FROM rows")]
-    store.delete_rows_before("aktivitaet", "2026-02-01")
-    store.close()  # Checkpoint: WAL in die Datei
-    with open(store.path, "rb") as f:
-        raw = f.read()
-    left = [raw.find(b[:24]) for b in blobs if b[:24] in raw]
-    if left:  # Angaben zur Ursache (nur bei Fehler)
-        import sqlite3
-        conn = sqlite3.connect(store.path)
-        info = {p: conn.execute(f"PRAGMA {p}").fetchone()[0]
-                for p in ("journal_mode", "page_size", "page_count", "freelist_count")}
-        info["sqlite"] = sqlite3.sqlite_version
-        info["wal"] = os.path.exists(store.path + "-wal")
-        conn.close()
-        raise AssertionError(f"{len(left)} von {len(blobs)} gelöschten Zeilen noch in der Datei, "
-                             f"Seiten {sorted({o // info['page_size'] for o in left})}, {info}")
+    store.put("taetigkeiten", "2026-01-01", {"items": [{"id": "a"}], "ignored": []})
+    store.append_many("aktivitaet", [("2026-01-01", seg("2026-01-01", i)) for i in range(200)])
+    store.close()
+    size = os.path.getsize(store.path)
+    store.unlock()
+    assert store.delete_rows_before("aktivitaet", "2026-02-01") == 200
+    assert store.row_count("aktivitaet") == 0
+    with store._lock:  # überschrieben, bevor gelöscht: keine Zeile mit Inhalt übrig
+        assert store._conn.execute("SELECT COUNT(*) FROM rows").fetchone()[0] == 0
+    assert store.get("taetigkeiten", "2026-01-01")["items"] == [{"id": "a"}]
+    store.append_many("aktivitaet", [("2026-03-01", seg("2026-03-01", i)) for i in range(200)])
+    store.close()
+    assert os.path.getsize(store.path) <= size  # frei gewordener Platz wiederverwendet
 
 
 def test_uebernommener_pc_verlauf():

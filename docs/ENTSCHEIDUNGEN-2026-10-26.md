@@ -69,8 +69,10 @@ Schlüssel in `zeitzeuge_config.json` (siehe unten).
 8. **Ist die Datenbank beim Start gesperrt**, überschreibt Zeitzeuge die Kundenliste usw.
    beim Speichern nicht (`UNREAD_KEYS` in `main_timeline.py`).
 9. **PC-Verlauf löschen:** Behalten werden heute und die letzten N Tage (Standard 90).
-   Es läuft kein VACUUM. Stattdessen ist `secure_delete` an, damit gelöschte Inhalte
-   überschrieben werden. Die alten Ordner `alt-<Datum>/` bleiben unangetastet.
+   Es läuft kein VACUUM (zu langsam, sperrt alles). Gelöschte Zeilen werden vorher mit
+   Nullen überschrieben und `secure_delete` ist beim Löschen an. Reste verschlüsselter Daten
+   können trotzdem in ungenutztem Platz einzelner Seiten bleiben, bis SQLite ihn neu
+   beschreibt (unter Windows im Test gesehen). Ganz sicher entfernt sie nur ein VACUUM. Die alten Ordner `alt-<Datum>/` bleiben unangetastet.
 10. **Outlook:** Gespeichert werden nur Betreff, Zeit, Ort und Domains, keine Adressen und
     keine Mailtexte. Zeitzeuge liest nur, wenn Outlook schon läuft
     (`outlook_start_if_closed: false`). Ganztägige und abgesagte Termine fallen weg.

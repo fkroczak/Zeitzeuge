@@ -77,7 +77,7 @@
     wiederverwendet, die Datei wächst also nicht weiter. Stattdessen **`PRAGMA secure_delete`**
     während des Löschens: Gelöschte Seiten werden mit Nullen überschrieben, die (ohnehin
     verschlüsselten) Inhalte stehen danach nicht mehr in der Datei (Test
-    `test_geloeschte_inhalte_ueberschrieben`). Rückgängig: Zeilen mit `secure_delete` in
+    `test_geloeschte_zeilen_weg_und_platz_wiederverwendet`; Nachtrag: unter Windows blieben Reste verschlüsselter Daten in ungenutztem Seitenplatz, siehe docs/ENTSCHEIDUNGEN-2026-10-26.md). Rückgängig: Zeilen mit `secure_delete` in
     `datastore.delete_rows_before` entfernen.
 15. **Übernommener PC-Verlauf** (Export/Import, `uebernommen`): Nur der Schlüssel `"pc"` der
     alten Tage wird entfernt (`ImportStore.drop_pc_before`), Verbindungen, Tätigkeiten,

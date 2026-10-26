@@ -516,8 +516,11 @@ class Store:
         limit: höchstens so viele Zeilen (die ältesten zuerst), damit ein großer Bestand in
         kurzen Schritten gelöscht werden kann. Gibt die Zahl gelöschter Zeilen zurück.
 
-        Gelöschte Seiten überschreibt SQLite mit Nullen (secure_delete). Die Datei wird
-        nicht verkleinert (kein VACUUM): Der Platz wird für neue Zeilen wiederverwendet."""
+        Die Zeilen werden vorher mit Nullen überschrieben, frei gewordene Seiten ebenso
+        (secure_delete). Ältere Kopien, die SQLite beim Einfügen in ungenutztem Platz einer
+        Seite hinterlassen hat, kann nur ein VACUUM sicher entfernen; sie sind verschlüsselt
+        und werden beim weiteren Schreiben überschrieben. Die Datei wird nicht verkleinert
+        (kein VACUUM): Der Platz wird für neue Zeilen wiederverwendet."""
         if limit:
             where = ("id IN (SELECT id FROM rows WHERE name = ? AND day < ? ORDER BY day, id LIMIT ?)",
                      (name, day, int(limit)))
