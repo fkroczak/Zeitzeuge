@@ -134,6 +134,10 @@ def test_regel_vorschlag():
     # Reine Nummer oder unbenannte TeamViewer-ID: auf den Typ
     assert learning.rule_for(e(type="Telefonat", customer_name="+49 711"), "Beratung")["field"] == "type"
     assert learning.rule_for(TV, "Beratung")["match"] == "re:^TeamViewer$"
+    # Typ-Regeln passen auf alle Einträge des Typs: nie einen Kunden setzen
+    call = learning.rule_for(e(type="Telefonat", customer_name="0711 123456"), "Telefonsupport",
+                             "Müller GmbH")
+    assert call["field"] == "type" and call["customer"] == ""
     # Nicht lernbar
     assert learning.rule_for(RDM, "") is None
     assert learning.rule_for(e(doc=True, customer_name="x"), "Beratung") is None

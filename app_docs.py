@@ -26,7 +26,7 @@ import m42_data as m42
 import week_dialogs
 import day_checks
 from grouping import group_entries
-from timeline_only import (ROW_NAMES, ActivityViewDialog, ai_copy_text, format_duration, parse_time,
+from timeline_only import (OUTLOOK_TYPES, ROW_NAMES, ActivityViewDialog, ai_copy_text, format_duration, parse_time,
                            row_kind, type_label)
 from theme import GERMAN
 import main_timeline as mt  # Pfade und save_config zur Laufzeit von dort (Tests ersetzen sie dort)
@@ -269,7 +269,10 @@ class DocsMixin(CustomersMixin):
                       and row_kind(e) != "outlook"):  # Termine/Mails: keine Nachfrage
                     entries.append(e)
         if "rules" in sources:
-            entries += self.rule_band(date_str)
+            # Blöcke nur aus Outlook-Terminen/-Mails nicht nachfragen (geplant ist nicht getan)
+            entries += [b for b in self.rule_band(date_str)
+                        if not b.get("sources") or any(s.get("type") not in OUTLOOK_TYPES
+                                                       for s in b["sources"])]
         return self.journal.open_items(entries, date_str, min_minutes=self.prompt_threshold)
 
     def prompt_threshold(self, entry):
@@ -493,7 +496,10 @@ class DocsMixin(CustomersMixin):
     def check_prompts(self):
         """Jede Minute: neu erkannte, noch nicht dokumentierte Tätigkeiten nachfragen."""
         mode = self.config.get("prompt_mode", "window")
-        if mode == "off" or self._quitting:
+        if self._quitting:
+            return
+        if mode == "off":  # keine Nachfragen, die Prüfung bei Feierabend läuft trotzdem
+            self.end_of_day_reminder([], datetime.now())
             return
         now = datetime.now()
         today = now.strftime("%Y-%m-%d")
@@ -573,13 +579,17 @@ class DocsMixin(CustomersMixin):
     def end_of_day_reminder(self, open_items, now):
         """Nach Feierabend einmal am Tag erinnern: an offene Tätigkeiten und an das, was
         die Prüfung bei Feierabend findet (Pause, Stempelung, Buchungen, Quote)."""
-        if not (self.config.get("prompt_end_of_day", True) and self.tray):
+        if not self.config.get("prompt_end_of_day", True):
+            open_items = []  # Erinnerung an Offenes aus; die Prüfung hat ihren eigenen Schalter
+        checks_on = self.config.get("day_checks_enabled", True)
+        if not (self.tray and (open_items or checks_on)):
             return
         today = now.strftime("%Y-%m-%d")
         if self._reminded_day == today:
             return
         inputs = week_dialogs.day_inputs(self, today, now)
-        if inputs["from_itm"]:  # gestempelt: Feierabend erst ausgestempelt (nicht in der Mittagspause)
+        if inputs["from_itm"] and inputs["spans"] and not inputs["running"]:
+            # ausgestempelt: Feierabend nicht schon in der Mittagspause
             if not day_checks.after_hours(now, inputs["spans"], inputs["running"], inputs["planned_end"]):
                 return
         else:
@@ -587,7 +597,7 @@ class DocsMixin(CustomersMixin):
             if end <= _start or now.hour * 60 + now.minute < end:
                 return
         findings = []
-        if self.config.get("day_checks_enabled", True):
+        if checks_on:
             rate = week_dialogs.rate_for(self, today, now, inputs)
             findings = week_dialogs.checks_for(self, today, now, inputs, rate)
         if not (open_items or findings):

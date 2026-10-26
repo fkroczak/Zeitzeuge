@@ -82,6 +82,7 @@ class OutlookMixin:
         status = self.outlook_reader.status if self.outlook_reader else (
             "Auf der PAW aus." if self.is_paw() else "Aus")
         dialog = OutlookSettingsDialog(self.config, status, self)
+        connected = [None]
 
         def apply():
             self.config.update(dialog.values())
@@ -89,9 +90,12 @@ class OutlookMixin:
             self.apply_outlook_reader()
             self.sync_source_actions()
             self.timeline.refresh()
-            if self.outlook_reader:
-                dialog.status.setText(self.outlook_reader.status)
-                self.outlook_reader.status_changed.connect(dialog.status.setText)
+            reader = self.outlook_reader
+            if reader:
+                dialog.status.setText(reader.status)
+                if connected[0] is not reader:  # je Leser nur einmal verbinden
+                    reader.status_changed.connect(dialog.status.setText)
+                    connected[0] = reader
 
         def read_now():
             if not dialog.outlook.isChecked() and not dialog.teams.isChecked():
@@ -107,3 +111,4 @@ class OutlookMixin:
         dialog.exec()
         if dialog.result() != QDialog.Accepted:
             self.sync_source_actions()
+        dialog.deleteLater()  # sonst sammeln sich Dialoge samt Verbindungen an

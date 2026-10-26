@@ -95,7 +95,29 @@ def gui_test():
     with open(main_timeline.CONFIG_FILE, encoding="utf-8") as f:
         saved = json.load(f)
     assert "customers" not in saved and "teamviewer_names" not in saved
-    assert saved["rules"][0].get("learned"), "gelernte Regel vor den Standardregeln"
+    # Gelernte Regeln nennen Kunden: nur in der Datenbank, die Datei hat die übrigen Regeln
+    assert not any(r.get("learned") for r in saved["rules"]), "gelernte Regel im Klartext"
+    assert "Müller GmbH" not in json.dumps(saved, ensure_ascii=False)
+    stored_rules = window.data_store.get("regeln")
+    assert stored_rules[0].get("learned"), "gelernte Regel vor den Standardregeln"
+    reloaded = main_timeline.load_config_with_defaults()
+    assert reloaded["rules"] == window.config["rules"], "Regeln nach dem Neuladen anders"
+    # Ausnahmen des Abrechnungstakts (Kundennamen) ebenfalls nur in der Datenbank
+    window.config["billing_customers"] = {"Geheim AG": {"step": 30, "mode": "up"}}
+    main_timeline.save_config(window.config)
+    with open(main_timeline.CONFIG_FILE, encoding="utf-8") as f:
+        assert "Geheim AG" not in f.read()
+    assert main_timeline.load_config_with_defaults()["billing_customers"] == {
+        "Geheim AG": {"step": 30, "mode": "up"}}
+    # Datei von Hand geändert (Regel entfernt): gelernte Regeln bleiben, Datei gilt
+    with open(main_timeline.CONFIG_FILE, encoding="utf-8") as f:
+        raw = json.load(f)
+    raw["rules"] = raw["rules"][1:]
+    with open(main_timeline.CONFIG_FILE, "w", encoding="utf-8") as f:
+        json.dump(raw, f)
+    merged = main_timeline.load_config_with_defaults()["rules"]
+    assert merged[0].get("learned") and len(merged) == len(window.config["rules"]) - 1, merged[:2]
+    main_timeline.save_config(window.config)  # Stand des Tests wiederherstellen
 
     # Tagesliste zeigt den Kunden zur Verbindung
     window.change_view("single")

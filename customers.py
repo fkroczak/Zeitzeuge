@@ -299,10 +299,20 @@ class Index:
         return ""
 
 
+_index_cache = [None, None]  # (Schlüssel, Index): Hinweis unter der Maus fragt sehr oft
+
+
 def index(config, imported_customers=None, imported_tv_names=None):
-    """Index aus der eigenen Kundenliste (zuerst) und übernommenen Daten eines anderen PCs."""
+    """Index aus der eigenen Kundenliste (zuerst) und übernommenen Daten eines anderen PCs.
+    Bleiben Liste, TeamViewer-Namen und übernommene Daten gleich, kommt derselbe Index."""
+    key = repr((config.get("customers"), config.get("teamviewer_names"),
+                imported_customers, imported_tv_names))
+    if _index_cache[0] == key:
+        return _index_cache[1]
     own = customer_list(config)
-    return Index(own + _valid_list(imported_customers), imported_tv_names)
+    result = Index(own + _valid_list(imported_customers), imported_tv_names)
+    _index_cache[:] = [key, result]
+    return result
 
 
 def customer_for(entry, customers):

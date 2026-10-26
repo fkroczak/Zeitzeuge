@@ -48,6 +48,10 @@ def rule_for(entry, category, customer=""):
     customer = (customer or "").strip().replace("{", "(").replace("}", ")")
     if field == "customer" and customer.casefold() == value.casefold():
         customer = ""  # leer = Name des Eintrags bleibt
+    if field == "type":
+        # Eine Typ-Regel passt auf alle Einträge dieses Typs (jedes Telefonat, jede
+        # unbenannte TeamViewer-Sitzung): nie einen Kunden setzen, nur die Kategorie
+        customer = ""
     return {
         "name": f"Gelernt: {value}",
         "field": field,

@@ -281,7 +281,9 @@ class WeekDialog(QDialog):
                            f"{self.monday:%d.%m.} – {sunday:%d.%m.%Y}")
         self.next_button.setEnabled(self.monday + timedelta(days=7) <= now)
         for reader in (getattr(self.window, "all_readers", lambda: [])() or []):
-            reader.want(dates[0])  # fehlende Woche im Hintergrund nachlesen
+            for d in dates:  # fehlende Tage im Hintergrund nachlesen (ITM liest je Tag)
+                if d <= now.strftime("%Y-%m-%d"):
+                    reader.want(d)
         self.table.setRowCount(0)
         self.hints.clear()
         self.rows = []

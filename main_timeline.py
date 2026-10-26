@@ -182,6 +182,10 @@ def backup_store(force=False):
 
 
 CUSTOMERS_DOC = "kunden"  # Kundenliste (customers.py) in der Datenbank
+RULES_DOC = "regeln"      # Regeln samt gelernten (learning.py); in der Datei nur ohne gelernte
+# Config-Schlüssel, die nur in der Datenbank stehen: Schlüssel -> (Ablage, Typ)
+DB_KEYS = {"customers": (CUSTOMERS_DOC, list), "billing_customers": ("abrechnung_kunden", dict)}
+UNREAD_KEYS = set()  # beim Laden gesperrt: beim Speichern nicht überschreiben
 
 
 def _names_store():
@@ -254,23 +258,63 @@ def load_config_with_defaults():
     except (datastore.Busy, datastore.Locked) as e:
         safe_io.report(f"Kundennamen gerade nicht lesbar: {e}")
         names = old_names if isinstance(old_names, dict) else {}
-    # Kundenliste (customers.py): ebenfalls Nutzdaten, Ablage "kunden" in der Datenbank
-    old_customers = cfg.pop("customers", None) or []
+    # Kundenliste (customers.py) und Ausnahmen des Abrechnungstakts (Kundennamen):
+    # ebenfalls Nutzdaten, in der Datenbank. Stehen sie noch in der Datei, einmal übernehmen.
+    private = {}
+    for key, (doc, kind) in DB_KEYS.items():
+        old = cfg.pop(key, None)
+        old = old if isinstance(old, kind) else kind()
+        try:
+            value = _names_store().get(doc, "", None)
+            if not isinstance(value, kind):
+                value = old
+                if value:
+                    _names_store().put(doc, "", value)
+        except (datastore.Busy, datastore.Locked) as e:
+            safe_io.report(f"{doc} gerade nicht lesbar: {e}")
+            UNREAD_KEYS.add(key)  # beim Speichern die Datenbank nicht überschreiben
+            value = old
+        private[key] = value
+    # Gelernte Regeln nennen Kunden und Verbindungen: in der Datenbank, nicht in der Datei
     try:
-        customer_list = _names_store().get(CUSTOMERS_DOC, "", None)
-        if not isinstance(customer_list, list):
-            customer_list = old_customers if isinstance(old_customers, list) else []
-            if customer_list:
-                _names_store().put(CUSTOMERS_DOC, "", customer_list)
+        cfg["rules"] = _merge_learned_rules(cfg.get("rules"), _names_store().get(RULES_DOC, "", None))
     except (datastore.Busy, datastore.Locked) as e:
-        safe_io.report(f"Kundenliste gerade nicht lesbar: {e}")
-        customer_list = old_customers if isinstance(old_customers, list) else []
+        safe_io.report(f"Gelernte Regeln gerade nicht lesbar: {e}")
+        UNREAD_KEYS.add("rules")
     # gleich zurückschreiben (damit neue Keys persistieren), atomar, ohne Kundennamen
     if not CONFIG_LOCKED:
-        safe_io.write_json(CONFIG_FILE, cfg, indent=2)
+        safe_io.write_json(CONFIG_FILE, _file_config(cfg), indent=2)
     cfg["teamviewer_names"] = names
-    cfg["customers"] = customer_list
+    cfg.update(private)
     return cfg
+
+
+def _file_config(config):
+    """Was in zeitzeuge_config.json steht: ohne Kundennamen, Kundenliste und gelernte Regeln."""
+    result = {k: v for k, v in config.items() if k not in ("teamviewer_names", *DB_KEYS)}
+    if isinstance(config.get("rules"), list):
+        result["rules"] = [r for r in config["rules"] if not (isinstance(r, dict) and r.get("learned"))]
+    return result
+
+
+def _merge_learned_rules(file_rules, stored):
+    """Regeln aus der Datei und gespeicherte Liste (mit gelernten) zusammenführen.
+
+    Passt die Datei zur gespeicherten Liste (gleiche Regeln ohne die gelernten), gilt die
+    gespeicherte Reihenfolge. Hat jemand die Datei von Hand geändert, gilt die Datei und
+    die gelernten Regeln werden wie beim Lernen einsortiert."""
+    rule_list = [r for r in file_rules if isinstance(r, dict)] if isinstance(file_rules, list) else []
+    learned_in_file = [r for r in rule_list if r.get("learned")]  # ältere Datei mit gelernten
+    if not isinstance(stored, list):
+        return rule_list
+    stored = [r for r in stored if isinstance(r, dict)]
+    plain = [r for r in rule_list if not r.get("learned")]
+    if [r for r in stored if not r.get("learned")] == plain and not learned_in_file:
+        return stored
+    import learning
+    for rule in (r for r in stored if r.get("learned")):
+        rule_list, _ = learning.add_rule(rule_list, rule)
+    return rule_list
 
 
 def save_config(config: dict):
@@ -285,16 +329,20 @@ def save_config(config: dict):
                 store.put("teamviewer_names", "", names)
         except (datastore.Busy, datastore.Locked) as e:
             safe_io.report(f"Kundennamen konnten nicht gespeichert werden: {e}")
-    customer_list = config.get("customers")
-    if isinstance(customer_list, list):
+    values = {key: (doc, config.get(key)) for key, (doc, kind) in DB_KEYS.items()
+              if isinstance(config.get(key), kind)}
+    if isinstance(config.get("rules"), list):
+        values["rules"] = (RULES_DOC, config["rules"])
+    for key, (doc, value) in values.items():
+        if key in UNREAD_KEYS:  # beim Start nicht lesbar: gespeicherten Stand nicht überschreiben
+            continue
         try:
             store = _names_store()
-            if store.get(CUSTOMERS_DOC, "", None) != customer_list:
-                store.put(CUSTOMERS_DOC, "", customer_list)
+            if store.get(doc, "", None) != value:
+                store.put(doc, "", value)
         except (datastore.Busy, datastore.Locked) as e:
-            safe_io.report(f"Kundenliste konnte nicht gespeichert werden: {e}")
-    safe_io.write_json(CONFIG_FILE, {k: v for k, v in config.items()
-                                     if k not in ("teamviewer_names", "customers")}, indent=4)
+            safe_io.report(f"{doc} konnte nicht gespeichert werden: {e}")
+    safe_io.write_json(CONFIG_FILE, _file_config(config), indent=4)
 
 
 def merged_seconds(activities):
