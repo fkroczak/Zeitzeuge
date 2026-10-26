@@ -171,4 +171,10 @@ def default_config():
         "prompt_snooze_minutes": 15,   # "Später fragen"
         "prompt_on_quit": True,        # beim Beenden an offene Tätigkeiten erinnern
         "prompt_end_of_day": True,     # nach Feierabend an offene Tätigkeiten erinnern
+
+        # Buchungsquote und Prüfung bei Feierabend (booking_rate.py, day_checks.py, week_dialogs.py)
+        "booking_target_percent": 80,  # Ziel: so viel der Personalzeit in Matrix42 buchen
+        "booking_rate_status": True,   # Quote heute / 7 Tage in der Statuszeile zeigen
+        "day_checks_enabled": True,    # bei Feierabend Pausen, Stempelung und Buchungen prüfen
+        "day_checks_pc_minutes": 10,   # ab so vielen Minuten "PC aktiv, aber ausgestempelt"
     }

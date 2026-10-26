@@ -166,6 +166,8 @@ for theme_name, t in main_timeline.THEMES.items():
     check_contrast(area, t["bandtext"], t["bandhover"])
     check_contrast(area, t["seltext"], t["sel"])  # markierte Zeile
     check_contrast(area, t["muted"], t["bg"])  # Hinweistexte (QLabel#hint)
+    for lvl in ("low", "mid", "ok", "over"):  # Buchungsquote (Statuszeile, Wochenabschluss)
+        check_contrast(area, t[f"rate_{lvl}_text"], t[f"rate_{lvl}"])
 for dark in (False, True):
     window.timeline.dark_mode = dark
     window.timeline.init_timeline_colors()
@@ -188,7 +190,7 @@ for taskbar in ("#F3F3F3", "#1F2329"):
 # Graue Hinweistexte direkt im Code (nur Farbe "gray" ist auf hellem Grund zu blass)
 for path in ["main_timeline.py", "theme.py", "app_menus.py", "app_daylist.py", "app_docs.py",
              "app_readers.py", "app_tray.py", "settings_dialogs.py", "timeline_only.py",
-             "app_protect.py", "protect_dialogs.py", "app_transfer.py"]:
+             "app_protect.py", "protect_dialogs.py", "app_transfer.py", "week_dialogs.py"]:
     with open(os.path.join(ROOT, path), encoding="utf-8") as f:
         for no, line in enumerate(f, 1):
             if re.search(r"color:\s*(gray|grey|#999|#aaa)\b", line, re.I):
@@ -245,6 +247,8 @@ dialogs["Tätigkeit nachtragen"] = journal_dialogs.EntryDialog(
 dialogs["Nachfrage"] = journal_dialogs.PromptWindow(_tv, ["Musterkunde GmbH"], ["Fernwartung"],
                                                     pending=2, parent=window)
 dialogs["Nachfragen und Erinnerungen"] = journal_dialogs.DocPromptDialog(config, window)
+import week_dialogs  # noqa: E402
+dialogs["Wochenabschluss"] = week_dialogs.WeekDialog(window, day)
 if hasattr(window, "build_pbx_dialog"):
     dialogs["3CX direkt"] = window.build_pbx_dialog()
 if hasattr(window, "build_itm_dialog"):

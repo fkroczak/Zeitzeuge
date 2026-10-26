@@ -57,6 +57,7 @@ PATHS = {
     "filter": '<path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/>',
     "lock": '<rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
     "rules": '<path d="m3 17 2 2 4-4M3 7l2 2 4-4M13 6h8M13 12h8M13 18h8"/>',
+    "gauge": '<path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/>',  # Wochenabschluss
 }
 
 

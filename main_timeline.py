@@ -423,6 +423,12 @@ class TimelineApp(MenusMixin, DayListMixin, DocsMixin, ReadersMixin, TrayMixin, 
             button.hide()
             self.statusBar().addPermanentWidget(button)
             self.source_buttons[kind] = button
+        # Buchungsquote (Matrix42 ÷ Personalzeit), ein Klick öffnet den Wochenabschluss
+        self.rate_button = QToolButton(self)
+        self.rate_button.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self.rate_button.clicked.connect(self.show_week)
+        self.rate_button.hide()
+        self.statusBar().addPermanentWidget(self.rate_button)
         # Wichtigste Aufgabe sichtbar machen: offene Tätigkeiten, ein Klick trägt die erste ein
         self.open_docs_button = QToolButton(self)
         self.open_docs_button.setObjectName("cta")

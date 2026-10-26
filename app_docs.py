@@ -17,6 +17,8 @@ from journal_dialogs import DocPromptDialog, prompt_thresholds, EntryDialog, Pro
 from settings_dialogs import AiSettingsDialog
 import rules
 import m42_data as m42
+import week_dialogs
+import day_checks
 from grouping import group_entries
 from timeline_only import (ROW_NAMES, ActivityViewDialog, ai_copy_text, format_duration, parse_time,
                            row_kind, type_label)
@@ -504,21 +506,46 @@ class DocsMixin:
         QTimer.singleShot(400, self.show_next_prompt)
 
     def end_of_day_reminder(self, open_items, now):
-        """Nach Feierabend einmal am Tag an offene Tätigkeiten erinnern."""
-        if not (self.config.get("prompt_end_of_day", True) and open_items and self.tray):
+        """Nach Feierabend einmal am Tag erinnern: an offene Tätigkeiten und an das, was
+        die Prüfung bei Feierabend findet (Pause, Stempelung, Buchungen, Quote)."""
+        if not (self.config.get("prompt_end_of_day", True) and self.tray):
             return
         today = now.strftime("%Y-%m-%d")
         if self._reminded_day == today:
             return
-        _start, end = self.timeline._work_minutes(QDate.currentDate())
-        if end <= _start or now.hour * 60 + now.minute < end:
+        inputs = week_dialogs.day_inputs(self, today, now)
+        if inputs["from_itm"]:  # gestempelt: Feierabend erst ausgestempelt (nicht in der Mittagspause)
+            if not day_checks.after_hours(now, inputs["spans"], inputs["running"], inputs["planned_end"]):
+                return
+        else:
+            _start, end = self.timeline._work_minutes(QDate.currentDate())
+            if end <= _start or now.hour * 60 + now.minute < end:
+                return
+        findings = []
+        if self.config.get("day_checks_enabled", True):
+            rate = week_dialogs.rate_for(self, today, now, inputs)
+            findings = week_dialogs.checks_for(self, today, now, inputs, rate)
+        if not (open_items or findings):
             return
         self._reminded_day = today
-        self._tray_doc_hint = True
-        self.tray.showMessage(
-            "Feierabend: noch nicht alles dokumentiert",
-            f"Heute sind noch {len(open_items)} Tätigkeiten offen. Klick hier zum Nachtragen.",
-            QSystemTrayIcon.Warning, 15000)
+        lines = [f"- {f.text}" for f in findings[:4]]
+        if len(findings) > 4:
+            lines.append(f"- und {len(findings) - 4} weitere (Wochenabschluss, F8)")
+        if open_items:
+            self._tray_doc_hint = True
+            text = f"Heute sind noch {len(open_items)} Tätigkeiten offen. Klick hier zum Nachtragen."
+            if lines:
+                text += "\nAußerdem:\n" + "\n".join(lines)
+            self.tray.showMessage("Feierabend: noch nicht alles dokumentiert", text,
+                                  QSystemTrayIcon.Warning, 15000)
+        else:
+            self._tray_week_hint = True
+            self.tray.showMessage("Feierabend: bitte prüfen", "\n".join(lines) +
+                                  "\nDetails im Wochenabschluss (F8).", QSystemTrayIcon.Warning, 15000)
+
+    def show_week(self):
+        """Wochenabschluss (F8): Buchungsquote, Lücken, Offenes und Prüfungen der Woche."""
+        week_dialogs.WeekDialog(self, self.current_date.toString("yyyy-MM-dd")).exec()
 
     def request_quit(self):
         """Beenden über Menü/Infobereich: vorher an offene Tätigkeiten von heute erinnern."""

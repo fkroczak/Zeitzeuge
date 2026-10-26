@@ -133,6 +133,10 @@ class MenusMixin:
             "Nachtragen", lambda: self.add_doc(), "F7",
             "Tätigkeit nachtragen (zur markierten Zeile oder zur letzten halben Stunde)", "edit")
         tb.addAction(self.doc_button_action)
+        self.week_action = self._action(
+            "Wochenabschluss", self.show_week, "F8",
+            "Wochenabschluss: Buchungsquote, Lücken und Offenes der Woche", "gauge")
+        tb.addAction(self.week_action)
         tb.addSeparator()
         # Ausschnitt der Timeline
         tb.addAction(self._action("Verkleinern", self.zoom_out, "Ctrl+-", "Timeline verkleinern",
