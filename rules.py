@@ -60,6 +60,14 @@ DEFAULT_RULES = [
      "category": "E-Mail / Kommunikation", "customer": "", "enabled": True},
     {"name": "Teams", "field": "app", "match": r"re:^(ms-)?teams(\.exe)?$",
      "category": "Beratung / Abstimmung", "customer": "", "enabled": True},
+    # Outlook und Teams (nur, wenn die Datenquelle eingeschaltet ist, gibt es solche Einträge)
+    {"name": "Teams-Anruf", "field": "type", "match": "re:^Teams-Anruf",
+     "category": "Telefonsupport", "customer": "", "enabled": True},
+    {"name": "Termin / Teams-Besprechung (Outlook)", "field": "type",
+     "match": "re:^(Termin|Teams-Besprechung)$",
+     "category": "Beratung / Abstimmung", "customer": "", "enabled": True},
+    {"name": "Gesendete Mail (Outlook)", "field": "type", "match": "re:^Mail gesendet$",
+     "category": "E-Mail / Kommunikation", "customer": "", "enabled": True},
 ]
 
 

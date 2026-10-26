@@ -295,7 +295,8 @@ class MenusMixin:
         [("sophos_enabled", "&Sophos Connect"), ("forti_enabled", "&FortiClient"),
          ("vpn_enabled", "&Weitere VPN-Logs (OpenVPN …)")],
         [("pbx_reader_enabled", "&3CX-Anrufe"), ("itm_reader_enabled", "&ITM-Personalzeiten"),
-         ("m42_reader_enabled", "&Matrix42-Buchungen (Firmennetz)")],
+         ("m42_reader_enabled", "&Matrix42-Buchungen (Firmennetz)"),
+         ("outlook_enabled", "&Outlook (Termine, Mails)"), ("teams_calls_enabled", "Tea&ms-Anrufe")],
     ]
 
     def _build_sources_menu(self, parent_menu):
@@ -310,7 +311,9 @@ class MenusMixin:
                 action.setCheckable(True)
                 action.setChecked(bool(self.config.get(key, key not in ("pbx_reader_enabled",
                                                                           "itm_reader_enabled",
-                                                                          "m42_reader_enabled"))))
+                                                                          "m42_reader_enabled",
+                                                                          "outlook_enabled",
+                                                                          "teams_calls_enabled"))))
                 action.toggled.connect(lambda on, k=key: self.toggle_source(k, on))
                 self.source_actions[key] = action
         menu.addSeparator()
@@ -322,6 +325,7 @@ class MenusMixin:
         setup.addAction("&3CX …", self.open_pbx_settings)
         setup.addAction("&ITM-Personalzeiten …", self.open_itm_settings)
         setup.addAction("&Matrix42 …", self.open_m42_settings)
+        setup.addAction("&Outlook und Teams …", self.open_outlook_settings)
         return menu
 
     def sync_source_actions(self):
@@ -352,6 +356,15 @@ class MenusMixin:
                 self.start_m42_reader()
             else:
                 self.stop_m42_reader()
+        elif key in ("outlook_enabled", "teams_calls_enabled"):
+            if on and self.is_paw():
+                self.statusBar().showMessage("Outlook und Teams: auf der PAW aus. Daten kommen über "
+                                             "„Daten übernehmen“.", 8000)
+                self.config[key] = False
+                mt.save_config(self.config)
+                self.sync_source_actions()
+                return
+            self.apply_outlook_reader()
         elif key in ("sophos_enabled", "forti_enabled"):
             self.timeline.vpn_reader.sources = vpn_sources(self.config)
             self.apply_vpn_monitor()
