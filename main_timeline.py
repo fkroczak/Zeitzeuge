@@ -176,6 +176,9 @@ def backup_store(force=False):
     return store.backup(BACKUP_FILE)
 
 
+CUSTOMERS_DOC = "kunden"  # Kundenliste (customers.py) in der Datenbank
+
+
 def _names_store():
     return datastore.registered(DATA_DIR) or datastore.store_for_dir(DATA_DIR)
 
@@ -243,10 +246,22 @@ def load_config_with_defaults():
     except (datastore.Busy, datastore.Locked) as e:
         safe_io.report(f"Kundennamen gerade nicht lesbar: {e}")
         names = old_names if isinstance(old_names, dict) else {}
+    # Kundenliste (customers.py): ebenfalls Nutzdaten, Ablage "kunden" in der Datenbank
+    old_customers = cfg.pop("customers", None) or []
+    try:
+        customer_list = _names_store().get(CUSTOMERS_DOC, "", None)
+        if not isinstance(customer_list, list):
+            customer_list = old_customers if isinstance(old_customers, list) else []
+            if customer_list:
+                _names_store().put(CUSTOMERS_DOC, "", customer_list)
+    except (datastore.Busy, datastore.Locked) as e:
+        safe_io.report(f"Kundenliste gerade nicht lesbar: {e}")
+        customer_list = old_customers if isinstance(old_customers, list) else []
     # gleich zurückschreiben (damit neue Keys persistieren), atomar, ohne Kundennamen
     if not CONFIG_LOCKED:
         safe_io.write_json(CONFIG_FILE, cfg, indent=2)
     cfg["teamviewer_names"] = names
+    cfg["customers"] = customer_list
     return cfg
 
 
@@ -262,8 +277,16 @@ def save_config(config: dict):
                 store.put("teamviewer_names", "", names)
         except (datastore.Busy, datastore.Locked) as e:
             safe_io.report(f"Kundennamen konnten nicht gespeichert werden: {e}")
-    safe_io.write_json(CONFIG_FILE, {k: v for k, v in config.items() if k != "teamviewer_names"},
-                       indent=4)
+    customer_list = config.get("customers")
+    if isinstance(customer_list, list):
+        try:
+            store = _names_store()
+            if store.get(CUSTOMERS_DOC, "", None) != customer_list:
+                store.put(CUSTOMERS_DOC, "", customer_list)
+        except (datastore.Busy, datastore.Locked) as e:
+            safe_io.report(f"Kundenliste konnte nicht gespeichert werden: {e}")
+    safe_io.write_json(CONFIG_FILE, {k: v for k, v in config.items()
+                                     if k not in ("teamviewer_names", "customers")}, indent=4)
 
 
 def merged_seconds(activities):

@@ -191,4 +191,14 @@ def default_config():
         # Tätigkeiten, Buchungen, KI-Vorschläge, Anrufe usw. bleiben immer erhalten.
         "pc_history_purge": False,
         "pc_history_days": 90,
+
+        # --- Kunden: Kundenliste und Lernen aus Korrekturen (customers.py, learning.py)
+        # Kunde -> Spuren (TeamViewer-ID, RDM, VPN, Telefon, E-Mail-Domain). Nutzdaten:
+        # steht verschlüsselt in der Datenbank (Ablage "kunden"), nicht in dieser Datei.
+        "customers": [],
+        # Beim Eintragen „Kunde für … merken“ auch für RDM, VPN, Telefon, E-Mail anbieten
+        # (TeamViewer wie bisher immer)
+        "customers_learn": True,
+        # Beim Eintragen „Als Regel merken“ anbieten, wenn du die Kategorie änderst
+        "rules_learn_offer": True,
     }

@@ -127,6 +127,7 @@ def load_call_suggestions(path, date_str, ignore_missed=True, min_seconds=0):
             "duration_s": seconds,  # echte Dauer (der Balken ist min. 1 min breit)
             "direction": c.get("direction", "Anruf"),  # für die Farbe (ein/aus/verpasst)
             "customer_name": customer,
+            "phone": number,  # für die Kundenliste (customers.py)
             "details": ", ".join(details),
             "is_suggestion": True,
         })

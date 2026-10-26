@@ -262,6 +262,18 @@ dialogs["Abrechnung"] = billing_dialogs.BillingDialog(
     ["Musterkunde GmbH"], window)
 dialogs["Abrechnung"].add_row()
 dialogs["PC-Verlauf löschen"] = retention_dialogs.RetentionDialog(config, window)
+import customers_dialogs  # noqa: E402
+_kd = customers_dialogs.CustomersDialog(config, window)
+_kd.add_customer("Musterkunde GmbH")
+_kd.add_trace("phone", "+49 711 123456")
+dialogs["Kundenliste"] = _kd
+# Eintragen mit RDM-Spur: Kunde und Kategorie geändert, beide Merken-Haken sichtbar
+_rdm = journal_dialogs.EntryDialog(
+    _dt(2026, 10, 20, 9), _dt(2026, 10, 20, 9, 30), ["Musterkunde GmbH"], ["Fernwartung", "Beratung"],
+    customer="srv01", category="Fernwartung", trace=("rdm", "srv01"), rule_subject="srv01", parent=window)
+_rdm.form.customer_edit.setCurrentText("Musterkunde GmbH")
+_rdm.form.category_edit.setCurrentText("Beratung")
+dialogs["Tätigkeit mit Lernen"] = _rdm
 if hasattr(window, "build_pbx_dialog"):
     dialogs["3CX direkt"] = window.build_pbx_dialog()
 if hasattr(window, "build_itm_dialog"):

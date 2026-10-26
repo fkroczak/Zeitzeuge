@@ -16,6 +16,7 @@ reines gzip) wird beim Übernehmen weiter angenommen, mit Hinweis.
     {"format": "zeitzeuge-export", "version": 1, "pc": "PC-123",
      "erstellt": "2026-10-26 08:00:00", "von": "2026-09-26", "bis": "2026-10-26",
      "teamviewer_names": {...},
+     "kunden": [{"name": ..., "traces": [{"kind": ..., "value": ...}]}],   (Kundenliste, optional)
      "tage": {"2026-10-20": {"verbindungen": [...], "pc": [...], "personalzeit": {...},
                              "m42": [...], "taetigkeiten": {"items": [...], "ignored": [...]},
                              "ki": {"items": [...], "model": ..., "created": ...}}}}
@@ -64,7 +65,7 @@ def pc_name():
     return os.environ.get("COMPUTERNAME") or socket.gethostname() or "PC"
 
 
-def make_export(days, teamviewer_names=None, pc=None, now=None):
+def make_export(days, teamviewer_names=None, pc=None, now=None, customers=None):
     """days: {Tag: {verbindungen, pc, personalzeit, m42, taetigkeiten}} -> Export-dict."""
     now = now or datetime.now()
     # None = nichts bekannt; leere Listen bleiben (bei Matrix42: gelesen, nichts gebucht)
@@ -76,6 +77,7 @@ def make_export(days, teamviewer_names=None, pc=None, now=None):
         "erstellt": now.strftime(TIME_FMT),
         "von": min(days) if days else "", "bis": max(days) if days else "",
         "teamviewer_names": dict(teamviewer_names or {}),
+        "kunden": list(customers or []),
         "tage": clean,
     }
 
@@ -219,6 +221,9 @@ class ImportStore:
             taken += 1
         entry["teamviewer_names"] = {**entry.get("teamviewer_names", {}),
                                      **(export.get("teamviewer_names") or {})}
+        if isinstance(export.get("kunden"), list) and created >= entry.get("zuletzt", ""):
+            # Kundenliste: der neuere Export gilt
+            entry["kunden"] = export["kunden"]
         entry["zuletzt"] = created
         try:
             store, name = datastore.locate(self.path, "single")
@@ -316,6 +321,14 @@ class ImportStore:
         for entry in self.pcs.values():
             names.update(entry.get("teamviewer_names") or {})
         return names
+
+    def customers(self):
+        """Kundenlisten der anderen PCs (customers.py), hintereinander."""
+        result = []
+        for entry in self.pcs.values():
+            kunden = entry.get("kunden")
+            result += [c for c in kunden if isinstance(c, dict)] if isinstance(kunden, list) else []
+        return result
 
     def describe(self):
         """Je Herkunfts-PC: Name, Zeitraum, Stand."""

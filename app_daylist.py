@@ -12,6 +12,7 @@ from journal import describe, ticket_line
 from grouping import format_tv_id, work_blocks
 from timeline_only import (ActivityViewDialog, ai_copy_text, entry_color, exec_entry_menu,
                            format_duration, parse_time, type_label)
+import customers
 import icons
 from theme import GERMAN
 import main_timeline as mt  # Pfade und save_config zur Laufzeit von dort (Tests ersetzen sie dort)
@@ -49,6 +50,7 @@ class DayListMixin:
         self.table.setRowCount(len(entries))
         # Ansicht "Dokumentation": abgerechnete Zeit neben der Dauer (Abrechnungstakt)
         billing = self.billing() if self.config.get("list_view") == "doc" else None
+        index = self.customer_index()  # Kundenliste: Kunde zur Spur (customers.py)
         for row, a in enumerate(entries):
             start, end = parse_time(a["start"]), parse_time(a["end"])
             pix = QPixmap(10, 10)
@@ -64,7 +66,7 @@ class DayListMixin:
                                  + (billing.note((end - start).total_seconds(), a.get("customer_name", ""))
                                     if billing and a.get("doc") else "")),
                 type_item,
-                QTableWidgetItem(a.get("customer_name", "")),
+                QTableWidgetItem(customers.with_customer(a, index)),
                 QTableWidgetItem(a.get("details", "")),
             ]
             for col, item in enumerate(values):
@@ -96,10 +98,10 @@ class DayListMixin:
             text=names.get(tv_id, ""))
         if not ok:
             return
-        if name.strip():
-            names[tv_id] = name.strip()
+        if name.strip():  # Kundenliste und teamviewer_names gleich halten (customers.py)
+            customers.learn(self.config, "tv", tv_id, name.strip())
         else:
-            names.pop(tv_id, None)
+            customers.forget(self.config, "tv", tv_id)
         mt.save_config(self.config)
         self.timeline.draw_timeline(self.current_date)
         self.statusBar().showMessage(f"TeamViewer-ID {format_tv_id(tv_id)} heißt jetzt „{name.strip()}“"

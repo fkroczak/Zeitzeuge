@@ -19,6 +19,8 @@ import snippets
 import tickets
 from snippets_dialogs import SnippetsDialog
 from settings_dialogs import AiSettingsDialog
+from customers_dialogs import CustomersMixin
+import learning
 import rules
 import m42_data as m42
 from grouping import group_entries
@@ -28,7 +30,7 @@ from theme import GERMAN
 import main_timeline as mt  # Pfade und save_config zur Laufzeit von dort (Tests ersetzen sie dort)
 
 
-class DocsMixin:
+class DocsMixin(CustomersMixin):
     # ---------------------- KI-Vorschläge -------------------------------------
 
     def ai_input(self, date):
@@ -151,9 +153,10 @@ class DocsMixin:
         return Billing.from_config(self.config)
 
     def known_customers(self):
-        """Kunden zur Auswahl: zuletzt dokumentierte, benannte TeamViewer-IDs."""
+        """Kunden zur Auswahl: zuletzt dokumentierte, Kundenliste, benannte TeamViewer-IDs."""
         names = self.journal.customers()
         names += sorted(set(self.config.get("teamviewer_names", {}).values()) - set(names))
+        names += sorted({c["name"] for c in self.customer_index_list()} - set(names), key=str.lower)
         return names
 
     def rule_band(self, date_str):
@@ -301,6 +304,8 @@ class DocsMixin:
             ActivityViewDialog(entry, self).exec()
         elif key == "name_tv":
             self.name_teamviewer_id(entry)
+        elif key == "assign_customer":
+            self.assign_customer(entry)
         elif key == "copy":
             if entry.get("doc"):
                 text = ticket_line(entry["doc_item"], self.config.get("ticket_format", ""),
@@ -330,14 +335,16 @@ class DocsMixin:
         if entry:
             start, end = parse_time(entry["start"]), parse_time(entry["end"])
             info = f"Erkannt: {describe(entry)}"
-            customer = suggest_customer(entry, self.config.get("teamviewer_names", {}))
-            category = suggest_category(entry, categories)
+            hints = learning.doc_hints(entry, self.config, categories, self.customer_index())
+            customer, category = hints["customer"], hints["category"]
             text = entry.get("description", "") if entry.get("ai") or entry.get("rule") else ""
         else:
             start, end = default_span(self.current_date.toPython(), minute)
             info, customer, category, text = "", "", "", ""
+            hints = {}
         dialog = EntryDialog(start, end, self.known_customers(), categories, customer, category,
                              text, tv_id=(entry or {}).get("tv_id"), info=info, parent=self,
+                             trace=hints.get("trace"), rule_subject=hints.get("rule_subject"),
                              **self.entry_form_options(start, end))
         dialog.form.set_billing(self.billing())
         if dialog.exec() != QDialog.Accepted:
@@ -345,12 +352,13 @@ class DocsMixin:
         item = dialog.item()
         if entry:
             item["source"] = "KI" if entry.get("ai") else entry.get("type", "")
-        if self._save_doc(item, entry, dialog.remember_tv()) and entry and entry.get("ai"):
+        if self._save_doc(item, entry, dialog.remember_tv(), rule=dialog.wants_rule()) \
+                and entry and entry.get("ai"):
             if not entry.get("von_pc"):  # übernommene Vorschläge gehören dem anderen PC
                 self.ai_store.set_status(entry["start"][:10], entry["ai_id"], "übernommen")
             self.timeline.draw_timeline(self.current_date)
 
-    def _save_doc(self, item, entry=None, remember_tv=False, old=None):
+    def _save_doc(self, item, entry=None, remember_tv=False, old=None, rule=False):
         try:
             if old:
                 self.journal.update(old, item)
@@ -359,12 +367,13 @@ class DocsMixin:
         except (OSError, ValueError) as e:
             QMessageBox.warning(self, "Tätigkeit", str(e))
             return False
-        tv_id = (entry or {}).get("tv_id")
-        if tv_id and remember_tv and item.get("customer"):
-            self.config.setdefault("teamviewer_names", {})[tv_id] = item["customer"]
+        # Aus Korrekturen lernen: Kunde zur Spur (Kundenliste), Kategorie als Regel
+        learned = learning.apply_corrections(self.config, entry, item, remember_tv, rule)
+        if learned:
             mt.save_config(self.config)
         self.timeline.draw_timeline(self.current_date)
-        self.statusBar().showMessage("Tätigkeit gespeichert", 3000)
+        self.statusBar().showMessage(" · ".join(["Tätigkeit gespeichert"] + learned),
+                                     6000 if learned else 3000)
         return True
 
     def _foreign_doc(self, item):
@@ -517,9 +526,13 @@ class DocsMixin:
                                       f"{describe(entry)}\nKlick hier, um es einzutragen.",
                                       QSystemTrayIcon.Information, 10000)
             return
-        window = PromptWindow(entry, self.known_customers(), self.categories(),
+        categories = self.categories()
+        hints = learning.doc_hints(entry, self.config, categories, self.customer_index())
+        window = PromptWindow(entry, self.known_customers(), categories,
                               self.config.get("teamviewer_names", {}),
                               pending=len(self._prompt_queue) - 1, parent=self,
+                              customer=hints["customer"], category=hints["category"],
+                              trace=hints["trace"], rule_subject=hints["rule_subject"],
                               **self.entry_form_options(parse_time(entry["start"]),
                                                         parse_time(entry["end"])))
         window.form.set_billing(self.billing())
@@ -539,7 +552,8 @@ class DocsMixin:
         self._prompt_queue = [q for q in self._prompt_queue if journal_key(q) != key]
         if action == "save":
             item["source"] = entry.get("type", "")
-            if not self._save_doc(item, entry, window.remember_tv() if window else False):
+            if not self._save_doc(item, entry, window.remember_tv() if window else False,
+                                  rule=window.wants_rule() if window else False):
                 self._prompt_queue.insert(0, entry)
         elif action == "ignore":
             self.journal.ignore(entry)
