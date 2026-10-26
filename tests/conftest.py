@@ -30,7 +30,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ.setdefault("ZEITZEUGE_DATA", tempfile.mkdtemp(prefix="zeitzeuge-test-"))
 
 SCRIPT_TIMEOUT = 300  # Sekunden je Skript
-BROWSER_SCRIPTS = {"itm_test.py", "pbx_test.py", "recorder_test.py"}  # brauchen Edge/Chrome
+BROWSER_SCRIPTS = {"itm_test.py", "pbx_test.py", "recorder_test.py", "m42_test.py"}  # brauchen Edge/Chrome
 HAS_TEST_FUNC = re.compile(r"^(async\s+)?def test_|^class Test", re.M)
 
 

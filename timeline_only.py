@@ -71,8 +71,26 @@ FIXED_ROWS = [("call", "Tel"), ("vpn", "VPN"), ("tv", "TV")]
 # Legende links: Name der Zeile und Schlüssel in config["type_colors"] für das Farbfeld
 LEGEND_FIXED = {"call": ("Telefon", "Telefonat"), "vpn": ("VPN", "VPN-Verbindung"),
                 "tv": ("TeamViewer", "TeamViewer")}
-LEGEND_BANDS = {"doc": ("Dokumentation", "Dokumentiert"), "rule": ("Regeln", "Klassifizierung"),
-                "ai": ("KI-Vorschläge", "KI-Vorschlag")}
+LEGEND_BANDS = {"work": ("Personalzeit", "Personalzeit"), "doc": ("Dokumentation", "Dokumentiert"), "m42": ("Matrix42", "Matrix42-Buchung"),
+                "rule": ("Zuordnung o. KI", "Klassifizierung"), "ai": ("KI-Vorschläge", "KI-Vorschlag")}
+
+# Alle Zeilen der Timeline in der Reihenfolge von oben nach unten: Schlüssel in
+# config["timeline_rows"], Text im Menü. Jede lässt sich einzeln aus- und einblenden.
+TIMELINE_ROWS = [
+    ("pc", "&PC-Aktivität (aktive Fenster)"),
+    ("work", "P&ersonalzeit (ITM, sonst Arbeitszeit)"),
+    ("doc", "&Dokumentation (eigene Tätigkeiten)"),
+    ("m42", "&Matrix42 (gebucht / nicht gebucht)"),
+    ("rule", "&Zuordnung ohne KI (feste Regeln)"),
+    ("ai", "&KI-Vorschläge"),
+    ("call", "&Telefon (3CX)"),
+    ("vpn", "&VPN"),
+    ("tv", "T&eamViewer"),
+    ("other", "&Remote / Weitere (RDM, SSH, RDP …)"),
+]
+ROW_NAMES = {"pc": "PC-Aktivität", "work": "Personalzeit", "doc": "Dokumentation", "m42": "Matrix42", "rule": "Zuordnung ohne KI",
+             "ai": "KI-Vorschläge", "call": "Telefon", "vpn": "VPN", "tv": "TeamViewer",
+             "other": "Remote / Weitere"}
 
 
 def row_kind(activity):
@@ -93,15 +111,20 @@ def type_label(activity):
         return f"Doku: {activity['category']}" if activity.get("category") else "Doku"
     if activity.get("open"):
         return "Undokumentiert"
+    if activity.get("m42"):
+        return f"Matrix42: {activity['category']}" if activity.get("category") else "Matrix42"
+    if activity.get("m42_gap"):
+        return "Nicht gebucht"
     if activity.get("rule"):
-        return f"Regel: {activity.get('category', '')}"
+        return f"Zuordnung: {activity.get('category', '')}"
     if activity.get("ai"):
         text = f"KI: {activity.get('category', '')}"
         return text + " (übernommen)" if activity.get("status") == "übernommen" else text
     direction = activity.get("direction")
+    text = activity.get("type", "")
     if direction and direction != "Anruf":
-        return f"{activity.get('type', '')} {direction.lower()}"
-    return activity.get("type", "")
+        text = f"{text} {direction.lower()}"
+    return f"Nicht gebucht: {text}" if activity.get("m42_unbooked") else text
 
 
 def hhmm(minutes):
@@ -132,10 +155,19 @@ def entry_menu_items(entry):
     Timeline und Tagesliste zeigen dasselbe Menü mit denselben Texten, und nur Befehle,
     die zu diesem Eintrag passen.
     """
+    if entry.get("work"):  # Personalzeit: nur kopieren
+        return [("&Kopieren", "copy")]
+    if entry.get("m42"):  # Buchung aus Matrix42: nur ansehen und kopieren
+        return [("&Details öffnen", "details"), None, ("&Kopieren", "copy")]
+    if entry.get("m42_gap"):  # Zeit ohne Buchung
+        return [(f"&Tätigkeit ab {hhmm(entry['minute'])} eintragen …", "add_at"), None,
+                ("&Kopieren", "copy")]
     if "minute" in entry:  # freie Stelle in der Timeline
         return [(f"&Tätigkeit ab {hhmm(entry['minute'] // 5 * 5)} eintragen …", "add_at")]
     if entry.get("open"):
         return [("Jetzt &eintragen …", "add"), ("&Nicht dokumentieren", "ignore")]
+    if entry.get("doc") and entry.get("doc_item", {}).get("von_pc"):  # von anderem PC übernommen
+        return [("Als Ticketzeile &kopieren", "copy")]
     if entry.get("doc"):
         return [("Tätigkeit &bearbeiten …", "edit"), ("Tätigkeit &löschen", "delete"), None,
                 ("Als Ticketzeile &kopieren", "copy")]
@@ -147,7 +179,8 @@ def entry_menu_items(entry):
     if entry.get("tv_id"):
         items.append(("TeamViewer-ID &benennen …", "name_tv"))
     if entry.get("ai"):
-        items += [None, ("Vorschlag &verwerfen", "reject")]
+        if not entry.get("von_pc"):  # übernommene Vorschläge verwirft man auf dem anderen PC
+            items += [None, ("Vorschlag &verwerfen", "reject")]
     items += [None, ("&Kopieren", "copy")]
     return items
 
@@ -229,6 +262,8 @@ class TimelineView(QGraphicsView):
     entry_action = Signal(str, dict)
     # Hintergrund-Thread hat TeamViewer- und RDM-Logs gelesen
     logs_loaded = Signal(object, object, object)
+    # Logs werden gelesen (True) oder sind fertig (False) – für die Ladeanzeige
+    loading_changed = Signal(bool)
 
     APP_COLORS = ["#5B8DEF", "#E67E22", "#27AE60", "#9B59B6", "#E84393",
                   "#16A085", "#C0392B", "#F1C40F", "#2C3E50", "#7F8C8D"]
@@ -263,6 +298,8 @@ class TimelineView(QGraphicsView):
         self.ai_entries = None    # date_str -> KI-Vorschläge, vom Hauptfenster gesetzt
         self.rule_entries = None  # date_str -> Blöcke aus den Regeln (ohne KI)
         self.doc_entries = None   # date_str -> eigene Tätigkeiten und noch offene
+        self.m42_entries = None   # date_str -> Buchungen aus Matrix42 und Lücken ohne Buchung
+        self.imported = None      # übernommene Daten anderer PCs (transfer.ImportStore)
 
         self._remote_cache = {}  # date_str -> list[conn]
         self._tv_parser = TeamViewerParser(self.config)
@@ -353,6 +390,7 @@ class TimelineView(QGraphicsView):
             self._reload = True
             return
         self.loading = True
+        self.loading_changed.emit(True)
         self._thread = threading.Thread(target=self._load_logs, daemon=True)
         self._threads = [t for t in self._threads if t.is_alive()] + [self._thread]
         self._thread.start()
@@ -395,6 +433,7 @@ class TimelineView(QGraphicsView):
         self._sophos_index = None  # Archiv der VPN-Aufzeichnung beim nächsten Zeichnen neu lesen
         self._remote_cache.clear()
         self.loading = False
+        self.loading_changed.emit(False)
         if self._reload:
             self._reload = False
             self.refresh()
@@ -409,6 +448,7 @@ class TimelineView(QGraphicsView):
             self.remote_suggestions = []
             if not self.loading:
                 self.loading = True
+                self.loading_changed.emit(True)
                 # Erst lesen, wenn dieses Zeichnen fertig ist (sonst bremst der Thread es aus)
                 QTimer.singleShot(0, self._start_first_load)
             return
@@ -440,6 +480,12 @@ class TimelineView(QGraphicsView):
                 ignore_missed=self.config.get("calls_ignore_missed", True),
                 min_seconds=self.config.get("calls_min_duration", 0),
             )
+        if self.imported:  # von einem anderen PC übernommen (z. B. auf der PAW)
+            own = {(a.get("type"), a.get("start"), a.get("end")) for a in result}
+            for a in self.imported.connections(date_str):
+                if (a.get("type"), a.get("start"), a.get("end")) not in own:
+                    a["details"] = " · ".join(t for t in (a.get("details"), f"von {a['source_pc']}") if t)
+                    result.append(a)
 
         valid = []
         for a in result:
@@ -455,7 +501,8 @@ class TimelineView(QGraphicsView):
         valid.sort(key=lambda a: a["start"])
 
         # TeamViewer: eigener Name statt nur der ID
-        names = self.config.get("teamviewer_names", {})
+        names = {**(self.imported.teamviewer_names() if self.imported else {}),
+                 **self.config.get("teamviewer_names", {})}
         for a in valid:
             tv_id = a.get("tv_id")
             if tv_id:
@@ -478,6 +525,10 @@ class TimelineView(QGraphicsView):
         elif self.activity_dir:  # pausiert: bisher Aufgezeichnetes trotzdem zeigen
             segments = read_segments(self.activity_dir, date_str)
         else:
+            segments = []
+        if self.imported:  # aktive Fenster des anderen PCs
+            segments = segments + self.imported.segments(date_str)
+        if not segments:
             return []
         result = []
         for seg in merge_segments(segments, min_seconds=min_seconds, max_gap=max_gap):
@@ -522,6 +573,27 @@ class TimelineView(QGraphicsView):
             return spans, True, open_idx
         hours = work_hours(self.config, date.dayOfWeek() - 1)
         return ([hours] if hours else []), False, None
+
+    def work_entries(self, date_str):
+        """Zeile "Personalzeit": je gestempeltem Abschnitt ein Block mit Beginn und Ende
+        (ohne ITM die Arbeitszeit aus den Einstellungen)."""
+        date = QDate.fromString(date_str, "yyyy-MM-dd")
+        spans, from_itm, open_idx = self._work_info(date)
+        name = "Personalzeit" if from_itm else "Arbeitszeit"
+        result = []
+        for i, (a, b) in enumerate(spans):
+            if b <= a:
+                continue
+            running = i == open_idx
+            label = f"{hhmm(a)} – {'jetzt' if running else hhmm(b)}"
+            end = f"{date_str} 23:59:59" if b >= 24 * 60 else f"{date_str} {hhmm(b)}:00"
+            result.append({
+                "start": f"{date_str} {hhmm(a)}:00", "end": end, "type": name,
+                "customer_name": label, "work": True, "from_itm": from_itm, "running": running,
+                "details": f"{name} {label}" + (" (eingestempelt)" if running else ""),
+                "is_suggestion": False,
+            })
+        return result
 
     def _work_text(self, minute):
         """Was zu dieser Minute laut Personalzeit/Arbeitszeit gilt (eine Zeile)."""
@@ -569,16 +641,23 @@ class TimelineView(QGraphicsView):
         activities = self.view_entries(date)
 
         # Telefonate, VPN und TeamViewer je in eine feste Zeile; der Rest (v. a. RDM)
-        # wird auf Spuren verteilt: überlappende Einträge kommen in die nächste Spur
-        fixed_index = {kind: i for i, (kind, _label) in enumerate(FIXED_ROWS)}
-        n_fixed = len(FIXED_ROWS)
+        # wird auf Spuren verteilt: überlappende Einträge kommen in die nächste Spur.
+        # Ausgeblendete Zeilen (Menü "Zeilen der Timeline") fallen ganz weg.
+        shown = self.config.get("timeline_rows", {})
+        fixed_rows = [(kind, label) for kind, label in FIXED_ROWS if shown.get(kind, True)]
+        show_other = shown.get("other", True)
+        fixed_index = {kind: i for i, (kind, _label) in enumerate(fixed_rows)}
+        n_fixed = len(fixed_rows)
         lanes_end = []
         placed = []
         for a in activities:
             start, end = parse_time(a["start"]), parse_time(a["end"])
             kind = row_kind(a)
             if kind is not None:
-                placed.append((a, start, end, fixed_index[kind]))
+                if kind in fixed_index:
+                    placed.append((a, start, end, fixed_index[kind]))
+                continue
+            if not show_other:
                 continue
             for idx, lane_end in enumerate(lanes_end):
                 if start >= lane_end:
@@ -593,12 +672,13 @@ class TimelineView(QGraphicsView):
                     idx = len(lanes_end) - 1
             placed.append((a, start, end, n_fixed + idx))
 
-        pc_band = self.pc_entries_for(date, min_seconds=5, max_gap=15)
+        show_pc = shown.get("pc", True)
+        pc_band = self.pc_entries_for(date, min_seconds=5, max_gap=15) if show_pc else []
         bands = self.band_rows(date)
         ai_band = next((e for k, _t, e in bands if k == "ai"), [])
-        n_lanes = max(self.MIN_LANES, len(lanes_end))
+        n_lanes = max(self.MIN_LANES, len(lanes_end)) if show_other else 0
         band_y = self.AXIS_H + 6
-        show_band = bool(self.tracker or pc_band)
+        show_band = show_pc and bool(self.tracker or pc_band)
         top = band_y + (self.PC_BAND_H + 10 if show_band else 2)
         # Zeilenhöhe so wählen, dass alle Zeilen ohne senkrechte Scrollleiste ins Fenster passen;
         # Platz für die horizontale Scrollleiste lassen
@@ -650,17 +730,9 @@ class TimelineView(QGraphicsView):
                 )
                 label.setPos(x + 2, 3)
 
-        # Personalzeit/Arbeitszeit als schmaler Streifen unter der Stundenleiste
-        work_color = QColor(self.accent)
-        for span_start, span_end in spans:
-            if span_end <= span_start:
-                continue
-            self.scene.addRect(self._x(span_start), self.AXIS_H - 3, self._x(span_end) - self._x(span_start),
-                               3, no_pen, QBrush(work_color))
-
         # Jede zweite Zeile leicht hinterlegt, damit die Zeilen unterscheidbar sind
         stripe = QColor(255, 255, 255, 10) if self.dark_mode else QColor(0, 0, 0, 10)
-        row_tops = [top + i * row_h for i in range(n_fixed)]
+        row_tops = [top + i * row_h for i in range(n_fixed)]  # nur sichtbare Zeilen
         row_tops += [free_top + i * row_h for i in range(n_lanes)]
         for i, y in enumerate(row_tops):
             if i % 2 == 0:
@@ -671,16 +743,20 @@ class TimelineView(QGraphicsView):
         legend = []
         if show_band:
             legend.append((band_y, self.PC_BAND_H, "PC-Aktivität", None))
-        for (kind, _text, _band), y in zip(bands, band_tops):
+        for (kind, _text, band), y in zip(bands, band_tops):
             name, key = LEGEND_BANDS[kind]
+            if kind == "work" and band and not band[0].get("from_itm"):
+                name = "Arbeitszeit"  # ohne ITM: Arbeitszeit aus den Einstellungen
             legend.append((y, self.LANE_H, name, colors.get(key)))
-        for i, (kind, _text) in enumerate(FIXED_ROWS):
+        for i, (kind, _text) in enumerate(fixed_rows):
             name, key = LEGEND_FIXED[kind]
             legend.append((top + i * row_h, self.LANE_H, name, colors.get(key)))
-        legend.append((free_top, self.LANE_H, "Remote / Weitere", colors.get("RDP-Verbindung")))
+        if show_other:
+            legend.append((free_top, self.LANE_H, "Remote / Weitere", colors.get("RDP-Verbindung")))
+            sep_y = free_top - (6 + self.LANE_GAP) / 2
+            if n_fixed:
+                self.scene.addLine(0, sep_y, width, sep_y, QPen(self.hour_line, 1))
         self._legend = legend
-        sep_y = free_top - (6 + self.LANE_GAP) / 2
-        self.scene.addLine(0, sep_y, width, sep_y, QPen(self.hour_line, 1))
 
         # Einträge
         label_font = QFont("Segoe UI", 8)
@@ -744,7 +820,7 @@ class TimelineView(QGraphicsView):
         self._hover_label.setDefaultTextColor(self.text_color)
         self._hover_label.setZValue(91)
         self._hover_label.hide()
-        self._day_entries = activities
+        self._day_entries = [a for a, _s, _e, _l in placed]  # nur die gezeichneten
         self._pc_band = pc_band
         self._ai_band = ai_band
         self._bands = bands
@@ -764,17 +840,19 @@ class TimelineView(QGraphicsView):
         self.day_loaded.emit(activities, self.pc_entries_for(date))
 
     # Obere Zeilen: Kennung, Beschriftung links, Schlüssel in config["timeline_rows"]
-    BAND_ROWS = [("doc", "Doku"), ("rule", "Regel"), ("ai", "KI")]
+    BAND_ROWS = [("work", "Personalzeit"), ("doc", "Doku"), ("m42", "Matrix42"), ("rule", "Zuordnung"), ("ai", "KI")]
 
     def band_rows(self, date: QDate):
         """Sichtbare obere Zeilen mit ihren Einträgen: [(Kennung, Text, Einträge)].
 
         Doku steht immer da (auch leer), damit offene Tätigkeiten sofort auffallen.
-        Regeln und KI nur, wenn es Einträge gibt. Jede Zeile lässt sich abschalten.
+        Matrix42, Zuordnung (Regeln) und KI nur, wenn es Einträge gibt. Jede Zeile lässt sich abschalten.
         """
         date_str = date.toString("yyyy-MM-dd")
         shown = self.config.get("timeline_rows", {})
-        sources = {"doc": self.doc_entries, "rule": self.rule_entries, "ai": self.ai_entries}
+        sources = {"work": self.work_entries, "doc": self.doc_entries, "m42": self.m42_entries,
+                   "rule": self.rule_entries,
+                   "ai": self.ai_entries}
         result = []
         for kind, text in self.BAND_ROWS:
             func = sources[kind]
@@ -798,7 +876,13 @@ class TimelineView(QGraphicsView):
         fill = QColor(base)
         light = 110 if self.dark_mode else 70
         label_color = self.text_color
-        if a.get("doc") or a.get("status") == "übernommen":  # Metro: volle Kachel
+        if a.get("work") and not a.get("from_itm"):  # Arbeitszeit aus den Einstellungen: nur Rahmen
+            fill.setAlpha(light // 2)
+            pen = QPen(base, 1.2, Qt.DashLine)
+        elif a.get("m42_gap"):  # Personalzeit ohne Buchung: fällt auf
+            fill.setAlpha(light // 2)
+            pen = QPen(base, 1.5, Qt.DashLine)
+        elif a.get("doc") or a.get("m42") or a.get("work") or a.get("status") == "übernommen":  # volle Kachel
             pen = QPen(Qt.NoPen)
             label_color = readable_on(base)
         elif a.get("open"):  # noch nicht dokumentiert: fällt auf, lädt zum Klicken ein
@@ -814,7 +898,14 @@ class TimelineView(QGraphicsView):
         rect.setCursor(Qt.PointingHandCursor)
         self.activity_rects[rect] = a
         if w > 28:
-            if a.get("open"):
+            if a.get("work"):
+                label_text = a["customer_name"]
+            elif a.get("m42_gap"):
+                label_text = "nicht gebucht"
+            elif a.get("m42"):
+                label_text = " · ".join(t for t in (a.get("customer_name"), a.get("description")) if t) \
+                    or a.get("category") or "Buchung"
+            elif a.get("open"):
                 label_text = f"? {a.get('customer_name') or 'eintragen'}"
             elif a.get("doc"):  # Form statt nur Farbe: ✓ dokumentiert, ? offen
                 label_text = "✓ " + (" · ".join(t for t in (a.get("customer_name"), a.get("description"))
@@ -1019,14 +1110,25 @@ class TimelineView(QGraphicsView):
         """Hinweis zur Linie: Uhrzeit, Personalzeit und alles, was zu dieser Minute lief."""
         date_str = self.current_date.toString("yyyy-MM-dd")
         moment = parse_time(f"{date_str} {hhmm(minute)}:00")
-        lines = [f"<b>{hhmm(minute)} Uhr</b>", self._work_text(minute)]
+        lines = [f"<b>{hhmm(minute)} Uhr</b>"]
+        if not any(k == "work" for k, _t, _e in self._bands):  # Zeile aus: Personalzeit im Hinweis
+            lines.append(self._work_text(minute))
 
         if hovered:  # Eintrag direkt unter der Maus: ausführlich
             start, end = parse_time(hovered["start"]), parse_time(hovered["end"])
             lines += ["", f"<b>{escape(hovered.get('customer_name') or hovered.get('type'))}</b>",
                       escape(type_label(hovered)),
                       f"{start:%H:%M} – {end:%H:%M}  ({format_duration((end - start).total_seconds())})"]
-            if hovered.get("open"):
+            if hovered.get("work"):
+                lines.append("<i>Eingestempelt (ITM)</i>" if hovered.get("from_itm")
+                             else "<i>Arbeitszeit aus den Einstellungen</i>")
+            elif hovered.get("m42"):
+                lines.append(escape(hovered.get("details", "")))
+                lines.append("<i>In Matrix42 gebucht</i>")
+            elif hovered.get("m42_gap"):
+                lines.append(escape(hovered.get("details", "")))
+                lines.append("<i>Nicht gebucht · Rechtsklick: Tätigkeit eintragen</i>")
+            elif hovered.get("open"):
                 lines.append("<i>Noch nicht dokumentiert · Klick: jetzt eintragen</i>")
             elif hovered.get("doc"):
                 if hovered.get("description"):
@@ -1034,14 +1136,16 @@ class TimelineView(QGraphicsView):
                 lines.append("<i>Deine Tätigkeit · Klick: bearbeiten</i>")
             elif hovered.get("rule"):
                 lines.append(escape(hovered.get("description") or hovered.get("details", "")))
-                lines.append("<i>Aus Regeln erkannt · Rechtsklick: als Tätigkeit eintragen</i>")
+                lines.append("<i>Automatisch zugeordnet (feste Regel, ohne KI)"
+                             " · Rechtsklick: als Tätigkeit eintragen</i>")
             elif hovered.get("ai"):
                 lines.append(escape(hovered.get("description", "")))
                 lines.append(f"<i>KI-Vorschlag, Sicherheit {round(hovered.get('confidence', 0) * 100)} %"
                              " · Rechtsklick: übernehmen oder verwerfen</i>")
             elif hovered.get("details"):
                 lines.append(escape(hovered["details"]))
-            if hovered.get("is_suggestion") and not any(hovered.get(k) for k in ("ai", "rule", "open")):
+            if hovered.get("is_suggestion") and not any(hovered.get(k) for k in ("ai", "rule", "open", "work",
+                                                                                 "m42", "m42_gap")):
                 lines.append("<i>Vorschlag aus Log</i>")
 
         # Weitere Einträge, die zu dieser Minute liefen (Minute zählt, nicht die Sekunde)
@@ -1086,6 +1190,8 @@ class TimelineView(QGraphicsView):
                 self.tooltip.hide()
                 if a.get("open"):  # offene Tätigkeit: gleich eintragen
                     self.doc_request.emit("add", a["source_entry"])
+                elif a.get("m42_gap"):  # nicht gebucht: Tätigkeit ab hier eintragen
+                    self.doc_request.emit("add_at", a)
                 elif a.get("doc"):
                     self.doc_request.emit("edit", a)
                 else:

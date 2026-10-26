@@ -18,7 +18,8 @@ APP = "Zeitzeuge"
 # Was zu den Daten gehört (wird beim Umziehen mitgenommen)
 DATA_ITEMS = ["zeitzeuge_config.json", "anrufe.json", "anrufe_stand.json",
               "personalzeiten.json", "aktivitaet", "ki_vorschlaege",
-              "vpn_verbindungen.json", "taetigkeiten"]
+              "vpn_verbindungen.json", "taetigkeiten", "m42_buchungen.json",
+              "uebernommen.json"]
 
 
 def _pointer_file():

@@ -19,10 +19,34 @@ import main_timeline as mt  # Pfade und save_config zur Laufzeit von dort (Tests
 
 
 class ReadersMixin:
+    def is_paw(self):
+        """PAW-Modus: nur RDM sammeln. Dort startet Zeitzeuge nie Edge, sucht keine Prozesse
+        und beendet keine (verträgt sich so mit EDR wie Cortex XDR)."""
+        return self.config.get("pc_role") == "paw"
+
+    def _paw_blocks(self, name):
+        if not self.is_paw():
+            return False
+        self.statusBar().showMessage(
+            f"{name}: auf der PAW aus (kein Edge im Hintergrund). Daten kommen über „Daten übernehmen“.", 8000)
+        return True
+
+    def personal_day_for(self, date_str):
+        """Personalzeit eines Tages: aus ITM, sonst von einem anderen PC übernommen."""
+        day = self.itm_reader.day(date_str) if getattr(self, "itm_reader", None) else None
+        if day is None and getattr(self, "imported", None):
+            day = self.imported.personal(date_str)
+        return day
+
+    def all_readers(self):
+        """Laufende Hintergrund-Leser (3CX, ITM, Matrix42)."""
+        return [r for r in (getattr(self, "pbx_reader", None), getattr(self, "itm_reader", None),
+                            getattr(self, "m42_reader", None)) if r]
+
     # ---------------------- 3CX direkt auslesen -------------------------------
 
     def start_pbx_reader(self):
-        if self.pbx_reader:
+        if self.pbx_reader or self._paw_blocks("3CX"):
             return
         from pbx_reader import PbxReader  # Edge-Steuerung nur laden, wenn sie gebraucht wird
         self.pbx_reader = PbxReader(
@@ -32,6 +56,7 @@ class ReadersMixin:
         )
         self.pbx_reader.status_changed.connect(self.calls_label.setText)
         self.pbx_reader.status_changed.connect(lambda _t: self.update_source_indicators())
+        self.pbx_reader.busy_changed.connect(self.update_busy_bar)
         self.pbx_reader.calls_added.connect(
             lambda _n: self.timeline.draw_timeline(self.current_date)
         )
@@ -83,6 +108,25 @@ class ReadersMixin:
                         "3. Das Fenster schließen.\n\n"
                         "Zeitzeuge speichert dann die Mitschnitt-Datei im Datenordner.",
         ),
+        "m42": dict(
+            title="Matrix42-Buchungen",
+            text="Zeitzeuge liest deine gebuchten Zeiten aus dem Matrix42-Kalender (Service Desk → "
+                 "Kalender) und vergleicht sie mit Personalzeit, Verbindungen und Telefonaten. "
+                 "In der Timeline steht dann eine Zeile „Matrix42“: graue Blöcke sind gebucht, "
+                 "rot gestrichelte Lücken sind Personalzeit ohne Buchung.\n\n"
+                 "Matrix42 ist nur im Firmennetz (oder VPN) erreichbar. Außerhalb wartet Zeitzeuge "
+                 "einfach und liest weiter, sobald du wieder im Netz bist.\n\n"
+                 "Adresse: Öffne in Matrix42 den Kalender und kopiere die Adresse aus der Adresszeile. "
+                 "Die Windows-Anmeldung klappt meist von selbst; sonst einmal „Bei Matrix42 anmelden“.",
+            url_label="Kalenderseite:", url_key="m42_url", enabled_key="m42_reader_enabled",
+            enabled_text="Gebuchte Zeiten automatisch im Hintergrund lesen",
+            login_text="Bei Matrix42 anmelden …", attr="m42_reader",
+            record_text="Ein Edge-Fenster mit dem Matrix42-Kalender öffnet sich.\n\n"
+                        "1. Falls nötig anmelden.\n"
+                        "2. Im Kalender zwei oder drei Wochen vor- und zurückblättern.\n"
+                        "3. Das Fenster schließen.\n\n"
+                        "Zeitzeuge speichert dann die Mitschnitt-Datei im Datenordner.",
+        ),
         "itm": dict(
             title="ITM-Personalzeiten",
             text="Zeitzeuge liest deine Personalzeiten aus der ITM-Zeiterfassung: heute alle 5 Minuten, "
@@ -106,6 +150,9 @@ class ReadersMixin:
     def open_pbx_settings(self):
         self._open_reader_settings("pbx")
 
+    def open_m42_settings(self):
+        self._open_reader_settings("m42")
+
     def open_itm_settings(self):
         self._open_reader_settings("itm")
 
@@ -117,7 +164,7 @@ class ReadersMixin:
 
     def _open_reader_settings(self, kind):
         from pbx_reader import find_browser
-        if kind == "pbx" and not find_browser():  # ITM geht auch mit Passwort ohne Edge
+        if kind in ("pbx", "m42") and not find_browser():  # ITM geht auch mit Passwort ohne Edge
             QMessageBox.warning(self, self.READER_DIALOGS[kind]["title"],
                                 "Microsoft Edge oder Google Chrome wurde nicht gefunden.")
             return
@@ -127,8 +174,10 @@ class ReadersMixin:
         """Einstellungen für einen Hintergrund-Leser (3CX oder ITM)."""
         spec = self.READER_DIALOGS[kind]
         attr, url_key, enabled_key = spec["attr"], spec["url_key"], spec["enabled_key"]
-        start = self.start_pbx_reader if kind == "pbx" else self.start_itm_reader
-        stop = self.stop_pbx_reader if kind == "pbx" else self.stop_itm_reader
+        start = {"pbx": self.start_pbx_reader, "itm": self.start_itm_reader,
+                 "m42": self.start_m42_reader}[kind]
+        stop = {"pbx": self.stop_pbx_reader, "itm": self.stop_itm_reader,
+                "m42": self.stop_m42_reader}[kind]
 
         dialog = QDialog(self)
         dialog.setWindowTitle(spec["title"])
@@ -152,6 +201,15 @@ class ReadersMixin:
             days.setValue(self.config.get("calls_days_back", 14))
             days.setToolTip("Ältere Tage liest Zeitzeuge nach, sobald du sie anzeigst.")
             form.addRow("Anrufe zurück lesen:", days)
+        if kind == "m42":
+            url_edit.setPlaceholderText("https://…/wm/… (Kalenderseite aus der Adresszeile kopieren)")
+            days = QSpinBox()
+            days.setRange(0, 52)
+            days.setSuffix(" Wochen")
+            days.setValue(self.config.get("m42_weeks_back", 4))
+            days.setToolTip("So viele Wochen zurück liest Zeitzeuge einmal pro Sitzung. "
+                            "Ältere Wochen liest es, sobald du sie anzeigst.")
+            form.addRow("Wochen zurück lesen:", days)
         user_edit = mandant = None
         if kind == "itm":
             user_edit = QLineEdit(self.config.get("itm_user", ""))
@@ -168,10 +226,13 @@ class ReadersMixin:
         layout.addWidget(status)
 
         def apply():
-            url = url_edit.text().strip().rstrip("/")
+            url = url_edit.text().strip()
+            if kind != "m42":  # bei Matrix42 gehört die ganze Adresse (mit # …) zur Seite
+                url = url.rstrip("/")
             changed = url != self.config.get(url_key)
-            if days and days.value() != self.config.get("calls_days_back", 14):
-                self.config["calls_days_back"] = days.value()
+            days_key, days_default = ("m42_weeks_back", 4) if kind == "m42" else ("calls_days_back", 14)
+            if days and days.value() != self.config.get(days_key, days_default):
+                self.config[days_key] = days.value()
                 changed = True  # Leser mit der neuen Zahl neu starten
             if user_edit is not None:
                 user = user_edit.text().strip()
@@ -289,7 +350,7 @@ class ReadersMixin:
     # ---------------------- ITM-Personalzeiten --------------------------------
 
     def start_itm_reader(self):
-        if self.itm_reader:
+        if self.itm_reader or self._paw_blocks("ITM"):
             return
         from itm_reader import ItmReader
         self.itm_reader = ItmReader(self.config.get("itm_url", ""), mt.ITM_FILE, mt.ITM_PROFILE_DIR, self,
@@ -302,6 +363,7 @@ class ReadersMixin:
             lambda error: error and QMessageBox.warning(self, "ITM-Anmeldung",
                                                         f"Anmeldung fehlgeschlagen:\n{error}"))
         self.itm_reader.status_changed.connect(lambda _t: self.update_source_indicators())
+        self.itm_reader.busy_changed.connect(self.update_busy_bar)
         self.itm_reader.day_read.connect(
             lambda d: self.timeline.draw_timeline(self.current_date)
             if d == self.current_date.toString("yyyy-MM-dd") else None
@@ -314,7 +376,6 @@ class ReadersMixin:
             )
         )
         self.itm_reader.recording_done.connect(self.on_recording_done)
-        self.timeline.personal_day = self.itm_reader.day
         self._watch_reader(self.itm_reader)
         self.itm_reader.start()
         self.itm_reader.want(self.current_date.toString("yyyy-MM-dd"))
@@ -344,7 +405,46 @@ class ReadersMixin:
             self.itm_reader.stop()
             self.itm_reader.deleteLater()
             self.itm_reader = None
-            self.timeline.personal_day = None
+            self.update_source_indicators()  # zieht auch die Ladeanzeige mit
+
+    # ---------------------- Matrix42-Buchungen ---------------------------------
+
+    def start_m42_reader(self):
+        if self._paw_blocks("Matrix42"):
+            return
+        if self.m42_reader or not self.config.get("m42_url"):
+            if not self.config.get("m42_url"):
+                self.statusBar().showMessage(
+                    "Matrix42: Bitte zuerst die Adresse der Kalenderseite eintragen "
+                    "(Einstellungen → Datenquellen → Einrichten → Matrix42 …)", 8000)
+            return
+        from m42_reader import M42Reader
+        self.m42_reader = M42Reader(self.config.get("m42_url", ""), mt.M42_FILE, mt.M42_PROFILE_DIR,
+                                    self, weeks_back=self.config.get("m42_weeks_back", 4))
+        self.m42_reader.status_changed.connect(lambda _t: self.update_source_indicators())
+        self.m42_reader.busy_changed.connect(self.update_busy_bar)
+        self.m42_reader.day_read.connect(
+            lambda d: self.timeline.draw_timeline(self.current_date)
+            if d == self.current_date.toString("yyyy-MM-dd") else None
+        )
+        self.m42_reader.login_required.connect(
+            lambda: self.tray and self.tray.showMessage(
+                "Matrix42-Anmeldung nötig",
+                "Zeitzeuge kann die gebuchten Zeiten nicht lesen. Klick hier, um dich anzumelden.",
+                QSystemTrayIcon.Warning, 8000,
+            )
+        )
+        self.m42_reader.recording_done.connect(self.on_recording_done)
+        self._watch_reader(self.m42_reader)
+        self.m42_reader.start()
+        self.m42_reader.want(self.current_date.toString("yyyy-MM-dd"))
+        self.update_source_indicators()
+
+    def stop_m42_reader(self):
+        if self.m42_reader:
+            self.m42_reader.stop()
+            self.m42_reader.deleteLater()
+            self.m42_reader = None
             self.update_source_indicators()
 
     # ---------------------- Absicherung gegen Fehler und Aussetzer -------------
@@ -364,14 +464,15 @@ class ReadersMixin:
         self.problem_timer.start(self.PROBLEM_INTERVAL)
         # Probleme beim Start (z. B. kaputte Config) gleich nach dem Anzeigen einmal sagen
         QTimer.singleShot(1500, lambda: self.show_problems(startup=True))
-        threading.Thread(target=self._kill_orphans, daemon=True, name="Edge-Reste").start()
+        if not self.is_paw():  # PAW: keine Prozesse durchsuchen oder beenden
+            threading.Thread(target=self._kill_orphans, daemon=True, name="Edge-Reste").start()
 
     def _watch_reader(self, reader):
         reader.trouble.connect(self.on_reader_trouble)
 
     def _watch_readers(self):
         """Tote Lese-Threads neu starten, hängende Durchläufe abbrechen."""
-        for reader in (self.pbx_reader, self.itm_reader):
+        for reader in self.all_readers():
             if not reader or reader.stopped:
                 continue
             try:
@@ -387,7 +488,8 @@ class ReadersMixin:
         Für eingeschaltete Leser macht das der Leser selbst, bevor er Edge startet."""
         try:
             for key, profile in (("pbx_reader_enabled", mt.PBX_PROFILE_DIR),
-                                 ("itm_reader_enabled", mt.ITM_PROFILE_DIR)):
+                                 ("itm_reader_enabled", mt.ITM_PROFILE_DIR),
+                                 ("m42_reader_enabled", mt.M42_PROFILE_DIR)):
                 if self.config.get(key) or not os.path.isdir(profile):
                     continue
                 from pbx_reader import kill_profile_processes

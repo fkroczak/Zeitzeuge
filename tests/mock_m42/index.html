@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><title>Matrix42 Kalender (Nachbau)</title></head>
+<body>
+<!-- Nachbau der Matrix42-Kalenderseite (FullCalendar, Wochen-/Tagesansicht) für Tests.
+     Struktur wie im Original: Kopf mit th[data-date], Spalten in .fc-content-skeleton,
+     Einträge als a.fc-time-grid-event mit .fc-time[data-full], .fc-title, .fc-description.
+     Einträge kommen per fetch aus events.json (mit Verzögerung), wie im Original per Abfrage. -->
+<div class="calendar-container"><div ui-calendar="vm.options" class="auto-width fc fc-unthemed fc-ltr">
+  <div class="fc-toolbar fc-header-toolbar">
+    <div class="fc-left"><h2 id="title"></h2></div>
+    <div class="fc-right">
+      <button type="button" class="fc-prev-button fc-button">&lt;</button>
+      <button type="button" class="fc-today-button fc-button">Heute</button>
+      <button type="button" class="fc-next-button fc-button">&gt;</button>
+      <button type="button" class="fc-agendaDay-button fc-button fc-state-active">Tag</button>
+      <button type="button" class="fc-agendaWeek-button fc-button">Woche</button>
+    </div>
+  </div>
+  <div class="fc-view-container" id="view"></div>
+</div></div>
+<script>
+let view = "day";
+let current = new Date(); current.setHours(12, 0, 0, 0);
+const start = new URLSearchParams(location.search).get("start");
+if (start) current = new Date(start + "T12:00:00");
+let events = [];
+const iso = d => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+function shown() {
+  if (view === "day") return [new Date(current)];
+  const mon = new Date(current); mon.setDate(mon.getDate() - ((mon.getDay() + 6) % 7));
+  return Array.from({length: 7}, (_, i) => { const d = new Date(mon); d.setDate(d.getDate() + i); return d; });
+}
+function render() {
+  const days = shown().map(iso);
+  document.getElementById("title").textContent = days[0] + " – " + days[days.length - 1];
+  const head = days.map(d => '<th class="fc-day-header fc-widget-header" data-date="' + d + '"><span>' + d + '</span></th>').join("");
+  const cols = days.map(d => {
+    const ev = events.filter(e => e.date === d).map(e =>
+      '<a class="fc-time-grid-event fc-v-event fc-event"><div class="fc-content">' +
+      '<div class="fc-time" data-start="' + e.from + '" data-full="' + e.from + ' - ' + e.to + '"><span>' + e.from + ' - ' + e.to + '</span></div>' +
+      '<div class="fc-title">' + e.title + '</div><div class="fc-description">' + e.te + '</div></div></a>').join("");
+    return '<td><div class="fc-content-col"><div class="fc-event-container fc-helper-container"></div>' +
+           '<div class="fc-event-container">' + ev + '</div></div></td>';
+  }).join("");
+  document.getElementById("view").innerHTML =
+    '<div class="fc-view fc-agenda' + (view === "day" ? "Day" : "Week") + '-view fc-agenda-view"><table>' +
+    '<thead class="fc-head"><tr><td><div class="fc-row"><table><thead><tr><th class="fc-axis"></th>' + head +
+    '</tr></thead></table></div></td></tr></thead><tbody class="fc-body"><tr><td>' +
+    '<div class="fc-time-grid"><div class="fc-content-skeleton"><table><tbody><tr><td class="fc-axis" style="width:64px"></td>' +
+    cols + '</tr></tbody></table></div></div></td></tr></tbody></table></div>';
+}
+async function load() {
+  events = [];
+  render();  // erst leer, Einträge kommen nach (wie im Original)
+  const days = shown().map(iso);
+  const r = await fetch("events.json?from=" + days[0] + "&to=" + days[days.length - 1]);
+  events = await r.json();
+  render();
+}
+function step(n) {
+  current.setDate(current.getDate() + n * (view === "day" ? 1 : 7));
+  load();
+}
+document.querySelector(".fc-prev-button").onclick = () => step(-1);
+document.querySelector(".fc-next-button").onclick = () => step(1);
+document.querySelector(".fc-today-button").onclick = () => { current = new Date(); load(); };
+document.querySelector(".fc-agendaWeek-button").onclick = () => { view = "week"; load(); };
+document.querySelector(".fc-agendaDay-button").onclick = () => { view = "day"; load(); };
+setTimeout(load, 300);  // Seite baut sich verzögert auf
+</script>
+</body></html>

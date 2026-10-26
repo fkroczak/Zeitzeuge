@@ -66,6 +66,36 @@ jobs:
           if ($code -ne 0) { exit $code }
           & $signtool.FullName verify /pa dist\ZeitZeuge.exe
 
+      # Ordner-Variante für Rechner mit EDR (z. B. Cortex XDR auf der PAW): entpackt nichts nach %TEMP%
+      - name: Ordner-Variante bauen (PAW)
+        shell: pwsh
+        env:
+          ZEITZEUGE_ONEDIR: "1"
+          SIGN_PFX_BASE64: ${{ secrets.SIGN_PFX_BASE64 }}
+          SIGN_PFX_PASSWORD: ${{ secrets.SIGN_PFX_PASSWORD }}
+        run: |
+          pyinstaller --noconfirm ZeitZeuge.spec
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($env:SIGN_PFX_BASE64) {
+            $pfx = Join-Path $env:RUNNER_TEMP "signatur.pfx"
+            [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:SIGN_PFX_BASE64))
+            $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" |
+              Sort-Object FullName -Descending | Select-Object -First 1
+            & $signtool.FullName sign /f $pfx /p $env:SIGN_PFX_PASSWORD /fd SHA256 `
+              /tr http://timestamp.digicert.com /td SHA256 /d "Zeitzeuge" dist\ZeitZeuge-Ordner\ZeitZeuge.exe
+            $code = $LASTEXITCODE
+            Remove-Item $pfx -Force
+            if ($code -ne 0) { exit $code }
+          }
+          Compress-Archive -Path dist\ZeitZeuge-Ordner\* -DestinationPath dist\ZeitZeuge-Ordner.zip -Force
+
+      - name: Ordner-Variante als Download bereitstellen
+        uses: actions/upload-artifact@v6
+        with:
+          name: ZeitZeuge-Ordner-build-${{ github.run_number }}
+          path: dist/ZeitZeuge-Ordner.zip
+          retention-days: 30
+
       - name: EXE als Download bereitstellen
         uses: actions/upload-artifact@v6
         with:
@@ -77,5 +107,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/ZeitZeuge.exe
+          files: |
+            dist/ZeitZeuge.exe
+            dist/ZeitZeuge-Ordner.zip
           generate_release_notes: true

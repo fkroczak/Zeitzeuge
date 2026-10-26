@@ -25,11 +25,13 @@ class DayListMixin:
         entries = list(activities)
         date_str = self.current_date.toString("yyyy-MM-dd")
         if self.config.get("list_view") == "ai":
-            entries = self.ai_store.entries(date_str)
+            entries = self.ai_day_entries(date_str)
         elif self.config.get("list_view") == "doc":
             entries = self.doc_band(date_str)
         elif self.config.get("list_view") == "rules":
             entries = self.rule_band(date_str)
+        elif self.config.get("list_view") == "m42":
+            entries = self.m42_band(date_str) + self.m42_unbooked(date_str)
         elif self.config.get("list_view") == "blocks":
             entries = work_blocks(entries, self.config.get("block_gap_minutes", 10))
         elif self.config.get("show_pc_in_list", False):
@@ -69,7 +71,8 @@ class DayListMixin:
         self.update_status_text()
 
     VIEWS = [("grouped", "Zusammengefasst"), ("single", "Einzeln"), ("blocks", "Arbeitsblöcke"),
-             ("doc", "Dokumentation"), ("rules", "Regeln (ohne KI)"), ("ai", "KI-Vorschläge")]
+             ("doc", "Dokumentation"), ("rules", "Zuordnung ohne KI"), ("ai", "KI-Vorschläge"),
+             ("m42", "Matrix42-Abgleich")]
 
     def change_view(self, key):
         self.config["list_view"] = key
@@ -156,17 +159,42 @@ class DayListMixin:
             self.open_docs_button.setText(f"{open_count} offen – jetzt eintragen")
             self.open_docs_button.setToolTip("Erste noch nicht dokumentierte Tätigkeit eintragen (F7)")
             self.open_docs_button.setAccessibleName(f"{open_count} Tätigkeiten offen, jetzt eintragen")
-        itm_day = self.itm_reader.day(self.current_date.toString("yyyy-MM-dd")) if self.itm_reader else None
+        itm_day = self.personal_day_for(self.current_date.toString("yyyy-MM-dd"))
         if itm_day and itm_day.get("gewertet") is not None:
             text = f"Personalzeit {format_duration(itm_day['gewertet'] * 60)}"
             if itm_day.get("soll"):
                 text += f" (Soll {format_duration(itm_day['soll'] * 60)})"
             parts.append(text)
+        m42 = self.m42_summary(self.current_date.toString("yyyy-MM-dd"))
+        if m42:
+            parts.append(m42)
         self.info_label.setText("   ·   ".join(parts))
         self.update_source_indicators()
 
+    def update_busy_bar(self):
+        """Ladeanzeige oben: alles, was gerade im Hintergrund lädt."""
+        bar = getattr(self, "busy_bar", None)
+        if bar is None:
+            return
+        items, urgent = [], False
+        if self.timeline.loading:
+            items.append("Logs (TeamViewer, RDM, VPN)")
+            urgent = True
+        for name, reader in (("3CX-Anrufe", getattr(self, "pbx_reader", None)),
+                             ("ITM-Zeiterfassung", getattr(self, "itm_reader", None)),
+                             ("Matrix42-Buchungen", getattr(self, "m42_reader", None))):
+            if reader and getattr(reader, "busy", None) and reader.busy():
+                items.append(name)
+                urgent = urgent or reader.first_load()
+        for date_str in sorted(getattr(self, "_ai_busy", ())):
+            items.append(f"KI-Vorschläge (Claude ordnet {date_str[8:10]}.{date_str[5:7]}. ein)")
+            urgent = True
+        # Kurze Lesevorgänge im Hintergrund (jede Minute) erst nach 1,5 s zeigen, sonst flackert es
+        bar.set_items(items, delay=0 if urgent else 1500)
+
     def update_source_indicators(self):
         """Anzeigen der Datenquellen in der Statuszeile auf den neuesten Stand bringen."""
+        self.update_busy_bar()
         if not hasattr(self, "source_buttons"):
             return
         states = {}
@@ -175,8 +203,8 @@ class DayListMixin:
             states["logs"] = ("warn", f"Logs: {', '.join(missing)} fehlt",
                               f"Keine Logdatei gefunden: {', '.join(missing)}.\n"
                               "Klicken, um den Pfad einzustellen.")
-        for kind, name in (("pbx", "3CX"), ("itm", "ITM")):
-            reader = self.pbx_reader if kind == "pbx" else self.itm_reader
+        for kind, name in (("pbx", "3CX"), ("itm", "ITM"), ("m42", "M42")):
+            reader = getattr(self, {"pbx": "pbx_reader", "itm": "itm_reader", "m42": "m42_reader"}[kind], None)
             if not reader:
                 continue
             state, why = reader.health()
@@ -213,6 +241,11 @@ class DayListMixin:
                 self.itm_reader.show_login(self)
             else:
                 self.open_itm_settings()
+        elif kind == "m42":
+            if self.m42_reader and self.m42_reader.needs_login:
+                self.m42_reader.show_login(self)
+            else:
+                self.open_m42_settings()
 
     # ---------------------- Datum / Navigation --------------------------------
 
@@ -220,7 +253,7 @@ class DayListMixin:
         self.current_date = date
         self.timeline.draw_timeline(self.current_date)
         # Fehlende Daten für diesen Tag im Hintergrund nachlesen
-        for reader in (self.pbx_reader, self.itm_reader):
+        for reader in self.all_readers():
             if reader:
                 reader.want(date.toString("yyyy-MM-dd"))
         # Vergangene Tage auf Wunsch automatisch einordnen (nur ohne vorhandene Vorschläge)

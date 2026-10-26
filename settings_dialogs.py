@@ -548,13 +548,14 @@ class RulesDialog(QDialog):
         self.config = config
         self.rules = [dict(r) for r in (config.get("rules") or []) if isinstance(r, dict)]
         self._loading = True
-        self.setWindowTitle("Regeln (ohne KI)")
+        self.setWindowTitle("Zuordnung ohne KI (Regeln)")
         self.setMinimumWidth(720)
         self.resize(900, 760)  # Knöpfe und Hinweise ganz zeigen
         layout = QVBoxLayout(self)
 
-        hint = QLabel("Die Regeln ordnen Verbindungen, Telefonate und Fenster einer Kategorie und "
-                      "einem Kunden zu. Die erste passende Regel gewinnt, Wichtiges steht also oben. "
+        hint = QLabel("Zuordnung ohne KI: Feste Regeln ordnen Verbindungen, Telefonate und Fenster einer Kategorie und "
+                      "einem Kunden zu, z. B. Outlook → „E-Mail / Kommunikation“. Das Ergebnis steht in der "
+                      "Timeline in der Zeile „Zuordnung o. KI“. Die erste passende Regel gewinnt, Wichtiges steht also oben. "
                       "Verbindungen und Telefonate gehen immer vor PC-Fenstern.")
         hint.setObjectName("hint")
         hint.setWordWrap(True)

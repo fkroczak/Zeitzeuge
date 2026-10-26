@@ -10,13 +10,16 @@ from datetime import datetime, timedelta
 from PySide6.QtCore import QDate, QTimer
 from PySide6.QtWidgets import QApplication, QDialog, QMessageBox, QSystemTrayIcon
 
+from ai_classifier import to_entries
 from journal import (describe, entry_key as journal_key, open_entry, suggest_category,
                      suggest_customer, ticket_line)
 from journal_dialogs import DocPromptDialog, prompt_thresholds, EntryDialog, PromptWindow, default_span
 from settings_dialogs import AiSettingsDialog
 import rules
+import m42_data as m42
 from grouping import group_entries
-from timeline_only import ActivityViewDialog, ai_copy_text, parse_time, row_kind, type_label
+from timeline_only import (ROW_NAMES, ActivityViewDialog, ai_copy_text, format_duration, parse_time,
+                           row_kind, type_label)
 from theme import GERMAN
 import main_timeline as mt  # Pfade und save_config zur Laufzeit von dort (Tests ersetzen sie dort)
 
@@ -49,11 +52,15 @@ class DocsMixin:
             started = self.ai.start(date_str, entries, pc)
         if started:
             self.ai_button_action.setEnabled(False)
+            self._ai_busy.add(date_str)
+            self.update_busy_bar()
             self.statusBar().showMessage(
                 f"Claude ordnet {GERMAN.toString(date, 'dd.MM.')} ein …", 60000)
 
     def on_ai_finished(self, date_str, count, cost):
         self.ai_button_action.setEnabled(True)
+        self._ai_busy.discard(date_str)
+        self.update_busy_bar()
         cost_text = f"{cost:.3f}".replace(".", ",")
         self.statusBar().showMessage(
             f"KI: {count} Vorschläge für {date_str[8:10]}.{date_str[5:7]}., "
@@ -63,14 +70,42 @@ class DocsMixin:
 
     def on_ai_failed(self, date_str, message):
         self.ai_button_action.setEnabled(True)
+        self._ai_busy.discard(date_str)
+        self.update_busy_bar()
         self.statusBar().showMessage(f"KI-Vorschläge: {message}", 10000)
         if not self.isVisible() or self.config.get("ai_auto"):
             return
         QMessageBox.warning(self, "KI-Vorschläge", message)
 
+    def ai_day_entries(self, date_str):
+        """KI-Vorschläge des Tages: eigene und von einem anderen PC übernommene (nur lesen).
+        Ein übernommener Vorschlag gilt als übernommen, sobald hier eine Tätigkeit genau
+        zu seiner Zeit eingetragen ist."""
+        entries = self.ai_store.entries(date_str)
+        if getattr(self, "imported", None):
+            own = {(e["start"], e["end"]) for e in entries}
+            docs = {(i["start"], i["end"]) for i in self.journal.items(date_str)}
+            for pc, items in self.imported.ai(date_str):
+                for e in to_entries(date_str, items):
+                    if e["status"] == "verworfen" or (e["start"], e["end"]) in own:
+                        continue
+                    e["von_pc"] = pc
+                    e["details"] += f" (von {pc})"
+                    if (e["start"], e["end"]) in docs:
+                        e["status"] = "übernommen"
+                    entries.append(e)
+            entries.sort(key=lambda e: e["start"])
+        return entries
+
     def on_ai_action(self, entry, action):
         status = "übernommen" if action == "übernehmen" else "verworfen"
-        self.ai_store.set_status(entry["start"][:10], entry["ai_id"], status)
+        if entry.get("von_pc"):  # von einem anderen PC: hier nur als Tätigkeit eintragen
+            if status == "verworfen":
+                self.statusBar().showMessage(f"Vorschlag kommt von {entry['von_pc']}, "
+                                             "verwerfen geht nur dort", 6000)
+                return
+        else:
+            self.ai_store.set_status(entry["start"][:10], entry["ai_id"], status)
         if status == "übernommen":  # übernommen = dokumentiert, steht dann in der Zeile "Doku"
             try:
                 self.journal.add({"start": entry["start"], "end": entry["end"],
@@ -130,6 +165,80 @@ class DocsMixin:
                                 min_minutes=self.config.get("rules_min_minutes", 5))
         self._rule_cache[date_str] = (key, blocks)
         return blocks
+
+    # ---------------------- Matrix42: gebucht / nicht gebucht -----------------
+
+    def _m42_bookings(self, date_str):
+        """Buchungen aus Matrix42, sonst die von einem anderen PC übernommenen."""
+        reader = getattr(self, "m42_reader", None)
+        found = reader.day(date_str) if reader else None
+        if found is None and getattr(self, "imported", None):
+            found = self.imported.m42(date_str)
+        return found
+
+    def m42_band(self, date_str):
+        """Zeile "Matrix42": Buchungen und (rot gestrichelt) Personalzeit ohne Buchung."""
+        bookings = self._m42_bookings(date_str)
+        if bookings is None:  # Tag (noch) nicht gelesen: nichts behaupten
+            return []
+        result = []
+        for b in bookings:
+            result.append({
+                "start": b["start"], "end": b["end"], "type": "Matrix42-Buchung", "m42": True,
+                "customer_name": b.get("customer", ""), "category": b.get("ticket", ""),
+                "description": b.get("subject", ""),
+                "details": " · ".join(t for t in (b.get("ticket"), b.get("subject"), b.get("entry")) if t),
+            })
+        date = QDate.fromString(date_str, "yyyy-MM-dd")
+        day = datetime.strptime(date_str, "%Y-%m-%d")
+        now = datetime.now()
+        if day.date() > now.date():
+            return result
+        spans, from_itm, _open = self.timeline._work_info(date)
+        work = []
+        for a, b in spans:
+            start, end = day + timedelta(minutes=a), day + timedelta(minutes=b)
+            end = min(end, now)  # heute nur bis jetzt
+            if end > start:
+                work.append((start, end))
+        name = "Personalzeit" if from_itm else "Arbeitszeit"
+        for a, b in m42.gaps(work, bookings, self.config.get("m42_gap_minutes", 5)):
+            result.append({
+                "start": a.strftime("%Y-%m-%d %H:%M:%S"), "end": b.strftime("%Y-%m-%d %H:%M:%S"),
+                "type": "Nicht gebucht", "m42_gap": True, "customer_name": "nicht gebucht",
+                "details": f"{name} ohne Buchung in Matrix42",
+                "minute": a.hour * 60 + a.minute,  # für "Tätigkeit ab … eintragen"
+            })
+        return sorted(result, key=lambda e: e["start"])
+
+    def m42_unbooked(self, date_str):
+        """Verbindungen und Telefonate, die (fast) keine Buchung abdeckt."""
+        bookings = self._m42_bookings(date_str)
+        if bookings is None:
+            return []
+        date = QDate.fromString(date_str, "yyyy-MM-dd")
+        entries = [e for e in group_entries(self.timeline.activities_for(date),
+                                            self.config.get("merge_gap_minutes", 5))
+                   if e.get("type") != "Zugangsdaten"]
+        return [dict(e, m42_unbooked=True)
+                for e in m42.unbooked(entries, bookings, self.config.get("m42_gap_minutes", 5))]
+
+    def m42_summary(self, date_str):
+        """Kurztext für die Statuszeile, z. B. "Matrix42 gebucht 6:10 h, nicht gebucht 1:35 h"."""
+        bookings = self._m42_bookings(date_str)
+        if bookings is None:
+            return ""
+        band = self.m42_band(date_str)
+        booked = mt.merged_seconds([e for e in band if e.get("m42")])
+        missing = sum((parse_time(e["end"]) - parse_time(e["start"])).total_seconds()
+                      for e in band if e.get("m42_gap"))
+        text = f"Matrix42 gebucht {format_duration(booked)}"
+        if missing:
+            text += f", nicht gebucht {format_duration(missing)}"
+        unbooked = len(self.m42_unbooked(date_str))
+        if unbooked:
+            text += f", {unbooked} Verbindung{'en' if unbooked > 1 else ''} ohne Buchung"
+        return text
 
     def doc_candidates(self, date_str):
         """Erkannte Tätigkeiten des Tages, die noch nicht dokumentiert sind."""
@@ -226,7 +335,8 @@ class DocsMixin:
         if entry:
             item["source"] = "KI" if entry.get("ai") else entry.get("type", "")
         if self._save_doc(item, entry, dialog.remember_tv()) and entry and entry.get("ai"):
-            self.ai_store.set_status(entry["start"][:10], entry["ai_id"], "übernommen")
+            if not entry.get("von_pc"):  # übernommene Vorschläge gehören dem anderen PC
+                self.ai_store.set_status(entry["start"][:10], entry["ai_id"], "übernommen")
             self.timeline.draw_timeline(self.current_date)
 
     def _save_doc(self, item, entry=None, remember_tv=False, old=None):
@@ -246,7 +356,17 @@ class DocsMixin:
         self.statusBar().showMessage("Tätigkeit gespeichert", 3000)
         return True
 
+    def _foreign_doc(self, item):
+        """Übernommene Tätigkeit eines anderen PCs: hier nur ansehen, ändern geht dort."""
+        if not item.get("von_pc"):
+            return False
+        QMessageBox.information(self, "Tätigkeit", f"Diese Tätigkeit wurde von {item['von_pc']} "
+                                "übernommen. Ändern oder löschen kannst du sie nur dort.")
+        return True
+
     def edit_doc(self, item):
+        if self._foreign_doc(item):
+            return
         start, end = parse_time(item["start"]), parse_time(item["end"])
         dialog = EntryDialog(start, end, self.known_customers(), self.categories(),
                              item.get("customer", ""), item.get("category", ""),
@@ -260,6 +380,8 @@ class DocsMixin:
             self._save_doc(dialog.item(), old=item)
 
     def delete_doc(self, item, ask=True):
+        if self._foreign_doc(item):
+            return
         if ask and QMessageBox.question(
                 self, "Tätigkeit löschen",
                 f"Diese Tätigkeit löschen?\n\n{ticket_line(item)}") != QMessageBox.Yes:
@@ -293,8 +415,12 @@ class DocsMixin:
         self.config.setdefault("timeline_rows", {})[key] = on
         mt.save_config(self.config)
         self.timeline.draw_timeline(self.current_date)
-        name = {"doc": "Doku", "rule": "Regel", "ai": "KI"}[key]
+        name = ROW_NAMES.get(key, key)
         self.statusBar().showMessage(f"Zeile „{name}“ {'eingeblendet' if on else 'ausgeblendet'}", 3000)
+
+    def show_all_rows(self):
+        for action in self.row_actions.values():
+            action.setChecked(True)  # löst toggle_row aus
 
     def edit_prompt_settings(self):
         dialog = DocPromptDialog(self.config, self)

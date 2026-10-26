@@ -30,13 +30,20 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
 - **Personalzeiten aus der ITM-Zeiterfassung:** Zeitzeuge liest deine gestempelten Zeiten und hebt sie in der Timeline als Arbeitszeit hervor. Pausen sind abgedunkelt. Die Statuszeile zeigt die gewertete Zeit und die Sollzeit.
   - Offene oder fehlerhafte Buchungen meldet Zeitzeuge einmal im Infobereich, zum Beispiel „Buchung vom 21.10. 08:02 ist seit über 12 Stunden offen – Ausstempeln vergessen?“ oder „Ende liegt vor dem Start“.
   - Die letzten 45 Tage holt Zeitzeuge in einer Abfrage. Tage, die noch fehlen, sind damit auch offline da.
+- **Gebuchte Zeiten aus Matrix42 (nur im Firmennetz):** Zeitzeuge liest deine Buchungen aus dem Matrix42-Kalender (Service Desk → Kalender) und gleicht sie mit dem Tag ab.
+  - Einrichten: **Einstellungen → Datenquellen → Einrichten → Matrix42 …**, dort die Adresse der Kalenderseite aus der Adresszeile einfügen. Die Windows-Anmeldung klappt meist von selbst, sonst einmal **Bei Matrix42 anmelden …**.
+  - Edge liest die Wochenansicht unsichtbar mit eigenem Profil (`m42_profil`): die aktuelle Woche alle 10 Minuten, die letzten 4 Wochen einmal pro Sitzung (einstellbar), ältere Wochen beim Blättern. Alles landet in `m42_buchungen.json` und bleibt auch außerhalb des Firmennetzes da.
+  - Außerhalb des Firmennetzes steht in der Statuszeile „M42: nicht im Firmennetz“; Zeitzeuge liest weiter, sobald du wieder im Netz oder im VPN bist.
+  - **Zeile „Matrix42“** in der Timeline: graue Blöcke sind gebucht (Kunde · Betreff), rot gestrichelte Lücken sind Personalzeit (ohne ITM: Arbeitszeit) ohne Buchung. Ein Klick auf eine Lücke trägt ab dort eine Tätigkeit ein.
+  - **Tagesliste → Matrix42-Abgleich:** Buchungen mit Ticketnummer, Lücken ohne Buchung und Verbindungen/Telefonate, die höchstens zur Hälfte gebucht sind („Nicht gebucht: TeamViewer“).
+  - Die Statuszeile zeigt z. B. „Matrix42 gebucht 7:05 h, nicht gebucht 1:55 h, 1 Verbindung ohne Buchung“.
 - **Aktivitätsprotokoll:** Alle 5 Sekunden merkt sich Zeitzeuge das aktive Fenster, zum Beispiel eine RDP-Sitzung, einen Browser-Tab, Outlook oder PuTTY.
   - Es erscheint als farbiges Band „PC“ oben in der Timeline, eine Farbe pro Programm.
   - Mit **PC-Verlauf** (Bildschirm-Symbol) in der Werkzeugleiste stehen die Fenster auch in der Tagesliste.
   - Nach 5 Minuten ohne Maus und Tastatur oder bei gesperrtem PC wird nichts aufgezeichnet.
   - Fenster mit bestimmten Wörtern im Titel werden nur als „(ausgeblendet)“ gespeichert, zum Beispiel Passwortmanager.
   - Mit dem **Fenster-Filter** lässt du private Programme ganz weg oder zeichnest nur erlaubte Programme auf.
-- **Klassifizierung ohne KI:** Feste Regeln ordnen Verbindungen, Telefonate und Fenster einer Kategorie und einem Kunden zu, zum Beispiel Outlook als „E-Mail / Kommunikation“.
+- **Zuordnung ohne KI:** Feste Regeln ordnen Verbindungen, Telefonate und Fenster einer Kategorie und einem Kunden zu, zum Beispiel Outlook als „E-Mail / Kommunikation“ oder TeamViewer als „Fernwartung“. Das Ergebnis steht in der Zeile „Zuordnung o. KI“. Es läuft lokal, kostet nichts und braucht kein Internet (früher hieß das „Regeln“).
 - **Tagesliste** unter der Timeline mit Von, Bis, Dauer, Typ, Kunde und Details.
   - Die Statuszeile zeigt die belegte Zeit des Tages. Überschneidungen werden nicht doppelt gezählt.
   - Markierte Zeilen kopierst du mit STRG + C, zum Beispiel für die Ticket-Dokumentation.
@@ -64,14 +71,16 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
   - Jede Aktion bestätigt Zeitzeuge kurz in der Statuszeile, z. B. „Tätigkeit gespeichert“ oder „Zeitzeuge fragt in 15 Minuten noch einmal“.
   - Die Ansicht **Dokumentation** in der Tagesliste zeigt alles, STRG + C kopiert es als fertige Ticketzeilen.
   - Trägst du einen KI-Vorschlag als Tätigkeit ein, steht er in der Zeile „Doku“ und gilt als übernommen.
-- **Eigene Zeilen oben in der Timeline:** „Doku“ (deine Tätigkeiten), „Regel“ (Klassifizierung ohne KI) und „KI“. Jede Zeile schaltest du unter **Einstellungen → Zeilen der Timeline** ein oder aus.
+- **Jede Zeile der Timeline ein- und ausblenden:** PC-Aktivität, Dokumentation, Zuordnung ohne KI, KI-Vorschläge, Telefon, VPN, TeamViewer und Remote / Weitere schaltest du einzeln unter **Einstellungen → Zeilen der Timeline**. **Alle einblenden** holt alles zurück. Die Tagesliste zeigt weiter alle Einträge.
+- **Ladeanzeige:** Solange Zeitzeuge etwas lädt (Logs, 3CX, ITM, Matrix42 oder KI-Vorschläge), läuft oben über der Timeline ein blauer Balken mit Text, z. B. „Lädt: 3CX-Anrufe · KI-Vorschläge (Claude ordnet 25.10. ein) …“. Kurze Lesevorgänge im Hintergrund erscheinen erst nach 1,5 Sekunden, damit nichts flackert.
 - **Zustand der Datenquellen in der Statusleiste:** Rechts unten stehen 3CX und ITM nebeneinander, jeweils mit Symbol:
   - grüner Haken und Uhrzeit: zuletzt erfolgreich gelesen, z. B. „3CX 17:53“
   - gelbes Dreieck mit Ausrufezeichen und Grund: es kommen keine Daten, z. B. „3CX: Anmeldung nötig“, „ITM: offline“ oder „Fehler“
   - graue Uhr: liest gerade
   - Fehlt eine TeamViewer- oder RDM-Logdatei, erscheint „Logs: TeamViewer fehlt“ mit gelbem Dreieck.
   - Ein Klick führt direkt zur Lösung: zur Anmeldung oder zu den Einstellungen. Fährst du mit der Maus darüber, steht dort der genaue Stand.
-- **Zeitlinie unter der Maus:** Eine gestrichelte senkrechte Linie folgt der Maus, oben steht die genaue Uhrzeit. Der Hinweis daneben zeigt, ob du zu dieser Minute eingestempelt warst (Personalzeit oder Pause) und welche Einträge gerade liefen. Der grüne Streifen unter der Stundenleiste und der helle Hintergrund markieren die Personalzeit (ohne ITM die Arbeitszeit aus den Einstellungen).
+- **Zeitlinie unter der Maus:** Eine gestrichelte senkrechte Linie folgt der Maus, oben steht die genaue Uhrzeit. Der Hinweis daneben zeigt, welche Einträge gerade liefen.
+- **Zeile „Personalzeit“:** Jeder gestempelte Abschnitt ist ein Block mit Beginn und Ende, z. B. „08:10 – 12:39“, Pausen sind Lücken. Bist du noch eingestempelt, steht dort „08:02 – jetzt“. Ohne ITM heißt die Zeile „Arbeitszeit“ und zeigt gestrichelt die Arbeitszeit aus den Einstellungen. Der helle Hintergrund markiert dieselben Zeiten. Blendest du die Zeile aus, steht die Personalzeit wieder im Hinweis unter der Maus.
 - **Details:** Fährst du über einen Eintrag, siehst du Kunde, Zeitraum und Dauer. Ein Klick in der Timeline, ein Doppelklick oder **Enter** in der Liste öffnet die Details.
 - **Immer aktuell:** Die Logs werden alle 2 Minuten geprüft. Mit F5 liest du sie sofort neu ein. Gelesen werden nur Dateien, die sich geändert haben.
 - **Bedienung:**
@@ -120,6 +129,7 @@ GitHub baut die EXE bei jeder Änderung automatisch:
 
 - **Neuester Stand:** Öffne im Repository den Reiter **Actions**, dann den obersten Lauf „EXE bauen“. Unter **Artifacts** liegt die `ZeitZeuge.exe` als ZIP.
 - **Feste Version:** Bei einem Tag wie `v4.0.0` entsteht ein Eintrag unter **Releases**, mit der EXE als Download.
+- **Ordner-Variante** (`ZeitZeuge-Ordner.zip`, ebenfalls unter Artifacts bzw. Releases): ZIP entpacken und `ZeitZeuge.exe` im Ordner starten. Sie entpackt beim Start nichts nach `%TEMP%` und ist für Rechner mit EDR wie Cortex XDR gedacht (z. B. die PAW). Selbst bauen: `set ZEITZEUGE_ONEDIR=1` und dann `pyinstaller ZeitZeuge.spec`.
 
 ### EXE selbst bauen
 
@@ -281,17 +291,21 @@ Unter **Einstellungen → Nachfragen und Erinnerungen …** legst du fest, wann 
 | `prompt_snooze_minutes` | `15` | „Später fragen“ fragt nach so vielen Minuten wieder |
 | `prompt_end_of_day` | `true` | Nach Feierabend einmal an Offenes erinnern |
 | `prompt_on_quit` | `true` | Beim Beenden an Offenes erinnern |
-| `timeline_rows` | alle an | Zeilen „Doku“, „Regel“ und „KI“ zeigen (`doc`, `rule`, `ai`) |
+| `m42_url` | ITM-Kalenderseite (support.itm-gruppe.com) | Adresse der Matrix42-Kalenderseite |
+| `m42_reader_enabled` | `false` | Gebuchte Zeiten aus Matrix42 lesen |
+| `m42_weeks_back` | `4` | So viele Wochen zurück einmal pro Sitzung lesen |
+| `m42_gap_minutes` | `5` | Kürzere Lücken ohne Buchung zählen nicht |
+| `timeline_rows` | alle an | Sichtbare Zeilen der Timeline: `pc`, `work` (Personalzeit), `doc`, `m42`, `rule` (Zuordnung ohne KI), `ai`, `call`, `vpn`, `tv`, `other` (Remote / Weitere) |
 
 Gefragt wird nur nach Tätigkeiten, die gerade erst geendet haben. Ältere offene Einträge stehen gestrichelt in der Zeile „Doku“, damit nichts verloren geht. Als dokumentiert gilt ein Eintrag, wenn mindestens die Hälfte seiner Zeit in deinen Tätigkeiten steckt.
 
-### Klassifizierung ohne KI (Regeln)
+### Zuordnung ohne KI (Regeln)
 
 Ohne KI und ohne Internet ordnet Zeitzeuge den Tag mit festen Regeln ein. Das kostet nichts, und kein Eintrag verlässt den PC.
 
 Eine Regel sagt: Wenn ein Feld dieses Muster enthält, gehört der Eintrag zu dieser Kategorie und diesem Kunden. Ein Beispiel: Programm enthält `outlook`, also Kategorie „E-Mail / Kommunikation“.
 
-- Du bearbeitest die Regeln unter **Einstellungen → Regeln (ohne KI) …**.
+- Du bearbeitest die Regeln unter **Einstellungen → Zuordnung ohne KI (Regeln) …**.
 - Die Felder sind Programm, Fenstertitel, Kunde, Typ, Details oder alle zusammen.
 - Ein Muster ist ein Textteil, groß und klein ist egal. Mit `re:` davor ist es ein regulärer Ausdruck.
 - Ist das Feld **Kunde** leer, gilt der Kunde vom Eintrag, bei Telefonaten der Anrufer. `{1}` setzt die erste Klammer aus dem regulären Ausdruck ein. So holst du den Kunden aus einem Fenstertitel wie „Ticket #123 – Müller GmbH“.
@@ -316,7 +330,7 @@ Zeitzeuge soll nie Daten verlieren und nie dauerhaft hängen. Das passiert bei P
 - **Kein Internet:** Zeitzeuge prüft kurz, ob der 3CX- oder ITM-Server erreichbar ist. Wenn nicht, startet es kein Edge. Die Statuszeile zeigt dann zum Beispiel „3CX: offline, nächster Versuch 10:42“. Nach jedem Fehlversuch wartet Zeitzeuge länger: 20 Sekunden, 40 Sekunden, 80 Sekunden und so weiter, höchstens 10 Minuten. Ist das Netz wieder da, liest es sofort weiter. Klappt es fünfmal hintereinander nicht, meldet sich Zeitzeuge einmal im Infobereich.
 - **Edge abgestürzt oder beendet:** Hast du Edge im Task-Manager beendet oder ist er abgestürzt, merkt Zeitzeuge das. Es räumt auf und startet Edge beim nächsten Durchlauf neu. Hängt ein Durchlauf länger als 15 Minuten, beendet Zeitzeuge Edge hart und fängt neu an. Jede Minute prüft ein Wächter, ob die Leser für 3CX und ITM noch laufen, und startet sie bei Bedarf neu.
 - **Anmeldefenster:** Meldest du dich 10 Minuten lang nicht an, schließt sich das Fenster von selbst. In der Statuszeile steht dann „Anmeldung abgebrochen (Zeitüberschreitung)“. Über die Meldung im Infobereich öffnest du es wieder. Schaltest du 3CX oder ITM unter **Datenquellen** aus, gehen auch ihr Edge und ihr Anmeldefenster zu.
-- **Edge-Reste:** Beim Start und beim Beenden schließt Zeitzeuge alle Edge-Fenster mit seinen eigenen Profilen (`3cx_profil`, `itm_profil`). Dein normaler Edge bleibt immer offen.
+- **Edge-Reste:** Beim Start und beim Beenden schließt Zeitzeuge alle Edge-Fenster mit seinen eigenen Profilen (`3cx_profil`, `itm_profil`, `m42_profil`). Dein normaler Edge bleibt immer offen.
 - **Kaputte Dateien:** Ist eine Datei wie `zeitzeuge_config.json` oder `anrufe.json` beschädigt, überschreibt Zeitzeuge sie nicht. Es benennt sie um in `<Name>.defekt-<Datum>-<Uhrzeit>` und sagt dir das nach dem Start. Danach macht es mit Standardwerten weiter. Deine alten Daten stecken in der umbenannten Datei. Einzelne kaputte Einträge in einer sonst guten Datei überspringt Zeitzeuge einfach.
 - **Gesperrte Dateien:** Hält OneDrive oder ein Virenscanner eine Datei kurz fest, versucht Zeitzeuge es gleich noch einmal. Alle Dateien schreibt es so, dass bei einem Absturz die alte Fassung heil bleibt.
 - **Sehr große Logs:** Von Logdateien über 100 MB liest Zeitzeuge nur die letzten 20 MB und sagt dir das einmal. Logs in UTF-16 erkennt es von selbst. Kaputte Zeilen werden übersprungen.
@@ -381,6 +395,22 @@ Damit Zeitzeuge mit Windows startet:
 2. Leg in dem Ordner eine Verknüpfung zu `ZeitZeuge.exe` an.
 3. Häng in den Eigenschaften der Verknüpfung unter **Ziel** ` --minimized` an. Dann startet Zeitzeuge direkt im Infobereich.
 
+### Zwei PCs: Arbeits-PC und PAW
+
+Auf einer PAW (Privileged Access Workstation) laufen oft nur RDM-Verbindungen, ohne 3CX, ITM, Matrix42 und ohne Laufwerksfreigabe zum Arbeits-PC. So kommt trotzdem alles an einer Stelle zusammen:
+
+1. **Auf der PAW einmal einrichten:** **Einstellungen → Datenspeicher → Dieser PC ist eine PAW (nur RDM sammeln)**. Zeitzeuge sammelt dort nur die RDM-Verbindungen. TeamViewer, VPN, 3CX, ITM, Matrix42, Fensteraufzeichnung und Nachfragen sind aus.
+2. **Auf dem Arbeits-PC exportieren:** **Einstellungen → Datenspeicher → Daten exportieren …**, Zeitraum wählen (Standard 31 Tage). **Als Datei speichern** erzeugt eine einzige Datei `Zeitzeuge-Export_<PC>_<Datum>.zeitzeuge`. Darf keine Datei auf die PAW, nimm **In Zwischenablage kopieren**: Der Export wird gepackter Text, der auch über eine RDP-Zwischenablage passt, die nur Text erlaubt.
+3. **Auf der PAW übernehmen:** **Daten übernehmen …** → **Datei wählen** oder **Aus Zwischenablage**. Die PAW zeigt dann ihre RDM-Verbindungen zusammen mit Anrufen, Personalzeit, Matrix42-Abgleich, VPN, TeamViewer, Fenstern, Tätigkeiten und den schon erstellten KI-Vorschlägen vom Arbeits-PC.
+
+- Übernommenes steht in einer einzigen Datei `uebernommen.json` und ist mit „von <PC>“ gekennzeichnet. Ein neuerer Export ersetzt die Tage des älteren; ein älterer überschreibt nichts Neueres.
+- KI-Vorschläge vom Arbeits-PC erscheinen in der Zeile „KI“ (die PAW erreicht Claude meist nicht). **Als Tätigkeit eintragen** geht auch auf der PAW; verwerfen nur auf dem Arbeits-PC. Verworfene Vorschläge kommen nicht mit.
+- Übernommene Tätigkeiten lassen sich auf der PAW nur ansehen und kopieren; ändern geht auf dem Arbeits-PC. Was dort dokumentiert ist, gilt auch auf der PAW als dokumentiert.
+- Der Export enthält Kundennamen, Telefonate und Fenstertitel. Er ist gepackt, aber nicht verschlüsselt: Behandle ihn wie die Daten selbst und lösche ihn nach dem Übernehmen.
+- Ein Export geht nur auf einen anderen PC; auf demselben PC lehnt Zeitzeuge ihn ab.
+
+**Virenscanner / EDR (z. B. Cortex XDR):** Im PAW-Modus startet Zeitzeuge nie Edge im Hintergrund, liest keine Cookies, durchsucht und beendet keine Prozesse und lädt die Edge-Steuerung gar nicht erst. Übrig bleibt: RDM-Log lesen, Fenster anzeigen, Dateien im Datenordner schreiben. Nimm auf der PAW am besten die **Ordner-Variante** (`ZeitZeuge-Ordner.zip`): Die einzelne `ZeitZeuge.exe` entpackt sich bei jedem Start nach `%TEMP%` und lädt von dort DLLs, was EDR-Produkte gern als verdächtig werten. Ist ein Zertifikat hinterlegt, sind beide Varianten signiert. Sicher ausschließen lässt sich ein Fehlalarm nur, wenn die IT die EXE (Signatur oder Hash) freigibt.
+
 ### RDM im Rechenzentrum
 
 Läuft RDM auf einem Server, kann Zeitzeuge dessen Log auch über das Netzwerk lesen. Trag unter **Einstellungen → Datenquellen → Einrichten → RDM-Logs …** den Netzwerkpfad ein, zum Beispiel `\\server\c$\Users\<name>\AppData\Local\Devolutions\RemoteDesktopManager\Connections.log`. Weicht die Zeitzone des Servers ab, gleichst du das dort mit der Zeitzonenkorrektur aus.
@@ -418,6 +448,11 @@ Läuft RDM auf einem Server, kann Zeitzeuge dessen Log auch über das Netzwerk l
 | `ai_classifier.py` | KI-Vorschläge über die Anthropic-API |
 | `journal.py` | Eigene Tätigkeiten speichern, offene erkennen |
 | `journal_dialogs.py` | Dialoge zum Nachtragen, Nachfrage-Fenster, Einstellungen dazu |
+| `m42_reader.py` | Matrix42: Kalender im unsichtbaren Edge lesen (Wochenansicht, Blättern, Anmeldung) |
+| `m42_data.py` | Matrix42: Einträge umwandeln, Abgleich gebucht / nicht gebucht (ohne Qt) |
+| `busy_bar.py` | Ladeanzeige oben im Fenster |
+| `transfer.py` | Export/Import zwischen zwei PCs (Arbeits-PC → PAW), übernommene Daten (ohne Qt) |
+| `app_transfer.py` | Hauptfenster: Export- und Import-Dialog, PAW-Modus |
 | `rules.py` | Klassifizierung ohne KI: Regeln, Blöcke bilden, Vorrang (ohne Qt) |
 | `storage.py` | Speicherort der Daten |
 | `safe_io.py` | Dateien sicher lesen und schreiben, kaputte Dateien beiseitelegen, große Logs nur am Ende lesen, `fehler.log` |
@@ -436,7 +471,7 @@ Zeitzeuge arbeitet nur auf deinem eigenen Rechner. Es liest lokale Logdateien un
 
 **KI-Vorschläge:** Dabei gehen die Einträge des Tages an Anthropic: Uhrzeiten, Kunden- und Verbindungsnamen, Anrufer und, wenn eingeschaltet, die Fenstertitel. Passwörter selbst stehen nicht in den Logs und werden nicht gesendet. Fenster aus `tracking_ignore` gehen nur als „(ausgeblendet)“ mit. Prüfe vorher, ob das zu deinen Verträgen mit Kunden passt. Wenn nicht: Fenstertitel ausschalten oder die Funktion nicht nutzen.
 
-Das Aktivitätsprotokoll speichert Fenstertitel. Darin können Kundennamen, Betreffzeilen von Mails oder Dateinamen stehen. Die Dateien in `aktivitaet/` gehören deshalb nur auf deinen PC. In den Ordnern `3cx_profil` und `itm_profil` und in `itm_anmeldung.json` liegen deine Anmeldungen bei 3CX und ITM. Sie sind zu schützen wie ein Browserprofil. Alle diese Dateien stehen in `.gitignore`, genauso wie `anrufe.json`, `personalzeiten.json`, `ki_vorschlaege/`, `taetigkeiten/`, `mitschnitt_*.json` und die persönliche `zeitzeuge_config.json`.
+Das Aktivitätsprotokoll speichert Fenstertitel. Darin können Kundennamen, Betreffzeilen von Mails oder Dateinamen stehen. Die Dateien in `aktivitaet/` gehören deshalb nur auf deinen PC. In den Ordnern `3cx_profil`, `itm_profil` und `m42_profil` und in `itm_anmeldung.json` liegen deine Anmeldungen bei 3CX, ITM und Matrix42. Sie sind zu schützen wie ein Browserprofil. Alle diese Dateien stehen in `.gitignore`, genauso wie `anrufe.json`, `personalzeiten.json`, `m42_buchungen.json`, `ki_vorschlaege/`, `taetigkeiten/`, `mitschnitt_*.json` und die persönliche `zeitzeuge_config.json`.
 
 
 ## Lizenz

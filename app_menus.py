@@ -17,6 +17,7 @@ from log_parsers import VpnParser
 from vpn_reader import vpn_sources
 from settings_dialogs import ActivityTypeSettingsDialog, ConnectionSettingsDialog, WorkHoursDialog
 from theme import GERMAN, STYLESHEET, THEMES
+from timeline_only import TIMELINE_ROWS
 from version import VERSION
 import main_timeline as mt  # Pfade und save_config zur Laufzeit von dort (Tests ersetzen sie dort)
 
@@ -196,8 +197,10 @@ class MenusMixin:
             "Einzeln: jede Zeile aus den Logs\n"
             "Arbeitsblöcke: alles mit kurzer Pause dazwischen als ein Block, z. B. fürs Ticket\n"
             "Dokumentation: deine eingetragenen Tätigkeiten und was noch offen ist (F7)\n"
-            "Regeln (ohne KI): Tätigkeiten, die Zeitzeuge über deine Regeln erkannt hat\n"
-            "KI-Vorschläge: Tätigkeiten, die Claude aus dem Tag erkannt hat")
+            "Zuordnung ohne KI: Tätigkeiten, die Zeitzeuge über feste Regeln erkannt hat\n"
+            "  (z. B. Outlook → E-Mail, TeamViewer → Fernwartung)\n"
+            "KI-Vorschläge: Tätigkeiten, die Claude aus dem Tag erkannt hat\n"
+            "Matrix42-Abgleich: Buchungen, Personalzeit ohne Buchung, Verbindungen ohne Buchung")
         self.view_button.setAccessibleDescription(f"Aktuell: {current}")
 
     def update_pc_list_tip(self):
@@ -222,7 +225,7 @@ class MenusMixin:
         self.tracking_action.toggled.connect(self.toggle_tracking)
         self._icon_actions += [
             (menu.addAction("Fenster-F&ilter …", self.edit_tracking_filters), "filter"),
-            (menu.addAction("&Regeln (ohne KI) …", self.edit_rules), "rules"),
+            (menu.addAction("&Zuordnung ohne KI (Regeln) …", self.edit_rules), "rules"),
         ]
         menu.addSeparator()
         self._icon_actions += [
@@ -235,13 +238,16 @@ class MenusMixin:
             (menu.addAction("&Nachfragen und Erinnerungen …", self.edit_prompt_settings), "bell"))
         rows_menu = menu.addMenu("&Zeilen der Timeline")
         self.row_actions = {}
-        for key, text in [("doc", "&Doku (eigene Tätigkeiten)"), ("rule", "&Regeln (ohne KI)"),
-                          ("ai", "&KI-Vorschläge")]:
+        for key, text in TIMELINE_ROWS:
+            if key in ("doc", "call"):  # Gruppen: Zeit | Auswertung | Verbindungen
+                rows_menu.addSeparator()
             action = rows_menu.addAction(text)
             action.setCheckable(True)
             action.setChecked(self.config.get("timeline_rows", {}).get(key, True))
             action.toggled.connect(lambda on, k=key: self.toggle_row(k, on))
             self.row_actions[key] = action
+        rows_menu.addSeparator()
+        rows_menu.addAction("&Alle einblenden", self.show_all_rows)
         self._icon_actions.append((rows_menu.menuAction(), "rows"))
         menu.addSeparator()
         self.sources_menu = self._build_sources_menu(menu)
@@ -249,6 +255,13 @@ class MenusMixin:
         self.open_folder_action = storage_menu.addAction(
             "&Datenordner öffnen", lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(mt.DATA_DIR)))
         storage_menu.addAction("&Speicherort ändern …", self.change_data_dir)
+        storage_menu.addSeparator()  # zwei PCs, z. B. Arbeits-PC und PAW
+        storage_menu.addAction("Daten &exportieren (für einen anderen PC) …", self.export_data)
+        storage_menu.addAction("Daten &übernehmen (von einem anderen PC) …", self.import_data)
+        self.paw_action = storage_menu.addAction("Dieser PC ist eine &PAW (nur RDM sammeln)")
+        self.paw_action.setCheckable(True)
+        self.paw_action.setChecked(self.config.get("pc_role") == "paw")
+        self.paw_action.toggled.connect(self.toggle_paw)
         self._icon_actions += [(self.sources_menu.menuAction(), "plug"),
                                (storage_menu.menuAction(), "folder"),
                                (self.open_folder_action, "folder")]
@@ -271,7 +284,8 @@ class MenusMixin:
         [("teamviewer_enabled", "&TeamViewer"), ("rdm_enabled", "&RDM (Remote Desktop Manager)")],
         [("sophos_enabled", "&Sophos Connect"), ("forti_enabled", "&FortiClient"),
          ("vpn_enabled", "&Weitere VPN-Logs (OpenVPN …)")],
-        [("pbx_reader_enabled", "&3CX-Anrufe"), ("itm_reader_enabled", "&ITM-Personalzeiten")],
+        [("pbx_reader_enabled", "&3CX-Anrufe"), ("itm_reader_enabled", "&ITM-Personalzeiten"),
+         ("m42_reader_enabled", "&Matrix42-Buchungen (Firmennetz)")],
     ]
 
     def _build_sources_menu(self, parent_menu):
@@ -285,7 +299,8 @@ class MenusMixin:
                 action = menu.addAction(text)
                 action.setCheckable(True)
                 action.setChecked(bool(self.config.get(key, key not in ("pbx_reader_enabled",
-                                                                          "itm_reader_enabled"))))
+                                                                          "itm_reader_enabled",
+                                                                          "m42_reader_enabled"))))
                 action.toggled.connect(lambda on, k=key: self.toggle_source(k, on))
                 self.source_actions[key] = action
         menu.addSeparator()
@@ -293,8 +308,10 @@ class MenusMixin:
         setup.addAction("Team&Viewer-Logs …", self.edit_teamviewer_settings)
         setup.addAction("&RDM-Logs …", self.edit_rdm_settings)
         setup.addAction("&VPN-Logs …", self.edit_vpn_settings)
+        setup.addSeparator()  # Webseiten im Hintergrund
         setup.addAction("&3CX …", self.open_pbx_settings)
         setup.addAction("&ITM-Personalzeiten …", self.open_itm_settings)
+        setup.addAction("&Matrix42 …", self.open_m42_settings)
         return menu
 
     def sync_source_actions(self):
@@ -314,6 +331,17 @@ class MenusMixin:
             self.start_pbx_reader() if on else self.stop_pbx_reader()
         elif key == "itm_reader_enabled":
             self.start_itm_reader() if on else self.stop_itm_reader()
+        elif key == "m42_reader_enabled":
+            if on and not self.config.get("m42_url"):  # erst die Adresse einrichten
+                self.open_m42_settings()
+                if not self.m42_reader:  # abgebrochen: bleibt aus
+                    self.config[key] = False
+                    mt.save_config(self.config)
+                self.sync_source_actions()
+            elif on:
+                self.start_m42_reader()
+            else:
+                self.stop_m42_reader()
         elif key in ("sophos_enabled", "forti_enabled"):
             self.timeline.vpn_reader.sources = vpn_sources(self.config)
             self.apply_vpn_monitor()
@@ -378,6 +406,7 @@ class MenusMixin:
             action.setIcon(icons.icon(name, theme["text" if in_menu else "bandtext"]))
         self.menu_button.setIcon(icons.icon("menu", theme["bandtext"]))
         self.view_button.setIcon(icons.icon("eye", theme["bandtext"]))
+        self.busy_bar.set_color(theme["accent"])
         self.update_tracking_state()
         self.timeline.set_dark_mode(self.dark_mode)
 
@@ -455,7 +484,7 @@ class MenusMixin:
         # Erst alles anhalten, was in die Dateien schreibt
         if self.tracker:
             self.tracker.stop()
-        for reader in (self.pbx_reader, self.itm_reader):
+        for reader in self.all_readers():
             if reader:
                 reader.stop()
         mt.save_config(self.config)
