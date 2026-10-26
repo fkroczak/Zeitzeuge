@@ -189,7 +189,7 @@ for taskbar in ("#F3F3F3", "#1F2329"):
 for path in ["main_timeline.py", "theme.py", "app_menus.py", "app_daylist.py", "app_docs.py",
              "app_readers.py", "app_tray.py", "settings_dialogs.py", "timeline_only.py",
              "app_protect.py", "protect_dialogs.py", "app_transfer.py", "snippets_dialogs.py",
-             "journal_dialogs.py"]:
+             "billing_dialogs.py", "retention_dialogs.py", "journal_dialogs.py"]:
     with open(os.path.join(ROOT, path), encoding="utf-8") as f:
         for no, line in enumerate(f, 1):
             if re.search(r"color:\s*(gray|grey|#999|#aaa)\b", line, re.I):
@@ -255,6 +255,13 @@ dialogs["Nachfrage mit Ticket-Vorschlag"] = journal_dialogs.PromptWindow(
     _tv, ["Musterkunde GmbH"], ["Fernwartung"], parent=window, ticket_suggestions=_found)
 import snippets_dialogs  # noqa: E402
 dialogs["Textbausteine"] = snippets_dialogs.SnippetsDialog(config, window)
+import billing_dialogs  # noqa: E402
+import retention_dialogs  # noqa: E402
+dialogs["Abrechnung"] = billing_dialogs.BillingDialog(
+    dict(config, billing_customers={"Musterkunde GmbH": {"step": 30, "mode": "nearest"}}),
+    ["Musterkunde GmbH"], window)
+dialogs["Abrechnung"].add_row()
+dialogs["PC-Verlauf löschen"] = retention_dialogs.RetentionDialog(config, window)
 if hasattr(window, "build_pbx_dialog"):
     dialogs["3CX direkt"] = window.build_pbx_dialog()
 if hasattr(window, "build_itm_dialog"):

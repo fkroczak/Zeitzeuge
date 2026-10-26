@@ -11,6 +11,7 @@ from PySide6.QtCore import QDate, QTimer
 from PySide6.QtWidgets import QApplication, QDialog, QMessageBox, QSystemTrayIcon
 
 from ai_classifier import to_entries
+from billing import Billing
 from journal import (describe, entry_key as journal_key, open_entry, suggest_category,
                      suggest_customer, ticket_line)
 from journal_dialogs import DocPromptDialog, prompt_thresholds, EntryDialog, PromptWindow, default_span
@@ -144,6 +145,10 @@ class DocsMixin:
 
     def categories(self):
         return self.ai.categories()
+
+    def billing(self):
+        """Regeln des Abrechnungstakts aus der Config (billing.py)."""
+        return Billing.from_config(self.config)
 
     def known_customers(self):
         """Kunden zur Auswahl: zuletzt dokumentierte, benannte TeamViewer-IDs."""
@@ -298,7 +303,8 @@ class DocsMixin:
             self.name_teamviewer_id(entry)
         elif key == "copy":
             if entry.get("doc"):
-                text = ticket_line(entry["doc_item"], self.config.get("ticket_format", ""))
+                text = ticket_line(entry["doc_item"], self.config.get("ticket_format", ""),
+                                   self.billing())
             elif entry.get("ai") or entry.get("rule"):
                 text = ai_copy_text(entry)
             else:
@@ -333,6 +339,7 @@ class DocsMixin:
         dialog = EntryDialog(start, end, self.known_customers(), categories, customer, category,
                              text, tv_id=(entry or {}).get("tv_id"), info=info, parent=self,
                              **self.entry_form_options(start, end))
+        dialog.form.set_billing(self.billing())
         if dialog.exec() != QDialog.Accepted:
             return
         item = dialog.item()
@@ -377,6 +384,7 @@ class DocsMixin:
                              item.get("text", ""), title="Tätigkeit bearbeiten",
                              can_delete=True, parent=self,
                              **self.entry_form_options(start, end, item.get("ticket", "")))
+        dialog.form.set_billing(self.billing())
         if dialog.exec() != QDialog.Accepted:
             return
         if dialog.deleted:
@@ -514,6 +522,7 @@ class DocsMixin:
                               pending=len(self._prompt_queue) - 1, parent=self,
                               **self.entry_form_options(parse_time(entry["start"]),
                                                         parse_time(entry["end"])))
+        window.form.set_billing(self.billing())
         window.answered.connect(self.on_prompt_answered)
         self._prompt_window = window
         # unten rechts über dem Infobereich, ohne dir den Fokus wegzunehmen

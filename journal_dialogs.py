@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QDateEdit, QDialog, QDialog
                                QFormLayout, QHBoxLayout, QLabel, QMenu, QPlainTextEdit,
                                QPushButton, QSpinBox, QTimeEdit, QVBoxLayout, QWidget)
 
+from billing import hours_text
 from grouping import format_tv_id
 from journal import TIME_FMT, describe, suggest_category, suggest_customer
 import snippets as snippet_logic
@@ -97,6 +98,12 @@ class _EntryForm(QWidget):
         for edit in (self.start_edit, self.end_edit):
             edit.timeChanged.connect(self.validate)
         self.validate_hook = None
+        self.billing = None  # billing.Billing: "abgerechnet …" neben der Dauer (set_billing)
+        self.customer_edit.currentTextChanged.connect(lambda _t: self.validate())
+        self.validate()
+
+    def set_billing(self, billing):
+        self.billing = billing
         self.validate()
 
     # ---- Textbausteine, zuletzt benutzte Texte, Ticket (snippets.py, tickets.py)
@@ -215,7 +222,11 @@ class _EntryForm(QWidget):
         self.error.setText("" if ok else "⚠ Fehler: „Bis“ muss nach „Von“ liegen.")
         self.error.setVisible(not ok)
         minutes = int((end - start).total_seconds() // 60)
-        self.duration.setText(f"{minutes // 60}:{minutes % 60:02d} h" if ok else "")
+        text = f"{minutes // 60}:{minutes % 60:02d} h" if ok else ""
+        customer = self.customer_edit.currentText().strip()
+        if ok and self.billing and self.billing.active(customer):
+            text += f", abgerechnet {hours_text(self.billing.minutes(minutes * 60, customer))}"
+        self.duration.setText(text)
         if self.validate_hook:
             self.validate_hook(ok)
         return ok

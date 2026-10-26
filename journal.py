@@ -307,10 +307,13 @@ def suggest_customer(entry, tv_names=None):
     return "" if re.fullmatch(r"[+\d\s/-]*", name) else name
 
 
-def ticket_line(item, text_style=""):
-    """Tätigkeit als Zeile fürs Ticket. text_style "dash": Text als "- " / "-- " darunter."""
+def ticket_line(item, text_style="", billing=None):
+    """Tätigkeit als Zeile fürs Ticket. text_style "dash": Text als "- " / "-- " darunter.
+    billing (billing.Billing): abgerechnete Dauer dazu, z. B. "10:05–10:17 (12 min → abgerechnet 0:15 h)"."""
     start, end = _t(item["start"]), _t(item["end"])
-    head = f"{start:%H:%M}–{end:%H:%M} ({duration_text((end - start).total_seconds())})"
+    seconds = (end - start).total_seconds()
+    note = billing.note(seconds, item.get("customer", "")) if billing else ""
+    head = f"{start:%H:%M}–{end:%H:%M} ({duration_text(seconds)}{note})"
     parts = [p for p in (item.get("customer"), item.get("category"), item.get("ticket")) if p]
     text = format_ticket_text(item.get("text", ""), text_style)
     if text_style == "dash" and text:  # Kopfzeile, darunter die gegliederte Tätigkeit

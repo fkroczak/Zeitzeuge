@@ -392,6 +392,40 @@ class Store:
             return [r[0] for r in self._conn.execute(
                 "SELECT DISTINCT day FROM rows WHERE name = ? ORDER BY day", (name,))]
 
+    def rows_before(self, name, day):
+        """(Anzahl Tage, Anzahl Zeilen) einer Ablage vor day (JJJJ-MM-TT, day selbst nicht)."""
+        with self._lock:
+            self.open()
+            n_days, n_rows = self._conn.execute(
+                "SELECT COUNT(DISTINCT day), COUNT(*) FROM rows WHERE name = ? AND day < ?",
+                (name, day)).fetchone()
+        return n_days, n_rows
+
+    def delete_rows_before(self, name, day, limit=None):
+        """Zeilen einer Ablage vor day löschen (day selbst bleibt), in einer Transaktion.
+        limit: höchstens so viele Zeilen (die ältesten zuerst), damit ein großer Bestand in
+        kurzen Schritten gelöscht werden kann. Gibt die Zahl gelöschter Zeilen zurück.
+
+        Gelöschte Seiten überschreibt SQLite mit Nullen (secure_delete). Die Datei wird
+        nicht verkleinert (kein VACUUM): Der Platz wird für neue Zeilen wiederverwendet."""
+        def tx(c):
+            if limit:
+                cur = c.execute("DELETE FROM rows WHERE id IN (SELECT id FROM rows WHERE name = ? "
+                                "AND day < ? ORDER BY day, id LIMIT ?)", (name, day, int(limit)))
+            else:
+                cur = c.execute("DELETE FROM rows WHERE name = ? AND day < ?", (name, day))
+            return cur.rowcount
+        with self._lock:
+            self.open()
+            self._conn.execute("PRAGMA secure_delete = ON")
+            try:
+                return self._write_tx(tx)
+            finally:
+                try:
+                    self._conn.execute("PRAGMA secure_delete = OFF")
+                except sqlite3.DatabaseError:
+                    pass
+
     # ------------------------------------------------------------ Übersicht, Sicherung
 
     def stats(self):

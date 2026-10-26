@@ -180,4 +180,15 @@ def default_config():
         "snippets_recent": True,       # zuletzt benutzte Texte zum gewählten Kunden anbieten
         "ticket_format": "",           # Kopieren: "" = wie eingegeben, "dash" = "- " / "-- "
         "ticket_patterns": list(tickets.DEFAULT_PATTERNS),  # Ticketnummern vorschlagen (Regex)
+
+        # --- Abrechnung und Datenschutz (billing.py, retention.py) ---
+        # Abrechnungstakt: angefangene Viertelstunde zählt. Modus "up" (aufrunden),
+        # "nearest" (auf den nächsten Takt), "off" (echte Dauer wie früher)
+        "billing_step_minutes": 15,
+        "billing_mode": "up",
+        "billing_customers": {},       # Ausnahmen: Kunde -> {"step": 30, "mode": "nearest"}
+        # PC-Verlauf (aktive Fenster) nach so vielen Tagen automatisch löschen. Standard: aus.
+        # Tätigkeiten, Buchungen, KI-Vorschläge, Anrufe usw. bleiben immer erhalten.
+        "pc_history_purge": False,
+        "pc_history_days": 90,
     }
