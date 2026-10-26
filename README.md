@@ -37,12 +37,21 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
   - **Zeile „Matrix42“** in der Timeline: graue Blöcke sind gebucht (Kunde · Betreff), rot gestrichelte Lücken sind Personalzeit (ohne ITM: Arbeitszeit) ohne Buchung. Ein Klick auf eine Lücke trägt ab dort eine Tätigkeit ein.
   - **Tagesliste → Matrix42-Abgleich:** Buchungen mit Ticketnummer, Lücken ohne Buchung und Verbindungen/Telefonate, die höchstens zur Hälfte gebucht sind („Nicht gebucht: TeamViewer“).
   - Die Statuszeile zeigt z. B. „Matrix42 gebucht 7:05 h, nicht gebucht 1:55 h, 1 Verbindung ohne Buchung“.
+- **Outlook und Teams** (standardmäßig aus): Zeitzeuge liest aus dem klassischen Outlook deine Termine, Teams-Besprechungen und gesendeten Mails. Sie stehen in der eigenen Zeile „Outlook“, in der Tagesliste als „Termin“, „Teams-Besprechung“ oder „Mail gesendet“. Eine gesendete Mail ist ein kurzer Block (3 Minuten, einstellbar). Standardmäßig zählen nur Mails an andere Firmen. Teams-Anrufe stehen in der Zeile „Tel“ wie 3CX. Danach fragt Zeitzeuge genauso „Was hast du gemacht?“. Liegt ein Anruf in einer Teams-Besprechung aus dem Kalender, trägt er deren Betreff.
+  - Gespeichert werden nur Betreff, Zeit, Ort und die **Domains** der Teilnehmer oder Empfänger (z. B. „kunde.de“). Keine Adressen, keine Mailtexte. Alles liegt verschlüsselt in der Datenbank und bleibt auch ohne Outlook sichtbar.
+  - Regeln ohne KI kennen die neuen Einträge (Teams-Anruf → Telefonsupport, Termin → Beratung / Abstimmung, Mail → E-Mail / Kommunikation). Die KI bekommt Termine und Mails als eigenen Abschnitt.
+- **Buchungsquote:** Zeitzeuge rechnet aus, wie viel deiner Personalzeit in Matrix42 gebucht ist. Ziel sind 80 % pro Tag. Unter 50 % ist die Quote rot (✗), bis unter dem Ziel gelb (!), ab dem Ziel bis 100 % grün (✓), darüber dunkelgrün (✓✓). Die Statuszeile zeigt „Quote heute 72 % · 7 Tage 81 %“. Ein Klick öffnet den Wochenabschluss. Die Anzeige erscheint nur, wenn Matrix42 Daten liefert.
+- **7-Tage-Wert:** die letzten 7 gestempelten Tage bis heute. Heute zählt nur, wenn du gestempelt hast, und nur bis jetzt. Tage ohne Matrix42-Daten zählen nicht mit. Sie stehen als „Matrix42 nicht gelesen“ da, statt als 0 %.
+- **Wochenabschluss** (Knopf mit dem Tacho in der Werkzeugleiste oder Klick auf die Quote in der Statuszeile): Montag bis Freitag der Woche, Samstag und Sonntag nur, wenn du da gestempelt oder gebucht hast. Je Tag: Personalzeit, gebucht, Quote, Zeit ohne Buchung und offene Tätigkeiten. Darunter Hinweise wie „Dienstag: 1:20 h nicht gebucht“ und der 7-Tage-Wert. Mit ◀ ▶ (oder Bild auf/ab) blätterst du die Wochen. Enter oder Doppelklick zeigt den Tag im Hauptfenster. Das Ziel stellst du dort unter „Ziel je Tag“ ein.
+- **Prüfung bei Feierabend:** Bist du ausgestempelt und ist Feierabend, prüft Zeitzeuge den Tag einmal: mehr als 6 Stunden ohne 30 Minuten Pause (über 9 Stunden: 45 Minuten, Pausen zählen ab 15 Minuten am Stück), mehr als 6 Stunden am Stück, PC aktiv aber ausgestempelt, Buchung außerhalb der Personalzeit, Buchungen überschneiden sich, Quote unter Ziel. Die Hinweise kommen mit der Erinnerung an offene Tätigkeiten oder allein, und stehen auch im Wochenabschluss. Abschalten: Einstellungen → Nachfragen und Erinnerungen → „Bei Feierabend prüfen“.
+- **In Matrix42 buchen:** kommt bald. Rechtsklick auf eine Tätigkeit und der Wochenabschluss zeigen den Befehl schon, noch ausgegraut.
 - **Aktivitätsprotokoll:** Alle 5 Sekunden merkt sich Zeitzeuge das aktive Fenster, zum Beispiel eine RDP-Sitzung, einen Browser-Tab, Outlook oder PuTTY.
   - Es erscheint als farbiges Band „PC“ oben in der Timeline, eine Farbe pro Programm.
   - Mit **PC-Verlauf** (Bildschirm-Symbol) in der Werkzeugleiste stehen die Fenster auch in der Tagesliste.
   - Nach 5 Minuten ohne Maus und Tastatur oder bei gesperrtem PC wird nichts aufgezeichnet.
   - Fenster mit bestimmten Wörtern im Titel werden nur als „(ausgeblendet)“ gespeichert, zum Beispiel Passwortmanager.
   - Mit dem **Fenster-Filter** lässt du private Programme ganz weg oder zeichnest nur erlaubte Programme auf.
+- **PC-Verlauf automatisch löschen:** Auf Wunsch löscht Zeitzeuge die aufgezeichneten aktiven Fenster nach einer einstellbaren Zahl von Tagen (Standard: aus, sonst 90 Tage). Das gilt auch für den Fensterverlauf, den du von einem anderen PC übernommen hast. Deine Tätigkeiten, Buchungen, KI-Vorschläge, Anrufe und Verbindungen bleiben erhalten. Einschalten unter **Einstellungen → Datenspeicher → PC-Verlauf automatisch löschen …**. Beim Einschalten zeigt Zeitzeuge, wie viele Tage betroffen sind, und fragt nach. Danach löscht es beim Start (nach einer Minute) und einmal am Tag.
 - **Zuordnung ohne KI:** Feste Regeln ordnen Verbindungen, Telefonate und Fenster einer Kategorie und einem Kunden zu, zum Beispiel Outlook als „E-Mail / Kommunikation“ oder TeamViewer als „Fernwartung“. Das Ergebnis steht in der Zeile „Zuordnung o. KI“. Es läuft lokal, kostet nichts und braucht kein Internet (früher hieß das „Regeln“).
 - **Tagesliste** unter der Timeline mit Von, Bis, Dauer, Typ, Kunde und Details.
   - Die Statuszeile zeigt die belegte Zeit des Tages. Überschneidungen werden nicht doppelt gezählt.
@@ -59,7 +68,7 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
   - Rechtsklick auf einen Vorschlag: **Als Tätigkeit eintragen …** (Text prüfen, speichern, dann durchgezogen), **Vorschlag verwerfen** oder **Kopieren**.
   - In der Tagesliste zeigt die Ansicht **KI-Vorschläge** alle Vorschläge. STRG + C kopiert sie als fertige Ticketzeilen.
 - **Tätigkeiten dokumentieren:** Was du gemacht hast, trägst du direkt in Zeitzeuge ein. Es steht in einer eigenen Zeile „Doku“ ganz oben in der Timeline.
-  - **Nachtragen** (F7): Zeit, Kunde, Kategorie und ein Satz, was du gemacht hast. Ist in der Tagesliste eine Zeile markiert, sind Zeit und Kunde schon ausgefüllt.
+  - **Nachtragen** (Knopf in der Werkzeugleiste): Zeit, Kunde, Kategorie und ein Satz, was du gemacht hast. Ist in der Tagesliste eine Zeile markiert, sind Zeit und Kunde schon ausgefüllt.
   - Rechtsklick auf einen Eintrag: **Tätigkeit dazu eintragen …**. Rechtsklick auf eine freie Stelle der Timeline: **Tätigkeit ab hh:mm eintragen …**.
   - Timeline und Tagesliste haben dasselbe Rechtsklick-Menü. Es zeigt nur Befehle, die zum Eintrag passen.
   - **Offenes fällt auf:** Verbindungen und Telefonate ohne Dokumentation stehen gestrichelt mit „?“ in der Zeile „Doku“. Ein Klick darauf öffnet das Eintragen.
@@ -71,7 +80,15 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
   - Jede Aktion bestätigt Zeitzeuge kurz in der Statuszeile, z. B. „Tätigkeit gespeichert“ oder „Zeitzeuge fragt in 15 Minuten noch einmal“.
   - Die Ansicht **Dokumentation** in der Tagesliste zeigt alles, STRG + C kopiert es als fertige Ticketzeilen.
   - Trägst du einen KI-Vorschlag als Tätigkeit ein, steht er in der Zeile „Doku“ und gilt als übernommen.
-- **Jede Zeile der Timeline ein- und ausblenden:** PC-Aktivität, Dokumentation, Zuordnung ohne KI, KI-Vorschläge, Telefon, VPN, TeamViewer und Remote / Weitere schaltest du einzeln unter **Einstellungen → Zeilen der Timeline**. **Alle einblenden** holt alles zurück. Die Tagesliste zeigt weiter alle Einträge.
+- **Textbausteine:** Häufige Sätze wie „Windows-Updates installiert“ fügst du beim Eintragen mit **Text einfügen** (Alt+E) ein. Steht der Cursor am Ende einer Zeile, kommt der Baustein in eine neue Zeile. Die Bausteine 1 bis 9 wählst du im Menü direkt mit der Zahl. Die Liste pflegst du unter Einstellungen → **Textbausteine …**.
+- **Zuletzt benutzte Texte:** Im selben Menü stehen die letzten Texte zum gewählten Kunden (aus den letzten 60 Tagen). Wechselst du den Kunden, wechseln auch die Vorschläge.
+- **Ticket-Format „- “ / „-- “:** Auf Wunsch kopiert Zeitzeuge die Dokumentation im Format der Ticket-Doku: erste Zeile (oder erster Satz) als Haupttätigkeit „- …“, alle weiteren als Untertätigkeiten „-- …“. Das gilt für STRG + C in der Ansicht „Dokumentation“ und für „Kopieren“ im Rechtsklick-Menü. Einschalten unter Einstellungen → Textbausteine. Im Eintragen-Dialog gliedert **Text einfügen → Als Ticket-Doku gliedern** den Text sofort.
+- **Ticketnummer als Vorschlag:** Zeitzeuge sucht in den Fenstertiteln (PC-Verlauf) und in den Matrix42-Buchungen rund um die Tätigkeit (5 Minuten davor und danach) nach Ticketnummern wie `TCK0000049374`. Die häufigste steht im Feld **Ticket** als Vorschlag, z. B. „Gefunden: TCK0000049374 (Outlook, 12 min)“. Erst mit **Übernehmen** (oder Auswahl in der Liste) landet sie in der Tätigkeit. Das Ticket erscheint dann in der Ansicht „Dokumentation“ und in der kopierten Ticketzeile. Im kleinen Nachfrage-Fenster erscheint das Feld nur, wenn etwas gefunden wurde.
+- **Kundenliste: ein Kunde, alle Spuren.** Unter *Einstellungen → Kundenliste …* legst du Kunden an und ordnest ihnen ihre Spuren zu: TeamViewer-ID, RDM-Eintrag, VPN-Verbindung, Telefonnummer und E-Mail-Domain. Telefonnummern passen in jeder Schreibweise („+49 711 123456“ = „0711 123456“). Eine Domain wie „@kunde.de“ gilt auch für „mail.kunde.de“. Zeitzeuge schlägt den Kunden dann beim Eintragen und in der Nachfrage vor. In der Tagesliste steht er vor dem Namen der Verbindung („Müller GmbH · srv01“), in der Timeline im Hinweis. Eine Spur gehört immer genau einem Kunden.
+- **Kunde zuordnen per Rechtsklick.** Hat eine Verbindung, ein Telefonat oder eine Mail noch keinen Kunden, wählst du im Rechtsklick-Menü *Kunde zuordnen …*. „TeamViewer-ID benennen …“ gibt es weiter, es landet in derselben Kundenliste.
+- **Zeitzeuge lernt aus deinen Korrekturen.** Änderst du beim Eintragen den vorgeschlagenen Kunden, merkt Zeitzeuge ihn zur Spur („Kunde für RDM-Eintrag „srv01“ merken“ ist angehakt). Änderst du die Kategorie, bietet der Dialog „Als Regel merken: „srv01“ → Beratung“ an. Dieser Haken ist aus: Nur wenn du ihn setzt, entsteht eine Regel in der *Zuordnung ohne KI*. Sie steht vor den Standardregeln und schlägt beim nächsten Mal auch im Dialog die Kategorie vor. Doppelte Regeln legt Zeitzeuge nicht an.
+- **Abrechnungstakt:** Zeitzeuge zeigt zu jeder Tätigkeit auch die abgerechnete Zeit. Standard ist der 15-Minuten-Takt: Jede angefangene Viertelstunde wird abgerechnet. Beim Kopieren stehen echte und abgerechnete Zeiten mit Beginn und Ende in der Zeile, z. B. `10:05–10:17 (12 min) → abgerechnet 10:05–10:20 (0:15 h)  Müller GmbH · Fernwartung: Drucker eingerichtet`. Der Beginn bleibt, das Ende rückt auf den Takt. Du siehst sie auch in der Ansicht „Dokumentation“, in der Statuszeile („dokumentiert 3:10 h, abgerechnet 3:30 h“) und im Eintragen-Fenster neben der Dauer. Jede Tätigkeit wird für sich gerundet. Unter **Einstellungen → Abrechnung …** stellst du den Takt (Minuten) und die Rundung ein: „Angefangener Takt zählt“, „Auf den nächsten Takt runden“ oder „Ohne Takt“ (dann ist alles wie früher). Für einzelne Kunden kannst du einen anderen Takt oder eine andere Rundung festlegen.
+- **Jede Zeile der Timeline ein- und ausblenden:** PC-Aktivität, Dokumentation, Zuordnung ohne KI, KI-Vorschläge, Telefon, Outlook, VPN, TeamViewer und Remote / Weitere schaltest du einzeln unter **Einstellungen → Zeilen der Timeline**. **Alle einblenden** holt alles zurück. Die Tagesliste zeigt weiter alle Einträge.
 - **Verschlüsselte Datenbank:** Alle Daten (Anrufe, Fenster, Tätigkeiten, KI-Vorschläge, Personalzeit, Matrix42, VPN, Kundennamen) liegen in einer Datei `zeitzeuge.db`, verschlüsselt mit AES-256. Auf deinem PC öffnet sie deine Windows-Anmeldung ohne Abfrage. Für einen neuen PC gibt es einen Wiederherstellungsschlüssel, den du in RDM ablegst. Siehe [Schutz der Daten](#schutz-der-daten).
 - **Ladeanzeige:** Solange Zeitzeuge etwas lädt (Logs, 3CX, ITM, Matrix42 oder KI-Vorschläge), läuft oben über der Timeline ein blauer Balken mit Text, z. B. „Lädt: 3CX-Anrufe · KI-Vorschläge (Claude ordnet 25.10. ein) …“. Kurze Lesevorgänge im Hintergrund erscheinen erst nach 1,5 Sekunden, damit nichts flackert.
 - **Zustand der Datenquellen in der Statusleiste:** Rechts unten stehen 3CX und ITM nebeneinander, jeweils mit Symbol:
@@ -100,7 +117,6 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
 | STRG + T | Heute |
 | F5 | Logs neu einlesen |
 | F6 | KI-Vorschläge für den Tag erstellen |
-| F7 | Tätigkeit nachtragen (zur markierten Zeile) |
 | STRG + `+` / `-` | Zoom |
 | STRG + 0 | Ganzen Tag zeigen |
 | STRG + 9 | Arbeitszeit zeigen |
@@ -108,6 +124,8 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
 | Enter | Details zur markierten Zeile der Tagesliste |
 | ALT + E | Menü Einstellungen öffnen |
 | ALT + E, Q | Untermenü Datenquellen |
+
+F7 bis F12 belegt Zeitzeuge bewusst nicht, damit sie für andere Werkzeuge frei bleiben. Nachtragen und Wochenabschluss erreichst du über die Knöpfe in der Werkzeugleiste.
 
 ## Voraussetzungen
 
@@ -247,6 +265,32 @@ Lässt der Mandant Anmeldungen nur aus dem Firmennetz zu, klappt die Anmeldung m
 
 Die Anmeldung liegt in `%LOCALAPPDATA%\Zeitzeuge\itm_anmeldung.json` (unter Windows verschlüsselt, nur für deinen Windows-Benutzer lesbar) und, bei Anmeldung über Edge, in `itm_profil` daneben. Die gelesenen Tage liegen in der Datenbank. Die Timeline zeigt dann deine gestempelte Zeit hell und alles andere, auch die Pausen, abgedunkelt. Ohne Personalzeiten gilt wie bisher die Arbeitszeit aus den Einstellungen.
 
+### Outlook und Teams
+
+Einstellungen → Datenquellen → „Outlook (Termine, Mails)“ und
+„Teams-Anrufe“ einschalten. Unter Datenquellen → Einrichten → „Outlook und Teams …“
+stellst du ein:
+
+- Termine und gesendete Mails einzeln an oder aus, nur Mails an andere Firmen.
+- Domains deiner Firma (leer: Zeitzeuge erkennt sie aus Outlook).
+- Dauer je Mail in der Timeline, wie viele Tage zurück und wie oft Zeitzeuge liest.
+- Anderer Kalender oder Ordner, z. B. `\\name@firma.de\Kalender`.
+- Ob Zeitzeuge Outlook starten darf. Sonst liest es nur, während Outlook offen ist.
+- Ab welcher Dauer ein Teams-Anruf zählt (Standard 30 Sekunden).
+
+Gut zu wissen:
+
+- Es geht nur mit dem **klassischen Outlook**. Das neue Outlook hat keine Schnittstelle
+  dafür. Zeitzeuge sagt das in der Statuszeile.
+- Zeitzeuge fragt Outlook über PowerShell im Hintergrund, ohne Fenster. Admin-Rechte
+  braucht es nicht. Meldet Outlook „Ein Programm versucht, auf E-Mail-Adressen
+  zuzugreifen“, ist der Virenschutz nicht aktuell gemeldet. Dann „Verweigern“ wählen
+  und die Quelle ausschalten oder die IT fragen.
+- Teams-Anrufe erkennt Zeitzeuge daran, dass Teams das Mikrofon benutzt (das merkt sich
+  Windows). Das gilt auch für Besprechungen. Die Richtung (ein- oder ausgehend) und das
+  Gegenüber kennt Teams hier nicht.
+- Auf der PAW bleiben Outlook und Teams aus.
+
 ### Abfragen mitschneiden (3CX und ITM)
 
 Mit einem Mitschnitt lässt sich prüfen, ob Zeitzeuge die Daten später direkt beim Server abfragen kann, ohne die Seite dauerhaft in Edge offen zu halten. Das spart viel Arbeitsspeicher.
@@ -300,6 +344,17 @@ Unter **Einstellungen → Nachfragen und Erinnerungen …** legst du fest, wann 
 
 Gefragt wird nur nach Tätigkeiten, die gerade erst geendet haben. Ältere offene Einträge stehen gestrichelt in der Zeile „Doku“, damit nichts verloren geht. Als dokumentiert gilt ein Eintrag, wenn mindestens die Hälfte seiner Zeit in deinen Tätigkeiten steckt.
 
+### Textbausteine und Ticket
+
+Unter **Einstellungen → Textbausteine …** stellst du ein:
+
+- **Bausteine:** ein Satz je Zeile. „Standardliste einsetzen“ holt die mitgelieferten zurück.
+- **Zuletzt benutzte Texte zum gewählten Kunden anbieten:** an (Standard) oder aus.
+- **Beim Kopieren als Ticket-Doku gliedern:** aus (Standard). An: „- “ / „-- “.
+- **Ticketnummern erkennen:** ein Muster (regulärer Ausdruck) je Zeile. Standard `TCK\d+`
+  (Matrix42). Weitere Beispiele: `Ticket #(\d+)` (die Klammer ist die Nummer). Leer = keine
+  Vorschläge. Ein fehlerhaftes Muster wird mit Zeilennummer gemeldet, OK ist dann gesperrt.
+
 ### Zuordnung ohne KI (Regeln)
 
 Ohne KI und ohne Internet ordnet Zeitzeuge den Tag mit festen Regeln ein. Das kostet nichts, und kein Eintrag verlässt den PC.
@@ -323,6 +378,18 @@ Eine Regel sagt: Wenn ein Feld dieses Muster enthält, gehört der Eintrag zu di
 | `rules_min_minutes` | `5` | Kürzere Blöcke fallen weg |
 
 Die Kategorien sind dieselben wie bei den KI-Vorschlägen (`ai_categories`).
+
+### Abrechnung und PC-Verlauf
+
+Unter **Einstellungen → Abrechnung …** stellst du Takt und Rundung ein, auch je Kunde. Den PC-Verlauf löschst du unter **Einstellungen → Datenspeicher → PC-Verlauf automatisch löschen …**. In der `zeitzeuge_config.json` stehen dazu:
+
+| Schlüssel | Standard | Bedeutung |
+|---|---|---|
+| `billing_step_minutes` | `15` | Abrechnungstakt in Minuten |
+| `billing_mode` | `"up"` | `"up"` angefangener Takt zählt, `"nearest"` nächster Takt, `"off"` ohne Takt |
+| `billing_customers` | `{}` | Ausnahmen: `{"Müller GmbH": {"step": 30, "mode": "nearest"}}` |
+| `pc_history_purge` | `false` | PC-Verlauf automatisch löschen |
+| `pc_history_days` | `90` | so viele Tage behalten (7 bis 3650) |
 
 ### Wenn etwas schiefgeht
 

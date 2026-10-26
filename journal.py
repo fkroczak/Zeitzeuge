@@ -4,7 +4,7 @@ Tätigkeiten, die du selbst einträgst (nachträglich oder auf Nachfrage von Zei
 Pro Tag ein Eintrag in der Datenbank (Ablage "taetigkeiten", früher
 taetigkeiten/JJJJ-MM-TT.json):
     {"items": [{"id", "start", "end", "customer", "category", "text",
-                "source", "created", "updated"}],
+                "source", "created", "updated", "ticket" (optional)}],
      "ignored": ["<Schlüssel eines Eintrags, nach dem nicht mehr gefragt wird>"]}
 
 Dazu die Logik, welche erkannten Tätigkeiten noch nicht dokumentiert sind
@@ -17,6 +17,7 @@ from datetime import datetime, timedelta
 
 import datastore
 import safe_io
+from tickets import format_ticket_text
 
 TIME_FMT = "%Y-%m-%d %H:%M:%S"
 DOC_TYPE = "Dokumentiert"
@@ -106,6 +107,10 @@ class Journal:
         item["updated"] = now
         for key in ("customer", "category", "text"):
             item[key] = (item.get(key) or "").strip()
+        if "ticket" in item:  # Ticketnummer, nur gespeichert, wenn eine da ist
+            item["ticket"] = (item.get("ticket") or "").strip()
+            if not item["ticket"]:
+                del item["ticket"]
         if not self._valid(item):
             raise ValueError("Ende muss nach dem Beginn liegen")
         date_str = item["start"][:10]
@@ -164,13 +169,29 @@ class Journal:
                     counts[item["customer"]] = counts.get(item["customer"], 0) + 1
         return sorted(counts, key=lambda c: (-counts[c], c.lower()))
 
+    def recent_items(self, days=60, today=None):
+        """Eigene Tätigkeiten der letzten Tage (für zuletzt benutzte Texte je Kunde)."""
+        today = today or datetime.now()
+        try:
+            store, name = self._db()
+            stored = set(store.days(name))
+        except (datastore.Busy, datastore.Locked):
+            stored = set()
+        result = []
+        for i in range(days):
+            date_str = (today - timedelta(days=i)).strftime("%Y-%m-%d")
+            if date_str in stored or date_str in self._cache:
+                result += self.load(date_str)["items"]
+        return result
+
     # ------------------------------------------------------------ Anzeige
 
     def entries(self, date_str):
         """Tätigkeiten als Timeline-Einträge."""
         result = []
         for item in self.items(date_str):
-            label = " · ".join(t for t in (item.get("category"), item.get("text")) if t)
+            label = " · ".join(t for t in (item.get("ticket"), item.get("category"), item.get("text"))
+                               if t)
             if item.get("von_pc"):
                 label += f" (von {item['von_pc']})"
             result.append({
@@ -277,8 +298,16 @@ def suggest_category(entry, categories):
     return ""
 
 
-def suggest_customer(entry, tv_names=None):
-    """Kunde aus einem erkannten Eintrag (ohne Nummern in Klammern, ohne reine IDs)."""
+def suggest_customer(entry, tv_names=None, customers=None):
+    """Kunde aus einem erkannten Eintrag (ohne Nummern in Klammern, ohne reine IDs).
+
+    customers: Kundenliste oder customers.Index. Passt eine Spur (TeamViewer-ID, Nummer,
+    RDM-/VPN-Name, E-Mail-Domain), gewinnt der Kunde aus der Liste."""
+    if customers is not None:
+        import customers as customer_list  # ohne Qt
+        found = customer_list.customer_for(entry, customers)
+        if found:
+            return found
     if entry.get("tv_id"):
         return (tv_names or {}).get(entry["tv_id"], "")
     name = entry.get("customer_name") or ""
@@ -286,10 +315,16 @@ def suggest_customer(entry, tv_names=None):
     return "" if re.fullmatch(r"[+\d\s/-]*", name) else name
 
 
-def ticket_line(item):
-    """Tätigkeit als Zeile fürs Ticket."""
+def ticket_line(item, text_style="", billing=None):
+    """Tätigkeit als Zeile fürs Ticket. text_style "dash": Text als "- " / "-- " darunter.
+    billing (billing.Billing): abgerechnete Dauer dazu, z. B. "10:05–10:17 (12 min → abgerechnet 0:15 h)"."""
     start, end = _t(item["start"]), _t(item["end"])
-    head = f"{start:%H:%M}–{end:%H:%M} ({duration_text((end - start).total_seconds())})"
-    parts = [p for p in (item.get("customer"), item.get("category")) if p]
-    text = item.get("text", "")
+    seconds = (end - start).total_seconds()
+    # Mit Takt: echte Zeiten und dahinter die abgerechneten (Beginn bleibt, Ende im Takt)
+    note = billing.span_note(start, seconds, item.get("customer", "")) if billing else ""
+    head = f"{start:%H:%M}–{end:%H:%M} ({duration_text(seconds)}){note}"
+    parts = [p for p in (item.get("customer"), item.get("category"), item.get("ticket")) if p]
+    text = format_ticket_text(item.get("text", ""), text_style)
+    if text_style == "dash" and text:  # Kopfzeile, darunter die gegliederte Tätigkeit
+        return f"{head}  {' · '.join(parts)}{':' if parts else ''}".rstrip() + "\n" + text
     return f"{head}  {' · '.join(parts)}{': ' if parts and text else ''}{text}".rstrip()

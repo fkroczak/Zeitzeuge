@@ -502,6 +502,61 @@ class Store:
             return [r[0] for r in self._conn.execute(
                 "SELECT DISTINCT day FROM rows WHERE name = ? ORDER BY day", (name,))]
 
+    def rows_before(self, name, day):
+        """(Anzahl Tage, Anzahl Zeilen) einer Ablage vor day (JJJJ-MM-TT, day selbst nicht)."""
+        with self._lock:
+            self.open()
+            n_days, n_rows = self._conn.execute(
+                "SELECT COUNT(DISTINCT day), COUNT(*) FROM rows WHERE name = ? AND day < ?",
+                (name, day)).fetchone()
+        return n_days, n_rows
+
+    def delete_rows_before(self, name, day, limit=None):
+        """Zeilen einer Ablage vor day löschen (day selbst bleibt), in einer Transaktion.
+        limit: höchstens so viele Zeilen (die ältesten zuerst), damit ein großer Bestand in
+        kurzen Schritten gelöscht werden kann. Gibt die Zahl gelöschter Zeilen zurück.
+
+        Die Zeilen werden vorher mit Nullen überschrieben, frei gewordene Seiten ebenso
+        (secure_delete). Ältere Kopien, die SQLite beim Einfügen in ungenutztem Platz einer
+        Seite hinterlassen hat, kann nur ein VACUUM sicher entfernen; sie sind verschlüsselt
+        und werden beim weiteren Schreiben überschrieben. Die Datei wird nicht verkleinert
+        (kein VACUUM): Der Platz wird für neue Zeilen wiederverwendet."""
+        if limit:
+            where = ("id IN (SELECT id FROM rows WHERE name = ? AND day < ? ORDER BY day, id LIMIT ?)",
+                     (name, day, int(limit)))
+        else:
+            where = ("name = ? AND day < ?", (name, day))
+
+        # Erst mit Nullen überschreiben und in die Datei übernehmen, dann in einem zweiten
+        # Schritt löschen. So hängt es nicht davon ab, ob SQLite frei gewordene Seiten im
+        # WAL-Modus neu schreibt (unter Windows blieben sonst alte Inhalte in der Datei).
+        def zero(c):
+            c.execute(f"UPDATE rows SET data = zeroblob(length(data)) WHERE {where[0]}", where[1])
+
+        def delete(c):
+            return c.execute(f"DELETE FROM rows WHERE {where[0]}", where[1]).rowcount
+        with self._lock:
+            self.open()
+            self._conn.execute("PRAGMA secure_delete = ON")
+            try:
+                self._write_tx(zero)
+                self._checkpoint()
+                count = self._write_tx(delete)
+                self._checkpoint()
+                return count
+            finally:
+                try:
+                    self._conn.execute("PRAGMA secure_delete = OFF")
+                except sqlite3.DatabaseError:
+                    pass
+
+    def _checkpoint(self):
+        """WAL in die Datei übernehmen (Fehler egal: dann beim nächsten Checkpoint)."""
+        try:
+            self._conn.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchall()
+        except sqlite3.DatabaseError:
+            pass
+
     # ------------------------------------------------------------ Übersicht, Sicherung
 
     def stats(self):
@@ -746,6 +801,9 @@ LEGACY_FILES = {"anrufe": "anrufe.json", "anrufe_stand": "anrufe_stand.json",
                 "m42_buchungen": "m42_buchungen.json", "uebernommen": "uebernommen.json",
                 "aktivitaet": "aktivitaet", "taetigkeiten": "taetigkeiten",
                 "ki_vorschlaege": "ki_vorschlaege"}
+# Ablagen ohne alte Datei (gab es nur in der Datenbank), zur Übersicht:
+#   "teamviewer_names" (ein Dokument), "outlook" (je Tag {termine, mails, gelesen},
+#   outlook_data.py), "teams_anrufe" (je Tag eine Liste, teams_calls.py)
 
 _stores = {}
 _stores_lock = threading.Lock()

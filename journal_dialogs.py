@@ -10,19 +10,32 @@ from datetime import datetime, timedelta
 
 from PySide6.QtCore import QDate, QLocale, Qt, QTime, Signal
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QDateEdit, QDialog, QDialogButtonBox,
-                               QFormLayout, QHBoxLayout, QLabel, QPlainTextEdit, QSpinBox,
-                               QTimeEdit, QVBoxLayout, QWidget)
+                               QFormLayout, QHBoxLayout, QLabel, QMenu, QPlainTextEdit,
+                               QPushButton, QSpinBox, QTimeEdit, QVBoxLayout, QWidget)
 
+from billing import hours_text
+import customers as customer_list
 from grouping import format_tv_id
 from journal import TIME_FMT, describe, suggest_category, suggest_customer
+import snippets as snippet_logic
+from tickets import format_ticket_text
 
 
 class _EntryForm(QWidget):
     """Gemeinsame Felder: Datum, Von, Bis, Kunde, Kategorie, Text."""
 
     def __init__(self, start, end, customers, categories, customer="", category="", text="",
-                 tv_id=None, parent=None, show_date=True):
+                 tv_id=None, parent=None, show_date=True, snippets=(), recent_texts=None,
+                 ticket="", ticket_suggestions=(), show_ticket=True, trace=None, rule_subject=None):
         super().__init__(parent)
+        # trace: (Art, Wert) der Spur, zu der der Kunde gemerkt werden kann (customers.py).
+        # rule_subject: Name, zu dem eine geänderte Kategorie als Regel gemerkt werden kann.
+        if trace is None and tv_id:
+            trace = ("tv", tv_id)
+        self.trace = trace
+        self.rule_subject = rule_subject
+        self._suggested_customer = (customer or "").strip()
+        self._suggested_category = (category or "").strip()
         form = QFormLayout(self)
         form.setContentsMargins(0, 0, 0, 0)
 
@@ -61,15 +74,21 @@ class _EntryForm(QWidget):
         self.customer_edit.addItems([""] + [c for c in customers if c])
         self.customer_edit.setCurrentText(customer)
         self.customer_edit.lineEdit().setPlaceholderText(
-            f"Kunde für TeamViewer-ID {format_tv_id(tv_id)}" if tv_id else "Kunde oder System")
+            f"Kunde für {customer_list.display(*trace)}" if trace else "Kunde oder System")
         self.customer_edit.lineEdit().setAccessibleName("Kunde")
         form.addRow("&Kunde:", self.customer_edit)
 
+        # Kunde zur Spur merken (Kundenliste). TeamViewer wie bisher immer sichtbar,
+        # andere Spuren erst, wenn du den vorgeschlagenen Kunden änderst.
         self.remember_tv = None
-        if tv_id:
-            self.remember_tv = QCheckBox(f"Name für TeamViewer-ID {format_tv_id(tv_id)} merken")
+        if trace:
+            label = (f"Name für TeamViewer-ID {format_tv_id(trace[1])} merken" if trace[0] == "tv"
+                     else f"Kunde für {customer_list.display(*trace)} &merken")
+            self.remember_tv = QCheckBox(label)
             self.remember_tv.setChecked(True)
             form.addRow("", self.remember_tv)
+            if trace[0] != "tv":
+                self.customer_edit.currentTextChanged.connect(self._update_learning)
 
         self.category_edit = QComboBox()
         self.category_edit.setEditable(True)
@@ -78,12 +97,24 @@ class _EntryForm(QWidget):
         self.category_edit.lineEdit().setAccessibleName("Kategorie")
         form.addRow("Kate&gorie:", self.category_edit)
 
+        # Kategorie geändert: als Regel für die Zuordnung ohne KI merken (nur wenn angehakt)
+        self.learn_rule = None
+        if rule_subject:
+            self.learn_rule = QCheckBox()
+            self.learn_rule.setChecked(False)
+            self.learn_rule.setToolTip("Legt eine Regel in „Zuordnung ohne KI“ an. "
+                                       "Zeitzeuge schlägt die Kategorie dann selbst vor.")
+            form.addRow("", self.learn_rule)
+            self.category_edit.currentTextChanged.connect(self._update_learning)
+        self._update_learning()
+
         self.text_edit = QPlainTextEdit(text)
         self.text_edit.setPlaceholderText("Was hast du gemacht? z. B. „Drucker neu eingerichtet, "
                                           "Treiber aktualisiert“")
         self.text_edit.setTabChangesFocus(True)
         self.text_edit.setFixedHeight(80)
         form.addRow("&Tätigkeit:", self.text_edit)
+        self._add_text_helpers(form, snippets, recent_texts, ticket, ticket_suggestions, show_ticket)
 
         self.error = QLabel()
         self.error.setObjectName("hint")
@@ -93,7 +124,143 @@ class _EntryForm(QWidget):
         for edit in (self.start_edit, self.end_edit):
             edit.timeChanged.connect(self.validate)
         self.validate_hook = None
+        self.billing = None  # billing.Billing: "abgerechnet …" neben der Dauer (set_billing)
+        self.customer_edit.currentTextChanged.connect(lambda _t: self.validate())
         self.validate()
+
+    def set_billing(self, billing):
+        self.billing = billing
+        self.validate()
+
+    # ---- Textbausteine, zuletzt benutzte Texte, Ticket (snippets.py, tickets.py)
+
+    def _add_text_helpers(self, form, snippets, recent_texts, ticket, suggestions, show_ticket):
+        self.snippets = list(snippets or [])
+        self.recent_texts = recent_texts  # Funktion Kunde -> [Texte] oder None
+        self.insert_button = QPushButton("Text &einfügen")
+        self.insert_button.setAutoDefault(False)
+        self.insert_button.setAccessibleName("Textbaustein oder zuletzt benutzten Text einfügen")
+        self.insert_button.setToolTip("Textbaustein oder zuletzt benutzten Text zum Kunden "
+                                      "an der Cursorposition einfügen")
+        self.insert_menu = QMenu(self.insert_button)
+        self.insert_menu.aboutToShow.connect(self._fill_insert_menu)
+        self.insert_button.setMenu(self.insert_menu)
+        row = QHBoxLayout()
+        row.addWidget(self.insert_button)
+        row.addStretch(1)
+        form.addRow("", row)
+
+        # Ticket: nur Vorschläge, nie automatisch eingesetzt
+        self.ticket_suggestions = list(suggestions or [])
+        self.ticket_edit = QComboBox()
+        self.ticket_edit.setEditable(True)
+        self.ticket_edit.setInsertPolicy(QComboBox.NoInsert)
+        self.ticket_edit.addItem("")
+        for s in self.ticket_suggestions:
+            self.ticket_edit.addItem(s["ticket"])
+            self.ticket_edit.setItemData(self.ticket_edit.count() - 1, s["label"], Qt.ToolTipRole)
+        self.ticket_edit.setCurrentText(ticket)
+        self.ticket_edit.setAccessibleName("Ticket")
+        self.ticket_edit.lineEdit().setAccessibleName("Ticket")
+        top = self.ticket_suggestions[0]["label"] if self.ticket_suggestions else ""
+        self.ticket_edit.lineEdit().setPlaceholderText(f"Gefunden: {top}" if top
+                                                       else "Ticketnummer, z. B. TCK0000049374")
+        self.ticket_take = QPushButton("&Übernehmen")
+        self.ticket_take.setAutoDefault(False)
+        self.ticket_take.setAccessibleName("Gefundenes Ticket übernehmen")
+        self.ticket_take.setToolTip(f"{top} ins Feld „Ticket“ übernehmen" if top else "")
+        self.ticket_take.clicked.connect(self._take_ticket)
+        self.ticket_edit.currentTextChanged.connect(self._update_ticket_take)
+        ticket_row = QHBoxLayout()
+        ticket_row.addWidget(self.ticket_edit, 1)
+        ticket_row.addWidget(self.ticket_take)
+        if show_ticket or ticket or self.ticket_suggestions:
+            label = QLabel("T&icket:")
+            label.setBuddy(self.ticket_edit)
+            form.addRow(label, ticket_row)
+        else:  # kleines Nachfrage-Fenster: ohne Vorschlag keine Zeile
+            self.ticket_edit.hide()
+        self._update_ticket_take()
+
+    def _update_ticket_take(self, *_args):
+        self.ticket_take.setVisible(bool(self.ticket_suggestions)
+                                    and not self.ticket_edit.currentText().strip())
+
+    def _take_ticket(self):
+        if self.ticket_suggestions:
+            self.ticket_edit.setCurrentText(self.ticket_suggestions[0]["ticket"])
+            self.text_edit.setFocus()
+
+    def _fill_insert_menu(self):
+        """Menü beim Öffnen neu füllen: Bausteine und die letzten Texte zum gewählten Kunden."""
+        menu = self.insert_menu
+        menu.clear()
+        number = 0
+
+        def add(text, group_size):
+            nonlocal number
+            if group_size and group_size % 5 == 0:
+                menu.addSeparator()  # höchstens 5 Einträge je Gruppe
+            number += 1
+            mark = f"&{number} " if number < 10 else ""
+            menu.addAction(mark + snippet_logic.menu_label(text), lambda t=text: self.insert_text(t))
+
+        if self.snippets:
+            menu.addSection("Textbausteine")
+            for i, text in enumerate(self.snippets):
+                add(text, i)
+        customer = self.customer_edit.currentText().strip()
+        recent = self.recent_texts(customer) if self.recent_texts and customer else []
+        if recent:
+            menu.addSection(f"Zuletzt zu {customer.replace('&', '&&')}")
+            for i, text in enumerate(recent[:5]):
+                add(text, i)
+        if not self.snippets and not recent:
+            menu.addAction("Keine Textbausteine (Einstellungen → Textbausteine)").setEnabled(False)
+        menu.addSeparator()
+        menu.addAction("Als Ticket-Doku &gliedern („- “ / „-- “)", self.outline_text)
+
+    def insert_text(self, snippet):
+        """Baustein an der Cursorposition bzw. als neue Zeile einfügen."""
+        cursor = self.text_edit.textCursor()
+        text, pos = snippet_logic.insert(self.text_edit.toPlainText(), cursor.position(), snippet)
+        self.text_edit.setPlainText(text)
+        cursor = self.text_edit.textCursor()
+        cursor.setPosition(pos)
+        self.text_edit.setTextCursor(cursor)
+        self.text_edit.setFocus()
+
+    def outline_text(self):
+        """Erste Zeile „- “, weitere „-- “ (Format der Ticket-Dokumentation)."""
+        self.text_edit.setPlainText(format_ticket_text(self.text_edit.toPlainText(), "dash"))
+        self.text_edit.moveCursor(self.text_edit.textCursor().MoveOperation.End)
+        self.text_edit.setFocus()
+
+    def _customer_changed(self):
+        text = self.customer_edit.currentText().strip()
+        return bool(text) and text != self._suggested_customer
+
+    def _category_changed(self):
+        text = self.category_edit.currentText().strip()
+        return bool(text) and text != self._suggested_category
+
+    def _update_learning(self, *_):
+        if self.remember_tv and self.trace and self.trace[0] != "tv":
+            self.remember_tv.setVisible(self._customer_changed())
+        if self.learn_rule:
+            category = self.category_edit.currentText().strip()
+            self.learn_rule.setText(f"Als &Regel merken: „{self.rule_subject}“ → {category}")
+            self.learn_rule.setVisible(self._category_changed())
+
+    def remember_customer(self):
+        """Kunde zur Spur merken? (TeamViewer: Haken; sonst nur, wenn der Kunde geändert ist)"""
+        if not (self.remember_tv and self.remember_tv.isChecked()):
+            return False
+        return self.trace[0] == "tv" or self._customer_changed()
+
+    def wants_rule(self):
+        """Geänderte Kategorie als Regel merken? (Haken, standardmäßig aus)"""
+        return bool(self.learn_rule and self.learn_rule.isChecked() and self._category_changed())
 
     def times(self):
         day = self.date_edit.date().toPython()
@@ -107,7 +274,11 @@ class _EntryForm(QWidget):
         self.error.setText("" if ok else "⚠ Fehler: „Bis“ muss nach „Von“ liegen.")
         self.error.setVisible(not ok)
         minutes = int((end - start).total_seconds() // 60)
-        self.duration.setText(f"{minutes // 60}:{minutes % 60:02d} h" if ok else "")
+        text = f"{minutes // 60}:{minutes % 60:02d} h" if ok else ""
+        customer = self.customer_edit.currentText().strip()
+        if ok and self.billing and self.billing.active(customer):
+            text += f", abgerechnet {hours_text(self.billing.minutes(minutes * 60, customer))}"
+        self.duration.setText(text)
         if self.validate_hook:
             self.validate_hook(ok)
         return ok
@@ -120,6 +291,7 @@ class _EntryForm(QWidget):
             "customer": self.customer_edit.currentText().strip(),
             "category": self.category_edit.currentText().strip(),
             "text": self.text_edit.toPlainText().strip(),
+            "ticket": self.ticket_edit.currentText().strip(),
         }
 
 
@@ -127,7 +299,8 @@ class EntryDialog(QDialog):
     """Tätigkeit nachtragen oder ändern."""
 
     def __init__(self, start, end, customers, categories, customer="", category="", text="",
-                 tv_id=None, title="Tätigkeit nachtragen", info="", can_delete=False, parent=None):
+                 tv_id=None, title="Tätigkeit nachtragen", info="", can_delete=False, parent=None,
+                 trace=None, rule_subject=None, **form_options):
         super().__init__(parent)
         self.setWindowTitle(title)
         self.setMinimumWidth(480)
@@ -139,7 +312,7 @@ class EntryDialog(QDialog):
             label.setObjectName("hint")
             layout.addWidget(label)
         self.form = _EntryForm(start, end, customers, categories, customer, category, text,
-                               tv_id, self)
+                               tv_id, self, trace=trace, rule_subject=rule_subject, **form_options)
         layout.addWidget(self.form)
         self.buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         self.buttons.button(QDialogButtonBox.Ok).setText("&Speichern")
@@ -161,7 +334,11 @@ class EntryDialog(QDialog):
         return self.form.item()
 
     def remember_tv(self):
-        return bool(self.form.remember_tv and self.form.remember_tv.isChecked())
+        """Kunde zur Spur merken (Name stammt aus der Zeit, als es nur TeamViewer gab)."""
+        return self.form.remember_customer()
+
+    def wants_rule(self):
+        return self.form.wants_rule()
 
 
 class PromptWindow(QDialog):
@@ -171,7 +348,8 @@ class PromptWindow(QDialog):
     """
     answered = Signal(str, dict, dict)
 
-    def __init__(self, entry, customers, categories, tv_names=None, pending=0, parent=None):
+    def __init__(self, entry, customers, categories, tv_names=None, pending=0, parent=None,
+                 customer=None, category=None, trace=None, rule_subject=None, **form_options):
         super().__init__(parent, Qt.Tool | Qt.WindowStaysOnTopHint)
         self.entry = entry
         self.setWindowTitle("Zeitzeuge: Was hast du gemacht?")
@@ -192,9 +370,11 @@ class PromptWindow(QDialog):
         end = datetime.strptime(entry["end"], TIME_FMT)
         self.form = _EntryForm(
             start, end, customers, categories,
-            customer=suggest_customer(entry, tv_names),
-            category=suggest_category(entry, categories),
-            tv_id=entry.get("tv_id"), parent=self, show_date=False)
+            customer=suggest_customer(entry, tv_names) if customer is None else customer,
+            category=suggest_category(entry, categories) if category is None else category,
+            tv_id=entry.get("tv_id"), parent=self, show_date=False,
+            trace=trace, rule_subject=rule_subject,
+            **{"show_ticket": False, **form_options})
         layout.addWidget(self.form)
 
         buttons = QDialogButtonBox()
@@ -228,7 +408,11 @@ class PromptWindow(QDialog):
         return self.form.item()
 
     def remember_tv(self):
-        return bool(self.form.remember_tv and self.form.remember_tv.isChecked())
+        """Kunde zur Spur merken (Name stammt aus der Zeit, als es nur TeamViewer gab)."""
+        return self.form.remember_customer()
+
+    def wants_rule(self):
+        return self.form.wants_rule()
 
     def reject(self):  # Esc oder Fenster schließen = später fragen
         if not self._done:
@@ -333,6 +517,12 @@ class DocPromptDialog(QDialog):
         self.on_quit = QCheckBox("Beim &Beenden an Offenes erinnern")
         self.on_quit.setChecked(config.get("prompt_on_quit", True))
         form.addRow("", self.on_quit)
+        self.day_checks = QCheckBox("Bei Feierabend &prüfen: Pausen, Stempelung, Buchungen")
+        self.day_checks.setToolTip("Mehr als 6 Stunden ohne 30 Minuten Pause, PC aktiv aber "
+                                   "ausgestempelt, Buchung außerhalb der Personalzeit, "
+                                   "Buchungen überschneiden sich, Quote unter Ziel")
+        self.day_checks.setChecked(config.get("day_checks_enabled", True))
+        form.addRow("", self.day_checks)
         layout.addLayout(form)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -347,3 +537,4 @@ class DocPromptDialog(QDialog):
         self.config["prompt_snooze_minutes"] = self.snooze.value()
         self.config["prompt_end_of_day"] = self.end_of_day.isChecked()
         self.config["prompt_on_quit"] = self.on_quit.isChecked()
+        self.config["day_checks_enabled"] = self.day_checks.isChecked()

@@ -166,6 +166,8 @@ for theme_name, t in main_timeline.THEMES.items():
     check_contrast(area, t["bandtext"], t["bandhover"])
     check_contrast(area, t["seltext"], t["sel"])  # markierte Zeile
     check_contrast(area, t["muted"], t["bg"])  # Hinweistexte (QLabel#hint)
+    for lvl in ("low", "mid", "ok", "over"):  # Buchungsquote (Statuszeile, Wochenabschluss)
+        check_contrast(area, t[f"rate_{lvl}_text"], t[f"rate_{lvl}"])
 for dark in (False, True):
     window.timeline.dark_mode = dark
     window.timeline.init_timeline_colors()
@@ -188,7 +190,9 @@ for taskbar in ("#F3F3F3", "#1F2329"):
 # Graue Hinweistexte direkt im Code (nur Farbe "gray" ist auf hellem Grund zu blass)
 for path in ["main_timeline.py", "theme.py", "app_menus.py", "app_daylist.py", "app_docs.py",
              "app_readers.py", "app_tray.py", "settings_dialogs.py", "timeline_only.py",
-             "app_protect.py", "protect_dialogs.py", "app_transfer.py"]:
+             "app_protect.py", "protect_dialogs.py", "app_transfer.py", "snippets_dialogs.py",
+             "billing_dialogs.py", "retention_dialogs.py", "journal_dialogs.py", "week_dialogs.py",
+             "customers_dialogs.py", "outlook_dialogs.py", "app_outlook.py"]:
     with open(os.path.join(ROOT, path), encoding="utf-8") as f:
         for no, line in enumerate(f, 1):
             if re.search(r"color:\s*(gray|grey|#999|#aaa)\b", line, re.I):
@@ -245,10 +249,42 @@ dialogs["Tätigkeit nachtragen"] = journal_dialogs.EntryDialog(
 dialogs["Nachfrage"] = journal_dialogs.PromptWindow(_tv, ["Musterkunde GmbH"], ["Fernwartung"],
                                                     pending=2, parent=window)
 dialogs["Nachfragen und Erinnerungen"] = journal_dialogs.DocPromptDialog(config, window)
+# Eintragen mit Textbausteinen und Ticket-Vorschlag (Knopf „Übernehmen“ sichtbar)
+_found = [{"ticket": "TCK0000049374", "label": "TCK0000049374 (Outlook, 12 min)"}]
+dialogs["Tätigkeit mit Ticket-Vorschlag"] = journal_dialogs.EntryDialog(
+    _dt(2026, 10, 20, 9), _dt(2026, 10, 20, 9, 30), ["Musterkunde GmbH"], ["Fernwartung"],
+    parent=window, snippets=["Windows-Updates installiert"], ticket_suggestions=_found)
+dialogs["Nachfrage mit Ticket-Vorschlag"] = journal_dialogs.PromptWindow(
+    _tv, ["Musterkunde GmbH"], ["Fernwartung"], parent=window, ticket_suggestions=_found)
+import snippets_dialogs  # noqa: E402
+dialogs["Textbausteine"] = snippets_dialogs.SnippetsDialog(config, window)
+import billing_dialogs  # noqa: E402
+import retention_dialogs  # noqa: E402
+dialogs["Abrechnung"] = billing_dialogs.BillingDialog(
+    dict(config, billing_customers={"Musterkunde GmbH": {"step": 30, "mode": "nearest"}}),
+    ["Musterkunde GmbH"], window)
+dialogs["Abrechnung"].add_row()
+dialogs["PC-Verlauf löschen"] = retention_dialogs.RetentionDialog(config, window)
+import customers_dialogs  # noqa: E402
+_kd = customers_dialogs.CustomersDialog(config, window)
+_kd.add_customer("Musterkunde GmbH")
+_kd.add_trace("phone", "+49 711 123456")
+dialogs["Kundenliste"] = _kd
+# Eintragen mit RDM-Spur: Kunde und Kategorie geändert, beide Merken-Haken sichtbar
+_rdm = journal_dialogs.EntryDialog(
+    _dt(2026, 10, 20, 9), _dt(2026, 10, 20, 9, 30), ["Musterkunde GmbH"], ["Fernwartung", "Beratung"],
+    customer="srv01", category="Fernwartung", trace=("rdm", "srv01"), rule_subject="srv01", parent=window)
+_rdm.form.customer_edit.setCurrentText("Musterkunde GmbH")
+_rdm.form.category_edit.setCurrentText("Beratung")
+dialogs["Tätigkeit mit Lernen"] = _rdm
+import week_dialogs  # noqa: E402
+dialogs["Wochenabschluss"] = week_dialogs.WeekDialog(window, day)
 if hasattr(window, "build_pbx_dialog"):
     dialogs["3CX direkt"] = window.build_pbx_dialog()
 if hasattr(window, "build_itm_dialog"):
     dialogs["ITM-Personalzeiten"] = window.build_itm_dialog()
+if hasattr(window, "build_outlook_dialog"):
+    dialogs["Outlook und Teams"] = window.build_outlook_dialog()
 import protect_dialogs  # noqa: E402
 dialogs["Schutz der Daten"] = window.build_protection_dialog()
 dialogs["Wiederherstellungsschlüssel"] = protect_dialogs.CodeDialog(

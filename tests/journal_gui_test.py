@@ -106,6 +106,8 @@ def gui_test():
     window.check_prompts()
     prompt = window._prompt_window
     prompt.form.customer_edit.setCurrentText("Beispiel AG")
+    # Abrechnungstakt neben der Dauer (35 min -> 0:45 h)
+    assert "abgerechnet 0:45 h" in prompt.form.duration.text(), prompt.form.duration.text()
     prompt.form.text_edit.setPlainText("Outlook-Profil neu angelegt")
     prompt.save_btn.click()
     QTest.qWait(600)
@@ -132,6 +134,78 @@ def gui_test():
     window.table.selectRow(0)
     window.copy_selection()
     assert "Beispiel AG · Fernwartung: Outlook-Profil neu angelegt" in QApplication.clipboard().text()
+    # Abrechnungstakt (Standard 15 min, angefangene Viertelstunde): Kopie, Liste, Statuszeile
+    assert "(35 min) → abgerechnet " in QApplication.clipboard().text() and "(0:45 h)" in QApplication.clipboard().text(), QApplication.clipboard().text()
+    assert "abgerechnet 0:45 h" in window.table.item(0, 2).text()
+    assert "abgerechnet 0:45 h" in window.info_label.text(), window.info_label.text()
+    window.config["billing_customers"] = {"beispiel ag": {"step": 30, "mode": "up"}}
+    window.update_day_list(window.day_activities, window.pc_activities)
+    window.table.selectRow(0)
+    window.copy_selection()
+    assert "(1:00 h)" in QApplication.clipboard().text(), QApplication.clipboard().text()
+    window.config["billing_customers"] = {}
+    window.config["billing_mode"] = "off"  # abschaltbar: genau wie bisher
+    window.update_day_list(window.day_activities, window.pc_activities)
+    window.table.selectRow(0)
+    window.copy_selection()
+    assert "abgerechnet" not in QApplication.clipboard().text()
+    assert "abgerechnet" not in window.info_label.text() and window.table.item(0, 2).text() == "35 min"
+    window.config["billing_mode"] = "up"
+
+    # PC-Verlauf automatisch löschen: standardmäßig aus, eingeschaltet nur Alte weg
+    import datastore
+    store, name = datastore.locate(main_timeline.ACTIVITY_DIR, "row_files")
+    old = (now - timedelta(days=200)).strftime("%Y-%m-%d")
+    seg = {"start": f"{old} 09:00:00", "end": f"{old} 09:05:00", "app": "x.exe", "title": "alt"}
+    store.append_many(name, [(old, seg)] * 3)
+    window.retention.check(force=True)
+    QTest.qWait(200)
+    assert store.row_count(name, old) == 3, "trotz Standard „aus“ gelöscht"
+    window.config["pc_history_purge"] = True
+    window.retention.check(force=True)
+    QTest.qWait(300)
+    assert store.row_count(name, old) == 0, "alter PC-Verlauf nicht gelöscht"
+    assert window.journal.items(now.strftime("%Y-%m-%d")), "Tätigkeiten dürfen bleiben"
+    window.config["pc_history_purge"] = False
+    window.update_day_list(window.day_activities, window.pc_activities)
+    window.table.selectRow(0)
+    # Ticket-Format „- “ / „-- “ beim Kopieren (Standard aus)
+    window.config["ticket_format"] = "dash"
+    window.copy_selection()
+    assert "Fernwartung:\n- Outlook-Profil neu angelegt" in QApplication.clipboard().text()
+    window.config["ticket_format"] = ""
+
+    # Eintragen-Hilfen: Bausteine, letzte Texte zum Kunden, Ticket-Vorschlag aus dem PC-Verlauf
+    pc = [{"start": t(start), "end": t(end), "type": "PC: Outlook", "app": "outlook.exe",
+           "customer_name": "Systems - TCK0000049374 - Drucker"}]
+    window.timeline.pc_entries_for = lambda date, min_seconds=30, max_gap=60: pc
+    opts = window.entry_form_options(start, end)
+    assert opts["ticket_suggestions"][0]["label"].startswith("TCK0000049374 (Outlook"), opts
+    assert opts["recent_texts"]("Beispiel AG") == ["Outlook-Profil neu angelegt"]
+    from journal_dialogs import PromptWindow
+    helper = PromptWindow({"start": t(start), "end": t(end), "type": "TeamViewer",
+                           "customer_name": ""}, [], [], parent=window, **opts)
+    form = helper.form
+    form.customer_edit.setCurrentText("Beispiel AG")
+    form._fill_insert_menu()
+    labels = [a.text() for a in form.insert_menu.actions()]
+    assert "&1 Windows-Updates installiert" in labels, labels
+    assert any("Outlook-Profil neu angelegt" in x for x in labels), labels
+    form.text_edit.setPlainText("Drucker geprüft")
+    form.text_edit.moveCursor(form.text_edit.textCursor().MoveOperation.End)
+    form.insert_text("Windows-Updates installiert")
+    assert form.text_edit.toPlainText() == "Drucker geprüft\nWindows-Updates installiert"
+    form.outline_text()
+    assert form.text_edit.toPlainText() == "- Drucker geprüft\n-- Windows-Updates installiert"
+    # Ticket nur als Vorschlag: erst nach „Übernehmen“ im Eintrag
+    assert form.item()["ticket"] == "" and form.ticket_take.isVisibleTo(helper)
+    form.ticket_take.click()
+    assert form.item()["ticket"] == "TCK0000049374" and not form.ticket_take.isVisibleTo(helper)
+    helper._done = True
+    helper.close()
+    helper.deleteLater()
+    flush_deletes()
+    del window.timeline.pc_entries_for  # wieder die echte Methode
 
     # Zeilen der Timeline abschaltbar
     window.row_actions["doc"].setChecked(False)

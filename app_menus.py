@@ -130,9 +130,13 @@ class MenusMixin:
             "KI-Vorschläge: Tätigkeiten des Tages von Claude einordnen lassen", "spark")
         tb.addAction(self.ai_button_action)
         self.doc_button_action = self._action(
-            "Nachtragen", lambda: self.add_doc(), "F7",
+            "Nachtragen", lambda: self.add_doc(), None,
             "Tätigkeit nachtragen (zur markierten Zeile oder zur letzten halben Stunde)", "edit")
         tb.addAction(self.doc_button_action)
+        self.week_action = self._action(
+            "Wochenabschluss", self.show_week, None,
+            "Wochenabschluss: Buchungsquote, Lücken und Offenes der Woche", "gauge")
+        tb.addAction(self.week_action)
         tb.addSeparator()
         # Ausschnitt der Timeline
         tb.addAction(self._action("Verkleinern", self.zoom_out, "Ctrl+-", "Timeline verkleinern",
@@ -197,7 +201,7 @@ class MenusMixin:
             "Zusammengefasst: Verbindungen und Passwort-/OTP-Anzeigen je Eintrag eine Zeile\n"
             "Einzeln: jede Zeile aus den Logs\n"
             "Arbeitsblöcke: alles mit kurzer Pause dazwischen als ein Block, z. B. fürs Ticket\n"
-            "Dokumentation: deine eingetragenen Tätigkeiten und was noch offen ist (F7)\n"
+            "Dokumentation: deine eingetragenen Tätigkeiten und was noch offen ist\n"
             "Zuordnung ohne KI: Tätigkeiten, die Zeitzeuge über feste Regeln erkannt hat\n"
             "  (z. B. Outlook → E-Mail, TeamViewer → Fernwartung)\n"
             "KI-Vorschläge: Tätigkeiten, die Claude aus dem Tag erkannt hat\n"
@@ -233,10 +237,13 @@ class MenusMixin:
             (menu.addAction("&Arbeitszeiten …", self.edit_work_hours), "clock"),
             (menu.addAction("Aktivitäts&typen und Farben …", self.edit_activity_types), "palette"),
             (menu.addAction("&KI-Vorschläge …", self.edit_ai_settings), "spark"),
+            (menu.addAction("Abre&chnung …", self.edit_billing), "tag"),
+            (menu.addAction("Kunden&liste …", self.edit_customers), "users"),
         ]
         menu.addSeparator()
         self._icon_actions.append(
             (menu.addAction("&Nachfragen und Erinnerungen …", self.edit_prompt_settings), "bell"))
+        self._icon_actions.append((menu.addAction("Text&bausteine …", self.edit_snippets), "edit"))
         rows_menu = menu.addMenu("&Zeilen der Timeline")
         self.row_actions = {}
         for key, text in TIMELINE_ROWS:
@@ -257,6 +264,7 @@ class MenusMixin:
             "&Datenordner öffnen", lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(mt.DATA_DIR)))
         storage_menu.addAction("&Speicherort ändern …", self.change_data_dir)
         self._icon_actions.append((storage_menu.addAction("Sc&hutz …", self.show_protection), "lock"))
+        storage_menu.addAction("PC-&Verlauf automatisch löschen …", lambda: self.retention.edit())
         storage_menu.addSeparator()  # zwei PCs, z. B. Arbeits-PC und PAW
         storage_menu.addAction("Daten &exportieren (für einen anderen PC) …", self.export_data)
         storage_menu.addAction("Daten &übernehmen (von einem anderen PC) …", self.import_data)
@@ -287,7 +295,8 @@ class MenusMixin:
         [("sophos_enabled", "&Sophos Connect"), ("forti_enabled", "&FortiClient"),
          ("vpn_enabled", "&Weitere VPN-Logs (OpenVPN …)")],
         [("pbx_reader_enabled", "&3CX-Anrufe"), ("itm_reader_enabled", "&ITM-Personalzeiten"),
-         ("m42_reader_enabled", "&Matrix42-Buchungen (Firmennetz)")],
+         ("m42_reader_enabled", "&Matrix42-Buchungen (Firmennetz)"),
+         ("outlook_enabled", "&Outlook (Termine, Mails)"), ("teams_calls_enabled", "Tea&ms-Anrufe")],
     ]
 
     def _build_sources_menu(self, parent_menu):
@@ -302,7 +311,9 @@ class MenusMixin:
                 action.setCheckable(True)
                 action.setChecked(bool(self.config.get(key, key not in ("pbx_reader_enabled",
                                                                           "itm_reader_enabled",
-                                                                          "m42_reader_enabled"))))
+                                                                          "m42_reader_enabled",
+                                                                          "outlook_enabled",
+                                                                          "teams_calls_enabled"))))
                 action.toggled.connect(lambda on, k=key: self.toggle_source(k, on))
                 self.source_actions[key] = action
         menu.addSeparator()
@@ -314,6 +325,7 @@ class MenusMixin:
         setup.addAction("&3CX …", self.open_pbx_settings)
         setup.addAction("&ITM-Personalzeiten …", self.open_itm_settings)
         setup.addAction("&Matrix42 …", self.open_m42_settings)
+        setup.addAction("&Outlook und Teams …", self.open_outlook_settings)
         return menu
 
     def sync_source_actions(self):
@@ -344,6 +356,15 @@ class MenusMixin:
                 self.start_m42_reader()
             else:
                 self.stop_m42_reader()
+        elif key in ("outlook_enabled", "teams_calls_enabled"):
+            if on and self.is_paw():
+                self.statusBar().showMessage("Outlook und Teams: auf der PAW aus. Daten kommen über "
+                                             "„Daten übernehmen“.", 8000)
+                self.config[key] = False
+                mt.save_config(self.config)
+                self.sync_source_actions()
+                return
+            self.apply_outlook_reader()
         elif key in ("sophos_enabled", "forti_enabled"):
             self.timeline.vpn_reader.sources = vpn_sources(self.config)
             self.apply_vpn_monitor()
@@ -459,6 +480,14 @@ class MenusMixin:
             self.config["work_days"] = dialog.get_work_days()
             mt.save_config(self.config)
             self.timeline._first_draw = True  # auf die neue Arbeitszeit springen
+            self.timeline.draw_timeline(self.current_date)
+
+    def edit_billing(self):
+        from billing_dialogs import BillingDialog
+        dialog = BillingDialog(self.config, self.known_customers(), self)
+        if dialog.exec() == QDialog.Accepted:
+            dialog.apply()
+            mt.save_config(self.config)
             self.timeline.draw_timeline(self.current_date)
 
     def edit_activity_types(self):

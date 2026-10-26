@@ -7,11 +7,14 @@ from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtWidgets import QApplication, QInputDialog, QHeaderView, QTableWidgetItem
 
 from vpn_reader import vpn_sources
+from billing import hours_text
 from journal import describe, ticket_line
 from grouping import format_tv_id, work_blocks
 from timeline_only import (ActivityViewDialog, ai_copy_text, entry_color, exec_entry_menu,
                            format_duration, parse_time, type_label)
+import customers
 import icons
+import week_dialogs
 from theme import GERMAN
 import main_timeline as mt  # Pfade und save_config zur Laufzeit von dort (Tests ersetzen sie dort)
 
@@ -46,6 +49,9 @@ class DayListMixin:
         for col in range(4):
             header.setSectionResizeMode(col, QHeaderView.Fixed)
         self.table.setRowCount(len(entries))
+        # Ansicht "Dokumentation": abgerechnete Zeit neben der Dauer (Abrechnungstakt)
+        billing = self.billing() if self.config.get("list_view") == "doc" else None
+        index = self.customer_index()  # Kundenliste: Kunde zur Spur (customers.py)
         for row, a in enumerate(entries):
             start, end = parse_time(a["start"]), parse_time(a["end"])
             pix = QPixmap(10, 10)
@@ -57,9 +63,11 @@ class DayListMixin:
             values = [
                 QTableWidgetItem(f"{start:%H:%M}"),
                 QTableWidgetItem(f"{end:%H:%M}"),
-                QTableWidgetItem(format_duration((end - start).total_seconds())),
+                QTableWidgetItem(format_duration((end - start).total_seconds())
+                                 + (billing.note((end - start).total_seconds(), a.get("customer_name", ""))
+                                    if billing and a.get("doc") else "")),
                 type_item,
-                QTableWidgetItem(a.get("customer_name", "")),
+                QTableWidgetItem(customers.with_customer(a, index)),
                 QTableWidgetItem(a.get("details", "")),
             ]
             for col, item in enumerate(values):
@@ -91,10 +99,10 @@ class DayListMixin:
             text=names.get(tv_id, ""))
         if not ok:
             return
-        if name.strip():
-            names[tv_id] = name.strip()
+        if name.strip():  # Kundenliste und teamviewer_names gleich halten (customers.py)
+            customers.learn(self.config, "tv", tv_id, name.strip())
         else:
-            names.pop(tv_id, None)
+            customers.forget(self.config, "tv", tv_id)
         mt.save_config(self.config)
         self.timeline.draw_timeline(self.current_date)
         self.statusBar().showMessage(f"TeamViewer-ID {format_tv_id(tv_id)} heißt jetzt „{name.strip()}“"
@@ -122,7 +130,8 @@ class DayListMixin:
         for row in rows:
             entry = self.list_entries[row] if row < len(self.list_entries) else {}
             if entry.get("doc"):
-                lines.append(ticket_line(entry["doc_item"]))  # fertige Ticketzeile
+                lines.append(ticket_line(entry["doc_item"],  # fertige Ticketzeile
+                                         self.config.get("ticket_format", ""), self.billing()))
                 continue
             if entry.get("open"):
                 lines.append(f"OFFEN: {describe(entry['source_entry'])}")
@@ -152,12 +161,15 @@ class DayListMixin:
         done = [e for e in doc if e.get("doc")]
         open_count = len(doc) - len(done)
         if done or open_count:
-            parts.append(f"dokumentiert {format_duration(mt.merged_seconds(done))}" if done
-                         else "nichts dokumentiert")
+            text = f"dokumentiert {format_duration(mt.merged_seconds(done))}" if done else "nichts dokumentiert"
+            billing = self.billing()
+            if done and billing.any_active():
+                text += f", abgerechnet {hours_text(billing.total_minutes([e['doc_item'] for e in done]))}"
+            parts.append(text)
         self.open_docs_button.setVisible(bool(open_count))
         if open_count:
             self.open_docs_button.setText(f"{open_count} offen – jetzt eintragen")
-            self.open_docs_button.setToolTip("Erste noch nicht dokumentierte Tätigkeit eintragen (F7)")
+            self.open_docs_button.setToolTip("Erste noch nicht dokumentierte Tätigkeit eintragen")
             self.open_docs_button.setAccessibleName(f"{open_count} Tätigkeiten offen, jetzt eintragen")
         itm_day = self.personal_day_for(self.current_date.toString("yyyy-MM-dd"))
         if itm_day and itm_day.get("gewertet") is not None:
@@ -169,6 +181,7 @@ class DayListMixin:
         if m42:
             parts.append(m42)
         self.info_label.setText("   ·   ".join(parts))
+        week_dialogs.update_rate_button(self)
         self.update_source_indicators()
 
     def update_busy_bar(self):

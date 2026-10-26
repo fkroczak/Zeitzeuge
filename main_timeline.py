@@ -8,6 +8,7 @@ TimelineApp setzt sich aus Mixins zusammen:
   app_tray     Fensteraufzeichnung, Infobereich, Beenden
   app_transfer Export/Import für einen anderen PC (PAW)
   app_protect  Schutz der Daten: Schlüssel, Sicherung der Datenbank
+  app_outlook  Outlook (Termine, gesendete Mails) und Teams-Anrufe
 Aussehen in theme.py, Standardwerte der Config in config_defaults.py.
 """
 import os
@@ -36,6 +37,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QApplication, QHeaderView, QLa
 from ai_classifier import AI_TYPE, AiClassifier, AiStore
 from busy_bar import BusyBar
 from transfer import ImportStore
+from retention_dialogs import RetentionRunner
 import datastore
 import safe_io
 import storage
@@ -52,13 +54,14 @@ from app_readers import ReadersMixin
 from app_tray import TrayMixin
 from app_transfer import TransferMixin
 from app_protect import ProtectMixin
+from app_outlook import OutlookMixin
 
 # Weiter über main_timeline erreichbar (Tests, Hilfsskripte)
 __all__ = [
     "TimelineApp", "AppStyle", "install_translator", "GERMAN", "THEMES", "STYLESHEET",
     "resource_path", "APP_DIR", "DATA_DIR", "CONFIG_FILE", "CALLS_FILE", "VPN_FILE",
     "ACTIVITY_DIR", "PBX_PROFILE_DIR", "ITM_FILE", "ITM_PROFILE_DIR", "ITM_AUTH_FILE",
-    "M42_FILE", "M42_PROFILE_DIR", "IMPORT_FILE", "AI_DIR", "JOURNAL_DIR", "DB_FILE", "BACKUP_FILE",
+    "M42_FILE", "M42_PROFILE_DIR", "OUTLOOK_FILE", "TEAMS_CALLS_FILE", "IMPORT_FILE", "AI_DIR", "JOURNAL_DIR", "DB_FILE", "BACKUP_FILE",
     "open_store", "backup_store",
     "CONFIG_LOCKED", "clean_path", "load_config_with_defaults", "save_config", "merged_seconds",
     "report_exception", "install_error_hooks", "acquire_single_instance",
@@ -111,6 +114,9 @@ IMPORT_FILE = os.path.join(DATA_DIR, "uebernommen.json")
 M42_PROFILE_DIR = os.path.join(storage.local_dir(), "m42_profil")
 AI_DIR = os.path.join(DATA_DIR, "ki_vorschlaege")
 JOURNAL_DIR = os.path.join(DATA_DIR, "taetigkeiten")
+# Outlook (Termine, gesendete Mails) und Teams-Anrufe, beide nur in der Datenbank
+OUTLOOK_FILE = os.path.join(DATA_DIR, "outlook.json")
+TEAMS_CALLS_FILE = os.path.join(DATA_DIR, "teams_anrufe.json")
 # Fehler und beiseitegelegte Dateien stehen in fehler.log (siehe safe_io)
 safe_io.set_log_path(os.path.join(DATA_DIR, "fehler.log"))
 CONFIG_LOCKED = False  # Config war beim Start gesperrt: dann nichts darüber speichern
@@ -175,6 +181,13 @@ def backup_store(force=False):
     return store.backup(BACKUP_FILE)
 
 
+CUSTOMERS_DOC = "kunden"  # Kundenliste (customers.py) in der Datenbank
+RULES_DOC = "regeln"      # Regeln samt gelernten (learning.py); in der Datei nur ohne gelernte
+# Config-Schlüssel, die nur in der Datenbank stehen: Schlüssel -> (Ablage, Typ)
+DB_KEYS = {"customers": (CUSTOMERS_DOC, list), "billing_customers": ("abrechnung_kunden", dict)}
+UNREAD_KEYS = set()  # beim Laden gesperrt: beim Speichern nicht überschreiben
+
+
 def _names_store():
     return datastore.registered(DATA_DIR) or datastore.store_for_dir(DATA_DIR)
 
@@ -213,7 +226,10 @@ def load_config_with_defaults():
                         (AI_TYPE, "#A55EEA"), ("Dokumentiert", "#2E9E5B"),
                         ("Undokumentiert", "#E06D10"), ("Klassifizierung", "#8395A7"),
                         ("Matrix42-Buchung", "#6E7781"), ("Personalzeit", "#3D8BFD"),
-                        ("Arbeitszeit", "#3D8BFD"), ("Nicht gebucht", "#E5484D")]:
+                        ("Arbeitszeit", "#3D8BFD"), ("Nicht gebucht", "#E5484D"),
+                        # Outlook und Teams (app_outlook.py)
+                        ("Termin", "#0F6CBD"), ("Teams-Besprechung", "#5B5FC7"),
+                        ("Mail gesendet", "#1F7A8C"), ("Teams-Anruf", "#464EB8")]:
         cfg["type_colors"].setdefault(kind, color)
     # Design "Metro Klar": alte Standardfarben einmalig umstellen, selbst gewählte Farben bleiben.
     # Nur einmal, damit eine später bewusst gewählte alte Farbe nicht wieder ersetzt wird.
@@ -242,11 +258,63 @@ def load_config_with_defaults():
     except (datastore.Busy, datastore.Locked) as e:
         safe_io.report(f"Kundennamen gerade nicht lesbar: {e}")
         names = old_names if isinstance(old_names, dict) else {}
+    # Kundenliste (customers.py) und Ausnahmen des Abrechnungstakts (Kundennamen):
+    # ebenfalls Nutzdaten, in der Datenbank. Stehen sie noch in der Datei, einmal übernehmen.
+    private = {}
+    for key, (doc, kind) in DB_KEYS.items():
+        old = cfg.pop(key, None)
+        old = old if isinstance(old, kind) else kind()
+        try:
+            value = _names_store().get(doc, "", None)
+            if not isinstance(value, kind):
+                value = old
+                if value:
+                    _names_store().put(doc, "", value)
+        except (datastore.Busy, datastore.Locked) as e:
+            safe_io.report(f"{doc} gerade nicht lesbar: {e}")
+            UNREAD_KEYS.add(key)  # beim Speichern die Datenbank nicht überschreiben
+            value = old
+        private[key] = value
+    # Gelernte Regeln nennen Kunden und Verbindungen: in der Datenbank, nicht in der Datei
+    try:
+        cfg["rules"] = _merge_learned_rules(cfg.get("rules"), _names_store().get(RULES_DOC, "", None))
+    except (datastore.Busy, datastore.Locked) as e:
+        safe_io.report(f"Gelernte Regeln gerade nicht lesbar: {e}")
+        UNREAD_KEYS.add("rules")
     # gleich zurückschreiben (damit neue Keys persistieren), atomar, ohne Kundennamen
     if not CONFIG_LOCKED:
-        safe_io.write_json(CONFIG_FILE, cfg, indent=2)
+        safe_io.write_json(CONFIG_FILE, _file_config(cfg), indent=2)
     cfg["teamviewer_names"] = names
+    cfg.update(private)
     return cfg
+
+
+def _file_config(config):
+    """Was in zeitzeuge_config.json steht: ohne Kundennamen, Kundenliste und gelernte Regeln."""
+    result = {k: v for k, v in config.items() if k not in ("teamviewer_names", *DB_KEYS)}
+    if isinstance(config.get("rules"), list):
+        result["rules"] = [r for r in config["rules"] if not (isinstance(r, dict) and r.get("learned"))]
+    return result
+
+
+def _merge_learned_rules(file_rules, stored):
+    """Regeln aus der Datei und gespeicherte Liste (mit gelernten) zusammenführen.
+
+    Passt die Datei zur gespeicherten Liste (gleiche Regeln ohne die gelernten), gilt die
+    gespeicherte Reihenfolge. Hat jemand die Datei von Hand geändert, gilt die Datei und
+    die gelernten Regeln werden wie beim Lernen einsortiert."""
+    rule_list = [r for r in file_rules if isinstance(r, dict)] if isinstance(file_rules, list) else []
+    learned_in_file = [r for r in rule_list if r.get("learned")]  # ältere Datei mit gelernten
+    if not isinstance(stored, list):
+        return rule_list
+    stored = [r for r in stored if isinstance(r, dict)]
+    plain = [r for r in rule_list if not r.get("learned")]
+    if [r for r in stored if not r.get("learned")] == plain and not learned_in_file:
+        return stored
+    import learning
+    for rule in (r for r in stored if r.get("learned")):
+        rule_list, _ = learning.add_rule(rule_list, rule)
+    return rule_list
 
 
 def save_config(config: dict):
@@ -261,8 +329,20 @@ def save_config(config: dict):
                 store.put("teamviewer_names", "", names)
         except (datastore.Busy, datastore.Locked) as e:
             safe_io.report(f"Kundennamen konnten nicht gespeichert werden: {e}")
-    safe_io.write_json(CONFIG_FILE, {k: v for k, v in config.items() if k != "teamviewer_names"},
-                       indent=4)
+    values = {key: (doc, config.get(key)) for key, (doc, kind) in DB_KEYS.items()
+              if isinstance(config.get(key), kind)}
+    if isinstance(config.get("rules"), list):
+        values["rules"] = (RULES_DOC, config["rules"])
+    for key, (doc, value) in values.items():
+        if key in UNREAD_KEYS:  # beim Start nicht lesbar: gespeicherten Stand nicht überschreiben
+            continue
+        try:
+            store = _names_store()
+            if store.get(doc, "", None) != value:
+                store.put(doc, "", value)
+        except (datastore.Busy, datastore.Locked) as e:
+            safe_io.report(f"{doc} konnte nicht gespeichert werden: {e}")
+    safe_io.write_json(CONFIG_FILE, _file_config(config), indent=4)
 
 
 def merged_seconds(activities):
@@ -282,7 +362,7 @@ def merged_seconds(activities):
 
 
 class TimelineApp(MenusMixin, DayListMixin, DocsMixin, ReadersMixin, TrayMixin, TransferMixin,
-                  ProtectMixin, QMainWindow):
+                  ProtectMixin, OutlookMixin, QMainWindow):
     COLUMNS = ["Von", "Bis", "Dauer", "Typ", "Kunde / Verbindung", "Details"]
 
     def __init__(self):
@@ -423,6 +503,12 @@ class TimelineApp(MenusMixin, DayListMixin, DocsMixin, ReadersMixin, TrayMixin, 
             button.hide()
             self.statusBar().addPermanentWidget(button)
             self.source_buttons[kind] = button
+        # Buchungsquote (Matrix42 ÷ Personalzeit), ein Klick öffnet den Wochenabschluss
+        self.rate_button = QToolButton(self)
+        self.rate_button.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self.rate_button.clicked.connect(self.show_week)
+        self.rate_button.hide()
+        self.statusBar().addPermanentWidget(self.rate_button)
         # Wichtigste Aufgabe sichtbar machen: offene Tätigkeiten, ein Klick trägt die erste ein
         self.open_docs_button = QToolButton(self)
         self.open_docs_button.setObjectName("cta")
@@ -477,6 +563,9 @@ class TimelineApp(MenusMixin, DayListMixin, DocsMixin, ReadersMixin, TrayMixin, 
         if self.config.get("m42_reader_enabled", False):
             self.start_m42_reader()
 
+        # Outlook (Termine, gesendete Mails) und Teams-Anrufe, standardmäßig aus
+        self._init_outlook()
+
         self.apply_style()  # setzt auch Icons und Aufzeichnungs-Zustand
         self.timeline.setFocus()
         # Erst zeichnen, wenn das Fenster seine echte Größe hat (spart ein Zeichnen beim Start).
@@ -484,6 +573,8 @@ class TimelineApp(MenusMixin, DayListMixin, DocsMixin, ReadersMixin, TrayMixin, 
         QTimer.singleShot(0, lambda: self.timeline.draw_timeline(self.current_date))
         self._init_protection()
         self._init_robustness()
+        # PC-Verlauf nach N Tagen löschen (Standard aus), beim Start verzögert und täglich
+        self.retention = RetentionRunner(self, ACTIVITY_DIR, save_config)
 
 
 _last_error_report = [0.0]

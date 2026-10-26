@@ -5,6 +5,8 @@ Laden, Ergänzen und Speichern: load_config_with_defaults/save_config in main_ti
 import os
 
 import rules
+import snippets
+import tickets
 from log_parsers import VpnParser
 
 
@@ -162,7 +164,7 @@ def default_config():
 
         # Zeilen der Timeline, jede einzeln aus- und einblendbar (timeline_only.TIMELINE_ROWS)
         "timeline_rows": {"pc": True, "work": True, "doc": True, "m42": True, "rule": True, "ai": True,
-                          "call": True, "vpn": True, "tv": True, "other": True},
+                          "call": True, "outlook": True, "vpn": True, "tv": True, "other": True},
         # Nachfragen nach erkannten Tätigkeiten ("Was hast du gemacht?")
         "prompt_mode": "window",       # "window" (kleines Fenster), "tray" (nur Meldung), "off"
         # Erst ab dieser Dauer (Minuten) nachfragen, je Art der Tätigkeit
@@ -171,4 +173,56 @@ def default_config():
         "prompt_snooze_minutes": 15,   # "Später fragen"
         "prompt_on_quit": True,        # beim Beenden an offene Tätigkeiten erinnern
         "prompt_end_of_day": True,     # nach Feierabend an offene Tätigkeiten erinnern
+
+        # Eintragen: Textbausteine, zuletzt benutzte Texte, Ticket-Format, Ticketnummern
+        # (snippets.py, tickets.py, Dialog snippets_dialogs.py)
+        "snippets": list(snippets.DEFAULT_SNIPPETS),  # Textbausteine im Eintragen-Dialog
+        "snippets_recent": True,       # zuletzt benutzte Texte zum gewählten Kunden anbieten
+        "ticket_format": "",           # Kopieren: "" = wie eingegeben, "dash" = "- " / "-- "
+        "ticket_patterns": list(tickets.DEFAULT_PATTERNS),  # Ticketnummern vorschlagen (Regex)
+
+        # --- Abrechnung und Datenschutz (billing.py, retention.py) ---
+        # Abrechnungstakt: angefangene Viertelstunde zählt. Modus "up" (aufrunden),
+        # "nearest" (auf den nächsten Takt), "off" (echte Dauer wie früher)
+        "billing_step_minutes": 15,
+        "billing_mode": "up",
+        "billing_customers": {},       # Ausnahmen: Kunde -> {"step": 30, "mode": "nearest"}
+        # PC-Verlauf (aktive Fenster) nach so vielen Tagen automatisch löschen. Standard: aus.
+        # Tätigkeiten, Buchungen, KI-Vorschläge, Anrufe usw. bleiben immer erhalten.
+        "pc_history_purge": False,
+        "pc_history_days": 90,
+
+        # --- Kunden: Kundenliste und Lernen aus Korrekturen (customers.py, learning.py)
+        # Kunde -> Spuren (TeamViewer-ID, RDM, VPN, Telefon, E-Mail-Domain). Nutzdaten:
+        # steht verschlüsselt in der Datenbank (Ablage "kunden"), nicht in dieser Datei.
+        "customers": [],
+        # Beim Eintragen „Kunde für … merken“ auch für RDM, VPN, Telefon, E-Mail anbieten
+        # (TeamViewer wie bisher immer)
+        "customers_learn": True,
+        # Beim Eintragen „Als Regel merken“ anbieten, wenn du die Kategorie änderst
+        "rules_learn_offer": True,
+
+        # Buchungsquote und Prüfung bei Feierabend (booking_rate.py, day_checks.py, week_dialogs.py)
+        "booking_target_percent": 80,  # Ziel: so viel der Personalzeit in Matrix42 buchen
+        "booking_rate_status": True,   # Quote heute / 7 Tage in der Statuszeile zeigen
+        "day_checks_enabled": True,    # bei Feierabend Pausen, Stempelung und Buchungen prüfen
+        "day_checks_pc_minutes": 10,   # ab so vielen Minuten "PC aktiv, aber ausgestempelt"
+
+        # Outlook und Teams (outlook_data.py, teams_calls.py, outlook_reader.py, app_outlook.py).
+        # Standardmäßig aus: Zeitzeuge steuert Outlook nicht ungefragt an.
+        "outlook_enabled": False,           # Termine und gesendete Mails aus dem klassischen Outlook
+        "outlook_calendar_enabled": True,   # Kalender (Termine, Teams-Besprechungen)
+        "outlook_mails_enabled": True,      # Gesendete Elemente
+        "outlook_mails_external_only": True,  # nur Mails mit Empfängern außerhalb der eigenen Firma
+        "outlook_own_domains": [],          # eigene Firmendomains; leer: aus Outlook erkannt
+        "outlook_mail_minutes": 3,          # so breit steht eine gesendete Mail in der Timeline
+        "outlook_days_back": 14,            # so viele Tage zurück regelmäßig lesen
+        "outlook_interval_minutes": 10,     # so oft Outlook lesen
+        "outlook_calendar_folder": "",      # leer: Standardkalender, sonst z. B. \\name@firma.de\Kalender
+        "outlook_sent_folder": "",          # leer: Gesendete Elemente
+        "outlook_start_if_closed": False,   # Outlook starten, wenn es nicht läuft (sonst warten)
+        "outlook_check_body": True,         # Teams-Link auch im Text der Einladung suchen
+        "teams_calls_enabled": False,       # Teams-Anrufe (Mikrofon-Nutzung von Teams, Teams-Logs)
+        "teams_logs_enabled": True,         # zusätzlich die Logs des neuen Teams auswerten
+        "teams_min_seconds": 30,            # kürzere Mikrofon-Nutzung zählt nicht als Anruf
     }

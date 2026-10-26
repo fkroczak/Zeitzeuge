@@ -39,9 +39,10 @@ class ReadersMixin:
         return day
 
     def all_readers(self):
-        """Laufende Hintergrund-Leser (3CX, ITM, Matrix42)."""
+        """Laufende Hintergrund-Leser (3CX, ITM, Matrix42, Outlook/Teams)."""
         return [r for r in (getattr(self, "pbx_reader", None), getattr(self, "itm_reader", None),
-                            getattr(self, "m42_reader", None)) if r]
+                            getattr(self, "m42_reader", None), getattr(self, "outlook_reader", None))
+                if r]
 
     # ---------------------- 3CX direkt auslesen -------------------------------
 

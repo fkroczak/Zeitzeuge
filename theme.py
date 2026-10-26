@@ -66,6 +66,9 @@ THEMES = {
         "alt": "#181D23", "handle": "#3E4854", "line": "#20262E",
         "band": "#12161B", "bandtext": "#E6EAF0", "bandhover": "#222A33", "bandpressed": "#2B3440",
         "sel": "#1F3B5C", "seltext": "#FFFFFF", "now": "#FF6369",
+        # Buchungsquote (booking_rate.py): Fläche und Schrift je Stufe
+        "rate_low": "#4A1C1F", "rate_low_text": "#FFB4B6", "rate_mid": "#463708", "rate_mid_text": "#FFE08A",
+        "rate_ok": "#173D27", "rate_ok_text": "#9BE8B8", "rate_over": "#0E6B34", "rate_over_text": "#FFFFFF",
     },
     "light": {
         "bg": "#F4F6F8", "surface": "#FFFFFF", "bar": "#FFFFFF",
@@ -74,6 +77,9 @@ THEMES = {
         "alt": "#FFFFFF", "handle": "#C2CAD3", "line": "#EEF1F4",
         "band": "#F4F6F8", "bandtext": "#1B1F24", "bandhover": "#E9EDF2", "bandpressed": "#DDE3EA",
         "sel": "#DCEBFA", "seltext": "#0A3B6B", "now": "#E5484D",
+        # Buchungsquote (booking_rate.py): Fläche und Schrift je Stufe
+        "rate_low": "#FCE4E4", "rate_low_text": "#9F1D20", "rate_mid": "#FFF1BF", "rate_mid_text": "#6B4E00",
+        "rate_ok": "#DDF3E4", "rate_ok_text": "#1E6B3A", "rate_over": "#0F5E2E", "rate_over_text": "#FFFFFF",
     },
 }
 
@@ -127,11 +133,16 @@ QSpinBox:focus, QListWidget:focus, QTableWidget:focus, QGraphicsView:focus {
     border: 1px solid $accent; }
 QToolButton#qt_toolbar_ext_button { border: 1px solid $border; background-color: $hover; }
 QLabel#hint { color: $muted; }
+QTableWidget QLabel { padding: 2px 8px; }
 QWidget#busy_bar { background-color: $sel; border-bottom: 1px solid $accent; }
 QLabel#busy_text { color: $seltext; background: transparent; font-weight: 600; padding: 2px 0; }
 QStatusBar QToolButton#cta { background-color: $accent; color: $onaccent; font-weight: 600;
                              border-radius: 0; padding: 2px 12px; }
 QStatusBar QToolButton#cta:hover { background-color: $accent; border-color: $text; }
+QStatusBar QToolButton#rate_low, QLabel#rate_low { background-color: $rate_low; color: $rate_low_text; font-weight: 600; }
+QStatusBar QToolButton#rate_mid, QLabel#rate_mid { background-color: $rate_mid; color: $rate_mid_text; font-weight: 600; }
+QStatusBar QToolButton#rate_ok, QLabel#rate_ok { background-color: $rate_ok; color: $rate_ok_text; font-weight: 600; }
+QStatusBar QToolButton#rate_over, QLabel#rate_over { background-color: $rate_over; color: $rate_over_text; font-weight: 600; }
 QPushButton:disabled, QToolButton:disabled, QLineEdit:disabled, QDateEdit:disabled,
 QTimeEdit:disabled, QSpinBox:disabled, QCheckBox:disabled { color: $muted; }
 QPushButton:disabled { background-color: $surface; }

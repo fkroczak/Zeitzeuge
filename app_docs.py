@@ -11,20 +11,28 @@ from PySide6.QtCore import QDate, QTimer
 from PySide6.QtWidgets import QApplication, QDialog, QMessageBox, QSystemTrayIcon
 
 from ai_classifier import to_entries
+from billing import Billing
 from journal import (describe, entry_key as journal_key, open_entry, suggest_category,
                      suggest_customer, ticket_line)
 from journal_dialogs import DocPromptDialog, prompt_thresholds, EntryDialog, PromptWindow, default_span
+import snippets
+import tickets
+from snippets_dialogs import SnippetsDialog
 from settings_dialogs import AiSettingsDialog
+from customers_dialogs import CustomersMixin
+import learning
 import rules
 import m42_data as m42
+import week_dialogs
+import day_checks
 from grouping import group_entries
-from timeline_only import (ROW_NAMES, ActivityViewDialog, ai_copy_text, format_duration, parse_time,
+from timeline_only import (OUTLOOK_TYPES, ROW_NAMES, ActivityViewDialog, ai_copy_text, format_duration, parse_time,
                            row_kind, type_label)
 from theme import GERMAN
 import main_timeline as mt  # Pfade und save_config zur Laufzeit von dort (Tests ersetzen sie dort)
 
 
-class DocsMixin:
+class DocsMixin(CustomersMixin):
     # ---------------------- KI-Vorschläge -------------------------------------
 
     def ai_input(self, date):
@@ -142,10 +150,15 @@ class DocsMixin:
     def categories(self):
         return self.ai.categories()
 
+    def billing(self):
+        """Regeln des Abrechnungstakts aus der Config (billing.py)."""
+        return Billing.from_config(self.config)
+
     def known_customers(self):
-        """Kunden zur Auswahl: zuletzt dokumentierte, benannte TeamViewer-IDs."""
+        """Kunden zur Auswahl: zuletzt dokumentierte, Kundenliste, benannte TeamViewer-IDs."""
         names = self.journal.customers()
         names += sorted(set(self.config.get("teamviewer_names", {}).values()) - set(names))
+        names += sorted({c["name"] for c in self.customer_index_list()} - set(names), key=str.lower)
         return names
 
     def rule_band(self, date_str):
@@ -219,7 +232,7 @@ class DocsMixin:
         date = QDate.fromString(date_str, "yyyy-MM-dd")
         entries = [e for e in group_entries(self.timeline.activities_for(date),
                                             self.config.get("merge_gap_minutes", 5))
-                   if e.get("type") != "Zugangsdaten"]
+                   if e.get("type") != "Zugangsdaten" and row_kind(e) != "outlook"]
         return [dict(e, m42_unbooked=True)
                 for e in m42.unbooked(entries, bookings, self.config.get("m42_gap_minutes", 5))]
 
@@ -252,10 +265,14 @@ class DocsMixin:
                 is_call = row_kind(e) == "call"
                 if is_call and "calls" in sources:
                     entries.append(e)
-                elif not is_call and "connections" in sources and e.get("type") != "Zugangsdaten":
+                elif (not is_call and "connections" in sources and e.get("type") != "Zugangsdaten"
+                      and row_kind(e) != "outlook"):  # Termine/Mails: keine Nachfrage
                     entries.append(e)
         if "rules" in sources:
-            entries += self.rule_band(date_str)
+            # Blöcke nur aus Outlook-Terminen/-Mails nicht nachfragen (geplant ist nicht getan)
+            entries += [b for b in self.rule_band(date_str)
+                        if not b.get("sources") or any(s.get("type") not in OUTLOOK_TYPES
+                                                       for s in b["sources"])]
         return self.journal.open_items(entries, date_str, min_minutes=self.prompt_threshold)
 
     def prompt_threshold(self, entry):
@@ -293,9 +310,12 @@ class DocsMixin:
             ActivityViewDialog(entry, self).exec()
         elif key == "name_tv":
             self.name_teamviewer_id(entry)
+        elif key == "assign_customer":
+            self.assign_customer(entry)
         elif key == "copy":
             if entry.get("doc"):
-                text = ticket_line(entry["doc_item"])
+                text = ticket_line(entry["doc_item"], self.config.get("ticket_format", ""),
+                                   self.billing())
             elif entry.get("ai") or entry.get("rule"):
                 text = ai_copy_text(entry)
             else:
@@ -321,25 +341,30 @@ class DocsMixin:
         if entry:
             start, end = parse_time(entry["start"]), parse_time(entry["end"])
             info = f"Erkannt: {describe(entry)}"
-            customer = suggest_customer(entry, self.config.get("teamviewer_names", {}))
-            category = suggest_category(entry, categories)
+            hints = learning.doc_hints(entry, self.config, categories, self.customer_index())
+            customer, category = hints["customer"], hints["category"]
             text = entry.get("description", "") if entry.get("ai") or entry.get("rule") else ""
         else:
             start, end = default_span(self.current_date.toPython(), minute)
             info, customer, category, text = "", "", "", ""
+            hints = {}
         dialog = EntryDialog(start, end, self.known_customers(), categories, customer, category,
-                             text, tv_id=(entry or {}).get("tv_id"), info=info, parent=self)
+                             text, tv_id=(entry or {}).get("tv_id"), info=info, parent=self,
+                             trace=hints.get("trace"), rule_subject=hints.get("rule_subject"),
+                             **self.entry_form_options(start, end))
+        dialog.form.set_billing(self.billing())
         if dialog.exec() != QDialog.Accepted:
             return
         item = dialog.item()
         if entry:
             item["source"] = "KI" if entry.get("ai") else entry.get("type", "")
-        if self._save_doc(item, entry, dialog.remember_tv()) and entry and entry.get("ai"):
+        if self._save_doc(item, entry, dialog.remember_tv(), rule=dialog.wants_rule()) \
+                and entry and entry.get("ai"):
             if not entry.get("von_pc"):  # übernommene Vorschläge gehören dem anderen PC
                 self.ai_store.set_status(entry["start"][:10], entry["ai_id"], "übernommen")
             self.timeline.draw_timeline(self.current_date)
 
-    def _save_doc(self, item, entry=None, remember_tv=False, old=None):
+    def _save_doc(self, item, entry=None, remember_tv=False, old=None, rule=False):
         try:
             if old:
                 self.journal.update(old, item)
@@ -348,12 +373,13 @@ class DocsMixin:
         except (OSError, ValueError) as e:
             QMessageBox.warning(self, "Tätigkeit", str(e))
             return False
-        tv_id = (entry or {}).get("tv_id")
-        if tv_id and remember_tv and item.get("customer"):
-            self.config.setdefault("teamviewer_names", {})[tv_id] = item["customer"]
+        # Aus Korrekturen lernen: Kunde zur Spur (Kundenliste), Kategorie als Regel
+        learned = learning.apply_corrections(self.config, entry, item, remember_tv, rule)
+        if learned:
             mt.save_config(self.config)
         self.timeline.draw_timeline(self.current_date)
-        self.statusBar().showMessage("Tätigkeit gespeichert", 3000)
+        self.statusBar().showMessage(" · ".join(["Tätigkeit gespeichert"] + learned),
+                                     6000 if learned else 3000)
         return True
 
     def _foreign_doc(self, item):
@@ -371,7 +397,9 @@ class DocsMixin:
         dialog = EntryDialog(start, end, self.known_customers(), self.categories(),
                              item.get("customer", ""), item.get("category", ""),
                              item.get("text", ""), title="Tätigkeit bearbeiten",
-                             can_delete=True, parent=self)
+                             can_delete=True, parent=self,
+                             **self.entry_form_options(start, end, item.get("ticket", "")))
+        dialog.form.set_billing(self.billing())
         if dialog.exec() != QDialog.Accepted:
             return
         if dialog.deleted:
@@ -395,7 +423,7 @@ class DocsMixin:
         self.statusBar().showMessage("Tätigkeit gelöscht", 4000)
 
     def doc_for_row(self):
-        """F7 bei markierter Zeile: Tätigkeit dazu eintragen oder bearbeiten."""
+        """Nachtragen bei markierter Zeile: Tätigkeit dazu eintragen oder bearbeiten."""
         row = self.table.currentRow()
         if not 0 <= row < len(self.list_entries):
             return None
@@ -429,12 +457,49 @@ class DocsMixin:
             mt.save_config(self.config)
             self.timeline.draw_timeline(self.current_date)
 
+    # ---- Eintragen: Textbausteine, zuletzt benutzte Texte, Ticket (snippets.py, tickets.py)
+
+    def entry_form_options(self, start, end, ticket=""):
+        """Zusätze für den Eintragen-Dialog: Bausteine, letzte Texte je Kunde, Ticket-Vorschläge."""
+        recent = None
+        if self.config.get("snippets_recent", True):
+            items = None
+
+            def recent(customer):
+                nonlocal items
+                if items is None:  # erst beim Öffnen des Menüs lesen
+                    items = self.journal.recent_items()
+                return snippets.recent_texts(items, customer)
+        return {"snippets": snippets.from_config(self.config), "recent_texts": recent,
+                "ticket": ticket, "ticket_suggestions": self.ticket_suggestions(start, end)}
+
+    def ticket_suggestions(self, start, end):
+        """Ticketnummern aus Fenstertiteln und Matrix42-Buchungen rund um die Tätigkeit."""
+        patterns = self.config.get("ticket_patterns", tickets.DEFAULT_PATTERNS)
+        if not patterns:
+            return []
+        date = QDate(start.year, start.month, start.day)
+        segments = [{"start": e["start"], "end": e["end"], "title": e.get("customer_name", ""),
+                     "app": e.get("type", "")[4:]}  # "PC: Outlook" -> "Outlook"
+                    for e in self.timeline.pc_entries_for(date, min_seconds=0)]
+        bookings = self._m42_bookings(start.strftime("%Y-%m-%d")) or []
+        return tickets.suggest(start, end, segments, bookings, patterns)
+
+    def edit_snippets(self):
+        dialog = SnippetsDialog(self.config, self)
+        if dialog.exec() == QDialog.Accepted:
+            dialog.apply()
+            mt.save_config(self.config)
+
     # ---- Nachfragen ("Was hast du gemacht?")
 
     def check_prompts(self):
         """Jede Minute: neu erkannte, noch nicht dokumentierte Tätigkeiten nachfragen."""
         mode = self.config.get("prompt_mode", "window")
-        if mode == "off" or self._quitting:
+        if self._quitting:
+            return
+        if mode == "off":  # keine Nachfragen, die Prüfung bei Feierabend läuft trotzdem
+            self.end_of_day_reminder([], datetime.now())
             return
         now = datetime.now()
         today = now.strftime("%Y-%m-%d")
@@ -470,9 +535,16 @@ class DocsMixin:
                                       f"{describe(entry)}\nKlick hier, um es einzutragen.",
                                       QSystemTrayIcon.Information, 10000)
             return
-        window = PromptWindow(entry, self.known_customers(), self.categories(),
+        categories = self.categories()
+        hints = learning.doc_hints(entry, self.config, categories, self.customer_index())
+        window = PromptWindow(entry, self.known_customers(), categories,
                               self.config.get("teamviewer_names", {}),
-                              pending=len(self._prompt_queue) - 1, parent=self)
+                              pending=len(self._prompt_queue) - 1, parent=self,
+                              customer=hints["customer"], category=hints["category"],
+                              trace=hints["trace"], rule_subject=hints["rule_subject"],
+                              **self.entry_form_options(parse_time(entry["start"]),
+                                                        parse_time(entry["end"])))
+        window.form.set_billing(self.billing())
         window.answered.connect(self.on_prompt_answered)
         self._prompt_window = window
         # unten rechts über dem Infobereich, ohne dir den Fokus wegzunehmen
@@ -489,7 +561,8 @@ class DocsMixin:
         self._prompt_queue = [q for q in self._prompt_queue if journal_key(q) != key]
         if action == "save":
             item["source"] = entry.get("type", "")
-            if not self._save_doc(item, entry, window.remember_tv() if window else False):
+            if not self._save_doc(item, entry, window.remember_tv() if window else False,
+                                  rule=window.wants_rule() if window else False):
                 self._prompt_queue.insert(0, entry)
         elif action == "ignore":
             self.journal.ignore(entry)
@@ -504,21 +577,50 @@ class DocsMixin:
         QTimer.singleShot(400, self.show_next_prompt)
 
     def end_of_day_reminder(self, open_items, now):
-        """Nach Feierabend einmal am Tag an offene Tätigkeiten erinnern."""
-        if not (self.config.get("prompt_end_of_day", True) and open_items and self.tray):
+        """Nach Feierabend einmal am Tag erinnern: an offene Tätigkeiten und an das, was
+        die Prüfung bei Feierabend findet (Pause, Stempelung, Buchungen, Quote)."""
+        if not self.config.get("prompt_end_of_day", True):
+            open_items = []  # Erinnerung an Offenes aus; die Prüfung hat ihren eigenen Schalter
+        checks_on = self.config.get("day_checks_enabled", True)
+        if not (self.tray and (open_items or checks_on)):
             return
         today = now.strftime("%Y-%m-%d")
         if self._reminded_day == today:
             return
-        _start, end = self.timeline._work_minutes(QDate.currentDate())
-        if end <= _start or now.hour * 60 + now.minute < end:
+        inputs = week_dialogs.day_inputs(self, today, now)
+        if inputs["from_itm"] and inputs["spans"] and not inputs["running"]:
+            # ausgestempelt: Feierabend nicht schon in der Mittagspause
+            if not day_checks.after_hours(now, inputs["spans"], inputs["running"], inputs["planned_end"]):
+                return
+        else:
+            _start, end = self.timeline._work_minutes(QDate.currentDate())
+            if end <= _start or now.hour * 60 + now.minute < end:
+                return
+        findings = []
+        if checks_on:
+            rate = week_dialogs.rate_for(self, today, now, inputs)
+            findings = week_dialogs.checks_for(self, today, now, inputs, rate)
+        if not (open_items or findings):
             return
         self._reminded_day = today
-        self._tray_doc_hint = True
-        self.tray.showMessage(
-            "Feierabend: noch nicht alles dokumentiert",
-            f"Heute sind noch {len(open_items)} Tätigkeiten offen. Klick hier zum Nachtragen.",
-            QSystemTrayIcon.Warning, 15000)
+        lines = [f"- {f.text}" for f in findings[:4]]
+        if len(findings) > 4:
+            lines.append(f"- und {len(findings) - 4} weitere (Knopf „Wochenabschluss“)")
+        if open_items:
+            self._tray_doc_hint = True
+            text = f"Heute sind noch {len(open_items)} Tätigkeiten offen. Klick hier zum Nachtragen."
+            if lines:
+                text += "\nAußerdem:\n" + "\n".join(lines)
+            self.tray.showMessage("Feierabend: noch nicht alles dokumentiert", text,
+                                  QSystemTrayIcon.Warning, 15000)
+        else:
+            self._tray_week_hint = True
+            self.tray.showMessage("Feierabend: bitte prüfen", "\n".join(lines) +
+                                  "\nDetails im Wochenabschluss (Knopf in der Werkzeugleiste).", QSystemTrayIcon.Warning, 15000)
+
+    def show_week(self):
+        """Wochenabschluss: Buchungsquote, Lücken, Offenes und Prüfungen der Woche."""
+        week_dialogs.WeekDialog(self, self.current_date.toString("yyyy-MM-dd")).exec()
 
     def request_quit(self):
         """Beenden über Menü/Infobereich: vorher an offene Tätigkeiten von heute erinnern."""

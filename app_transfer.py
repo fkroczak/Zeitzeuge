@@ -27,7 +27,8 @@ import main_timeline as mt  # Pfade und save_config zur Laufzeit von dort (Tests
 PAW_OFF = [("teamviewer_enabled", "TeamViewer-Logs"), ("sophos_enabled", "Sophos Connect"),
            ("forti_enabled", "FortiClient"), ("vpn_enabled", "weitere VPN-Logs"),
            ("pbx_reader_enabled", "3CX"), ("itm_reader_enabled", "ITM"),
-           ("m42_reader_enabled", "Matrix42")]
+           ("m42_reader_enabled", "Matrix42"), ("outlook_enabled", "Outlook"),
+           ("teams_calls_enabled", "Teams-Anrufe")]
 
 
 class TransferMixin:
@@ -67,7 +68,8 @@ class TransferMixin:
                 }
         finally:
             self.timeline.imported = imported
-        return transfer.make_export(days, self.config.get("teamviewer_names", {}))
+        return transfer.make_export(days, self.config.get("teamviewer_names", {}),
+                                    customers=self.customer_index_list())
 
     def _ai_export(self, date_str):
         data = self.ai_store.load(date_str)

@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (QDialog, QDialogButtonBox, QFormLayout, QGraphics
 
 from activity_tracker import app_label, merge_segments, read_segments
 from call_import import load_call_suggestions
+import customers
 from grouping import format_tv_id, group_entries
 from log_parsers import ConnectionIndex, RdmParser, TeamViewerParser, VpnParser
 from theme import THEMES, readable_on
@@ -67,9 +68,12 @@ def entry_color(activity, config):
 
 
 # Eigene Zeile je Quelle (Kennung, Beschriftung links); nur RDM und der Rest teilen sich mehrere Spuren
-FIXED_ROWS = [("call", "Tel"), ("vpn", "VPN"), ("tv", "TV")]
+# Outlook (Termine, Mails) nur, wenn die Datenquelle an ist (sonst bliebe die Zeile leer)
+FIXED_ROWS = [("call", "Tel"), ("outlook", "Outlook"), ("vpn", "VPN"), ("tv", "TV")]
+OUTLOOK_TYPES = ("Termin", "Teams-Besprechung", "Mail gesendet")
 # Legende links: Name der Zeile und Schlüssel in config["type_colors"] für das Farbfeld
-LEGEND_FIXED = {"call": ("Telefon", "Telefonat"), "vpn": ("VPN", "VPN-Verbindung"),
+LEGEND_FIXED = {"call": ("Telefon", "Telefonat"), "outlook": ("Outlook", "Termin"),
+                "vpn": ("VPN", "VPN-Verbindung"),
                 "tv": ("TeamViewer", "TeamViewer")}
 LEGEND_BANDS = {"work": ("Personalzeit", "Personalzeit"), "doc": ("Dokumentation", "Dokumentiert"), "m42": ("Matrix42", "Matrix42-Buchung"),
                 "rule": ("Zuordnung o. KI", "Klassifizierung"), "ai": ("KI-Vorschläge", "KI-Vorschlag")}
@@ -83,21 +87,24 @@ TIMELINE_ROWS = [
     ("m42", "&Matrix42 (gebucht / nicht gebucht)"),
     ("rule", "&Zuordnung ohne KI (feste Regeln)"),
     ("ai", "&KI-Vorschläge"),
-    ("call", "&Telefon (3CX)"),
+    ("call", "&Telefon (3CX, Teams)"),
+    ("outlook", "&Outlook (Termine, Mails)"),
     ("vpn", "&VPN"),
     ("tv", "T&eamViewer"),
     ("other", "&Remote / Weitere (RDM, SSH, RDP …)"),
 ]
 ROW_NAMES = {"pc": "PC-Aktivität", "work": "Personalzeit", "doc": "Dokumentation", "m42": "Matrix42", "rule": "Zuordnung ohne KI",
-             "ai": "KI-Vorschläge", "call": "Telefon", "vpn": "VPN", "tv": "TeamViewer",
+             "ai": "KI-Vorschläge", "call": "Telefon", "outlook": "Outlook", "vpn": "VPN", "tv": "TeamViewer",
              "other": "Remote / Weitere"}
 
 
 def row_kind(activity):
-    """Feste Zeile eines Eintrags ("call", "vpn", "tv") oder None für die freien Spuren."""
+    """Feste Zeile eines Eintrags ("call", "outlook", "vpn", "tv") oder None für die freien Spuren."""
     kind = activity.get("type", "")
     if activity.get("direction") or kind == "Telefonat":
         return "call"
+    if kind in OUTLOOK_TYPES:
+        return "outlook"
     if kind.startswith("VPN"):
         return "vpn"
     if kind.startswith("TeamViewer"):
@@ -149,7 +156,7 @@ def ai_copy_text(entry):
             f"{who}{entry.get('description', '')}")
 
 
-def entry_menu_items(entry):
+def entry_menu_items(entry, customer_known=False):
     """Befehle für einen Eintrag: [(Text, Befehl)], None = Trennlinie.
 
     Timeline und Tagesliste zeigen dasselbe Menü mit denselben Texten, und nur Befehle,
@@ -169,8 +176,10 @@ def entry_menu_items(entry):
     if entry.get("doc") and entry.get("doc_item", {}).get("von_pc"):  # von anderem PC übernommen
         return [("Als Ticketzeile &kopieren", "copy")]
     if entry.get("doc"):
+        # Dritter Wert False = deaktiviert (reine Anzeige, darum ohne Alt-Buchstaben)
         return [("Tätigkeit &bearbeiten …", "edit"), ("Tätigkeit &löschen", "delete"), None,
-                ("Als Ticketzeile &kopieren", "copy")]
+                ("Als Ticketzeile &kopieren", "copy"),
+                ("In Matrix42 buchen (kommt bald)", "m42_book", False)]
     items = [("&Details öffnen", "details"), None]
     if entry.get("ai") or entry.get("rule"):
         items.append(("Als &Tätigkeit eintragen …", "add"))
@@ -178,6 +187,8 @@ def entry_menu_items(entry):
         items.append(("&Tätigkeit dazu eintragen …", "add"))
     if entry.get("tv_id"):
         items.append(("TeamViewer-ID &benennen …", "name_tv"))
+    elif not customer_known and customers.primary_trace(entry):  # RDM, VPN, Telefon, E-Mail
+        items.append(("Kunde &zuordnen …", "assign_customer"))
     if entry.get("ai"):
         if not entry.get("von_pc"):  # übernommene Vorschläge verwirft man auf dem anderen PC
             items += [None, ("Vorschlag &verwerfen", "reject")]
@@ -189,11 +200,23 @@ def exec_entry_menu(parent, entry, global_pos):
     """Menü zu entry zeigen, gewählten Befehl zurückgeben (oder None)."""
     menu = QMenu(parent)
     keys = {}
-    for item in entry_menu_items(entry):
+    known = False
+    config = getattr(parent, "config", None)
+    if isinstance(config, dict) and not entry.get("tv_id"):
+        imported = getattr(parent, "imported", None)
+        known = bool(customers.index(config, imported.customers() if imported else None)
+                     .customer_for(entry))
+    for item in entry_menu_items(entry, known):
         if item is None:
             menu.addSeparator()
         else:
-            keys[menu.addAction(item[0])] = item[1]
+            action = menu.addAction(item[0])
+            if len(item) > 2 and not item[2]:
+                action.setEnabled(False)
+                if item[1] == "m42_book":
+                    action.setToolTip("Kommt bald: Tätigkeiten direkt in Matrix42 buchen")
+            keys[action] = item[1]
+    menu.setToolTipsVisible(True)
     return keys.get(menu.exec(global_pos))
 
 
@@ -300,6 +323,7 @@ class TimelineView(QGraphicsView):
         self.doc_entries = None   # date_str -> eigene Tätigkeiten und noch offene
         self.m42_entries = None   # date_str -> Buchungen aus Matrix42 und Lücken ohne Buchung
         self.imported = None      # übernommene Daten anderer PCs (transfer.ImportStore)
+        self.outlook_entries = None  # date_str -> Termine, Mails, Teams-Anrufe (app_outlook.py)
 
         self._remote_cache = {}  # date_str -> list[conn]
         self._tv_parser = TeamViewerParser(self.config)
@@ -480,6 +504,11 @@ class TimelineView(QGraphicsView):
                 ignore_missed=self.config.get("calls_ignore_missed", True),
                 min_seconds=self.config.get("calls_min_duration", 0),
             )
+        if self.outlook_entries:
+            try:
+                result += self.outlook_entries(date_str)
+            except Exception as e:  # Outlook darf die Timeline nicht leeren
+                print(f"Fehler beim Lesen von Outlook/Teams: {e}")
         if self.imported:  # von einem anderen PC übernommen (z. B. auf der PAW)
             own = {(a.get("type"), a.get("start"), a.get("end")) for a in result}
             for a in self.imported.connections(date_str):
@@ -644,7 +673,11 @@ class TimelineView(QGraphicsView):
         # wird auf Spuren verteilt: überlappende Einträge kommen in die nächste Spur.
         # Ausgeblendete Zeilen (Menü "Zeilen der Timeline") fallen ganz weg.
         shown = self.config.get("timeline_rows", {})
-        fixed_rows = [(kind, label) for kind, label in FIXED_ROWS if shown.get(kind, True)]
+        # Outlook-Zeile nur mit eingeschalteter Quelle oder übernommenen Einträgen
+        has_outlook = self.config.get("outlook_enabled") or any(
+            row_kind(a) == "outlook" for a in activities)
+        fixed_rows = [(kind, label) for kind, label in FIXED_ROWS if shown.get(kind, True)
+                      and (kind != "outlook" or has_outlook)]
         show_other = shown.get("other", True)
         fixed_index = {kind: i for i, (kind, _label) in enumerate(fixed_rows)}
         n_fixed = len(fixed_rows)
@@ -1106,6 +1139,19 @@ class TimelineView(QGraphicsView):
                 y = gp.y() - 15 - self.tooltip.height()
         self.tooltip.move(x, y)
 
+    def _customer_line(self, entry):
+        """Kunde aus der Kundenliste, wenn er nicht schon im Namen steht (sonst nichts)."""
+        if entry.get("tv_id"):
+            return []
+        try:
+            index = customers.index(self.config, self.imported.customers() if self.imported else None)
+        except Exception:  # Anzeige darf nie am Hinweis scheitern
+            return []
+        text = customers.with_customer(entry, index)
+        if text == (entry.get("customer_name") or ""):
+            return []
+        return [f"Kunde: {escape(index.customer_for(entry))}"]
+
     def _hover_text(self, minute, hovered=None):
         """Hinweis zur Linie: Uhrzeit, Personalzeit und alles, was zu dieser Minute lief."""
         date_str = self.current_date.toString("yyyy-MM-dd")
@@ -1118,6 +1164,7 @@ class TimelineView(QGraphicsView):
             start, end = parse_time(hovered["start"]), parse_time(hovered["end"])
             lines += ["", f"<b>{escape(hovered.get('customer_name') or hovered.get('type'))}</b>",
                       escape(type_label(hovered)),
+                      *self._customer_line(hovered),
                       f"{start:%H:%M} – {end:%H:%M}  ({format_duration((end - start).total_seconds())})"]
             if hovered.get("work"):
                 lines.append("<i>Eingestempelt (ITM)</i>" if hovered.get("from_itm")
