@@ -140,6 +140,10 @@ class TrayMixin:
                 self.show_next_prompt(force=True)
             else:
                 self.show_open_docs()
+        elif getattr(self, "_tray_week_hint", False):  # Prüfung bei Feierabend: Wochenabschluss
+            self._tray_week_hint = False
+            self.show_from_tray()
+            self.show_week()
         elif self.pbx_reader and self.pbx_reader.needs_login:
             self.show_pbx_login()
         elif self.itm_reader and self.itm_reader.needs_login:

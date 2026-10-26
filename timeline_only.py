@@ -170,8 +170,10 @@ def entry_menu_items(entry, customer_known=False):
     if entry.get("doc") and entry.get("doc_item", {}).get("von_pc"):  # von anderem PC übernommen
         return [("Als Ticketzeile &kopieren", "copy")]
     if entry.get("doc"):
+        # Dritter Wert False = deaktiviert (reine Anzeige, darum ohne Alt-Buchstaben)
         return [("Tätigkeit &bearbeiten …", "edit"), ("Tätigkeit &löschen", "delete"), None,
-                ("Als Ticketzeile &kopieren", "copy")]
+                ("Als Ticketzeile &kopieren", "copy"),
+                ("In Matrix42 buchen (kommt bald)", "m42_book", False)]
     items = [("&Details öffnen", "details"), None]
     if entry.get("ai") or entry.get("rule"):
         items.append(("Als &Tätigkeit eintragen …", "add"))
@@ -202,7 +204,13 @@ def exec_entry_menu(parent, entry, global_pos):
         if item is None:
             menu.addSeparator()
         else:
-            keys[menu.addAction(item[0])] = item[1]
+            action = menu.addAction(item[0])
+            if len(item) > 2 and not item[2]:
+                action.setEnabled(False)
+                if item[1] == "m42_book":
+                    action.setToolTip("Kommt bald: Tätigkeiten direkt in Matrix42 buchen")
+            keys[action] = item[1]
+    menu.setToolTipsVisible(True)
     return keys.get(menu.exec(global_pos))
 
 

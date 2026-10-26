@@ -517,6 +517,12 @@ class DocPromptDialog(QDialog):
         self.on_quit = QCheckBox("Beim &Beenden an Offenes erinnern")
         self.on_quit.setChecked(config.get("prompt_on_quit", True))
         form.addRow("", self.on_quit)
+        self.day_checks = QCheckBox("Bei Feierabend &prüfen: Pausen, Stempelung, Buchungen")
+        self.day_checks.setToolTip("Mehr als 6 Stunden ohne 30 Minuten Pause, PC aktiv aber "
+                                   "ausgestempelt, Buchung außerhalb der Personalzeit, "
+                                   "Buchungen überschneiden sich, Quote unter Ziel")
+        self.day_checks.setChecked(config.get("day_checks_enabled", True))
+        form.addRow("", self.day_checks)
         layout.addLayout(form)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -531,3 +537,4 @@ class DocPromptDialog(QDialog):
         self.config["prompt_snooze_minutes"] = self.snooze.value()
         self.config["prompt_end_of_day"] = self.end_of_day.isChecked()
         self.config["prompt_on_quit"] = self.on_quit.isChecked()
+        self.config["day_checks_enabled"] = self.day_checks.isChecked()

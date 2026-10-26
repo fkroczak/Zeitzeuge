@@ -14,6 +14,7 @@ from timeline_only import (ActivityViewDialog, ai_copy_text, entry_color, exec_e
                            format_duration, parse_time, type_label)
 import customers
 import icons
+import week_dialogs
 from theme import GERMAN
 import main_timeline as mt  # Pfade und save_config zur Laufzeit von dort (Tests ersetzen sie dort)
 
@@ -180,6 +181,7 @@ class DayListMixin:
         if m42:
             parts.append(m42)
         self.info_label.setText("   ·   ".join(parts))
+        week_dialogs.update_rate_button(self)
         self.update_source_indicators()
 
     def update_busy_bar(self):
