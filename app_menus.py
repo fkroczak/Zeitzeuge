@@ -237,6 +237,7 @@ class MenusMixin:
         menu.addSeparator()
         self._icon_actions.append(
             (menu.addAction("&Nachfragen und Erinnerungen …", self.edit_prompt_settings), "bell"))
+        self._icon_actions.append((menu.addAction("Text&bausteine …", self.edit_snippets), "edit"))
         rows_menu = menu.addMenu("&Zeilen der Timeline")
         self.row_actions = {}
         for key, text in TIMELINE_ROWS:

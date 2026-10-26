@@ -188,7 +188,8 @@ for taskbar in ("#F3F3F3", "#1F2329"):
 # Graue Hinweistexte direkt im Code (nur Farbe "gray" ist auf hellem Grund zu blass)
 for path in ["main_timeline.py", "theme.py", "app_menus.py", "app_daylist.py", "app_docs.py",
              "app_readers.py", "app_tray.py", "settings_dialogs.py", "timeline_only.py",
-             "app_protect.py", "protect_dialogs.py", "app_transfer.py"]:
+             "app_protect.py", "protect_dialogs.py", "app_transfer.py", "snippets_dialogs.py",
+             "journal_dialogs.py"]:
     with open(os.path.join(ROOT, path), encoding="utf-8") as f:
         for no, line in enumerate(f, 1):
             if re.search(r"color:\s*(gray|grey|#999|#aaa)\b", line, re.I):
@@ -245,6 +246,15 @@ dialogs["Tätigkeit nachtragen"] = journal_dialogs.EntryDialog(
 dialogs["Nachfrage"] = journal_dialogs.PromptWindow(_tv, ["Musterkunde GmbH"], ["Fernwartung"],
                                                     pending=2, parent=window)
 dialogs["Nachfragen und Erinnerungen"] = journal_dialogs.DocPromptDialog(config, window)
+# Eintragen mit Textbausteinen und Ticket-Vorschlag (Knopf „Übernehmen“ sichtbar)
+_found = [{"ticket": "TCK0000049374", "label": "TCK0000049374 (Outlook, 12 min)"}]
+dialogs["Tätigkeit mit Ticket-Vorschlag"] = journal_dialogs.EntryDialog(
+    _dt(2026, 10, 20, 9), _dt(2026, 10, 20, 9, 30), ["Musterkunde GmbH"], ["Fernwartung"],
+    parent=window, snippets=["Windows-Updates installiert"], ticket_suggestions=_found)
+dialogs["Nachfrage mit Ticket-Vorschlag"] = journal_dialogs.PromptWindow(
+    _tv, ["Musterkunde GmbH"], ["Fernwartung"], parent=window, ticket_suggestions=_found)
+import snippets_dialogs  # noqa: E402
+dialogs["Textbausteine"] = snippets_dialogs.SnippetsDialog(config, window)
 if hasattr(window, "build_pbx_dialog"):
     dialogs["3CX direkt"] = window.build_pbx_dialog()
 if hasattr(window, "build_itm_dialog"):

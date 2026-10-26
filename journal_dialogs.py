@@ -10,18 +10,21 @@ from datetime import datetime, timedelta
 
 from PySide6.QtCore import QDate, QLocale, Qt, QTime, Signal
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QDateEdit, QDialog, QDialogButtonBox,
-                               QFormLayout, QHBoxLayout, QLabel, QPlainTextEdit, QSpinBox,
-                               QTimeEdit, QVBoxLayout, QWidget)
+                               QFormLayout, QHBoxLayout, QLabel, QMenu, QPlainTextEdit,
+                               QPushButton, QSpinBox, QTimeEdit, QVBoxLayout, QWidget)
 
 from grouping import format_tv_id
 from journal import TIME_FMT, describe, suggest_category, suggest_customer
+import snippets as snippet_logic
+from tickets import format_ticket_text
 
 
 class _EntryForm(QWidget):
     """Gemeinsame Felder: Datum, Von, Bis, Kunde, Kategorie, Text."""
 
     def __init__(self, start, end, customers, categories, customer="", category="", text="",
-                 tv_id=None, parent=None, show_date=True):
+                 tv_id=None, parent=None, show_date=True, snippets=(), recent_texts=None,
+                 ticket="", ticket_suggestions=(), show_ticket=True):
         super().__init__(parent)
         form = QFormLayout(self)
         form.setContentsMargins(0, 0, 0, 0)
@@ -84,6 +87,7 @@ class _EntryForm(QWidget):
         self.text_edit.setTabChangesFocus(True)
         self.text_edit.setFixedHeight(80)
         form.addRow("&Tätigkeit:", self.text_edit)
+        self._add_text_helpers(form, snippets, recent_texts, ticket, ticket_suggestions, show_ticket)
 
         self.error = QLabel()
         self.error.setObjectName("hint")
@@ -94,6 +98,110 @@ class _EntryForm(QWidget):
             edit.timeChanged.connect(self.validate)
         self.validate_hook = None
         self.validate()
+
+    # ---- Textbausteine, zuletzt benutzte Texte, Ticket (snippets.py, tickets.py)
+
+    def _add_text_helpers(self, form, snippets, recent_texts, ticket, suggestions, show_ticket):
+        self.snippets = list(snippets or [])
+        self.recent_texts = recent_texts  # Funktion Kunde -> [Texte] oder None
+        self.insert_button = QPushButton("Text &einfügen")
+        self.insert_button.setAutoDefault(False)
+        self.insert_button.setAccessibleName("Textbaustein oder zuletzt benutzten Text einfügen")
+        self.insert_button.setToolTip("Textbaustein oder zuletzt benutzten Text zum Kunden "
+                                      "an der Cursorposition einfügen")
+        self.insert_menu = QMenu(self.insert_button)
+        self.insert_menu.aboutToShow.connect(self._fill_insert_menu)
+        self.insert_button.setMenu(self.insert_menu)
+        row = QHBoxLayout()
+        row.addWidget(self.insert_button)
+        row.addStretch(1)
+        form.addRow("", row)
+
+        # Ticket: nur Vorschläge, nie automatisch eingesetzt
+        self.ticket_suggestions = list(suggestions or [])
+        self.ticket_edit = QComboBox()
+        self.ticket_edit.setEditable(True)
+        self.ticket_edit.setInsertPolicy(QComboBox.NoInsert)
+        self.ticket_edit.addItem("")
+        for s in self.ticket_suggestions:
+            self.ticket_edit.addItem(s["ticket"])
+            self.ticket_edit.setItemData(self.ticket_edit.count() - 1, s["label"], Qt.ToolTipRole)
+        self.ticket_edit.setCurrentText(ticket)
+        self.ticket_edit.setAccessibleName("Ticket")
+        self.ticket_edit.lineEdit().setAccessibleName("Ticket")
+        top = self.ticket_suggestions[0]["label"] if self.ticket_suggestions else ""
+        self.ticket_edit.lineEdit().setPlaceholderText(f"Gefunden: {top}" if top
+                                                       else "Ticketnummer, z. B. TCK0000049374")
+        self.ticket_take = QPushButton("&Übernehmen")
+        self.ticket_take.setAutoDefault(False)
+        self.ticket_take.setAccessibleName("Gefundenes Ticket übernehmen")
+        self.ticket_take.setToolTip(f"{top} ins Feld „Ticket“ übernehmen" if top else "")
+        self.ticket_take.clicked.connect(self._take_ticket)
+        self.ticket_edit.currentTextChanged.connect(self._update_ticket_take)
+        ticket_row = QHBoxLayout()
+        ticket_row.addWidget(self.ticket_edit, 1)
+        ticket_row.addWidget(self.ticket_take)
+        if show_ticket or ticket or self.ticket_suggestions:
+            label = QLabel("T&icket:")
+            label.setBuddy(self.ticket_edit)
+            form.addRow(label, ticket_row)
+        else:  # kleines Nachfrage-Fenster: ohne Vorschlag keine Zeile
+            self.ticket_edit.hide()
+        self._update_ticket_take()
+
+    def _update_ticket_take(self, *_args):
+        self.ticket_take.setVisible(bool(self.ticket_suggestions)
+                                    and not self.ticket_edit.currentText().strip())
+
+    def _take_ticket(self):
+        if self.ticket_suggestions:
+            self.ticket_edit.setCurrentText(self.ticket_suggestions[0]["ticket"])
+            self.text_edit.setFocus()
+
+    def _fill_insert_menu(self):
+        """Menü beim Öffnen neu füllen: Bausteine und die letzten Texte zum gewählten Kunden."""
+        menu = self.insert_menu
+        menu.clear()
+        number = 0
+
+        def add(text, group_size):
+            nonlocal number
+            if group_size and group_size % 5 == 0:
+                menu.addSeparator()  # höchstens 5 Einträge je Gruppe
+            number += 1
+            mark = f"&{number} " if number < 10 else ""
+            menu.addAction(mark + snippet_logic.menu_label(text), lambda t=text: self.insert_text(t))
+
+        if self.snippets:
+            menu.addSection("Textbausteine")
+            for i, text in enumerate(self.snippets):
+                add(text, i)
+        customer = self.customer_edit.currentText().strip()
+        recent = self.recent_texts(customer) if self.recent_texts and customer else []
+        if recent:
+            menu.addSection(f"Zuletzt zu {customer.replace('&', '&&')}")
+            for i, text in enumerate(recent[:5]):
+                add(text, i)
+        if not self.snippets and not recent:
+            menu.addAction("Keine Textbausteine (Einstellungen → Textbausteine)").setEnabled(False)
+        menu.addSeparator()
+        menu.addAction("Als Ticket-Doku &gliedern („- “ / „-- “)", self.outline_text)
+
+    def insert_text(self, snippet):
+        """Baustein an der Cursorposition bzw. als neue Zeile einfügen."""
+        cursor = self.text_edit.textCursor()
+        text, pos = snippet_logic.insert(self.text_edit.toPlainText(), cursor.position(), snippet)
+        self.text_edit.setPlainText(text)
+        cursor = self.text_edit.textCursor()
+        cursor.setPosition(pos)
+        self.text_edit.setTextCursor(cursor)
+        self.text_edit.setFocus()
+
+    def outline_text(self):
+        """Erste Zeile „- “, weitere „-- “ (Format der Ticket-Dokumentation)."""
+        self.text_edit.setPlainText(format_ticket_text(self.text_edit.toPlainText(), "dash"))
+        self.text_edit.moveCursor(self.text_edit.textCursor().MoveOperation.End)
+        self.text_edit.setFocus()
 
     def times(self):
         day = self.date_edit.date().toPython()
@@ -120,6 +228,7 @@ class _EntryForm(QWidget):
             "customer": self.customer_edit.currentText().strip(),
             "category": self.category_edit.currentText().strip(),
             "text": self.text_edit.toPlainText().strip(),
+            "ticket": self.ticket_edit.currentText().strip(),
         }
 
 
@@ -127,7 +236,8 @@ class EntryDialog(QDialog):
     """Tätigkeit nachtragen oder ändern."""
 
     def __init__(self, start, end, customers, categories, customer="", category="", text="",
-                 tv_id=None, title="Tätigkeit nachtragen", info="", can_delete=False, parent=None):
+                 tv_id=None, title="Tätigkeit nachtragen", info="", can_delete=False, parent=None,
+                 **form_options):
         super().__init__(parent)
         self.setWindowTitle(title)
         self.setMinimumWidth(480)
@@ -139,7 +249,7 @@ class EntryDialog(QDialog):
             label.setObjectName("hint")
             layout.addWidget(label)
         self.form = _EntryForm(start, end, customers, categories, customer, category, text,
-                               tv_id, self)
+                               tv_id, self, **form_options)
         layout.addWidget(self.form)
         self.buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         self.buttons.button(QDialogButtonBox.Ok).setText("&Speichern")
@@ -171,7 +281,8 @@ class PromptWindow(QDialog):
     """
     answered = Signal(str, dict, dict)
 
-    def __init__(self, entry, customers, categories, tv_names=None, pending=0, parent=None):
+    def __init__(self, entry, customers, categories, tv_names=None, pending=0, parent=None,
+                 **form_options):
         super().__init__(parent, Qt.Tool | Qt.WindowStaysOnTopHint)
         self.entry = entry
         self.setWindowTitle("Zeitzeuge: Was hast du gemacht?")
@@ -194,7 +305,8 @@ class PromptWindow(QDialog):
             start, end, customers, categories,
             customer=suggest_customer(entry, tv_names),
             category=suggest_category(entry, categories),
-            tv_id=entry.get("tv_id"), parent=self, show_date=False)
+            tv_id=entry.get("tv_id"), parent=self, show_date=False,
+            **{"show_ticket": False, **form_options})
         layout.addWidget(self.form)
 
         buttons = QDialogButtonBox()

@@ -132,6 +132,43 @@ def gui_test():
     window.table.selectRow(0)
     window.copy_selection()
     assert "Beispiel AG · Fernwartung: Outlook-Profil neu angelegt" in QApplication.clipboard().text()
+    # Ticket-Format „- “ / „-- “ beim Kopieren (Standard aus)
+    window.config["ticket_format"] = "dash"
+    window.copy_selection()
+    assert "Fernwartung:\n- Outlook-Profil neu angelegt" in QApplication.clipboard().text()
+    window.config["ticket_format"] = ""
+
+    # Eintragen-Hilfen: Bausteine, letzte Texte zum Kunden, Ticket-Vorschlag aus dem PC-Verlauf
+    pc = [{"start": t(start), "end": t(end), "type": "PC: Outlook", "app": "outlook.exe",
+           "customer_name": "Systems - TCK0000049374 - Drucker"}]
+    window.timeline.pc_entries_for = lambda date, min_seconds=30, max_gap=60: pc
+    opts = window.entry_form_options(start, end)
+    assert opts["ticket_suggestions"][0]["label"].startswith("TCK0000049374 (Outlook"), opts
+    assert opts["recent_texts"]("Beispiel AG") == ["Outlook-Profil neu angelegt"]
+    from journal_dialogs import PromptWindow
+    helper = PromptWindow({"start": t(start), "end": t(end), "type": "TeamViewer",
+                           "customer_name": ""}, [], [], parent=window, **opts)
+    form = helper.form
+    form.customer_edit.setCurrentText("Beispiel AG")
+    form._fill_insert_menu()
+    labels = [a.text() for a in form.insert_menu.actions()]
+    assert "&1 Windows-Updates installiert" in labels, labels
+    assert any("Outlook-Profil neu angelegt" in x for x in labels), labels
+    form.text_edit.setPlainText("Drucker geprüft")
+    form.text_edit.moveCursor(form.text_edit.textCursor().MoveOperation.End)
+    form.insert_text("Windows-Updates installiert")
+    assert form.text_edit.toPlainText() == "Drucker geprüft\nWindows-Updates installiert"
+    form.outline_text()
+    assert form.text_edit.toPlainText() == "- Drucker geprüft\n-- Windows-Updates installiert"
+    # Ticket nur als Vorschlag: erst nach „Übernehmen“ im Eintrag
+    assert form.item()["ticket"] == "" and form.ticket_take.isVisibleTo(helper)
+    form.ticket_take.click()
+    assert form.item()["ticket"] == "TCK0000049374" and not form.ticket_take.isVisibleTo(helper)
+    helper._done = True
+    helper.close()
+    helper.deleteLater()
+    flush_deletes()
+    del window.timeline.pc_entries_for  # wieder die echte Methode
 
     # Zeilen der Timeline abschaltbar
     window.row_actions["doc"].setChecked(False)
