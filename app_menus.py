@@ -233,6 +233,7 @@ class MenusMixin:
             (menu.addAction("&Arbeitszeiten …", self.edit_work_hours), "clock"),
             (menu.addAction("Aktivitäts&typen und Farben …", self.edit_activity_types), "palette"),
             (menu.addAction("&KI-Vorschläge …", self.edit_ai_settings), "spark"),
+            (menu.addAction("Abre&chnung …", self.edit_billing), "tag"),
         ]
         menu.addSeparator()
         self._icon_actions.append(
@@ -257,6 +258,7 @@ class MenusMixin:
             "&Datenordner öffnen", lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(mt.DATA_DIR)))
         storage_menu.addAction("&Speicherort ändern …", self.change_data_dir)
         self._icon_actions.append((storage_menu.addAction("Sc&hutz …", self.show_protection), "lock"))
+        storage_menu.addAction("PC-&Verlauf automatisch löschen …", lambda: self.retention.edit())
         storage_menu.addSeparator()  # zwei PCs, z. B. Arbeits-PC und PAW
         storage_menu.addAction("Daten &exportieren (für einen anderen PC) …", self.export_data)
         storage_menu.addAction("Daten &übernehmen (von einem anderen PC) …", self.import_data)
@@ -459,6 +461,14 @@ class MenusMixin:
             self.config["work_days"] = dialog.get_work_days()
             mt.save_config(self.config)
             self.timeline._first_draw = True  # auf die neue Arbeitszeit springen
+            self.timeline.draw_timeline(self.current_date)
+
+    def edit_billing(self):
+        from billing_dialogs import BillingDialog
+        dialog = BillingDialog(self.config, self.known_customers(), self)
+        if dialog.exec() == QDialog.Accepted:
+            dialog.apply()
+            mt.save_config(self.config)
             self.timeline.draw_timeline(self.current_date)
 
     def edit_activity_types(self):

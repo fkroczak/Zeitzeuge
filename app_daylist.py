@@ -7,6 +7,7 @@ from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtWidgets import QApplication, QInputDialog, QHeaderView, QTableWidgetItem
 
 from vpn_reader import vpn_sources
+from billing import hours_text
 from journal import describe, ticket_line
 from grouping import format_tv_id, work_blocks
 from timeline_only import (ActivityViewDialog, ai_copy_text, entry_color, exec_entry_menu,
@@ -46,6 +47,8 @@ class DayListMixin:
         for col in range(4):
             header.setSectionResizeMode(col, QHeaderView.Fixed)
         self.table.setRowCount(len(entries))
+        # Ansicht "Dokumentation": abgerechnete Zeit neben der Dauer (Abrechnungstakt)
+        billing = self.billing() if self.config.get("list_view") == "doc" else None
         for row, a in enumerate(entries):
             start, end = parse_time(a["start"]), parse_time(a["end"])
             pix = QPixmap(10, 10)
@@ -57,7 +60,9 @@ class DayListMixin:
             values = [
                 QTableWidgetItem(f"{start:%H:%M}"),
                 QTableWidgetItem(f"{end:%H:%M}"),
-                QTableWidgetItem(format_duration((end - start).total_seconds())),
+                QTableWidgetItem(format_duration((end - start).total_seconds())
+                                 + (billing.note((end - start).total_seconds(), a.get("customer_name", ""))
+                                    if billing and a.get("doc") else "")),
                 type_item,
                 QTableWidgetItem(a.get("customer_name", "")),
                 QTableWidgetItem(a.get("details", "")),
@@ -122,7 +127,7 @@ class DayListMixin:
         for row in rows:
             entry = self.list_entries[row] if row < len(self.list_entries) else {}
             if entry.get("doc"):
-                lines.append(ticket_line(entry["doc_item"]))  # fertige Ticketzeile
+                lines.append(ticket_line(entry["doc_item"], self.billing()))  # fertige Ticketzeile
                 continue
             if entry.get("open"):
                 lines.append(f"OFFEN: {describe(entry['source_entry'])}")
@@ -152,8 +157,11 @@ class DayListMixin:
         done = [e for e in doc if e.get("doc")]
         open_count = len(doc) - len(done)
         if done or open_count:
-            parts.append(f"dokumentiert {format_duration(mt.merged_seconds(done))}" if done
-                         else "nichts dokumentiert")
+            text = f"dokumentiert {format_duration(mt.merged_seconds(done))}" if done else "nichts dokumentiert"
+            billing = self.billing()
+            if done and billing.any_active():
+                text += f", abgerechnet {hours_text(billing.total_minutes([e['doc_item'] for e in done]))}"
+            parts.append(text)
         self.open_docs_button.setVisible(bool(open_count))
         if open_count:
             self.open_docs_button.setText(f"{open_count} offen – jetzt eintragen")

@@ -36,6 +36,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QApplication, QHeaderView, QLa
 from ai_classifier import AI_TYPE, AiClassifier, AiStore
 from busy_bar import BusyBar
 from transfer import ImportStore
+from retention_dialogs import RetentionRunner
 import datastore
 import safe_io
 import storage
@@ -484,6 +485,8 @@ class TimelineApp(MenusMixin, DayListMixin, DocsMixin, ReadersMixin, TrayMixin, 
         QTimer.singleShot(0, lambda: self.timeline.draw_timeline(self.current_date))
         self._init_protection()
         self._init_robustness()
+        # PC-Verlauf nach N Tagen löschen (Standard aus), beim Start verzögert und täglich
+        self.retention = RetentionRunner(self, ACTIVITY_DIR, save_config)
 
 
 _last_error_report = [0.0]

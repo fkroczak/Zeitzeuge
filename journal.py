@@ -286,10 +286,13 @@ def suggest_customer(entry, tv_names=None):
     return "" if re.fullmatch(r"[+\d\s/-]*", name) else name
 
 
-def ticket_line(item):
-    """Tätigkeit als Zeile fürs Ticket."""
+def ticket_line(item, billing=None):
+    """Tätigkeit als Zeile fürs Ticket. billing (billing.Billing): abgerechnete Dauer dazu,
+    z. B. "10:05–10:17 (12 min → abgerechnet 0:15 h)"."""
     start, end = _t(item["start"]), _t(item["end"])
-    head = f"{start:%H:%M}–{end:%H:%M} ({duration_text((end - start).total_seconds())})"
+    seconds = (end - start).total_seconds()
+    note = billing.note(seconds, item.get("customer", "")) if billing else ""
+    head = f"{start:%H:%M}–{end:%H:%M} ({duration_text(seconds)}{note})"
     parts = [p for p in (item.get("customer"), item.get("category")) if p]
     text = item.get("text", "")
     return f"{head}  {' · '.join(parts)}{': ' if parts and text else ''}{text}".rstrip()

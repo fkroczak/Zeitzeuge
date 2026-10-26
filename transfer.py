@@ -232,6 +232,28 @@ class ImportStore:
         store, name = datastore.locate(self.path, "single")
         store.delete(name, "")
 
+    def pc_days_before(self, day):
+        """Tage vor day, an denen übernommener PC-Verlauf (aktive Fenster) liegt."""
+        return sorted({d for entry in self.pcs.values() for d, data in entry["tage"].items()
+                       if d < day and isinstance(data, dict) and data.get("pc")})
+
+    def drop_pc_before(self, day):
+        """Übernommenen PC-Verlauf vor day entfernen. Alles andere (Verbindungen,
+        Tätigkeiten, Buchungen …) bleibt. Gibt die Zahl der betroffenen Tage zurück."""
+        dropped = 0
+        for entry in self.pcs.values():
+            for d, data in entry["tage"].items():
+                if d < day and isinstance(data, dict) and data.get("pc"):
+                    data.pop("pc")
+                    dropped += 1
+        if dropped:
+            try:
+                store, name = datastore.locate(self.path, "single")
+                store.put(name, "", {"pcs": self.pcs})
+            except (datastore.Busy, datastore.Locked) as e:
+                raise OSError(f"Übernommene Daten konnten nicht gespeichert werden ({e})") from e
+        return dropped
+
     def __bool__(self):
         return bool(self.pcs)
 
