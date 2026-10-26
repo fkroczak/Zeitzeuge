@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QApplication, QHeaderView, QLa
 
 from ai_classifier import AI_TYPE, AiClassifier, AiStore
 from busy_bar import BusyBar
+from transfer import ImportStore
 import safe_io
 import storage
 from vpn_reader import vpn_sources
@@ -44,13 +45,14 @@ from app_daylist import DayListMixin
 from app_docs import DocsMixin
 from app_readers import ReadersMixin
 from app_tray import TrayMixin
+from app_transfer import TransferMixin
 
 # Weiter über main_timeline erreichbar (Tests, Hilfsskripte)
 __all__ = [
     "TimelineApp", "AppStyle", "install_translator", "GERMAN", "THEMES", "STYLESHEET",
     "resource_path", "APP_DIR", "DATA_DIR", "CONFIG_FILE", "CALLS_FILE", "VPN_FILE",
     "ACTIVITY_DIR", "PBX_PROFILE_DIR", "ITM_FILE", "ITM_PROFILE_DIR", "ITM_AUTH_FILE",
-    "M42_FILE", "M42_PROFILE_DIR", "AI_DIR", "JOURNAL_DIR",
+    "M42_FILE", "M42_PROFILE_DIR", "IMPORT_FILE", "AI_DIR", "JOURNAL_DIR",
     "CONFIG_LOCKED", "clean_path", "load_config_with_defaults", "save_config", "merged_seconds",
     "report_exception", "install_error_hooks", "acquire_single_instance",
     "ActivityViewDialog", "ActivityTypeSettingsDialog", "ConnectionSettingsDialog", "WorkHoursDialog",
@@ -93,6 +95,8 @@ ITM_PROFILE_DIR = os.path.join(storage.local_dir(), "itm_profil")
 # ITM-Anmeldung (refreshToken, unter Windows verschlüsselt), ebenfalls nur lokal
 ITM_AUTH_FILE = os.path.join(storage.local_dir(), "itm_anmeldung.json")
 M42_FILE = os.path.join(DATA_DIR, "m42_buchungen.json")
+# Von einem anderen PC übernommene Daten (z. B. auf der PAW), alles in einer Datei
+IMPORT_FILE = os.path.join(DATA_DIR, "uebernommen.json")
 M42_PROFILE_DIR = os.path.join(storage.local_dir(), "m42_profil")
 AI_DIR = os.path.join(DATA_DIR, "ki_vorschlaege")
 JOURNAL_DIR = os.path.join(DATA_DIR, "taetigkeiten")
@@ -198,7 +202,8 @@ def merged_seconds(activities):
     return total
 
 
-class TimelineApp(MenusMixin, DayListMixin, DocsMixin, ReadersMixin, TrayMixin, QMainWindow):
+class TimelineApp(MenusMixin, DayListMixin, DocsMixin, ReadersMixin, TrayMixin, TransferMixin,
+                  QMainWindow):
     COLUMNS = ["Von", "Bis", "Dauer", "Typ", "Kunde / Verbindung", "Details"]
 
     def __init__(self):
@@ -240,6 +245,11 @@ class TimelineApp(MenusMixin, DayListMixin, DocsMixin, ReadersMixin, TrayMixin, 
 
         # Eigene Tätigkeiten (nachgetragen oder auf Nachfrage) und Regeln ohne KI
         self.journal = Journal(JOURNAL_DIR)
+        # Übernommene Daten eines anderen PCs (Export/Import, z. B. Arbeits-PC -> PAW)
+        self.imported = ImportStore(IMPORT_FILE)
+        self.timeline.imported = self.imported
+        self.journal.extra = self.imported.journal
+        self.timeline.personal_day = self.personal_day_for
         self.timeline.doc_entries = self.doc_band
         self.timeline.rule_entries = self.rule_band
         self.timeline.m42_entries = self.m42_band

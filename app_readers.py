@@ -19,6 +19,25 @@ import main_timeline as mt  # Pfade und save_config zur Laufzeit von dort (Tests
 
 
 class ReadersMixin:
+    def is_paw(self):
+        """PAW-Modus: nur RDM sammeln. Dort startet Zeitzeuge nie Edge, sucht keine Prozesse
+        und beendet keine (verträgt sich so mit EDR wie Cortex XDR)."""
+        return self.config.get("pc_role") == "paw"
+
+    def _paw_blocks(self, name):
+        if not self.is_paw():
+            return False
+        self.statusBar().showMessage(
+            f"{name}: auf der PAW aus (kein Edge im Hintergrund). Daten kommen über „Daten übernehmen“.", 8000)
+        return True
+
+    def personal_day_for(self, date_str):
+        """Personalzeit eines Tages: aus ITM, sonst von einem anderen PC übernommen."""
+        day = self.itm_reader.day(date_str) if getattr(self, "itm_reader", None) else None
+        if day is None and getattr(self, "imported", None):
+            day = self.imported.personal(date_str)
+        return day
+
     def all_readers(self):
         """Laufende Hintergrund-Leser (3CX, ITM, Matrix42)."""
         return [r for r in (getattr(self, "pbx_reader", None), getattr(self, "itm_reader", None),
@@ -27,7 +46,7 @@ class ReadersMixin:
     # ---------------------- 3CX direkt auslesen -------------------------------
 
     def start_pbx_reader(self):
-        if self.pbx_reader:
+        if self.pbx_reader or self._paw_blocks("3CX"):
             return
         from pbx_reader import PbxReader  # Edge-Steuerung nur laden, wenn sie gebraucht wird
         self.pbx_reader = PbxReader(
@@ -331,7 +350,7 @@ class ReadersMixin:
     # ---------------------- ITM-Personalzeiten --------------------------------
 
     def start_itm_reader(self):
-        if self.itm_reader:
+        if self.itm_reader or self._paw_blocks("ITM"):
             return
         from itm_reader import ItmReader
         self.itm_reader = ItmReader(self.config.get("itm_url", ""), mt.ITM_FILE, mt.ITM_PROFILE_DIR, self,
@@ -357,7 +376,6 @@ class ReadersMixin:
             )
         )
         self.itm_reader.recording_done.connect(self.on_recording_done)
-        self.timeline.personal_day = self.itm_reader.day
         self._watch_reader(self.itm_reader)
         self.itm_reader.start()
         self.itm_reader.want(self.current_date.toString("yyyy-MM-dd"))
@@ -387,12 +405,13 @@ class ReadersMixin:
             self.itm_reader.stop()
             self.itm_reader.deleteLater()
             self.itm_reader = None
-            self.timeline.personal_day = None
             self.update_source_indicators()  # zieht auch die Ladeanzeige mit
 
     # ---------------------- Matrix42-Buchungen ---------------------------------
 
     def start_m42_reader(self):
+        if self._paw_blocks("Matrix42"):
+            return
         if self.m42_reader or not self.config.get("m42_url"):
             if not self.config.get("m42_url"):
                 self.statusBar().showMessage(
@@ -445,7 +464,8 @@ class ReadersMixin:
         self.problem_timer.start(self.PROBLEM_INTERVAL)
         # Probleme beim Start (z. B. kaputte Config) gleich nach dem Anzeigen einmal sagen
         QTimer.singleShot(1500, lambda: self.show_problems(startup=True))
-        threading.Thread(target=self._kill_orphans, daemon=True, name="Edge-Reste").start()
+        if not self.is_paw():  # PAW: keine Prozesse durchsuchen oder beenden
+            threading.Thread(target=self._kill_orphans, daemon=True, name="Edge-Reste").start()
 
     def _watch_reader(self, reader):
         reader.trouble.connect(self.on_reader_trouble)

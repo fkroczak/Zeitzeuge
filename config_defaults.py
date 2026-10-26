@@ -143,6 +143,9 @@ def default_config():
         "m42_reader_enabled": False,
         "m42_weeks_back": 4,          # so viele Wochen zurück einmal pro Sitzung lesen
         "m42_gap_minutes": 5,         # kürzere Lücken ohne Buchung zählen nicht
+        # Zwei PCs (z. B. Arbeits-PC und PAW): "paw" = nur RDM sammeln, kein Edge, keine Nachfragen
+        "pc_role": "",
+        "export_days": 31,            # Zeitraum beim Export für den anderen PC
         "close_to_tray": True,
 
         # Tagesliste: "grouped" (zusammengefasst), "single" (einzeln), "blocks" (Arbeitsblöcke)

@@ -45,8 +45,11 @@ def settle(ms=50):
         app.processEvents()
 
 
-# ---- Ladeanzeige
-window.timeline.loading = False
+# ---- Ladeanzeige (erst das Einlesen der Logs beim Start abwarten)
+for _ in range(200):
+    settle()
+    if window.timeline._tv_index is not None and not window.timeline.loading:
+        break
 window.update_busy_bar()
 settle()
 assert bar.isHidden(), "ohne Laden keine Anzeige"

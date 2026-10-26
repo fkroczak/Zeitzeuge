@@ -46,17 +46,18 @@ a = Analysis(
 )
 pyz = PYZ(a.pure)
 
-exe = EXE(
-    pyz,
-    a.scripts,
-    a.binaries,
-    a.datas,
-    [],
+# Zwei Varianten:
+# - Standard: eine einzelne ZeitZeuge.exe. Sie entpackt sich bei jedem Start nach %TEMP%.
+# - ZEITZEUGE_ONEDIR=1: Ordner mit ZeitZeuge.exe und _internal (nichts wird entpackt).
+#   Für Rechner mit EDR/Virenscanner wie Cortex XDR (z. B. PAW): Programme, die beim Start
+#   DLLs nach %TEMP% schreiben und laden, gelten dort schnell als verdächtig.
+ONEDIR = os.environ.get("ZEITZEUGE_ONEDIR") == "1"
+
+options = dict(
     name='ZeitZeuge',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    # Kein UPX: mit UPX gepackte EXE-Dateien melden Virenscanner besonders oft fälschlich.
     upx=False,
     upx_exclude=[],
     runtime_tmpdir=None,
@@ -69,3 +70,10 @@ exe = EXE(
     icon=['zeitzeuge.ico'],
     version=version_info,
 )
+# Kein UPX (upx=False oben): mit UPX gepackte EXE-Dateien melden Virenscanner besonders oft fälschlich.
+
+if ONEDIR:
+    exe = EXE(pyz, a.scripts, [], exclude_binaries=True, **options)
+    coll = COLLECT(exe, a.binaries, a.datas, strip=False, upx=False, name='ZeitZeuge-Ordner')
+else:
+    exe = EXE(pyz, a.scripts, a.binaries, a.datas, [], **options)

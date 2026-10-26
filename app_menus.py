@@ -255,6 +255,13 @@ class MenusMixin:
         self.open_folder_action = storage_menu.addAction(
             "&Datenordner öffnen", lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(mt.DATA_DIR)))
         storage_menu.addAction("&Speicherort ändern …", self.change_data_dir)
+        storage_menu.addSeparator()  # zwei PCs, z. B. Arbeits-PC und PAW
+        storage_menu.addAction("Daten &exportieren (für einen anderen PC) …", self.export_data)
+        storage_menu.addAction("Daten &übernehmen (von einem anderen PC) …", self.import_data)
+        self.paw_action = storage_menu.addAction("Dieser PC ist eine &PAW (nur RDM sammeln)")
+        self.paw_action.setCheckable(True)
+        self.paw_action.setChecked(self.config.get("pc_role") == "paw")
+        self.paw_action.toggled.connect(self.toggle_paw)
         self._icon_actions += [(self.sources_menu.menuAction(), "plug"),
                                (storage_menu.menuAction(), "folder"),
                                (self.open_folder_action, "folder")]

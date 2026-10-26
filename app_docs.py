@@ -142,8 +142,12 @@ class DocsMixin:
     # ---------------------- Matrix42: gebucht / nicht gebucht -----------------
 
     def _m42_bookings(self, date_str):
+        """Buchungen aus Matrix42, sonst die von einem anderen PC übernommenen."""
         reader = getattr(self, "m42_reader", None)
-        return reader.day(date_str) if reader else None
+        found = reader.day(date_str) if reader else None
+        if found is None and getattr(self, "imported", None):
+            found = self.imported.m42(date_str)
+        return found
 
     def m42_band(self, date_str):
         """Zeile "Matrix42": Buchungen und (rot gestrichelt) Personalzeit ohne Buchung."""
@@ -324,7 +328,17 @@ class DocsMixin:
         self.statusBar().showMessage("Tätigkeit gespeichert", 3000)
         return True
 
+    def _foreign_doc(self, item):
+        """Übernommene Tätigkeit eines anderen PCs: hier nur ansehen, ändern geht dort."""
+        if not item.get("von_pc"):
+            return False
+        QMessageBox.information(self, "Tätigkeit", f"Diese Tätigkeit wurde von {item['von_pc']} "
+                                "übernommen. Ändern oder löschen kannst du sie nur dort.")
+        return True
+
     def edit_doc(self, item):
+        if self._foreign_doc(item):
+            return
         start, end = parse_time(item["start"]), parse_time(item["end"])
         dialog = EntryDialog(start, end, self.known_customers(), self.categories(),
                              item.get("customer", ""), item.get("category", ""),
@@ -338,6 +352,8 @@ class DocsMixin:
             self._save_doc(dialog.item(), old=item)
 
     def delete_doc(self, item, ask=True):
+        if self._foreign_doc(item):
+            return
         if ask and QMessageBox.question(
                 self, "Tätigkeit löschen",
                 f"Diese Tätigkeit löschen?\n\n{ticket_line(item)}") != QMessageBox.Yes:

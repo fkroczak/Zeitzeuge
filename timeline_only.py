@@ -163,6 +163,8 @@ def entry_menu_items(entry):
         return [(f"&Tätigkeit ab {hhmm(entry['minute'] // 5 * 5)} eintragen …", "add_at")]
     if entry.get("open"):
         return [("Jetzt &eintragen …", "add"), ("&Nicht dokumentieren", "ignore")]
+    if entry.get("doc") and entry.get("doc_item", {}).get("von_pc"):  # von anderem PC übernommen
+        return [("Als Ticketzeile &kopieren", "copy")]
     if entry.get("doc"):
         return [("Tätigkeit &bearbeiten …", "edit"), ("Tätigkeit &löschen", "delete"), None,
                 ("Als Ticketzeile &kopieren", "copy")]
@@ -293,6 +295,7 @@ class TimelineView(QGraphicsView):
         self.rule_entries = None  # date_str -> Blöcke aus den Regeln (ohne KI)
         self.doc_entries = None   # date_str -> eigene Tätigkeiten und noch offene
         self.m42_entries = None   # date_str -> Buchungen aus Matrix42 und Lücken ohne Buchung
+        self.imported = None      # übernommene Daten anderer PCs (transfer.ImportStore)
 
         self._remote_cache = {}  # date_str -> list[conn]
         self._tv_parser = TeamViewerParser(self.config)
@@ -473,6 +476,12 @@ class TimelineView(QGraphicsView):
                 ignore_missed=self.config.get("calls_ignore_missed", True),
                 min_seconds=self.config.get("calls_min_duration", 0),
             )
+        if self.imported:  # von einem anderen PC übernommen (z. B. auf der PAW)
+            own = {(a.get("type"), a.get("start"), a.get("end")) for a in result}
+            for a in self.imported.connections(date_str):
+                if (a.get("type"), a.get("start"), a.get("end")) not in own:
+                    a["details"] = " · ".join(t for t in (a.get("details"), f"von {a['source_pc']}") if t)
+                    result.append(a)
 
         valid = []
         for a in result:
@@ -488,7 +497,8 @@ class TimelineView(QGraphicsView):
         valid.sort(key=lambda a: a["start"])
 
         # TeamViewer: eigener Name statt nur der ID
-        names = self.config.get("teamviewer_names", {})
+        names = {**(self.imported.teamviewer_names() if self.imported else {}),
+                 **self.config.get("teamviewer_names", {})}
         for a in valid:
             tv_id = a.get("tv_id")
             if tv_id:
@@ -511,6 +521,10 @@ class TimelineView(QGraphicsView):
         elif self.activity_dir:  # pausiert: bisher Aufgezeichnetes trotzdem zeigen
             segments = read_segments(self.activity_dir, date_str)
         else:
+            segments = []
+        if self.imported:  # aktive Fenster des anderen PCs
+            segments = segments + self.imported.segments(date_str)
+        if not segments:
             return []
         result = []
         for seg in merge_segments(segments, min_seconds=min_seconds, max_gap=max_gap):

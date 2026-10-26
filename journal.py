@@ -43,6 +43,16 @@ class Journal:
     def __init__(self, folder):
         self.folder = folder
         self._cache = {}
+        # Tätigkeiten anderer PCs (übernommen, nur lesen): Funktion Tag -> {"items", "ignored"}
+        self.extra = None
+
+    def _extra(self, date_str):
+        if not self.extra:
+            return {"items": [], "ignored": []}
+        try:
+            return self.extra(date_str) or {"items": [], "ignored": []}
+        except Exception:  # übernommene Daten dürfen die eigenen nie stören
+            return {"items": [], "ignored": []}
 
     # ------------------------------------------------------------ Ablage
 
@@ -73,7 +83,9 @@ class Journal:
         return safe_io.write_json(self._path(date_str), self._cache[date_str], indent=1)
 
     def items(self, date_str):
-        return sorted(self.load(date_str)["items"], key=lambda i: i["start"])
+        """Eigene Tätigkeiten und (nur lesen) die von anderen PCs übernommenen."""
+        extra = [i for i in self._extra(date_str)["items"] if self._valid(i)]
+        return sorted(self.load(date_str)["items"] + extra, key=lambda i: i["start"])
 
     def add(self, item):
         """Neue Tätigkeit speichern. item braucht start, end; Rest optional."""
@@ -121,7 +133,9 @@ class Journal:
             self._save(date_str)
 
     def is_ignored(self, entry):
-        return entry_key(entry) in self.load(entry["start"][:10])["ignored"]
+        date_str = entry["start"][:10]
+        key = entry_key(entry)
+        return key in self.load(date_str)["ignored"] or key in self._extra(date_str)["ignored"]
 
     def customers(self, days=60, today=None):
         """Kunden der letzten Tage, häufigste zuerst (für die Auswahl im Dialog)."""
@@ -143,6 +157,8 @@ class Journal:
         result = []
         for item in self.items(date_str):
             label = " · ".join(t for t in (item.get("category"), item.get("text")) if t)
+            if item.get("von_pc"):
+                label += f" (von {item['von_pc']})"
             result.append({
                 "start": item["start"], "end": item["end"],
                 "type": DOC_TYPE,

@@ -159,7 +159,7 @@ class DayListMixin:
             self.open_docs_button.setText(f"{open_count} offen – jetzt eintragen")
             self.open_docs_button.setToolTip("Erste noch nicht dokumentierte Tätigkeit eintragen (F7)")
             self.open_docs_button.setAccessibleName(f"{open_count} Tätigkeiten offen, jetzt eintragen")
-        itm_day = self.itm_reader.day(self.current_date.toString("yyyy-MM-dd")) if self.itm_reader else None
+        itm_day = self.personal_day_for(self.current_date.toString("yyyy-MM-dd"))
         if itm_day and itm_day.get("gewertet") is not None:
             text = f"Personalzeit {format_duration(itm_day['gewertet'] * 60)}"
             if itm_day.get("soll"):
