@@ -1,5 +1,4 @@
 """Schnelltest für den Build (läuft auf GitHub unter Windows)."""
-import json
 import os
 import sys
 
@@ -8,7 +7,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import pytest  # noqa: E402
 
 import activity_tracker  # noqa: E402
-from call_import import load_call_suggestions, merge_calls  # noqa: E402
+from call_import import load_call_suggestions, load_calls, merge_calls  # noqa: E402
 
 
 def test_fensterabfrage(tmp_path):
@@ -27,8 +26,7 @@ def test_anrufe_zusammenfuehren(tmp_path):
     assert merge_calls(calls_file, [call]) == 1
     assert merge_calls(calls_file, [call]) == 0
     assert merge_calls(calls_file, [dict(call, name="ABC GmbH")]) == 0
-    with open(calls_file, encoding="utf-8") as f:
-        saved = json.load(f)
+    saved = load_calls(calls_file)
     assert [c["name"] for c in saved] == ["ABC GmbH"], saved
     assert len(load_call_suggestions(calls_file, "2026-10-20")) == 1
     assert load_call_suggestions(calls_file, "2026-10-21") == []

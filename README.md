@@ -16,8 +16,8 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
   - Angezeigte Passwörter, Benutzernamen und Einmal-Passwörter (OTP).
 - **VPN aus Sophos Connect:** liest `scvpn.log` und `scgui.log` aus `C:\Program Files (x86)\Sophos\Connect`. Jede Verbindung erscheint mit Beginn, Ende und dem Namen, den du ihr in Sophos Connect gegeben hast (z. B. „Kunde Müller“).
   - Ist der PC eingeschlafen, endet die Verbindung beim Einschlafen.
-  - Sophos überschreibt seine Logs bei Neustarts und neuen Verbindungen. Zeitzeuge liest sie deshalb alle 2 Minuten und hebt alles in `vpn_verbindungen.json` auf, egal welcher Tag gerade angezeigt wird.
-- **Eigene VPN-Aufzeichnung:** Zeitzeuge prüft alle 30 Sekunden selbst, ob ein VPN-Adapter von Sophos oder Fortinet verbunden ist, und speichert das sofort in `vpn_verbindungen.json`. Das läuft auch, wenn das Fenster im Infobereich liegt.
+  - Sophos überschreibt seine Logs bei Neustarts und neuen Verbindungen. Zeitzeuge liest sie deshalb alle 2 Minuten und hebt alles in der Datenbank auf, egal welcher Tag gerade angezeigt wird.
+- **Eigene VPN-Aufzeichnung:** Zeitzeuge prüft alle 30 Sekunden selbst, ob ein VPN-Adapter von Sophos oder Fortinet verbunden ist, und speichert das sofort in der Datenbank. Das läuft auch, wenn das Fenster im Infobereich liegt.
   - So bleiben die Zeiten erhalten, auch wenn die Logs fehlen oder gelöscht sind. Beginn und Ende sind auf etwa 30 Sekunden genau.
   - Steht dieselbe Verbindung auch in den Logs, zeigt Zeitzeuge nur den Eintrag aus den Logs, weil er den Namen kennt.
   - Ruhezustand, Absturz oder ein Neustart von Zeitzeuge beenden den laufenden Eintrag beim letzten Blick auf den Adapter.
@@ -25,14 +25,14 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
 - **VPN aus FortiClient:** steht ebenfalls in Sophos' `charon.log`, weil dort jede Änderung an Netzwerkadaptern landet. Zeitzeuge zeigt die Zeiten als „FortiClient“, aber ohne Namen der Verbindung. Ohne installiertes Sophos Connect gibt es diese Quelle nicht.
   - Andere Ordner trägst du in der `zeitzeuge_config.json` unter `sophos_connect_dirs` ein.
 - **Telefonate aus 3CX:** Zeitzeuge liest die Anrufliste selbst aus dem 3CX-Webclient, ohne dass du die Webseite offen haben musst.
-  - Alle gelesenen Anrufe landen in `anrufe.json`. So entsteht eine eigene Anrufliste, die auch offline bleibt.
+  - Alle gelesenen Anrufe landen in der Datenbank. So entsteht eine eigene Anrufliste, die auch offline bleibt.
   - Zeitzeuge scrollt die Liste so viele Tage zurück, wie du einstellst (Standard 14). Blätterst du in Zeitzeuge auf einen älteren Tag, liest es automatisch bis dorthin nach.
 - **Personalzeiten aus der ITM-Zeiterfassung:** Zeitzeuge liest deine gestempelten Zeiten und hebt sie in der Timeline als Arbeitszeit hervor. Pausen sind abgedunkelt. Die Statuszeile zeigt die gewertete Zeit und die Sollzeit.
   - Offene oder fehlerhafte Buchungen meldet Zeitzeuge einmal im Infobereich, zum Beispiel „Buchung vom 21.10. 08:02 ist seit über 12 Stunden offen – Ausstempeln vergessen?“ oder „Ende liegt vor dem Start“.
   - Die letzten 45 Tage holt Zeitzeuge in einer Abfrage. Tage, die noch fehlen, sind damit auch offline da.
 - **Gebuchte Zeiten aus Matrix42 (nur im Firmennetz):** Zeitzeuge liest deine Buchungen aus dem Matrix42-Kalender (Service Desk → Kalender) und gleicht sie mit dem Tag ab.
   - Einrichten: **Einstellungen → Datenquellen → Einrichten → Matrix42 …**, dort die Adresse der Kalenderseite aus der Adresszeile einfügen. Die Windows-Anmeldung klappt meist von selbst, sonst einmal **Bei Matrix42 anmelden …**.
-  - Edge liest die Wochenansicht unsichtbar mit eigenem Profil (`m42_profil`): die aktuelle Woche alle 10 Minuten, die letzten 4 Wochen einmal pro Sitzung (einstellbar), ältere Wochen beim Blättern. Alles landet in `m42_buchungen.json` und bleibt auch außerhalb des Firmennetzes da.
+  - Edge liest die Wochenansicht unsichtbar mit eigenem Profil (`m42_profil`): die aktuelle Woche alle 10 Minuten, die letzten 4 Wochen einmal pro Sitzung (einstellbar), ältere Wochen beim Blättern. Alles landet in der Datenbank und bleibt auch außerhalb des Firmennetzes da.
   - Außerhalb des Firmennetzes steht in der Statuszeile „M42: nicht im Firmennetz“; Zeitzeuge liest weiter, sobald du wieder im Netz oder im VPN bist.
   - **Zeile „Matrix42“** in der Timeline: graue Blöcke sind gebucht (Kunde · Betreff), rot gestrichelte Lücken sind Personalzeit (ohne ITM: Arbeitszeit) ohne Buchung. Ein Klick auf eine Lücke trägt ab dort eine Tätigkeit ein.
   - **Tagesliste → Matrix42-Abgleich:** Buchungen mit Ticketnummer, Lücken ohne Buchung und Verbindungen/Telefonate, die höchstens zur Hälfte gebucht sind („Nicht gebucht: TeamViewer“).
@@ -72,6 +72,7 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
   - Die Ansicht **Dokumentation** in der Tagesliste zeigt alles, STRG + C kopiert es als fertige Ticketzeilen.
   - Trägst du einen KI-Vorschlag als Tätigkeit ein, steht er in der Zeile „Doku“ und gilt als übernommen.
 - **Jede Zeile der Timeline ein- und ausblenden:** PC-Aktivität, Dokumentation, Zuordnung ohne KI, KI-Vorschläge, Telefon, VPN, TeamViewer und Remote / Weitere schaltest du einzeln unter **Einstellungen → Zeilen der Timeline**. **Alle einblenden** holt alles zurück. Die Tagesliste zeigt weiter alle Einträge.
+- **Verschlüsselte Datenbank:** Alle Daten (Anrufe, Fenster, Tätigkeiten, KI-Vorschläge, Personalzeit, Matrix42, VPN, Kundennamen) liegen in einer Datei `zeitzeuge.db`, verschlüsselt mit AES-256. Auf deinem PC öffnet sie deine Windows-Anmeldung ohne Abfrage. Für einen neuen PC gibt es einen Wiederherstellungsschlüssel, den du in RDM ablegst. Siehe [Schutz der Daten](#schutz-der-daten).
 - **Ladeanzeige:** Solange Zeitzeuge etwas lädt (Logs, 3CX, ITM, Matrix42 oder KI-Vorschläge), läuft oben über der Timeline ein blauer Balken mit Text, z. B. „Lädt: 3CX-Anrufe · KI-Vorschläge (Claude ordnet 25.10. ein) …“. Kurze Lesevorgänge im Hintergrund erscheinen erst nach 1,5 Sekunden, damit nichts flackert.
 - **Zustand der Datenquellen in der Statusleiste:** Rechts unten stehen 3CX und ITM nebeneinander, jeweils mit Symbol:
   - grüner Haken und Uhrzeit: zuletzt erfolgreich gelesen, z. B. „3CX 17:53“
@@ -213,9 +214,9 @@ Zeitzeuge öffnet den 3CX-Webclient unsichtbar mit dem installierten Microsoft E
 
 Die Anmeldung bleibt gespeichert (`%LOCALAPPDATA%\Zeitzeuge\3cx_profil`). Läuft sie ab, meldet sich Zeitzeuge im Infobereich. Ein Klick auf die Meldung öffnet die Anmeldung. Ton, Mikrofon und Benachrichtigungen sind gesperrt, dort klingelt also nichts. Für 3CX zählt Zeitzeuge aber als zusätzlich angemeldeter Webclient.
 
-Zeitzeuge scrollt die Anrufliste so viele Tage zurück, wie unter **Anrufe zurück lesen** im Dialog eingestellt ist (Standard 14, Schlüssel `calls_days_back`). Erhöhst du die Zahl, liest es die fehlenden Tage nach. Bis zu welchem Tag die Anrufe vollständig sind, merkt es sich in `anrufe_stand.json`. Zeigst du einen älteren Tag an, scrollt Zeitzeuge im Hintergrund bis dorthin weiter. Das geht nur so weit zurück, wie 3CX die Anrufe selbst noch anzeigt.
+Zeitzeuge scrollt die Anrufliste so viele Tage zurück, wie unter **Anrufe zurück lesen** im Dialog eingestellt ist (Standard 14, Schlüssel `calls_days_back`). Erhöhst du die Zahl, liest es die fehlenden Tage nach. Bis zu welchem Tag die Anrufe vollständig sind, merkt es sich in der Datenbank. Zeigst du einen älteren Tag an, scrollt Zeitzeuge im Hintergrund bis dorthin weiter. Das geht nur so weit zurück, wie 3CX die Anrufe selbst noch anzeigt.
 
-**Direkt-Abfrage prüfen:** Im 3CX-Dialog holt **Direkt-Abfrage prüfen** die Anrufe ohne Webseite direkt vom 3CX-Server und vergleicht sie mit deiner `anrufe.json`. Den Bericht `3cx_pruefung_….json` legt Zeitzeuge in den Datenordner, Namen und Nummern nur maskiert. Damit lässt sich festlegen, welche Felder Dauer und Richtung tragen. Danach kann Zeitzeuge 3CX ganz ohne Edge lesen.
+**Direkt-Abfrage prüfen:** Im 3CX-Dialog holt **Direkt-Abfrage prüfen** die Anrufe ohne Webseite direkt vom 3CX-Server und vergleicht sie mit deiner gespeicherten Anrufliste. Den Bericht `3cx_pruefung_….json` legt Zeitzeuge in den Datenordner, Namen und Nummern nur maskiert. Damit lässt sich festlegen, welche Felder Dauer und Richtung tragen. Danach kann Zeitzeuge 3CX ganz ohne Edge lesen.
 
 Die Einstellungen für Telefonate stehen in `zeitzeuge_config.json`:
 
@@ -244,7 +245,7 @@ Auf beiden Wegen erneuert Zeitzeuge die Anmeldung danach selbst, ohne Edge zu st
 
 Lässt der Mandant Anmeldungen nur aus dem Firmennetz zu, klappt die Anmeldung mit Passwort nur dort oder über VPN. **Anmeldung löschen** im selben Dialog entfernt das gespeicherte Token.
 
-Die Anmeldung liegt in `%LOCALAPPDATA%\Zeitzeuge\itm_anmeldung.json` (unter Windows verschlüsselt, nur für deinen Windows-Benutzer lesbar) und, bei Anmeldung über Edge, in `itm_profil` daneben. Die gelesenen Tage liegen in `personalzeiten.json` im Datenordner. Die Timeline zeigt dann deine gestempelte Zeit hell und alles andere, auch die Pausen, abgedunkelt. Ohne Personalzeiten gilt wie bisher die Arbeitszeit aus den Einstellungen.
+Die Anmeldung liegt in `%LOCALAPPDATA%\Zeitzeuge\itm_anmeldung.json` (unter Windows verschlüsselt, nur für deinen Windows-Benutzer lesbar) und, bei Anmeldung über Edge, in `itm_profil` daneben. Die gelesenen Tage liegen in der Datenbank. Die Timeline zeigt dann deine gestempelte Zeit hell und alles andere, auch die Pausen, abgedunkelt. Ohne Personalzeiten gilt wie bisher die Arbeitszeit aus den Einstellungen.
 
 ### Abfragen mitschneiden (3CX und ITM)
 
@@ -269,7 +270,7 @@ Der Schlüssel liegt nur auf deinem PC unter `%LOCALAPPDATA%\Zeitzeuge\anthropic
 
 **Kosten:** Gesendet wird nur, wenn du es anstößt. Haben sich die Einträge des Tages nicht geändert, fragt Zeitzeuge vorher nach. Ein normaler Arbeitstag kostet mit Opus 5.5 meist 5 bis 15 Cent, mit Haiku 5.5 deutlich unter 1 Cent. Bei 100 $ Guthaben reicht das für viele Monate. Was bisher ausgegeben wurde, steht im Dialog.
 
-Die Vorschläge liegen pro Tag in `ki_vorschlaege/JJJJ-MM-TT.json` im Datenordner.
+Die Vorschläge liegen pro Tag in der Datenbank.
 
 | Schlüssel | Standard | Bedeutung |
 |---|---|---|
@@ -281,7 +282,7 @@ Die Vorschläge liegen pro Tag in `ki_vorschlaege/JJJJ-MM-TT.json` im Datenordne
 
 ### Nachfragen und Erinnerungen
 
-Unter **Einstellungen → Nachfragen und Erinnerungen …** legst du fest, wann Zeitzeuge nachfragt. Deine Tätigkeiten liegen pro Tag in `taetigkeiten/JJJJ-MM-TT.json` im Datenordner.
+Unter **Einstellungen → Nachfragen und Erinnerungen …** legst du fest, wann Zeitzeuge nachfragt. Deine Tätigkeiten liegen pro Tag in der Datenbank.
 
 | Schlüssel | Standard | Bedeutung |
 |---|---|---|
@@ -331,8 +332,10 @@ Zeitzeuge soll nie Daten verlieren und nie dauerhaft hängen. Das passiert bei P
 - **Edge abgestürzt oder beendet:** Hast du Edge im Task-Manager beendet oder ist er abgestürzt, merkt Zeitzeuge das. Es räumt auf und startet Edge beim nächsten Durchlauf neu. Hängt ein Durchlauf länger als 15 Minuten, beendet Zeitzeuge Edge hart und fängt neu an. Jede Minute prüft ein Wächter, ob die Leser für 3CX und ITM noch laufen, und startet sie bei Bedarf neu.
 - **Anmeldefenster:** Meldest du dich 10 Minuten lang nicht an, schließt sich das Fenster von selbst. In der Statuszeile steht dann „Anmeldung abgebrochen (Zeitüberschreitung)“. Über die Meldung im Infobereich öffnest du es wieder. Schaltest du 3CX oder ITM unter **Datenquellen** aus, gehen auch ihr Edge und ihr Anmeldefenster zu.
 - **Edge-Reste:** Beim Start und beim Beenden schließt Zeitzeuge alle Edge-Fenster mit seinen eigenen Profilen (`3cx_profil`, `itm_profil`, `m42_profil`). Dein normaler Edge bleibt immer offen.
-- **Kaputte Dateien:** Ist eine Datei wie `zeitzeuge_config.json` oder `anrufe.json` beschädigt, überschreibt Zeitzeuge sie nicht. Es benennt sie um in `<Name>.defekt-<Datum>-<Uhrzeit>` und sagt dir das nach dem Start. Danach macht es mit Standardwerten weiter. Deine alten Daten stecken in der umbenannten Datei. Einzelne kaputte Einträge in einer sonst guten Datei überspringt Zeitzeuge einfach.
-- **Gesperrte Dateien:** Hält OneDrive oder ein Virenscanner eine Datei kurz fest, versucht Zeitzeuge es gleich noch einmal. Alle Dateien schreibt es so, dass bei einem Absturz die alte Fassung heil bleibt.
+- **Daten gesperrt:** Öffnet deine Windows-Anmeldung die Datenbank nicht (neuer PC, anderes Konto), fragt Zeitzeuge nach dem Wiederherstellungsschlüssel aus RDM. Brichst du ab, beendet sich Zeitzeuge und ändert nichts. Es legt nie eine neue, leere Datenbank über die alte.
+- **Absturz beim Schreiben:** Die Datenbank schreibt jede Änderung als Ganzes oder gar nicht (SQLite mit WAL). Bricht der Strom mitten im Schreiben weg, fehlt höchstens die letzte Änderung.
+- **Kaputte Dateien:** Ist eine Datei wie `zeitzeuge_config.json` oder eine alte `anrufe.json` beschädigt, überschreibt Zeitzeuge sie nicht. Es benennt sie um in `<Name>.defekt-<Datum>-<Uhrzeit>` und sagt dir das nach dem Start. Danach macht es mit Standardwerten weiter. Deine alten Daten stecken in der umbenannten Datei. Einzelne kaputte Einträge in einer sonst guten Datei überspringt Zeitzeuge einfach.
+- **Gesperrte Dateien:** Hält OneDrive oder ein Virenscanner eine Datei kurz fest, versucht Zeitzeuge es gleich noch einmal. Ist die Datenbank gerade gesperrt, behält Zeitzeuge neue Fensterabschnitte im Speicher und schreibt sie beim nächsten Mal. Eine gesperrte alte Datei übernimmt es später.
 - **Sehr große Logs:** Von Logdateien über 100 MB liest Zeitzeuge nur die letzten 20 MB und sagt dir das einmal. Logs in UTF-16 erkennt es von selbst. Kaputte Zeilen werden übersprungen.
 - **KI ohne Internet:** Statt einer langen Fehlermeldung steht dort „Keine Internetverbindung“.
 - **fehler.log:** Alle Fehler stehen mit Uhrzeit in `fehler.log` im Datenordner. Interne Fehler beenden Zeitzeuge nicht. Die Statuszeile zeigt höchstens einmal pro Minute einen Hinweis.
@@ -341,12 +344,40 @@ Zeitzeuge soll nie Daten verlieren und nie dauerhaft hängen. Das passiert bei P
 
 ### Speicherort
 
-Zeitzeuge speichert Config, Anrufe und Aktivitätsprotokoll unter **Dokumente\Zeitzeuge**.
+| Was | Wo |
+|---|---|
+| Einstellungen (`zeitzeuge_config.json`), `fehler.log`, `haenger.log` | Datenordner, Standard **Dokumente\Zeitzeuge** |
+| Datenbank `zeitzeuge.db` (alle Daten, verschlüsselt) | lokal unter `%LOCALAPPDATA%\Zeitzeuge` |
+| Sicherung `zeitzeuge-sicherung.db` (genauso verschlüsselt) | Datenordner, alle 2 Stunden und beim Beenden |
+| Anmeldungen (`3cx_profil`, `itm_profil`, `m42_profil`, `itm_anmeldung.json`) | lokal unter `%LOCALAPPDATA%\Zeitzeuge` |
 
-- **Einstellungen → Datenspeicher → Speicherort ändern …** wählt einen anderen Ordner. Die Daten ziehen mit um, danach startet Zeitzeuge neu.
+Warum die Datenbank lokal liegt: „Dokumente“ wird oft mit OneDrive synchronisiert. OneDrive lädt eine SQLite-Datei sonst mitten im Schreiben hoch oder ihre Hilfsdateien (`-wal`, `-shm`) getrennt. Das kann die Kopie in der Cloud beschädigen. Die Sicherung im Datenordner ist dagegen eine fertige Datei, die Zeitzeuge in einem Schritt ersetzt. Fehlt die lokale Datenbank (neuer PC, Profil neu), macht Zeitzeuge mit der Sicherung weiter.
+
+- **Einstellungen → Datenspeicher → Speicherort ändern …** wählt einen anderen Datenordner. Einstellungen und Sicherung ziehen mit um, danach startet Zeitzeuge neu.
 - **Einstellungen → Datenspeicher → Datenordner öffnen** zeigt den Ordner im Explorer (auch im Menü des Infobereichs).
-- Daten aus älteren Versionen, die noch neben der EXE liegen, verschiebt Zeitzeuge beim ersten Start automatisch.
-- Die 3CX-Anmeldung liegt immer lokal unter `%LOCALAPPDATA%\Zeitzeuge`. Der Ordner „Dokumente“ wird oft mit OneDrive synchronisiert, und eine Browser-Anmeldung gehört nicht in die Cloud.
+- **Erster Start nach dem Update:** Zeitzeuge übernimmt die alten Dateien (`anrufe.json`, `aktivitaet/`, `taetigkeiten/`, `ki_vorschlaege/`, `personalzeiten.json`, `m42_buchungen.json`, `vpn_verbindungen.json`, `uebernommen.json`, Kundennamen aus der Config) in die Datenbank. Jede Datei prüft es danach gegen (gleicher Inhalt, gleiche Anzahl je Tag) und verschiebt sie erst dann nach `alt-<Datum>\`. Gelöscht wird nichts. Wenn alles passt, kannst du `alt-<Datum>` selbst löschen. Bricht der Start mittendrin ab, macht Zeitzeuge beim nächsten Start dort weiter, ohne etwas doppelt einzulesen.
+- Daten aus sehr alten Versionen, die noch neben der EXE liegen, verschiebt Zeitzeuge beim Start in den Datenordner.
+
+### Schutz der Daten
+
+Zeitzeuge verschlüsselt alle Inhalte mit einem zufälligen Schlüssel (AES-256-GCM). Lesbar sind in der Datei nur technische Angaben: welcher Tag und welche Art von Daten. Kunden, Titel, Texte und Nummern stehen nirgends im Klartext. Personal, Kollegen, OneDrive, Backups, eine kopierte Festplatte oder ein anderes Windows-Konto sehen damit nichts.
+
+Den Schlüssel selbst speichert Zeitzeuge nur verpackt, in zwei „Schlüsselfächern“:
+
+1. **Windows-Anmeldung:** Standard. Zeitzeuge startet ohne Abfrage, nur dein Windows-Konto kann das Fach öffnen (DPAPI).
+2. **Wiederherstellungsschlüssel:** 48 Ziffern in 8 Blöcken, wie bei BitLocker. Zeitzeuge zeigt ihn einmal beim Einrichten. Leg ihn in RDM ab (Eintrag „Zeitzeuge Wiederherstellung“). Damit öffnest du die Daten auf einem neuen PC oder mit einem anderen Windows-Konto; danach startet Zeitzeuge dort wieder ohne Abfrage. Jeder Block ist durch 11 teilbar, so meldet Zeitzeuge einen Tippfehler direkt mit dem Block.
+
+**Einstellungen → Datenspeicher → Schutz …** zeigt den Stand und hat diese Knöpfe:
+
+- **Neu erzeugen …:** neuer Wiederherstellungsschlüssel, der alte wird ungültig. Ersetze dann den Eintrag in RDM.
+- **Prüfen …:** prüft, ob der Schlüssel aus RDM passt. Dabei ändert sich nichts.
+- **Ändern …** beim Übertragungsschlüssel: neu erzeugen oder vom anderen PC eingeben (siehe [Zwei PCs](#zwei-pcs-arbeits-pc-und-paw)).
+
+Fehlt der Wiederherstellungsschlüssel noch, steht rechts unten der blaue Knopf **Wiederherstellungsschlüssel einrichten**.
+
+Schlüssel gehören nie in eine Befehlszeile oder Verknüpfung: Virenscanner wie Cortex XDR speichern Befehlszeilen zentral. Zeitzeuge hat darum keinen Startparameter für einen Schlüssel.
+
+Grenzen: Wer als dein Windows-Benutzer angemeldet ist, kommt an die Daten, genau wie Zeitzeuge selbst. Domänen-Admins können DPAPI mit dem Sicherungsschlüssel der Domäne umgehen. Soll auch das nicht gehen, braucht es eine zusätzliche Abfrage beim Start (Windows Hello oder PIN). Die gibt es noch nicht.
 
 ### Aktivitätsprotokoll
 
@@ -358,7 +389,7 @@ Ein- und ausschalten geht an drei Stellen, alle zeigen denselben Zustand:
 
 Im Infobereich zeigt das Logo den Zustand: blauer Ring mit rotem „Jetzt“-Punkt, solange aufgezeichnet wird; grauer Ring mit Pause-Zeichen statt Punkt, wenn die Aufzeichnung pausiert ist. Die Statuszeile zeigt denselben roten bzw. grauen Punkt. Der Zustand bleibt nach einem Neustart erhalten. Bereits Aufgezeichnetes bleibt auch bei Pause in der Timeline sichtbar.
 
- Die Daten liegen pro Tag in `aktivitaet/JJJJ-MM-TT.jsonl` im Datenordner.
+Die Fensterabschnitte liegen verschlüsselt in der Datenbank (siehe [Schutz der Daten](#schutz-der-daten)).
 
 | Schlüssel | Standard | Bedeutung |
 |---|---|---|
@@ -400,13 +431,14 @@ Damit Zeitzeuge mit Windows startet:
 Auf einer PAW (Privileged Access Workstation) laufen oft nur RDM-Verbindungen, ohne 3CX, ITM, Matrix42 und ohne Laufwerksfreigabe zum Arbeits-PC. So kommt trotzdem alles an einer Stelle zusammen:
 
 1. **Auf der PAW einmal einrichten:** **Einstellungen → Datenspeicher → Dieser PC ist eine PAW (nur RDM sammeln)**. Zeitzeuge sammelt dort nur die RDM-Verbindungen. TeamViewer, VPN, 3CX, ITM, Matrix42, Fensteraufzeichnung und Nachfragen sind aus.
-2. **Auf dem Arbeits-PC exportieren:** **Einstellungen → Datenspeicher → Daten exportieren …**, Zeitraum wählen (Standard 31 Tage). **Als Datei speichern** erzeugt eine einzige Datei `Zeitzeuge-Export_<PC>_<Datum>.zeitzeuge`. Darf keine Datei auf die PAW, nimm **In Zwischenablage kopieren**: Der Export wird gepackter Text, der auch über eine RDP-Zwischenablage passt, die nur Text erlaubt.
-3. **Auf der PAW übernehmen:** **Daten übernehmen …** → **Datei wählen** oder **Aus Zwischenablage**. Die PAW zeigt dann ihre RDM-Verbindungen zusammen mit Anrufen, Personalzeit, Matrix42-Abgleich, VPN, TeamViewer, Fenstern, Tätigkeiten und den schon erstellten KI-Vorschlägen vom Arbeits-PC.
+2. **Auf dem Arbeits-PC exportieren:** **Einstellungen → Datenspeicher → Daten exportieren …**, Zeitraum wählen (Standard 31 Tage). **Als Datei speichern** erzeugt eine einzige Datei `Zeitzeuge-Export_<PC>_<Datum>.zeitzeuge`. Darf keine Datei auf die PAW, nimm **In Zwischenablage kopieren**: Der Export wird Text, der auch über eine RDP-Zwischenablage passt, die nur Text erlaubt. Beim ersten Export erzeugst du einen **Übertragungsschlüssel** (oder gibst einen vorhandenen ein) und legst ihn in RDM ab („Zeitzeuge Übertragung“).
+3. **Auf der PAW übernehmen:** **Daten übernehmen …** → **Datei wählen** oder **Aus Zwischenablage**. Beim ersten Mal fragt Zeitzeuge nach dem Übertragungsschlüssel aus RDM und merkt ihn sich. Die PAW zeigt dann ihre RDM-Verbindungen zusammen mit Anrufen, Personalzeit, Matrix42-Abgleich, VPN, TeamViewer, Fenstern, Tätigkeiten und den schon erstellten KI-Vorschlägen vom Arbeits-PC.
 
-- Übernommenes steht in einer einzigen Datei `uebernommen.json` und ist mit „von <PC>“ gekennzeichnet. Ein neuerer Export ersetzt die Tage des älteren; ein älterer überschreibt nichts Neueres.
+- Übernommenes steht in der Datenbank der PAW und ist mit „von <PC>“ gekennzeichnet. Ein neuerer Export ersetzt die Tage des älteren; ein älterer überschreibt nichts Neueres.
 - KI-Vorschläge vom Arbeits-PC erscheinen in der Zeile „KI“ (die PAW erreicht Claude meist nicht). **Als Tätigkeit eintragen** geht auch auf der PAW; verwerfen nur auf dem Arbeits-PC. Verworfene Vorschläge kommen nicht mit.
 - Übernommene Tätigkeiten lassen sich auf der PAW nur ansehen und kopieren; ändern geht auf dem Arbeits-PC. Was dort dokumentiert ist, gilt auch auf der PAW als dokumentiert.
-- Der Export enthält Kundennamen, Telefonate und Fenstertitel. Er ist gepackt, aber nicht verschlüsselt: Behandle ihn wie die Daten selbst und lösche ihn nach dem Übernehmen.
+- Der Export enthält Kundennamen, Telefonate und Fenstertitel. Er ist mit dem Übertragungsschlüssel verschlüsselt (AES-256-GCM). Ohne den Schlüssel ist er wertlos; lösche ihn trotzdem nach dem Übernehmen.
+- Exporte älterer Versionen (unverschlüsselt) nimmt Zeitzeuge weiter an und weist darauf hin.
 - Ein Export geht nur auf einen anderen PC; auf demselben PC lehnt Zeitzeuge ihn ab.
 
 **Virenscanner / EDR (z. B. Cortex XDR):** Im PAW-Modus startet Zeitzeuge nie Edge im Hintergrund, liest keine Cookies, durchsucht und beendet keine Prozesse und lädt die Edge-Steuerung gar nicht erst. Übrig bleibt: RDM-Log lesen, Fenster anzeigen, Dateien im Datenordner schreiben. Nimm auf der PAW am besten die **Ordner-Variante** (`ZeitZeuge-Ordner.zip`): Die einzelne `ZeitZeuge.exe` entpackt sich bei jedem Start nach `%TEMP%` und lädt von dort DLLs, was EDR-Produkte gern als verdächtig werten. Ist ein Zertifikat hinterlegt, sind beide Varianten signiert. Sicher ausschließen lässt sich ein Fehlalarm nur, wenn die IT die EXE (Signatur oder Hash) freigibt.
@@ -422,6 +454,9 @@ Läuft RDM auf einem Server, kann Zeitzeuge dessen Log auch über das Netzwerk l
 | `work_days` | Arbeitszeit pro Wochentag, z. B. `"Fr": "08:00-13:00"`, leer = frei. Einstellbar unter **Einstellungen → Arbeitszeiten …** |
 | `dark_mode` | Dunkles Design |
 | `activity_types`, `type_colors` | Aktivitätstypen und ihre Farben |
+| ~~`teamviewer_names`~~ | Kundennamen zu TeamViewer-IDs stehen nicht mehr in der Config, sondern verschlüsselt in der Datenbank. Alte Einträge übernimmt Zeitzeuge beim ersten Start. |
+
+Für Tests und Hilfsskripte gibt es zwei Umgebungsvariablen: `ZEITZEUGE_DATA` setzt den Datenordner (die Datenbank liegt dann ebenfalls dort, ohne Sicherung), `ZEITZEUGE_DB` den Pfad der Datenbank.
 
 ## Projektstruktur
 
@@ -454,7 +489,11 @@ Läuft RDM auf einem Server, kann Zeitzeuge dessen Log auch über das Netzwerk l
 | `transfer.py` | Export/Import zwischen zwei PCs (Arbeits-PC → PAW), übernommene Daten (ohne Qt) |
 | `app_transfer.py` | Hauptfenster: Export- und Import-Dialog, PAW-Modus |
 | `rules.py` | Klassifizierung ohne KI: Regeln, Blöcke bilden, Vorrang (ohne Qt) |
-| `storage.py` | Speicherort der Daten |
+| `storage.py` | Speicherort: Datenordner, Datenbank, Sicherung, Umziehen |
+| `datastore.py` | Verschlüsselte SQLite-Datenbank: Ablagen je Tag, Zeilen, Schlüsselfächer, Migration der alten Dateien, Sicherung (ohne Qt) |
+| `datakey.py` | Schlüssel: AES-256-GCM, Ziffernschlüssel (Wiederherstellung, Übertragung), Windows-Anmeldung (DPAPI) (ohne Qt) |
+| `app_protect.py` | Hauptfenster: Dialog „Schutz …“, Wiederherstellungs- und Übertragungsschlüssel, Sicherung alle 2 Stunden |
+| `protect_dialogs.py` | Dialoge: Schlüssel einmal zeigen, Schlüssel eingeben, „Daten sind gesperrt“ |
 | `safe_io.py` | Dateien sicher lesen und schreiben, kaputte Dateien beiseitelegen, große Logs nur am Ende lesen, `fehler.log` |
 | `net.py` | Prüfen, ob ein Server erreichbar ist, und Wartezeit nach Fehlern |
 | `tests/` | Tests (pytest), laufen bei jedem Build: Start, Bedienbarkeit, Infobereich, Log-Parser, VPN-Logs, 3CX und ITM mit nachgebauten Seiten, KI-Vorschläge mit nachgebauter API, Fensterabfrage, Anrufliste. Dazu `start_bench.py` (Startzeit messen) und `screenshots.sh` (Bildschirmfotos mit Demodaten) |
@@ -471,8 +510,13 @@ Zeitzeuge arbeitet nur auf deinem eigenen Rechner. Es liest lokale Logdateien un
 
 **KI-Vorschläge:** Dabei gehen die Einträge des Tages an Anthropic: Uhrzeiten, Kunden- und Verbindungsnamen, Anrufer und, wenn eingeschaltet, die Fenstertitel. Passwörter selbst stehen nicht in den Logs und werden nicht gesendet. Fenster aus `tracking_ignore` gehen nur als „(ausgeblendet)“ mit. Prüfe vorher, ob das zu deinen Verträgen mit Kunden passt. Wenn nicht: Fenstertitel ausschalten oder die Funktion nicht nutzen.
 
-Das Aktivitätsprotokoll speichert Fenstertitel. Darin können Kundennamen, Betreffzeilen von Mails oder Dateinamen stehen. Die Dateien in `aktivitaet/` gehören deshalb nur auf deinen PC. In den Ordnern `3cx_profil`, `itm_profil` und `m42_profil` und in `itm_anmeldung.json` liegen deine Anmeldungen bei 3CX, ITM und Matrix42. Sie sind zu schützen wie ein Browserprofil. Alle diese Dateien stehen in `.gitignore`, genauso wie `anrufe.json`, `personalzeiten.json`, `m42_buchungen.json`, `ki_vorschlaege/`, `taetigkeiten/`, `mitschnitt_*.json` und die persönliche `zeitzeuge_config.json`.
+**Was wo liegt:** Fenstertitel, Kundennamen, Telefonate, Tätigkeiten und alle anderen Daten stehen verschlüsselt in `zeitzeuge.db` (siehe [Schutz der Daten](#schutz-der-daten)). In den Ordnern `3cx_profil`, `itm_profil` und `m42_profil` und in `itm_anmeldung.json` liegen deine Anmeldungen bei 3CX, ITM und Matrix42. Sie sind zu schützen wie ein Browserprofil. `itm_anmeldung.json` ist unter Windows mit deiner Windows-Anmeldung verschlüsselt.
 
+**Logs:** `fehler.log` und `haenger.log` enthalten nur Uhrzeiten, Dateinamen, Programmzeilen und Fehlerarten. Bei internen Fehlern schreibt Zeitzeuge die Art und die Stelle im Programm, aber nicht den Text der Ausnahme, weil darin Daten stehen könnten. Ausnahme: Mitschnitte (`mitschnitt_*.json`) und der 3CX-Prüfbericht, die du nur selbst anstößt. Darin sind Geheimnisse geschwärzt (im Prüfbericht auch Namen und Nummern), ein Mitschnitt kann aber Daten der Seite enthalten. Lösche ihn nach der Auswertung.
+
+**Alte Dateien:** Nach dem Update liegen die alten, unverschlüsselten Dateien in `alt-<Datum>\` im Datenordner. Lösche den Ordner, sobald du in Zeitzeuge alles siehst.
+
+Datenbank, Sicherung, Exporte und alle alten Dateien stehen in `.gitignore`, genauso wie die persönliche `zeitzeuge_config.json`.
 
 ## Lizenz
 

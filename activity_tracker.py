@@ -3,7 +3,7 @@ Aktivitätsprotokoll: merkt sich, welches Fenster gerade im Vordergrund ist.
 
 Alle paar Sekunden wird das aktive Fenster (Programm + Fenstertitel) abgefragt.
 Gleiche Fenster hintereinander werden zu einem Abschnitt zusammengefasst und
-pro Tag in aktivitaet/JJJJ-MM-TT.jsonl gespeichert. Ohne Maus/Tastatur
+pro Tag in der Datenbank gespeichert (Ablage "aktivitaet", früher aktivitaet/JJJJ-MM-TT.jsonl). Ohne Maus/Tastatur
 (Leerlauf) oder bei gesperrtem PC wird nichts aufgezeichnet.
 
 Filter (Einstellungen → Fenster-Filter):
@@ -19,11 +19,11 @@ Die Daten bleiben nur auf diesem PC.
 """
 
 import ctypes
-import json
 import os
 import sys
 from datetime import datetime, timedelta
 
+import datastore
 import safe_io
 from rules import compile_pattern
 
@@ -220,13 +220,20 @@ class ActivityTracker:
 
     def flush(self):
         """Ungespeicherte Zeilen schreiben. True, wenn nichts mehr offen ist."""
-        while self.pending:
-            line = self.pending[0]
-            path = os.path.join(self.folder, f"{line['start'][:10]}.jsonl")
-            if not safe_io.append_line(path, json.dumps(line, ensure_ascii=False)):
-                del self.pending[:-self.MAX_PENDING]
-                return False
-            self.pending.pop(0)
+        if not self.pending:
+            return True
+        lines = list(self.pending)
+        try:
+            store, name = datastore.locate(self.folder, "row_files")
+            store.append_many(name, [(line["start"][:10], line) for line in lines])
+        except (datastore.Busy, datastore.Locked, OSError) as e:
+            if not getattr(self, "_flush_failed", False):
+                safe_io.report(f"Aktive Fenster: Speichern fehlgeschlagen ({e}), wird nachgeholt")
+            self._flush_failed = True
+            del self.pending[:-self.MAX_PENDING]
+            return False
+        self._flush_failed = False
+        del self.pending[:len(lines)]
         return True
 
     def segments_for(self, date_str):
@@ -250,20 +257,13 @@ def _valid_segment(seg):
 def read_segments(folder, date_str):
     """Gespeicherte Abschnitte eines Tages, auch wenn die Aufzeichnung gerade pausiert ist.
     Kaputte Zeilen werden übersprungen."""
-    result = []
-    path = os.path.join(folder, f"{date_str}.jsonl")
+    if not os.path.isdir(os.path.dirname(os.path.abspath(folder))):
+        return []  # Datenordner fehlt: nichts anlegen
     try:
-        with open(path, "r", encoding="utf-8", errors="ignore") as f:
-            for line in f:
-                try:
-                    seg = json.loads(line)
-                except ValueError:
-                    continue
-                if _valid_segment(seg):
-                    result.append(seg)
-    except OSError:  # fehlt oder gerade gesperrt
-        pass
-    return result
+        store, name = datastore.locate(folder, "row_files")
+        return [seg for seg in store.rows(name, date_str) if _valid_segment(seg)]
+    except (datastore.Busy, datastore.Locked, OSError):  # gerade nicht lesbar
+        return []
 
 
 def top_apps(folder, days=7, today=None, limit=15):

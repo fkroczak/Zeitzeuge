@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import pytest  # noqa: E402
 
 import activity_tracker as at  # noqa: E402
+import datastore  # noqa: E402
 
 window = {"info": None, "idle": 0}
 
@@ -130,19 +131,22 @@ def test_ausnahme_in_foreground_window(check):
 
 
 def test_schreibfehler_nachholen(check):
-    """7. Schreibfehler (Ordner nicht anlegbar): kein Absturz, Zeilen bleiben und werden nachgeholt"""
-    base = tempfile.mkdtemp()
-    blocker = os.path.join(base, "aktivitaet")
-    with open(blocker, "w") as f:
-        f.write("ich bin eine Datei, kein Ordner")
-    tr = at.ActivityTracker(blocker)
+    """7. Schreibfehler (Datenbank gesperrt): kein Absturz, Zeilen bleiben und werden nachgeholt"""
+    folder = os.path.join(tempfile.mkdtemp(), "aktivitaet")
+    store, _name = datastore.locate(folder, "row_files")
+    real = store.append_many
+
+    def busy(*_a, **_k):
+        raise datastore.Busy("database is locked")
+    store.append_many = busy
+    tr = at.ActivityTracker(folder)
     got = run(tr, [(0, ("outlook.exe", "A")), (60, ("excel.exe", "B")), (120, None)])
     check(got == [], "Schreibfehler: es wurde trotzdem geschrieben?")
     check(len(tr.pending) == 2, f"Schreibfehler: Zeilen verloren ({tr.pending})")
     check(len(tr.segments_for("2026-10-22")) == 2, "ungespeicherte Zeilen fehlen in der Ansicht")
-    os.remove(blocker)
+    store.append_many = real
     check(tr.flush() and not tr.pending, "Nachholen nach Schreibfehler klappt nicht")
-    check(len(at.read_segments(blocker, "2026-10-22")) == 2, "nachgeholte Zeilen fehlen")
+    check(len(at.read_segments(folder, "2026-10-22")) == 2, "nachgeholte Zeilen fehlen")
 
 
 def test_kaputte_zeilen_und_haeufigste_programme(check):

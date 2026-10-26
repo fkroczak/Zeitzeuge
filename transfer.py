@@ -6,8 +6,12 @@ Darum: Auf dem Arbeits-PC alles Nötige in EINE Datei exportieren (oder als Text
 Zwischenablage), von Hand auf die PAW bringen und dort übernehmen. Die PAW zeigt dann
 ihre eigenen RDM-Verbindungen zusammen mit allem vom Arbeits-PC an einer Stelle.
 
-Format: JSON, mit gzip gepackt. In der Zwischenablage als Text
-"ZEITZEUGE-EXPORT:1:" + Base64 (geht auch, wo nur Text über RDP kopiert werden darf).
+Format: JSON, mit gzip gepackt und mit dem Übertragungsschlüssel verschlüsselt
+(AES-256-GCM, Schlüssel per scrypt aus dem Ziffernschlüssel, siehe datakey.py):
+    b"ZZEXP2\n" + Salz + Nonce + Chiffrat
+In der Zwischenablage als Text "ZEITZEUGE-EXPORT:2:" + Base64 (geht auch, wo nur Text
+über RDP kopiert werden darf). Das alte, unverschlüsselte Format 1 ("ZEITZEUGE-EXPORT:1:",
+reines gzip) wird beim Übernehmen weiter angenommen, mit Hinweis.
 
     {"format": "zeitzeuge-export", "version": 1, "pc": "PC-123",
      "erstellt": "2026-10-26 08:00:00", "von": "2026-09-26", "bis": "2026-10-26",
@@ -23,23 +27,37 @@ Rein funktional, ohne Qt.
 """
 
 import base64
+import binascii
 import gzip
 import json
 import os
 import socket
 from datetime import datetime
 
+import datakey
+import datastore
 import safe_io
 
 FORMAT = "zeitzeuge-export"
 VERSION = 1
-CLIP_PREFIX = "ZEITZEUGE-EXPORT:1:"
+CLIP_PREFIX = "ZEITZEUGE-EXPORT:2:"   # verschlüsselt
+CLIP_PREFIX_PLAIN = "ZEITZEUGE-EXPORT:1:"  # alt, unverschlüsselt
+MAGIC = b"ZZEXP2\n"
+PURPOSE = b"export"
 TIME_FMT = "%Y-%m-%d %H:%M:%S"
 DAY_KEYS = ("verbindungen", "pc", "personalzeit", "m42", "taetigkeiten", "ki")
 
 
 class TransferError(ValueError):
     """Datei oder Text ist kein Zeitzeuge-Export (oder beschädigt)."""
+
+
+class WrongTransferKey(TransferError):
+    """Übertragungsschlüssel passt nicht zum Export."""
+
+
+class NeedKey(TransferError):
+    """Export ist verschlüsselt, aber es wurde kein Übertragungsschlüssel angegeben."""
 
 
 def pc_name():
@@ -62,23 +80,60 @@ def make_export(days, teamviewer_names=None, pc=None, now=None):
     }
 
 
-def to_bytes(export):
+def to_bytes(export, code=None):
+    """Export als Dateiinhalt. Mit code (Übertragungsschlüssel) verschlüsselt, ohne nur
+    gepackt (nur noch für Tests und zum Lesen alter Exporte)."""
     raw = json.dumps(export, ensure_ascii=False, separators=(",", ":"), default=str)
-    return gzip.compress(raw.encode("utf-8"), compresslevel=9)
+    packed = gzip.compress(raw.encode("utf-8"), compresslevel=9)
+    if code is None:
+        return packed
+    return MAGIC + datakey.wrap_with_code(packed, code, PURPOSE)
 
 
-def to_clipboard_text(export):
-    return CLIP_PREFIX + base64.b64encode(to_bytes(export)).decode("ascii")
+def to_clipboard_text(export, code=None):
+    prefix = CLIP_PREFIX if code is not None else CLIP_PREFIX_PLAIN
+    return prefix + base64.b64encode(to_bytes(export, code)).decode("ascii")
 
 
-def parse(data):
-    """Export aus Dateiinhalt (bytes) oder Zwischenablage (str). TransferError bei Unsinn."""
+def _raw(data):
+    """Zwischenablage-Text oder Dateiinhalt -> bytes."""
+    if isinstance(data, str):
+        text = "".join(data.split())  # Zeilenumbrüche beim Kopieren stören nicht
+        for prefix in (CLIP_PREFIX, CLIP_PREFIX_PLAIN):
+            if text.startswith(prefix):
+                try:
+                    return base64.b64decode(text[len(prefix):], validate=True)
+                except (ValueError, binascii.Error) as e:
+                    raise TransferError(f"Der Text ist unvollständig oder beschädigt ({e}).") from e
+        raise TransferError("In der Zwischenablage steht kein Zeitzeuge-Export.")
+    return data
+
+
+def is_encrypted(data):
+    """Steckt ein verschlüsselter Export in data (bytes oder Zwischenablage-Text)?"""
     try:
-        if isinstance(data, str):
-            text = "".join(data.split())  # Zeilenumbrüche beim Kopieren stören nicht
-            if not text.startswith(CLIP_PREFIX):
-                raise TransferError("In der Zwischenablage steht kein Zeitzeuge-Export.")
-            data = base64.b64decode(text[len(CLIP_PREFIX):], validate=True)
+        return _raw(data).startswith(MAGIC)
+    except TransferError:
+        return False
+
+
+def parse(data, code=None):
+    """Export aus Dateiinhalt (bytes) oder Zwischenablage (str). TransferError bei Unsinn,
+    NeedKey, wenn er verschlüsselt ist und code fehlt. Unverschlüsselte (alte) Exporte
+    tragen danach "unverschluesselt": True."""
+    data = _raw(data)
+    plain = not data.startswith(MAGIC)
+    if not plain:
+        if not code:
+            raise NeedKey("Der Export ist verschlüsselt. Dafür brauchst du den Übertragungsschlüssel.")
+        try:
+            data = datakey.unwrap_with_code(data[len(MAGIC):], code, PURPOSE)
+        except datakey.BadCode as e:
+            raise TransferError(str(e)) from e
+        except datakey.WrongKey as e:
+            raise WrongTransferKey("Der Übertragungsschlüssel passt nicht zu diesem Export. "
+                                "Er muss auf beiden PCs gleich sein.") from e
+    try:
         if data[:2] == b"\x1f\x8b":
             data = gzip.decompress(data)
         export = json.loads(data.decode("utf-8"))
@@ -92,6 +147,8 @@ def parse(data):
         raise TransferError("Der Export stammt aus einer neueren Zeitzeuge-Version. Bitte hier aktualisieren.")
     if not isinstance(export.get("tage"), dict):
         raise TransferError("Der Export enthält keine Tage.")
+    if plain:
+        export["unverschluesselt"] = True
     return export
 
 
@@ -119,11 +176,17 @@ def summary(export):
 
 
 class ImportStore:
-    """Übernommene Daten anderer PCs in einer Datei (uebernommen.json)."""
+    """Übernommene Daten anderer PCs (Ablage "uebernommen" in der Datenbank)."""
 
     def __init__(self, path):
         self.path = path
-        data = safe_io.read_json(path, {}, expect=dict)
+        try:
+            store, name = datastore.locate(path, "single")
+            data = store.get(name, "", {})
+        except (datastore.Busy, datastore.Locked) as e:
+            safe_io.report(f"Übernommene Daten gerade nicht lesbar: {e}")
+            data = {}
+        data = data if isinstance(data, dict) else {}
         pcs = data.get("pcs") if isinstance(data.get("pcs"), dict) else {}
         self.pcs = {k: v for k, v in pcs.items() if isinstance(v, dict) and isinstance(v.get("tage"), dict)}
 
@@ -157,16 +220,17 @@ class ImportStore:
         entry["teamviewer_names"] = {**entry.get("teamviewer_names", {}),
                                      **(export.get("teamviewer_names") or {})}
         entry["zuletzt"] = created
-        if not safe_io.write_json(self.path, {"pcs": self.pcs}, indent=None):
-            raise OSError("Übernommene Daten konnten nicht gespeichert werden (Details in fehler.log)")
+        try:
+            store, name = datastore.locate(self.path, "single")
+            store.put(name, "", {"pcs": self.pcs})
+        except (datastore.Busy, datastore.Locked) as e:
+            raise OSError(f"Übernommene Daten konnten nicht gespeichert werden ({e})") from e
         return taken
 
     def clear(self):
         self.pcs = {}
-        try:
-            os.remove(self.path)
-        except FileNotFoundError:
-            pass
+        store, name = datastore.locate(self.path, "single")
+        store.delete(name, "")
 
     def __bool__(self):
         return bool(self.pcs)

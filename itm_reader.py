@@ -32,6 +32,7 @@ from urllib.parse import unquote, urlsplit
 
 from PySide6.QtCore import Signal
 
+import datastore
 import safe_io
 from itm_auth import (AuthError, AuthNetworkError, ItmAuth, booking_issues, bookings_from_legacy,
                       days_from_bookings)
@@ -141,9 +142,22 @@ def token_expiry(token):
 
 
 def load_days(path):
-    """Gespeicherte Tage. Kaputte Datei wird beiseitegelegt, kaputte Tage übersprungen."""
-    data = safe_io.read_json(path, {}, expect=dict)
+    """Gespeicherte Tage (Ablage "personalzeiten" in der Datenbank). Kaputte Tage übersprungen."""
+    try:
+        store, name = datastore.locate(path, "days")
+        data = store.all(name)
+    except (datastore.Busy, datastore.Locked) as e:
+        safe_io.log(f"Personalzeiten gerade nicht lesbar: {e}")
+        return {}
     return {k: v for k, v in data.items() if isinstance(k, str) and isinstance(v, dict)}
+
+
+def save_day(path, date_str, day):
+    try:
+        store, name = datastore.locate(path, "days")
+        store.put(name, date_str, day)
+    except (datastore.Busy, datastore.Locked) as e:
+        safe_io.report(f"Personalzeiten: Speichern fehlgeschlagen ({e})")
 
 
 class ItmReader(BrowserReader):
@@ -510,7 +524,7 @@ class ItmReader(BrowserReader):
         if self.days.get(date_str) == day:
             return
         self.days[date_str] = day
-        safe_io.write_json(self.data_file, self.days, sort_keys=True)
+        save_day(self.data_file, date_str, day)
         self.day_read.emit(date_str)
 
     def _login_done(self):

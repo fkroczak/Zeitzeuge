@@ -6,10 +6,14 @@ TimelineApp setzt sich aus Mixins zusammen:
   app_docs     KI-Vorschläge, eigene Tätigkeiten, Nachfragen
   app_readers  3CX/ITM im Hintergrund, Wächter, Fehleranzeige
   app_tray     Fensteraufzeichnung, Infobereich, Beenden
+  app_transfer Export/Import für einen anderen PC (PAW)
+  app_protect  Schutz der Daten: Schlüssel, Sicherung der Datenbank
 Aussehen in theme.py, Standardwerte der Config in config_defaults.py.
 """
 import os
 import re
+import shutil
+import sqlite3
 import sys
 import threading
 import time
@@ -32,6 +36,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QApplication, QHeaderView, QLa
 from ai_classifier import AI_TYPE, AiClassifier, AiStore
 from busy_bar import BusyBar
 from transfer import ImportStore
+import datastore
 import safe_io
 import storage
 from vpn_reader import vpn_sources
@@ -46,13 +51,15 @@ from app_docs import DocsMixin
 from app_readers import ReadersMixin
 from app_tray import TrayMixin
 from app_transfer import TransferMixin
+from app_protect import ProtectMixin
 
 # Weiter über main_timeline erreichbar (Tests, Hilfsskripte)
 __all__ = [
     "TimelineApp", "AppStyle", "install_translator", "GERMAN", "THEMES", "STYLESHEET",
     "resource_path", "APP_DIR", "DATA_DIR", "CONFIG_FILE", "CALLS_FILE", "VPN_FILE",
     "ACTIVITY_DIR", "PBX_PROFILE_DIR", "ITM_FILE", "ITM_PROFILE_DIR", "ITM_AUTH_FILE",
-    "M42_FILE", "M42_PROFILE_DIR", "IMPORT_FILE", "AI_DIR", "JOURNAL_DIR",
+    "M42_FILE", "M42_PROFILE_DIR", "IMPORT_FILE", "AI_DIR", "JOURNAL_DIR", "DB_FILE", "BACKUP_FILE",
+    "open_store", "backup_store",
     "CONFIG_LOCKED", "clean_path", "load_config_with_defaults", "save_config", "merged_seconds",
     "report_exception", "install_error_hooks", "acquire_single_instance",
     "ActivityViewDialog", "ActivityTypeSettingsDialog", "ConnectionSettingsDialog", "WorkHoursDialog",
@@ -84,6 +91,10 @@ else:
 
 # Daten: standardmäßig Dokumente\Zeitzeuge (im Menü änderbar)
 DATA_DIR = storage.data_dir()
+# Alle Nutzdaten liegen verschlüsselt in einer Datenbank (datastore.py). Die *_FILE/*_DIR
+# unten sind die alten Pfade: Über sie finden die Module ihre Ablage in der Datenbank.
+DB_FILE = storage.db_file(DATA_DIR)
+BACKUP_FILE = storage.backup_file(DATA_DIR)  # None, wenn die Datenbank im Datenordner liegt
 CONFIG_FILE = os.path.join(DATA_DIR, "zeitzeuge_config.json")
 CALLS_FILE = os.path.join(DATA_DIR, "anrufe.json")
 VPN_FILE = os.path.join(DATA_DIR, "vpn_verbindungen.json")
@@ -121,6 +132,51 @@ OLD_TYPE_COLORS = {
     "#27AE60": "#2E9E5B",  # Telefonat
     "#2980B9": "#2272AD",  # M365-Admin (Schrift auf vollem Balken sonst zu blass)
 }
+
+
+class StoreLocked(Exception):
+    """Daten gesperrt und nicht entsperrt (Abbruch im Dialog)."""
+
+
+def open_store(ask=None):
+    """Datenbank öffnen, entsperren, alte Dateien übernehmen. Einmal je Lauf.
+
+    ask(store) wird aufgerufen, wenn kein Schlüsselfach zu diesem Windows-Benutzer passt
+    (Dialog für den Wiederherstellungsschlüssel). Gibt True zurück, wenn entsperrt.
+    StoreLocked, wenn die Daten gesperrt bleiben; datastore.Busy, wenn die Datei nicht aufgeht."""
+    store = datastore.registered(DATA_DIR)
+    if store and store.unlocked:
+        return store
+    os.makedirs(DATA_DIR, exist_ok=True)
+    if not os.path.exists(DB_FILE) and BACKUP_FILE and os.path.exists(BACKUP_FILE):
+        # Neuer PC oder lokale Daten gelöscht: aus der Sicherung im Datenordner weitermachen
+        os.makedirs(os.path.dirname(DB_FILE), exist_ok=True)
+        shutil.copy2(BACKUP_FILE, DB_FILE)
+        safe_io.log("Datenbank aus der Sicherung im Datenordner wiederhergestellt")
+    store = datastore.Store(DB_FILE, DATA_DIR).open()
+    try:
+        store.unlock()
+    except datastore.Locked:
+        if not ask or not ask(store):
+            store.close()
+            raise StoreLocked()
+    datastore.register(store)
+    datastore.migrate_all(store)
+    return store
+
+
+def backup_store(force=False):
+    """Sicherung in den Datenordner schreiben, wenn sich seit der letzten etwas geändert hat."""
+    store = datastore.registered(DATA_DIR)
+    if not BACKUP_FILE or not store or not store.unlocked:
+        return False
+    if not force and store.changes == store.backed_up:
+        return False
+    return store.backup(BACKUP_FILE)
+
+
+def _names_store():
+    return datastore.registered(DATA_DIR) or datastore.store_for_dir(DATA_DIR)
 
 
 def load_config_with_defaults():
@@ -173,10 +229,23 @@ def load_config_with_defaults():
         cfg["activity_types"].append("Telefonat")
     cfg["activity_types"] = list(dict.fromkeys(cfg["activity_types"]))  # alte Doppelte entfernen
 
-    # gleich zurückschreiben (damit neue Keys persistieren), atomar
+    # Kundennamen (TeamViewer-ID -> Name) sind Nutzdaten: in der Datenbank, nicht in der Config.
+    # Stehen noch welche in der Datei, einmal übernehmen.
+    old_names = cfg.pop("teamviewer_names", None) or {}
+    try:
+        store = _names_store()
+        names = store.get("teamviewer_names", "", {})
+        names = names if isinstance(names, dict) else {}
+        if isinstance(old_names, dict) and old_names and any(names.get(k) != v for k, v in old_names.items()):
+            names = {**old_names, **names}
+            store.put("teamviewer_names", "", names)
+    except (datastore.Busy, datastore.Locked) as e:
+        safe_io.report(f"Kundennamen gerade nicht lesbar: {e}")
+        names = old_names if isinstance(old_names, dict) else {}
+    # gleich zurückschreiben (damit neue Keys persistieren), atomar, ohne Kundennamen
     if not CONFIG_LOCKED:
         safe_io.write_json(CONFIG_FILE, cfg, indent=2)
-
+    cfg["teamviewer_names"] = names
     return cfg
 
 
@@ -184,7 +253,16 @@ def save_config(config: dict):
     if CONFIG_LOCKED:  # sonst stünden statt deiner Einstellungen nur Standardwerte in der Datei
         safe_io.log("zeitzeuge_config.json war beim Start gesperrt, Einstellungen nicht gespeichert")
         return
-    safe_io.write_json(CONFIG_FILE, config, indent=4)
+    names = config.get("teamviewer_names")
+    if isinstance(names, dict):
+        try:
+            store = _names_store()
+            if store.get("teamviewer_names", "", {}) != names:
+                store.put("teamviewer_names", "", names)
+        except (datastore.Busy, datastore.Locked) as e:
+            safe_io.report(f"Kundennamen konnten nicht gespeichert werden: {e}")
+    safe_io.write_json(CONFIG_FILE, {k: v for k, v in config.items() if k != "teamviewer_names"},
+                       indent=4)
 
 
 def merged_seconds(activities):
@@ -204,7 +282,7 @@ def merged_seconds(activities):
 
 
 class TimelineApp(MenusMixin, DayListMixin, DocsMixin, ReadersMixin, TrayMixin, TransferMixin,
-                  QMainWindow):
+                  ProtectMixin, QMainWindow):
     COLUMNS = ["Von", "Bis", "Dauer", "Typ", "Kunde / Verbindung", "Details"]
 
     def __init__(self):
@@ -219,6 +297,7 @@ class TimelineApp(MenusMixin, DayListMixin, DocsMixin, ReadersMixin, TrayMixin, 
         if moved:
             print(f"Nach {DATA_DIR} verschoben: {', '.join(moved)}")
         os.makedirs(DATA_DIR, exist_ok=True)
+        self.data_store = open_store()  # im Start (unten) schon mit Dialog geöffnet, in Tests hier
         self.config = load_config_with_defaults()
         self.dark_mode = self.config.get("dark_mode", False)
         self.current_date = QDate.currentDate()
@@ -403,6 +482,7 @@ class TimelineApp(MenusMixin, DayListMixin, DocsMixin, ReadersMixin, TrayMixin, 
         # Erst zeichnen, wenn das Fenster seine echte Größe hat (spart ein Zeichnen beim Start).
         # Die Logs liest die Timeline dabei im Hintergrund.
         QTimer.singleShot(0, lambda: self.timeline.draw_timeline(self.current_date))
+        self._init_protection()
         self._init_robustness()
 
 
@@ -413,11 +493,14 @@ def report_exception(exc_type, exc, tb, where=""):
     """Unbehandelte Ausnahme: Stacktrace in fehler.log, höchstens einmal pro Minute melden.
     Zeitzeuge läuft weiter."""
     try:
-        text = "".join(traceback.format_exception(exc_type, exc, tb))
-        safe_io.log(f"Unbehandelter Fehler{where}:\n{text.rstrip()}")
+        # Der Text einer Ausnahme kann Nutzdaten enthalten (KeyError: 'Müller GmbH').
+        # Ins Log nur Art und Stelle, den Text nur bei Datei-/Datenbankfehlern (Pfade).
+        detail = str(exc)[:200] if isinstance(exc, (OSError, sqlite3.Error)) else "(Text weggelassen)"
+        stack = "Traceback (most recent call last):\n" + "".join(traceback.format_tb(tb))
+        safe_io.log(f"Unbehandelter Fehler{where}: {exc_type.__name__}: {detail}\n{stack.rstrip()}")
         if time.time() - _last_error_report[0] > 60:
             _last_error_report[0] = time.time()
-            safe_io.report(f"Interner Fehler ({exc_type.__name__}: {str(exc)[:100]}). "
+            safe_io.report(f"Interner Fehler ({exc_type.__name__}). "
                            "Zeitzeuge läuft weiter, Details in fehler.log.")
     except Exception:
         pass  # Melden darf selbst nie abstürzen
@@ -475,6 +558,16 @@ if __name__ == "__main__":
             QMessageBox.information(None, "Zeitzeuge",
                                     "Zeitzeuge läuft schon. Du findest es im Infobereich neben der Uhr.")
         sys.exit(0)
+    from protect_dialogs import ask_unlock
+    try:
+        open_store(ask=ask_unlock)
+    except StoreLocked:
+        sys.exit(0)  # gesperrt gelassen: nichts anlegen, nichts überschreiben
+    except datastore.Busy as e:
+        QMessageBox.critical(None, "Zeitzeuge", f"Die Datenbank lässt sich nicht öffnen.\n\n{e}\n\n"
+                             "Zeitzeuge beendet sich, ohne etwas zu ändern. Details in fehler.log.")
+        safe_io.log(f"Datenbank nicht geöffnet: {e}")
+        sys.exit(1)
     window = TimelineApp()
     from hang_watch import HangWatch
     hang_watch = HangWatch(os.path.join(DATA_DIR, "haenger.log"), app)

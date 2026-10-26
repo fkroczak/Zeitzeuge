@@ -3,3 +3,4 @@ websocket-client==1.8.0
 psutil==6.1.0
 anthropic==2.1.0
 pyinstaller==6.22.3
+cryptography==50.0.1

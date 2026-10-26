@@ -114,8 +114,10 @@ def gui_test():
     assert [i["text"] for i in items] == ["Outlook-Profil neu angelegt"], items
     assert items[0]["customer"] == "Beispiel AG" and items[0]["source"] == "TeamViewer"
     assert window.config["teamviewer_names"]["987654321"] == "Beispiel AG"
+    # Kundennamen sind Nutzdaten: verschlüsselt in der Datenbank, nicht in der Config-Datei
+    assert window.data_store.get("teamviewer_names")["987654321"] == "Beispiel AG"
     with open(main_timeline.CONFIG_FILE, encoding="utf-8") as f:
-        assert json.load(f)["teamviewer_names"]["987654321"] == "Beispiel AG"
+        assert "teamviewer_names" not in json.load(f)
     assert window._prompt_window is None and not window._prompt_queue
     # Feierabend-Erinnerung: höchstens einmal am Tag, nur nach Ende der Arbeitszeit
     reminders = [m for m in tray_messages if m.startswith("Feierabend")]

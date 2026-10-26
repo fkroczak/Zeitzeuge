@@ -20,6 +20,7 @@ import re
 import sys
 from datetime import datetime, timedelta
 
+import datastore
 import safe_io
 
 TIME_FMT = "%Y-%m-%d %H:%M:%S"
@@ -263,10 +264,13 @@ class VpnReader:
         if self._data is None:
             data, locked = {}, False
             if self.archive_file:
-                try:  # kaputte Datei wird beiseitegelegt (safe_io), nicht überschrieben
-                    data = safe_io.read_json(self.archive_file, {}, expect=dict, raise_locked=True)
-                except safe_io.FileLocked:
-                    locked = True  # gesperrt: nichts speichern, sonst wäre das Archiv weg
+                try:
+                    store, name = datastore.locate(self.archive_file, "single")
+                    data = store.get(name, "", {})
+                    if not isinstance(data, dict):
+                        data = {}
+                except (datastore.Busy, datastore.Locked):
+                    locked = True  # gerade nicht lesbar: nichts speichern, sonst wäre das Archiv weg
             parsed = {}
             for k, default in (("connections", []), ("adapter", []), ("names", {})):
                 value = data.get(k, default)
@@ -283,7 +287,11 @@ class VpnReader:
     def _save(self):
         if not self.archive_file or self._data is None:
             return
-        safe_io.write_json(self.archive_file, self._data)
+        try:
+            store, name = datastore.locate(self.archive_file, "single")
+            store.put(name, "", self._data)
+        except (datastore.Busy, datastore.Locked) as e:
+            safe_io.report(f"VPN-Verbindungen: Speichern fehlgeschlagen ({e})")
 
     # ------------------------------------------------------------ eigene Aufzeichnung
 

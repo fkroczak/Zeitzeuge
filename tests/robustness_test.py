@@ -300,6 +300,7 @@ with open(os.path.join(DATA, "fehler.log"), encoding="utf-8") as f:
     log = f.read()
 check("ZeroDivisionError" in log and "Traceback" in log, "Ausnahme im Slot mit Stacktrace in fehler.log")
 check("KeyError" in log and "Testthread" in log, "Ausnahme im Thread in fehler.log")
+check("'fehlt'" not in log, "Text der Ausnahme (kann Nutzdaten enthalten) nicht in fehler.log")
 window.show_problems()
 check("Interner Fehler" in window.statusBar().currentMessage(), "Hinweis in der Statuszeile (einmal pro Minute)")
 check(window.isEnabled(), "Zeitzeuge läuft nach der Ausnahme weiter")

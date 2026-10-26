@@ -27,8 +27,7 @@ from urllib.parse import urlsplit
 
 from PySide6.QtCore import Signal
 
-import safe_io
-from m42_data import bookings_by_day, load_store, week_start  # noqa: F401 (auch für Tests)
+from m42_data import bookings_by_day, load_store, save_days, week_start  # noqa: F401 (auch für Tests)
 from pbx_reader import BrowserReader
 
 
@@ -276,7 +275,7 @@ class M42Reader(BrowserReader):
         for d, items in by_day.items():
             self.days[d] = items
             self.read_at[d] = now
-        safe_io.write_json(self.data_file, {"tage": self.days, "gelesen": self.read_at}, sort_keys=True)
+        save_days(self.data_file, by_day, self.read_at)
         for d in changed:
             self.day_read.emit(d)
 

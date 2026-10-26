@@ -187,7 +187,8 @@ for taskbar in ("#F3F3F3", "#1F2329"):
 
 # Graue Hinweistexte direkt im Code (nur Farbe "gray" ist auf hellem Grund zu blass)
 for path in ["main_timeline.py", "theme.py", "app_menus.py", "app_daylist.py", "app_docs.py",
-             "app_readers.py", "app_tray.py", "settings_dialogs.py", "timeline_only.py"]:
+             "app_readers.py", "app_tray.py", "settings_dialogs.py", "timeline_only.py",
+             "app_protect.py", "protect_dialogs.py", "app_transfer.py"]:
     with open(os.path.join(ROOT, path), encoding="utf-8") as f:
         for no, line in enumerate(f, 1):
             if re.search(r"color:\s*(gray|grey|#999|#aaa)\b", line, re.I):
@@ -248,6 +249,14 @@ if hasattr(window, "build_pbx_dialog"):
     dialogs["3CX direkt"] = window.build_pbx_dialog()
 if hasattr(window, "build_itm_dialog"):
     dialogs["ITM-Personalzeiten"] = window.build_itm_dialog()
+import protect_dialogs  # noqa: E402
+dialogs["Schutz der Daten"] = window.build_protection_dialog()
+dialogs["Wiederherstellungsschlüssel"] = protect_dialogs.CodeDialog(
+    "Wiederherstellungsschlüssel", protect_dialogs.RECOVERY_INTRO, "000000-" * 7 + "000000",
+    "Zeitzeuge Wiederherstellung", window)
+dialogs["Wiederherstellungsschlüssel"].saved.setChecked(True)  # sonst fragt Schließen nach
+dialogs["Schlüssel eingeben"] = protect_dialogs.EnterCodeDialog(
+    "Daten sind gesperrt", "Text", "&Wiederherstellungsschlüssel:", lambda c: None, parent=window)
 for area, dialog in dialogs.items():
     dialog.show()
     QTest.qWait(50)

@@ -1,5 +1,5 @@
 """VPN-Zeiten aus Sophos Connect (scvpn.log, scgui.log) und FortiClient (charon.log)."""
-import json
+import contextlib
 import os
 import sys
 import tempfile
@@ -9,6 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pytest  # noqa: E402
 
+import datastore  # noqa: E402
 from vpn_reader import VpnReader, adapters_up, parse_fortinet, parse_sophos  # noqa: E402
 
 SCVPN = """\
@@ -63,9 +64,19 @@ def test_sophos_und_forticlient(same):
     same("FortiClient", rows, [("08:25:27", "08:28:16", "FortiClient"), ("15:36:12", "15:51:02", "FortiClient")])
 
 
+@contextlib.contextmanager
+def temp_dir():
+    """Temp-Ordner; die Datenbank darin vor dem Löschen schließen (Windows sperrt offene Dateien)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        try:
+            yield tmp
+        finally:
+            datastore.unregister(tmp)
+
+
 def test_archiv_bleibt_erhalten(same):
     """Archiv: bleibt erhalten, auch wenn die Logs überschrieben werden."""
-    with tempfile.TemporaryDirectory() as tmp:
+    with temp_dir() as tmp:
         logs = os.path.join(tmp, "Connect")
         os.makedirs(logs)
         for name, lines in [("scvpn.log", SCVPN[:6]), ("scgui.log", SCGUI), ("charon.log.old", CHARON)]:
@@ -76,13 +87,13 @@ def test_archiv_bleibt_erhalten(same):
         for name in os.listdir(logs):
             os.remove(os.path.join(logs, name))
         same("nach Überschreiben", len(VpnReader(archive, [logs]).connections()), 3)
-        with open(archive, encoding="utf-8") as f:
-            same("Archiv-Namen", json.load(f)["names"], {"203.0.113.20": "Kunde Nord"})
+        store, name = datastore.locate(archive, "single")
+        same("Archiv-Namen", store.get(name)["names"], {"203.0.113.20": "Kunde Nord"})
 
 
 def test_eigene_aufzeichnung(same):
     """Eigene Aufzeichnung: Adapter alle 30 s prüfen, ohne Logs."""
-    with tempfile.TemporaryDirectory() as tmp:
+    with temp_dir() as tmp:
         archive = os.path.join(tmp, "vpn_verbindungen.json")
         up = []
         reader = VpnReader(archive, [os.path.join(tmp, "fehlt")], adapter_func=lambda: list(up))

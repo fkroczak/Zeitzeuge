@@ -32,6 +32,7 @@ import websocket  # Paket websocket-client
 from PySide6.QtCore import QObject, Signal
 
 import net
+import datastore
 import safe_io
 from call_import import load_calls, merge_calls
 
@@ -799,9 +800,14 @@ class PbxReader(BrowserReader):
         self.last_read = None
         self.last_count = 0
         self._last_load = 0
-        # Ab diesem Tag (YYYY-MM-DD) sind alle Anrufe in anrufe.json
+        # Ab diesem Tag (YYYY-MM-DD) sind alle Anrufe gespeichert (Ablage "anrufe_stand")
         self.state_file = os.path.join(os.path.dirname(calls_file), "anrufe_stand.json")
-        state = safe_io.read_json(self.state_file, {}, expect=dict)
+        try:
+            store, name = datastore.locate(self.state_file, "single")
+            state = store.get(name, "", {})
+        except (datastore.Busy, datastore.Locked):
+            state = {}
+        state = state if isinstance(state, dict) else {}
         done = state.get("vollstaendig_ab")
         # Ältere Stände einmal neu lesen: bis Version 2 gingen Gespräche verloren, wenn
         # in derselben Minute ein nicht angenommener Versuch derselben Nummer stand
@@ -872,8 +878,11 @@ class PbxReader(BrowserReader):
         done = target if data.get("erreicht") else self._list_end
         if not self.complete_from or done < self.complete_from:
             self.complete_from = done
-            safe_io.write_json(self.state_file, {"vollstaendig_ab": done, "version": self.STATE_VERSION},
-                               indent=None)
+            try:
+                store, name = datastore.locate(self.state_file, "single")
+                store.put(name, "", {"vollstaendig_ab": done, "version": self.STATE_VERSION})
+            except (datastore.Busy, datastore.Locked) as e:
+                safe_io.log(f"3CX: Stand nicht gespeichert ({e})")
         self._set_status(f"3CX gelesen {datetime.now():%H:%M} (vollständig ab {done})")
         if added:
             self.calls_added.emit(added)

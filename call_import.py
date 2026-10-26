@@ -1,5 +1,5 @@
 """
-Anrufliste von Zeitzeuge (anrufe.json).
+Anrufliste von Zeitzeuge (Ablage "anrufe" in der Datenbank, je Tag ein Eintrag).
 
 Der 3CX-Leser (pbx_reader.py) übernimmt neue Anrufe mit merge_calls; die
 Timeline holt sich die Anrufe eines Tages mit load_call_suggestions.
@@ -9,6 +9,7 @@ import os
 import threading
 from datetime import datetime, timedelta
 
+import datastore
 import safe_io
 
 TIME_FMT = "%Y-%m-%d %H:%M:%S"
@@ -33,62 +34,74 @@ def _valid(call):
         return False
 
 
+def _store(path):
+    return datastore.locate(path, "calls")
+
+
 def load_calls(path, raise_locked=False):
-    """Alle gespeicherten Anrufe. Eine kaputte Datei wird beiseitegelegt (safe_io),
-    einzelne kaputte Einträge werden übersprungen statt alles zu verwerfen."""
-    data = safe_io.read_json(path, [], expect=list, raise_locked=raise_locked)
+    """Alle gespeicherten Anrufe (aus der Datenbank, je Tag ein Eintrag).
+    Einzelne kaputte Einträge werden übersprungen statt alles zu verwerfen."""
+    try:
+        store, name = _store(path)
+        days = store.all(name)
+    except datastore.Busy as e:
+        if raise_locked:
+            raise safe_io.FileLocked(str(e)) from e
+        return []
+    data = [c for day in days.values() if isinstance(day, list) for c in day]
     calls = [c for c in data if isinstance(c, dict) and _valid(c)]
     if len(calls) != len(data):
         safe_io.log(f"{os.path.basename(path)}: {len(data) - len(calls)} unlesbare Einträge übersprungen")
-    return calls
+    return sorted(calls, key=lambda c: c["start"])
+
+
+def _load_day(store, name, day):
+    data = store.get(name, day) or []
+    return [c for c in data if isinstance(c, dict) and _valid(c)]
 
 
 def merge_calls(path, new_calls):
-    """Neue Anrufe in die JSON-Datei übernehmen. Gibt Anzahl neuer Einträge zurück."""
+    """Neue Anrufe übernehmen. Gibt Anzahl neuer Einträge zurück."""
     with _lock:
         try:
-            calls = {_key(c): c for c in load_calls(path, raise_locked=True)}
-        except safe_io.FileLocked:
-            # Nicht mit nur den neuen Anrufen überschreiben: beim nächsten Lesen kommen sie wieder
+            store, name = _store(path)
+            by_day = {}
+            for c in new_calls:
+                if isinstance(c, dict) and _valid(c):
+                    by_day.setdefault(c["start"][:10], []).append(c)
+            added = 0
+            changed = {}
+            for day, items in by_day.items():
+                calls = {_key(c): c for c in _load_day(store, name, day)}
+                dirty = False
+                for c in items:
+                    k = _key(c)
+                    if k not in calls:
+                        added += 1
+                    if calls.get(k) != c:
+                        dirty = True
+                    calls[k] = c  # neuere Daten (z. B. Name aus CRM) gewinnen
+                if dirty:
+                    changed[day] = sorted(calls.values(), key=lambda c: c["start"])
+            if changed:
+                store.put_many(name, changed)
+            return added
+        except datastore.Busy as e:
+            # Beim nächsten Lesen kommen die Anrufe wieder
+            safe_io.report(f"Anrufe konnten nicht gespeichert werden: {e}")
             return 0
-
-        added = changed = 0
-        for c in new_calls:
-            if not isinstance(c, dict) or not _valid(c):
-                continue
-            k = _key(c)
-            if k not in calls:
-                added += 1
-            if calls.get(k) != c:
-                changed += 1
-            calls[k] = c  # neuere Daten (z. B. Name aus CRM) gewinnen
-
-        if changed and not safe_io.write_json(path, sorted(calls.values(), key=lambda c: c["start"])):
-            return 0
-        return added
-
-
-_file_cache = {"mtime": None, "calls": []}
 
 
 def load_call_suggestions(path, date_str, ignore_missed=True, min_seconds=0):
-    """Anrufe eines Tages (YYYY-MM-DD) aus anrufe.json als Timeline-Vorschläge."""
+    """Anrufe eines Tages (YYYY-MM-DD) als Timeline-Vorschläge."""
     try:
-        mtime = os.path.getmtime(path)
-    except OSError:
+        store, name = _store(path)
+        calls = _load_day(store, name, date_str)
+    except (datastore.Busy, datastore.Locked):
         return []
-    if _file_cache["mtime"] != mtime:
-        try:
-            with _lock:  # nicht mitten in merge_calls lesen
-                _file_cache["calls"] = load_calls(path, raise_locked=True)
-            _file_cache["mtime"] = mtime
-        except safe_io.FileLocked:
-            pass  # gesperrt: bisherigen Stand zeigen, beim nächsten Mal neu lesen
 
     result = []
-    for c in _file_cache["calls"]:
-        if not c.get("start", "").startswith(date_str):
-            continue
+    for c in calls:
         try:
             seconds = int(c.get("duration_s") or 0)
         except (TypeError, ValueError):

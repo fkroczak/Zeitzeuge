@@ -14,6 +14,9 @@ from PySide6.QtCore import QDate, QStandardPaths, Qt
 from PySide6.QtWidgets import (QApplication, QDialog, QDialogButtonBox, QFileDialog, QFormLayout,
                                QLabel, QMessageBox, QPushButton, QSpinBox, QVBoxLayout)
 
+import datakey
+import datastore
+import protect_dialogs
 import safe_io
 import transfer
 from activity_tracker import read_segments
@@ -33,10 +36,10 @@ class TransferMixin:
     def collect_export(self, days_back, today=None):
         """Eigene Daten der letzten days_back Tage (ohne übernommene) als Export-dict."""
         today = today or date.today()
-        # personalzeiten.json direkt lesen (itm_reader würde die Edge-Steuerung mitladen)
-        itm_days = {k: v for k, v in safe_io.read_json(mt.ITM_FILE, {}, expect=dict).items()
-                    if isinstance(v, dict)} if os.path.exists(mt.ITM_FILE) else {}
-        m42_days = load_store(mt.M42_FILE)[0] if os.path.exists(mt.M42_FILE) else {}
+        # Personalzeiten direkt lesen (itm_reader würde die Edge-Steuerung mitladen)
+        store, name = datastore.locate(mt.ITM_FILE, "days")
+        itm_days = {k: v for k, v in store.all(name).items() if isinstance(v, dict)}
+        m42_days = load_store(mt.M42_FILE)[0]
         imported, self.timeline.imported = self.timeline.imported, None  # nur eigene Daten
         try:
             days = {}
@@ -87,7 +90,9 @@ class TransferMixin:
             "VPN, TeamViewer, RDM, aktive Fenster, Tätigkeiten und schon erstellte KI-Vorschläge. Auf dem anderen PC (z. B. der PAW) "
             "übernimmst du sie mit „Daten übernehmen“ und siehst dort alles zusammen.\n\n"
             "Geht keine Datei hinüber, nimm „In Zwischenablage kopieren“ und füge den Text dort "
-            "über „Aus Zwischenablage“ ein. Der Inhalt ist gepackt, aber nicht verschlüsselt.")
+            "über „Aus Zwischenablage“ ein.\n\n"
+            "Der Inhalt ist mit deinem Übertragungsschlüssel verschlüsselt (in RDM unter "
+            "„Zeitzeuge Übertragung“). Auf dem anderen PC gibst du ihn beim ersten Übernehmen ein.")
         info.setWordWrap(True)
         layout.addWidget(info)
         form = QFormLayout()
@@ -103,16 +108,21 @@ class TransferMixin:
         layout.addWidget(status)
 
         def build():
+            code = self.ensure_transfer_code(dialog, "Für den Export brauchst du einen Übertragungsschlüssel.")
+            if not code:
+                return None, None
             self.config["export_days"] = days.value()
             mt.save_config(self.config)
             QApplication.setOverrideCursor(Qt.WaitCursor)
             try:
-                return self.collect_export(days.value())
+                return self.collect_export(days.value()), code
             finally:
                 QApplication.restoreOverrideCursor()
 
         def save_file():
-            export = build()
+            export, code = build()
+            if not export:
+                return
             folder = QStandardPaths.writableLocation(QStandardPaths.DesktopLocation) or mt.DATA_DIR
             name = f"Zeitzeuge-Export_{export['pc']}_{date.today():%Y-%m-%d}.zeitzeuge"
             path, _ = QFileDialog.getSaveFileName(dialog, "Export speichern", os.path.join(folder, name),
@@ -121,7 +131,7 @@ class TransferMixin:
                 return
             try:
                 with open(path, "wb") as f:
-                    f.write(transfer.to_bytes(export))
+                    f.write(transfer.to_bytes(export, code))
             except OSError as e:
                 QMessageBox.warning(dialog, "Export", f"Speichern fehlgeschlagen:\n{e}")
                 return
@@ -129,8 +139,10 @@ class TransferMixin:
                            + transfer.summary(export))
 
         def copy_clip():
-            export = build()
-            text = transfer.to_clipboard_text(export)
+            export, code = build()
+            if not export:
+                return
+            text = transfer.to_clipboard_text(export, code)
             QApplication.clipboard().setText(text)
             status.setText(f"In der Zwischenablage ({len(text) // 1024 + 1} KB Text).\n\n"
                            + transfer.summary(export))
@@ -148,10 +160,41 @@ class TransferMixin:
 
     # ---------------------- Import --------------------------------------------
 
+    def parse_export(self, data, parent=None):
+        """Datei/Text lesen, bei Bedarf mit dem Übertragungsschlüssel. None bei Abbruch.
+        TransferError bei Unsinn. Ein neu eingegebener Schlüssel wird gemerkt, wenn er passt."""
+        if not transfer.is_encrypted(data):
+            return transfer.parse(data)
+        code = self.transfer_code()
+        if code:
+            try:
+                return transfer.parse(data, code)
+            except transfer.WrongTransferKey:
+                pass  # anderer Schlüssel als der gemerkte: nachfragen
+        found = {}
+
+        def check(text):
+            found["export"] = transfer.parse(data, datakey.normalize_code(text))
+
+        dialog = protect_dialogs.EnterCodeDialog(
+            "Übertragungsschlüssel",
+            "Der Export ist verschlüsselt. Gib den Übertragungsschlüssel aus RDM ein "
+            "(„Zeitzeuge Übertragung“). Zeitzeuge merkt ihn sich für das nächste Mal.",
+            "Ü&bertragungsschlüssel:", check, ok_text="Ö&ffnen", parent=parent or self)
+        if dialog.exec() != QDialog.Accepted:
+            return None
+        try:
+            self._save_transfer_code(dialog.code)
+        except (datastore.Busy, datastore.Locked) as e:
+            safe_io.log(f"Übertragungsschlüssel nicht gespeichert: {e}")
+        return found["export"]
+
     def import_export(self, export, parent=None):
         """Export übernehmen (nach Rückfrage). True, wenn übernommen."""
+        note = ("\n\nHinweis: Dieser Export ist nicht verschlüsselt (ältere Zeitzeuge-Version). "
+                "Lösche die Datei nach dem Übernehmen." if export.get("unverschluesselt") else "")
         answer = QMessageBox.question(parent or self, "Daten übernehmen",
-                                      transfer.summary(export) + "\n\nÜbernehmen?")
+                                      transfer.summary(export) + note + "\n\nÜbernehmen?")
         if answer != QMessageBox.Yes:
             return False
         try:
@@ -193,20 +236,22 @@ class TransferMixin:
                 return
             try:
                 with open(path, "rb") as f:
-                    export = transfer.parse(f.read())
+                    export = self.parse_export(f.read(), dialog)
             except (OSError, transfer.TransferError) as e:
                 QMessageBox.warning(dialog, "Daten übernehmen", str(e))
                 return
-            self.import_export(export, dialog)
+            if export:
+                self.import_export(export, dialog)
             refresh()
 
         def from_clip():
             try:
-                export = transfer.parse(QApplication.clipboard().text())
+                export = self.parse_export(QApplication.clipboard().text(), dialog)
             except transfer.TransferError as e:
                 QMessageBox.warning(dialog, "Daten übernehmen", str(e))
                 return
-            self.import_export(export, dialog)
+            if export:
+                self.import_export(export, dialog)
             refresh()
 
         def clear():

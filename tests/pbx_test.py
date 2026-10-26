@@ -5,7 +5,6 @@ Anmeldung muss erhalten bleiben.
 """
 import functools
 import http.server
-import json
 import os
 import sys
 import tempfile
@@ -17,6 +16,8 @@ sys.path.insert(0, ROOT)
 
 from PySide6.QtCore import QCoreApplication
 
+import datastore
+from call_import import load_calls
 from pbx_reader import PbxReader, find_browser, login_window_open, profile_in_use
 
 handler = functools.partial(http.server.SimpleHTTPRequestHandler,
@@ -62,10 +63,18 @@ def run(url, until, what, days=14):
 
 
 def calls():
-    try:
-        return json.load(open(calls_file, encoding="utf-8"))
-    except (OSError, ValueError):
-        return []
+    return load_calls(calls_file)  # aus der Datenbank (früher anrufe.json)
+
+
+def forget(path):
+    """Ablage leeren (früher: Datei löschen)."""
+    store, name = datastore.locate(path, "single")
+    store.clear(name)
+
+
+def stand():
+    store, name = datastore.locate(state, "single")
+    return store.get(name) or {}
 
 
 # 1. Ohne Anmeldung: Anmeldeseite muss erkannt werden
@@ -73,7 +82,7 @@ run("http://127.0.0.1:8812", lambda r: r.needs_login, "Anmeldeseite erkannt")
 # 2. Anmeldung simulieren, dann müssen 8 Anrufe gelesen werden
 run("http://127.0.0.1:8812/?login=1", lambda r: len(calls()) >= 8, "8 Anrufe gelesen")
 # 3. Neustart: Anmeldung muss im Profil erhalten sein
-os.remove(calls_file)
+forget(calls_file)
 run("http://127.0.0.1:8812", lambda r: len(calls()) >= 8, "Anmeldung nach Neustart erhalten")
 
 # 4. Erster Lauf liest 14 Tage zurück, Blättern auf ältere Tage liest nach
@@ -90,12 +99,11 @@ def has_call(n):
 
 state = os.path.join(tmp, "anrufe_stand.json")
 for path in (calls_file, state):  # Stand der Schritte 1–3 verwerfen
-    if os.path.exists(path):
-        os.remove(path)
-run("http://127.0.0.1:8812", lambda r: has_call(15) and os.path.exists(state),
+    forget(path)
+run("http://127.0.0.1:8812", lambda r: has_call(15) and bool(stand()),
     "14 Tage zurück gelesen")
 assert not has_call(25), "zu weit gelesen"
-assert json.load(open(state))["vollstaendig_ab"] == days_back(14)
+assert stand()["vollstaendig_ab"] == days_back(14)
 
 
 def want(n):
@@ -106,13 +114,13 @@ def want(n):
 
 
 run("http://127.0.0.1:8812", want(25), "beim Blättern auf 25 Tage zurück nachgelesen")
-assert json.load(open(state))["vollstaendig_ab"] == days_back(25)
+assert stand()["vollstaendig_ab"] == days_back(25)
 # Mehr Tage eingestellt: liest von selbst weiter zurück
 run("http://127.0.0.1:8812",
-    lambda r: json.load(open(state))["vollstaendig_ab"] == days_back(30),
+    lambda r: stand()["vollstaendig_ab"] == days_back(30),
     "Einstellung 30 Tage nachgelesen", days=30)
 run("http://127.0.0.1:8812",
-    lambda r: (r.want(days_back(60)), json.load(open(state))["vollstaendig_ab"] == days_back(40))[1],
+    lambda r: (r.want(days_back(60)), stand()["vollstaendig_ab"] == days_back(40))[1],
     "Listenende erkannt")
 
 names = {c["name"] for c in calls()}
@@ -142,7 +150,7 @@ run("http://127.0.0.1:8812", lambda r: "Neu Anrufer" in {c["name"] for c in call
 
 # 6. Anmeldefenster schließt sich nach der Anmeldung von selbst, die Anmeldung bleibt erhalten
 profile = os.path.join(tmp, "profil_anmeldung")
-os.remove(calls_file)
+forget(calls_file)
 login = PbxReader("http://127.0.0.1:8812/?login=1", calls_file, profile, script)
 login.show_login()
 deadline = time.time() + 25  # ohne Automatik bliebe das Fenster offen

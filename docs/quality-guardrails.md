@@ -17,6 +17,8 @@ Qt-eigenen Mitteln.
 | Klassifizierung ohne KI: Regeln, Vorrang, keine Überschneidung, Tempo | `tests/rules_test.py` | Schritt „Tests (pytest)“ | blockiert |
 | Fenster-Filter (Black-/Whitelist), Schreibfehler im Aktivitätsprotokoll | `tests/tracking_filter_test.py` | Schritt „Tests (pytest)“ | blockiert |
 | Robustheit: kaputte Dateien, große/UTF-16-Logs, offline, Leser-Absturz, Anmelde-Timeout, Fehler in Slots, eine Instanz | `tests/robustness_test.py` | Schritt „Tests (pytest)“ | blockiert |
+| Datenbank: nichts im Klartext, Schlüsselfächer, falscher Schlüssel, Migration mit Abbruch und doppeltem Start, gesperrte Dateien, Threads | `tests/datastore_test.py`, `tests/protect_start_test.py` | Schritt „Tests (pytest)“ | blockiert |
+| Export für die PAW verschlüsselt, alter Export weiter lesbar | `tests/transfer_logic_test.py` | Schritt „Tests (pytest)“ | blockiert |
 | Startzeit (Fenster sichtbar, Daten gezeichnet) | `tests/start_bench.py` | nein, von Hand | Messwert |
 
 `tests/ui_audit_test.py` öffnet Hauptfenster und alle Einstellungsdialoge ohne Bildschirm

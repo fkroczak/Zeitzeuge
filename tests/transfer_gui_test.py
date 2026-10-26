@@ -9,6 +9,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ["ZEITZEUGE_DATA"] = tempfile.mkdtemp()
 
 import main_timeline  # noqa: E402
+import datakey  # noqa: E402
 import transfer  # noqa: E402
 from PySide6.QtCore import QDate  # noqa: E402
 from PySide6.QtWidgets import QApplication, QMessageBox  # noqa: E402
@@ -32,11 +33,11 @@ window.timeline.activities.append({"start": f"{D} 09:00:00", "end": f"{D} 09:40:
                                    "type": "Telefonat", "customer_name": "Müller GmbH"})
 window.journal.add({"start": f"{D} 09:00:00", "end": f"{D} 09:40:00", "customer": "Müller GmbH",
                     "category": "Telefonsupport", "text": "Drucker eingerichtet"})
-main_timeline.safe_io.write_json(main_timeline.ITM_FILE, {D: {"zeiten": [
-    {"start": f"{D} 08:00:00", "end": f"{D} 12:00:00"}]}})
-main_timeline.safe_io.write_json(main_timeline.M42_FILE, {"tage": {D: [
+window.data_store.put("personalzeiten", D, {"zeiten": [
+    {"start": f"{D} 08:00:00", "end": f"{D} 12:00:00"}]})
+window.data_store.put("m42_buchungen", D, {"items": [
     {"start": f"{D} 09:00:00", "end": f"{D} 10:00:00", "customer": "Müller GmbH",
-     "ticket": "TCK1", "subject": "Drucker", "entry": "TE1"}]}, "gelesen": {}})
+     "ticket": "TCK1", "subject": "Drucker", "entry": "TE1"}], "gelesen": ""})
 window.ai_store.save(D, {"items": [
     {"von": "09:00", "bis": "09:40", "kunde": "Müller GmbH", "kategorie": "Telefonsupport",
      "beschreibung": "Druckerproblem am Telefon gelöst", "sicherheit": 0.9},
@@ -53,18 +54,19 @@ assert day["verbindungen"][0]["customer_name"] == "Müller GmbH", day
 assert day["personalzeit"]["zeiten"] and day["m42"][0]["ticket"] == "TCK1"
 assert day["taetigkeiten"]["items"][0]["text"] == "Drucker eingerichtet"
 assert len(day["ki"]["items"]) == 3
-data = transfer.to_bytes(export)
+window._save_transfer_code(datakey.new_code())  # wie „Übertragungsschlüssel eingeben“ auf beiden PCs
+data = transfer.to_bytes(export, window.transfer_code())
+assert transfer.is_encrypted(data)
 
 # ---- "PAW": eigene Daten leeren, dann übernehmen
 window.timeline.activities.clear()
 window.journal.delete(window.journal.load(D)["items"][0])
-os.remove(main_timeline.ITM_FILE)
-os.remove(main_timeline.M42_FILE)
-os.remove(window.ai_store._path(D))
+for name in ("personalzeiten", "m42_buchungen", "ki_vorschlaege"):
+    window.data_store.delete(name, D)
 window.ai_store._cache.clear()
 window.timeline._remote_cache.clear()
-assert window.import_export(transfer.parse(data))
-assert os.path.exists(main_timeline.IMPORT_FILE)
+assert window.import_export(window.parse_export(data))
+assert window.data_store.has("uebernommen")
 
 calls = [a for a in window.timeline.activities_for(qd) if a.get("type") == "Telefonat"]
 assert calls and calls[0]["source_pc"] == "ARBEITS-PC" and "von ARBEITS-PC" in calls[0]["details"], calls
@@ -83,7 +85,7 @@ assert "reject" not in [i[1] for i in entry_menu_items(ai[1]) if i], "fremde Vor
 window.on_ai_action(ai[1], "verwerfen")  # geht nicht, ändert nichts
 window.on_ai_action(ai[1], "übernehmen")  # wird hier zur Tätigkeit
 assert [e["status"] for e in window.ai_day_entries(D)] == ["übernommen", "übernommen"]
-assert not os.path.exists(window.ai_store._path(D)), "eigene KI-Ablage bleibt unberührt"
+assert not window.data_store.has("ki_vorschlaege", D), "eigene KI-Ablage bleibt unberührt"
 window.date_edit.setDate(qd)
 window.change_view("ai")
 assert len(window.list_entries) == 2, window.list_entries

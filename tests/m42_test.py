@@ -19,7 +19,7 @@ sys.path.insert(0, ROOT)
 
 from PySide6.QtCore import QCoreApplication  # noqa: E402
 
-from m42_reader import M42Reader, week_start  # noqa: E402
+from m42_reader import M42Reader, load_store, week_start  # noqa: E402
 
 MOCK = os.path.join(ROOT, "tests", "mock_m42")
 LOGIN = [True]  # erster Aufruf: Anmeldeseite
@@ -85,10 +85,7 @@ URL = "http://127.0.0.1:8815/wm/app-ServiceDesk/kalender"
 
 
 def saved():
-    try:
-        return json.load(open(data_file, encoding="utf-8")).get("tage", {})
-    except (OSError, ValueError):
-        return {}
+    return load_store(data_file)[0]  # aus der Datenbank (früher m42_buchungen.json)
 
 
 def run(until, what, setup=None):
