@@ -25,7 +25,7 @@ class DayListMixin:
         entries = list(activities)
         date_str = self.current_date.toString("yyyy-MM-dd")
         if self.config.get("list_view") == "ai":
-            entries = self.ai_store.entries(date_str)
+            entries = self.ai_day_entries(date_str)
         elif self.config.get("list_view") == "doc":
             entries = self.doc_band(date_str)
         elif self.config.get("list_view") == "rules":

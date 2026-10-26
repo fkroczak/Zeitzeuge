@@ -59,10 +59,19 @@ class TransferMixin:
                     "taetigkeiten": {"items": journal.get("items", []),
                                      "ignored": journal.get("ignored", [])}
                     if journal.get("items") or journal.get("ignored") else None,
+                    # schon erstellte KI-Vorschläge (die PAW kann Claude meist nicht erreichen)
+                    "ki": self._ai_export(ds),
                 }
         finally:
             self.timeline.imported = imported
         return transfer.make_export(days, self.config.get("teamviewer_names", {}))
+
+    def _ai_export(self, date_str):
+        data = self.ai_store.load(date_str)
+        if not data or not data.get("items"):
+            return None
+        return {"items": data["items"], "model": data.get("model", ""),
+                "created": data.get("created", "")}
 
     def export_data(self):
         if self.timeline._tv_index is None:
@@ -75,7 +84,7 @@ class TransferMixin:
         layout = QVBoxLayout(dialog)
         info = QLabel(
             "Zeitzeuge packt deine Daten in eine einzige Datei: Anrufe, Personalzeit, Matrix42, "
-            "VPN, TeamViewer, RDM, aktive Fenster und Tätigkeiten. Auf dem anderen PC (z. B. der PAW) "
+            "VPN, TeamViewer, RDM, aktive Fenster, Tätigkeiten und schon erstellte KI-Vorschläge. Auf dem anderen PC (z. B. der PAW) "
             "übernimmst du sie mit „Daten übernehmen“ und siehst dort alles zusammen.\n\n"
             "Geht keine Datei hinüber, nimm „In Zwischenablage kopieren“ und füge den Text dort "
             "über „Aus Zwischenablage“ ein. Der Inhalt ist gepackt, aber nicht verschlüsselt.")

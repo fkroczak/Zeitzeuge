@@ -13,7 +13,8 @@ Format: JSON, mit gzip gepackt. In der Zwischenablage als Text
      "erstellt": "2026-10-26 08:00:00", "von": "2026-09-26", "bis": "2026-10-26",
      "teamviewer_names": {...},
      "tage": {"2026-10-20": {"verbindungen": [...], "pc": [...], "personalzeit": {...},
-                             "m42": [...], "taetigkeiten": {"items": [...], "ignored": [...]}}}}
+                             "m42": [...], "taetigkeiten": {"items": [...], "ignored": [...]},
+                             "ki": {"items": [...], "model": ..., "created": ...}}}}
 
 Übernommene Daten liegen auf dem Ziel-PC in EINER Datei (uebernommen.json), je
 Herkunfts-PC getrennt. Ein neuerer Export desselben PCs ersetzt dessen Tage.
@@ -34,7 +35,7 @@ FORMAT = "zeitzeuge-export"
 VERSION = 1
 CLIP_PREFIX = "ZEITZEUGE-EXPORT:1:"
 TIME_FMT = "%Y-%m-%d %H:%M:%S"
-DAY_KEYS = ("verbindungen", "pc", "personalzeit", "m42", "taetigkeiten")
+DAY_KEYS = ("verbindungen", "pc", "personalzeit", "m42", "taetigkeiten", "ki")
 
 
 class TransferError(ValueError):
@@ -97,12 +98,14 @@ def parse(data):
 def summary(export):
     """Kurzer Text: was steckt im Export?"""
     days = export.get("tage", {})
-    count = {k: 0 for k in ("verbindungen", "pc", "m42", "taetigkeiten")}
+    count = {k: 0 for k in ("verbindungen", "pc", "m42", "taetigkeiten", "ki")}
     personal = 0
     for day in days.values():
         for k in ("verbindungen", "pc", "m42"):
             count[k] += len(day.get(k) or [])
         count["taetigkeiten"] += len((day.get("taetigkeiten") or {}).get("items") or [])
+        count["ki"] += len([i for i in (day.get("ki") or {}).get("items") or []
+                            if isinstance(i, dict) and i.get("status") != "verworfen"])
         personal += bool(day.get("personalzeit"))
 
     def de(d):
@@ -111,7 +114,7 @@ def summary(export):
              f"Zeitraum {de(export.get('von', ''))} – {de(export.get('bis', ''))} ({len(days)} Tage mit Daten)",
              f"{count['verbindungen']} Verbindungen und Telefonate, {count['pc']} Fensterabschnitte, "
              f"{personal} Tage Personalzeit, {count['m42']} Matrix42-Buchungen, "
-             f"{count['taetigkeiten']} Tätigkeiten"]
+             f"{count['taetigkeiten']} Tätigkeiten, {count['ki']} KI-Vorschläge"]
     return "\n".join(lines)
 
 
@@ -212,6 +215,15 @@ class ImportStore:
             items += [dict(i, von_pc=pc) for i in data.get("items") or [] if isinstance(i, dict)]
             ignored += [k for k in data.get("ignored") or [] if isinstance(k, str)]
         return {"items": items, "ignored": ignored}
+
+    def ai(self, date_str):
+        """KI-Vorschläge anderer PCs: [(PC, Liste der Vorschläge wie in ki_vorschlaege)]."""
+        result = []
+        for pc, day in self._days(date_str):
+            items = (day.get("ki") or {}).get("items")
+            if isinstance(items, list) and items:
+                result.append((pc, items))
+        return result
 
     def teamviewer_names(self):
         names = {}

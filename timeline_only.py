@@ -176,7 +176,8 @@ def entry_menu_items(entry):
     if entry.get("tv_id"):
         items.append(("TeamViewer-ID &benennen …", "name_tv"))
     if entry.get("ai"):
-        items += [None, ("Vorschlag &verwerfen", "reject")]
+        if not entry.get("von_pc"):  # übernommene Vorschläge verwirft man auf dem anderen PC
+            items += [None, ("Vorschlag &verwerfen", "reject")]
     items += [None, ("&Kopieren", "copy")]
     return items
 

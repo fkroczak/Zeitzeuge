@@ -240,7 +240,7 @@ class TimelineApp(MenusMixin, DayListMixin, DocsMixin, ReadersMixin, TrayMixin, 
         self.ai = AiClassifier(self.ai_store, self.config, self)
         self.ai.finished.connect(self.on_ai_finished)
         self.ai.failed.connect(self.on_ai_failed)
-        self.timeline.ai_entries = self.ai_store.entries
+        self.timeline.ai_entries = self.ai_day_entries
         self.timeline.ai_action.connect(self.on_ai_action)
 
         # Eigene Tätigkeiten (nachgetragen oder auf Nachfrage) und Regeln ohne KI

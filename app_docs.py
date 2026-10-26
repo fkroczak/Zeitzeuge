@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from PySide6.QtCore import QDate, QTimer
 from PySide6.QtWidgets import QApplication, QDialog, QMessageBox, QSystemTrayIcon
 
+from ai_classifier import to_entries
 from journal import (describe, entry_key as journal_key, open_entry, suggest_category,
                      suggest_customer, ticket_line)
 from journal_dialogs import DocPromptDialog, prompt_thresholds, EntryDialog, PromptWindow, default_span
@@ -76,9 +77,35 @@ class DocsMixin:
             return
         QMessageBox.warning(self, "KI-Vorschläge", message)
 
+    def ai_day_entries(self, date_str):
+        """KI-Vorschläge des Tages: eigene und von einem anderen PC übernommene (nur lesen).
+        Ein übernommener Vorschlag gilt als übernommen, sobald hier eine Tätigkeit genau
+        zu seiner Zeit eingetragen ist."""
+        entries = self.ai_store.entries(date_str)
+        if getattr(self, "imported", None):
+            own = {(e["start"], e["end"]) for e in entries}
+            docs = {(i["start"], i["end"]) for i in self.journal.items(date_str)}
+            for pc, items in self.imported.ai(date_str):
+                for e in to_entries(date_str, items):
+                    if e["status"] == "verworfen" or (e["start"], e["end"]) in own:
+                        continue
+                    e["von_pc"] = pc
+                    e["details"] += f" (von {pc})"
+                    if (e["start"], e["end"]) in docs:
+                        e["status"] = "übernommen"
+                    entries.append(e)
+            entries.sort(key=lambda e: e["start"])
+        return entries
+
     def on_ai_action(self, entry, action):
         status = "übernommen" if action == "übernehmen" else "verworfen"
-        self.ai_store.set_status(entry["start"][:10], entry["ai_id"], status)
+        if entry.get("von_pc"):  # von einem anderen PC: hier nur als Tätigkeit eintragen
+            if status == "verworfen":
+                self.statusBar().showMessage(f"Vorschlag kommt von {entry['von_pc']}, "
+                                             "verwerfen geht nur dort", 6000)
+                return
+        else:
+            self.ai_store.set_status(entry["start"][:10], entry["ai_id"], status)
         if status == "übernommen":  # übernommen = dokumentiert, steht dann in der Zeile "Doku"
             try:
                 self.journal.add({"start": entry["start"], "end": entry["end"],
@@ -308,7 +335,8 @@ class DocsMixin:
         if entry:
             item["source"] = "KI" if entry.get("ai") else entry.get("type", "")
         if self._save_doc(item, entry, dialog.remember_tv()) and entry and entry.get("ai"):
-            self.ai_store.set_status(entry["start"][:10], entry["ai_id"], "übernommen")
+            if not entry.get("von_pc"):  # übernommene Vorschläge gehören dem anderen PC
+                self.ai_store.set_status(entry["start"][:10], entry["ai_id"], "übernommen")
             self.timeline.draw_timeline(self.current_date)
 
     def _save_doc(self, item, entry=None, remember_tv=False, old=None):

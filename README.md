@@ -400,9 +400,10 @@ Auf einer PAW (Privileged Access Workstation) laufen oft nur RDM-Verbindungen, o
 
 1. **Auf der PAW einmal einrichten:** **Einstellungen → Datenspeicher → Dieser PC ist eine PAW (nur RDM sammeln)**. Zeitzeuge sammelt dort nur die RDM-Verbindungen. TeamViewer, VPN, 3CX, ITM, Matrix42, Fensteraufzeichnung und Nachfragen sind aus.
 2. **Auf dem Arbeits-PC exportieren:** **Einstellungen → Datenspeicher → Daten exportieren …**, Zeitraum wählen (Standard 31 Tage). **Als Datei speichern** erzeugt eine einzige Datei `Zeitzeuge-Export_<PC>_<Datum>.zeitzeuge`. Darf keine Datei auf die PAW, nimm **In Zwischenablage kopieren**: Der Export wird gepackter Text, der auch über eine RDP-Zwischenablage passt, die nur Text erlaubt.
-3. **Auf der PAW übernehmen:** **Daten übernehmen …** → **Datei wählen** oder **Aus Zwischenablage**. Die PAW zeigt dann ihre RDM-Verbindungen zusammen mit Anrufen, Personalzeit, Matrix42-Abgleich, VPN, TeamViewer, Fenstern und Tätigkeiten vom Arbeits-PC.
+3. **Auf der PAW übernehmen:** **Daten übernehmen …** → **Datei wählen** oder **Aus Zwischenablage**. Die PAW zeigt dann ihre RDM-Verbindungen zusammen mit Anrufen, Personalzeit, Matrix42-Abgleich, VPN, TeamViewer, Fenstern, Tätigkeiten und den schon erstellten KI-Vorschlägen vom Arbeits-PC.
 
 - Übernommenes steht in einer einzigen Datei `uebernommen.json` und ist mit „von <PC>“ gekennzeichnet. Ein neuerer Export ersetzt die Tage des älteren; ein älterer überschreibt nichts Neueres.
+- KI-Vorschläge vom Arbeits-PC erscheinen in der Zeile „KI“ (die PAW erreicht Claude meist nicht). **Als Tätigkeit eintragen** geht auch auf der PAW; verwerfen nur auf dem Arbeits-PC. Verworfene Vorschläge kommen nicht mit.
 - Übernommene Tätigkeiten lassen sich auf der PAW nur ansehen und kopieren; ändern geht auf dem Arbeits-PC. Was dort dokumentiert ist, gilt auch auf der PAW als dokumentiert.
 - Der Export enthält Kundennamen, Telefonate und Fenstertitel. Er ist gepackt, aber nicht verschlüsselt: Behandle ihn wie die Daten selbst und lösche ihn nach dem Übernehmen.
 - Ein Export geht nur auf einen anderen PC; auf demselben PC lehnt Zeitzeuge ihn ab.

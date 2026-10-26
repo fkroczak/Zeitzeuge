@@ -19,6 +19,9 @@ DAY = {
     "m42": [],
     "taetigkeiten": {"items": [{"id": "a1", "start": f"{D} 09:00:00", "end": f"{D} 09:30:00",
                                 "customer": "Müller", "text": "Drucker"}], "ignored": ["k"]},
+    "ki": {"items": [{"von": "09:00", "bis": "09:30", "kunde": "Müller", "kategorie": "Telefonsupport",
+                      "beschreibung": "Drucker", "sicherheit": 0.9},
+                     {"von": "10:00", "bis": "10:30", "kunde": "X", "status": "verworfen"}]},
 }
 
 
@@ -37,6 +40,7 @@ def test_roundtrip_file_and_clipboard():
     wrapped = "\n".join(text[i:i + 76] for i in range(0, len(text), 76))  # Umbrüche beim Kopieren
     assert transfer.parse(wrapped) == e
     assert "1 Verbindungen" in transfer.summary(e) and "1 Tätigkeiten" in transfer.summary(e)
+    assert "1 KI-Vorschläge" in transfer.summary(e), "verworfene zählen nicht"
 
 
 @pytest.mark.parametrize("bad", [b"", b"kaputt", "Hallo", "ZEITZEUGE-EXPORT:1:@@@",
@@ -60,6 +64,7 @@ def test_store_merge_replace_and_own_pc():
     j = store.journal(D)
     assert j["items"][0]["von_pc"] == "ARBEITS-PC" and j["ignored"] == ["k"]
     assert store.teamviewer_names() == {"123": "Kunde"}
+    assert store.ai(D)[0][0] == "ARBEITS-PC" and len(store.ai(D)[0][1]) == 2
 
     # Älterer Export überschreibt nichts Neueres
     store.add(export("2026-10-20 08:00:00", {D: {"verbindungen": []}}))
