@@ -233,6 +233,7 @@ class MenusMixin:
             (menu.addAction("&Arbeitszeiten …", self.edit_work_hours), "clock"),
             (menu.addAction("Aktivitäts&typen und Farben …", self.edit_activity_types), "palette"),
             (menu.addAction("&KI-Vorschläge …", self.edit_ai_settings), "spark"),
+            (menu.addAction("Kunden&liste …", self.edit_customers), "users"),
         ]
         menu.addSeparator()
         self._icon_actions.append(

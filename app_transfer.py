@@ -67,7 +67,8 @@ class TransferMixin:
                 }
         finally:
             self.timeline.imported = imported
-        return transfer.make_export(days, self.config.get("teamviewer_names", {}))
+        return transfer.make_export(days, self.config.get("teamviewer_names", {}),
+                                    customers=self.customer_index_list())
 
     def _ai_export(self, date_str):
         data = self.ai_store.load(date_str)

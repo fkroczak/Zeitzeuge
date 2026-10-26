@@ -171,4 +171,14 @@ def default_config():
         "prompt_snooze_minutes": 15,   # "Später fragen"
         "prompt_on_quit": True,        # beim Beenden an offene Tätigkeiten erinnern
         "prompt_end_of_day": True,     # nach Feierabend an offene Tätigkeiten erinnern
+
+        # --- Kunden: Kundenliste und Lernen aus Korrekturen (customers.py, learning.py)
+        # Kunde -> Spuren (TeamViewer-ID, RDM, VPN, Telefon, E-Mail-Domain). Nutzdaten:
+        # steht verschlüsselt in der Datenbank (Ablage "kunden"), nicht in dieser Datei.
+        "customers": [],
+        # Beim Eintragen „Kunde für … merken“ auch für RDM, VPN, Telefon, E-Mail anbieten
+        # (TeamViewer wie bisher immer)
+        "customers_learn": True,
+        # Beim Eintragen „Als Regel merken“ anbieten, wenn du die Kategorie änderst
+        "rules_learn_offer": True,
     }

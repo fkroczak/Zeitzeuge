@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QDateEdit, QDialog, QDialog
                                QFormLayout, QHBoxLayout, QLabel, QPlainTextEdit, QSpinBox,
                                QTimeEdit, QVBoxLayout, QWidget)
 
+import customers as customer_list
 from grouping import format_tv_id
 from journal import TIME_FMT, describe, suggest_category, suggest_customer
 
@@ -21,8 +22,16 @@ class _EntryForm(QWidget):
     """Gemeinsame Felder: Datum, Von, Bis, Kunde, Kategorie, Text."""
 
     def __init__(self, start, end, customers, categories, customer="", category="", text="",
-                 tv_id=None, parent=None, show_date=True):
+                 tv_id=None, parent=None, show_date=True, trace=None, rule_subject=None):
         super().__init__(parent)
+        # trace: (Art, Wert) der Spur, zu der der Kunde gemerkt werden kann (customers.py).
+        # rule_subject: Name, zu dem eine geänderte Kategorie als Regel gemerkt werden kann.
+        if trace is None and tv_id:
+            trace = ("tv", tv_id)
+        self.trace = trace
+        self.rule_subject = rule_subject
+        self._suggested_customer = (customer or "").strip()
+        self._suggested_category = (category or "").strip()
         form = QFormLayout(self)
         form.setContentsMargins(0, 0, 0, 0)
 
@@ -61,15 +70,21 @@ class _EntryForm(QWidget):
         self.customer_edit.addItems([""] + [c for c in customers if c])
         self.customer_edit.setCurrentText(customer)
         self.customer_edit.lineEdit().setPlaceholderText(
-            f"Kunde für TeamViewer-ID {format_tv_id(tv_id)}" if tv_id else "Kunde oder System")
+            f"Kunde für {customer_list.display(*trace)}" if trace else "Kunde oder System")
         self.customer_edit.lineEdit().setAccessibleName("Kunde")
         form.addRow("&Kunde:", self.customer_edit)
 
+        # Kunde zur Spur merken (Kundenliste). TeamViewer wie bisher immer sichtbar,
+        # andere Spuren erst, wenn du den vorgeschlagenen Kunden änderst.
         self.remember_tv = None
-        if tv_id:
-            self.remember_tv = QCheckBox(f"Name für TeamViewer-ID {format_tv_id(tv_id)} merken")
+        if trace:
+            text = (f"Name für TeamViewer-ID {format_tv_id(trace[1])} merken" if trace[0] == "tv"
+                    else f"Kunde für {customer_list.display(*trace)} &merken")
+            self.remember_tv = QCheckBox(text)
             self.remember_tv.setChecked(True)
             form.addRow("", self.remember_tv)
+            if trace[0] != "tv":
+                self.customer_edit.currentTextChanged.connect(self._update_learning)
 
         self.category_edit = QComboBox()
         self.category_edit.setEditable(True)
@@ -77,6 +92,17 @@ class _EntryForm(QWidget):
         self.category_edit.setCurrentText(category)
         self.category_edit.lineEdit().setAccessibleName("Kategorie")
         form.addRow("Kate&gorie:", self.category_edit)
+
+        # Kategorie geändert: als Regel für die Zuordnung ohne KI merken (nur wenn angehakt)
+        self.learn_rule = None
+        if rule_subject:
+            self.learn_rule = QCheckBox()
+            self.learn_rule.setChecked(False)
+            self.learn_rule.setToolTip("Legt eine Regel in „Zuordnung ohne KI“ an. "
+                                       "Zeitzeuge schlägt die Kategorie dann selbst vor.")
+            form.addRow("", self.learn_rule)
+            self.category_edit.currentTextChanged.connect(self._update_learning)
+        self._update_learning()
 
         self.text_edit = QPlainTextEdit(text)
         self.text_edit.setPlaceholderText("Was hast du gemacht? z. B. „Drucker neu eingerichtet, "
@@ -94,6 +120,32 @@ class _EntryForm(QWidget):
             edit.timeChanged.connect(self.validate)
         self.validate_hook = None
         self.validate()
+
+    def _customer_changed(self):
+        text = self.customer_edit.currentText().strip()
+        return bool(text) and text != self._suggested_customer
+
+    def _category_changed(self):
+        text = self.category_edit.currentText().strip()
+        return bool(text) and text != self._suggested_category
+
+    def _update_learning(self, *_):
+        if self.remember_tv and self.trace and self.trace[0] != "tv":
+            self.remember_tv.setVisible(self._customer_changed())
+        if self.learn_rule:
+            category = self.category_edit.currentText().strip()
+            self.learn_rule.setText(f"Als &Regel merken: „{self.rule_subject}“ → {category}")
+            self.learn_rule.setVisible(self._category_changed())
+
+    def remember_customer(self):
+        """Kunde zur Spur merken? (TeamViewer: Haken; sonst nur, wenn der Kunde geändert ist)"""
+        if not (self.remember_tv and self.remember_tv.isChecked()):
+            return False
+        return self.trace[0] == "tv" or self._customer_changed()
+
+    def wants_rule(self):
+        """Geänderte Kategorie als Regel merken? (Haken, standardmäßig aus)"""
+        return bool(self.learn_rule and self.learn_rule.isChecked() and self._category_changed())
 
     def times(self):
         day = self.date_edit.date().toPython()
@@ -127,7 +179,8 @@ class EntryDialog(QDialog):
     """Tätigkeit nachtragen oder ändern."""
 
     def __init__(self, start, end, customers, categories, customer="", category="", text="",
-                 tv_id=None, title="Tätigkeit nachtragen", info="", can_delete=False, parent=None):
+                 tv_id=None, title="Tätigkeit nachtragen", info="", can_delete=False, parent=None,
+                 trace=None, rule_subject=None):
         super().__init__(parent)
         self.setWindowTitle(title)
         self.setMinimumWidth(480)
@@ -139,7 +192,7 @@ class EntryDialog(QDialog):
             label.setObjectName("hint")
             layout.addWidget(label)
         self.form = _EntryForm(start, end, customers, categories, customer, category, text,
-                               tv_id, self)
+                               tv_id, self, trace=trace, rule_subject=rule_subject)
         layout.addWidget(self.form)
         self.buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         self.buttons.button(QDialogButtonBox.Ok).setText("&Speichern")
@@ -161,7 +214,11 @@ class EntryDialog(QDialog):
         return self.form.item()
 
     def remember_tv(self):
-        return bool(self.form.remember_tv and self.form.remember_tv.isChecked())
+        """Kunde zur Spur merken (Name stammt aus der Zeit, als es nur TeamViewer gab)."""
+        return self.form.remember_customer()
+
+    def wants_rule(self):
+        return self.form.wants_rule()
 
 
 class PromptWindow(QDialog):
@@ -171,7 +228,8 @@ class PromptWindow(QDialog):
     """
     answered = Signal(str, dict, dict)
 
-    def __init__(self, entry, customers, categories, tv_names=None, pending=0, parent=None):
+    def __init__(self, entry, customers, categories, tv_names=None, pending=0, parent=None,
+                 customer=None, category=None, trace=None, rule_subject=None):
         super().__init__(parent, Qt.Tool | Qt.WindowStaysOnTopHint)
         self.entry = entry
         self.setWindowTitle("Zeitzeuge: Was hast du gemacht?")
@@ -192,9 +250,10 @@ class PromptWindow(QDialog):
         end = datetime.strptime(entry["end"], TIME_FMT)
         self.form = _EntryForm(
             start, end, customers, categories,
-            customer=suggest_customer(entry, tv_names),
-            category=suggest_category(entry, categories),
-            tv_id=entry.get("tv_id"), parent=self, show_date=False)
+            customer=suggest_customer(entry, tv_names) if customer is None else customer,
+            category=suggest_category(entry, categories) if category is None else category,
+            tv_id=entry.get("tv_id"), parent=self, show_date=False,
+            trace=trace, rule_subject=rule_subject)
         layout.addWidget(self.form)
 
         buttons = QDialogButtonBox()
@@ -228,7 +287,11 @@ class PromptWindow(QDialog):
         return self.form.item()
 
     def remember_tv(self):
-        return bool(self.form.remember_tv and self.form.remember_tv.isChecked())
+        """Kunde zur Spur merken (Name stammt aus der Zeit, als es nur TeamViewer gab)."""
+        return self.form.remember_customer()
+
+    def wants_rule(self):
+        return self.form.wants_rule()
 
     def reject(self):  # Esc oder Fenster schließen = später fragen
         if not self._done:

@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (QDialog, QDialogButtonBox, QFormLayout, QGraphics
 
 from activity_tracker import app_label, merge_segments, read_segments
 from call_import import load_call_suggestions
+import customers
 from grouping import format_tv_id, group_entries
 from log_parsers import ConnectionIndex, RdmParser, TeamViewerParser, VpnParser
 from theme import THEMES, readable_on
@@ -149,7 +150,7 @@ def ai_copy_text(entry):
             f"{who}{entry.get('description', '')}")
 
 
-def entry_menu_items(entry):
+def entry_menu_items(entry, customer_known=False):
     """Befehle für einen Eintrag: [(Text, Befehl)], None = Trennlinie.
 
     Timeline und Tagesliste zeigen dasselbe Menü mit denselben Texten, und nur Befehle,
@@ -178,6 +179,8 @@ def entry_menu_items(entry):
         items.append(("&Tätigkeit dazu eintragen …", "add"))
     if entry.get("tv_id"):
         items.append(("TeamViewer-ID &benennen …", "name_tv"))
+    elif not customer_known and customers.primary_trace(entry):  # RDM, VPN, Telefon, E-Mail
+        items.append(("Kunde &zuordnen …", "assign_customer"))
     if entry.get("ai"):
         if not entry.get("von_pc"):  # übernommene Vorschläge verwirft man auf dem anderen PC
             items += [None, ("Vorschlag &verwerfen", "reject")]
@@ -189,7 +192,13 @@ def exec_entry_menu(parent, entry, global_pos):
     """Menü zu entry zeigen, gewählten Befehl zurückgeben (oder None)."""
     menu = QMenu(parent)
     keys = {}
-    for item in entry_menu_items(entry):
+    known = False
+    config = getattr(parent, "config", None)
+    if isinstance(config, dict) and not entry.get("tv_id"):
+        imported = getattr(parent, "imported", None)
+        known = bool(customers.index(config, imported.customers() if imported else None)
+                     .customer_for(entry))
+    for item in entry_menu_items(entry, known):
         if item is None:
             menu.addSeparator()
         else:
@@ -1106,6 +1115,19 @@ class TimelineView(QGraphicsView):
                 y = gp.y() - 15 - self.tooltip.height()
         self.tooltip.move(x, y)
 
+    def _customer_line(self, entry):
+        """Kunde aus der Kundenliste, wenn er nicht schon im Namen steht (sonst nichts)."""
+        if entry.get("tv_id"):
+            return []
+        try:
+            index = customers.index(self.config, self.imported.customers() if self.imported else None)
+        except Exception:  # Anzeige darf nie am Hinweis scheitern
+            return []
+        text = customers.with_customer(entry, index)
+        if text == (entry.get("customer_name") or ""):
+            return []
+        return [f"Kunde: {escape(index.customer_for(entry))}"]
+
     def _hover_text(self, minute, hovered=None):
         """Hinweis zur Linie: Uhrzeit, Personalzeit und alles, was zu dieser Minute lief."""
         date_str = self.current_date.toString("yyyy-MM-dd")
@@ -1118,6 +1140,7 @@ class TimelineView(QGraphicsView):
             start, end = parse_time(hovered["start"]), parse_time(hovered["end"])
             lines += ["", f"<b>{escape(hovered.get('customer_name') or hovered.get('type'))}</b>",
                       escape(type_label(hovered)),
+                      *self._customer_line(hovered),
                       f"{start:%H:%M} – {end:%H:%M}  ({format_duration((end - start).total_seconds())})"]
             if hovered.get("work"):
                 lines.append("<i>Eingestempelt (ITM)</i>" if hovered.get("from_itm")

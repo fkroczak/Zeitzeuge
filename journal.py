@@ -277,8 +277,16 @@ def suggest_category(entry, categories):
     return ""
 
 
-def suggest_customer(entry, tv_names=None):
-    """Kunde aus einem erkannten Eintrag (ohne Nummern in Klammern, ohne reine IDs)."""
+def suggest_customer(entry, tv_names=None, customers=None):
+    """Kunde aus einem erkannten Eintrag (ohne Nummern in Klammern, ohne reine IDs).
+
+    customers: Kundenliste oder customers.Index. Passt eine Spur (TeamViewer-ID, Nummer,
+    RDM-/VPN-Name, E-Mail-Domain), gewinnt der Kunde aus der Liste."""
+    if customers is not None:
+        import customers as customer_list  # ohne Qt
+        found = customer_list.customer_for(entry, customers)
+        if found:
+            return found
     if entry.get("tv_id"):
         return (tv_names or {}).get(entry["tv_id"], "")
     name = entry.get("customer_name") or ""
