@@ -82,3 +82,20 @@ def test_kundennamen_wandern_aus_der_config(paths):
     assert store.get("teamviewer_names") == {"123456789": "Müller GmbH", "987": "Meier"}
     with open(mt.CONFIG_FILE, encoding="utf-8") as f:
         assert "Meier" not in f.read()
+
+
+def test_start_mit_pin(paths, monkeypatch):
+    """Start mit PIN: ohne PIN bleibt alles zu, mit PIN geht es auf."""
+    data, _local = paths
+    store = mt.open_store()
+    store.put("anrufe", D, [{"name": "Müller"}])
+    store.new_recovery_code()
+    store.enable_pin("Grüne Wiese 42")
+    datastore.unregister(data)
+    before = sha(mt.DB_FILE)
+    with pytest.raises(mt.StoreLocked):
+        mt.open_store(ask=lambda s: False)
+    assert sha(mt.DB_FILE) == before
+    seen = []
+    store = mt.open_store(ask=lambda s: seen.append(type(s.unlock_with_pin("Grüne Wiese 42"))) or True)
+    assert seen and store.get("anrufe", D) == [{"name": "Müller"}]

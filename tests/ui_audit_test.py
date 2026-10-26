@@ -293,6 +293,10 @@ dialogs["Wiederherstellungsschlüssel"] = protect_dialogs.CodeDialog(
 dialogs["Wiederherstellungsschlüssel"].saved.setChecked(True)  # sonst fragt Schließen nach
 dialogs["Schlüssel eingeben"] = protect_dialogs.EnterCodeDialog(
     "Daten sind gesperrt", "Text", "&Wiederherstellungsschlüssel:", lambda c: None, parent=window)
+dialogs["PIN festlegen"] = protect_dialogs.NewPinDialog("PIN festlegen", protect_dialogs.PIN_INTRO, window)
+dialogs["PIN eingeben"] = protect_dialogs.EnterCodeDialog(
+    "Zeitzeuge entsperren", "Text", "&PIN:", lambda c: None, parent=window, secret=True,
+    extra="PIN &vergessen …")
 for area, dialog in dialogs.items():
     dialog.show()
     QTest.qWait(50)

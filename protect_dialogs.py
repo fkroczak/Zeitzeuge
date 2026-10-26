@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QDialog, QDialogButtonBo
                                QLabel, QLineEdit, QMessageBox, QPushButton, QVBoxLayout)
 
 import datakey
+import datastore
 
 CLIPBOARD_CLEAR_MS = 2 * 60 * 1000  # kopierten Schlüssel danach aus der Zwischenablage nehmen
 
@@ -83,7 +84,7 @@ class EnterCodeDialog(QDialog):
     """Ziffernschlüssel eingeben. check(code) wirft BadCode/WrongKey mit Text für den Nutzer."""
 
     def __init__(self, title, intro, label, check, ok_text="Ö&ffnen", cancel_text="Abbrechen",
-                 parent=None):
+                 parent=None, secret=False, extra=None):
         super().__init__(parent)
         self.setWindowTitle(title)
         self.setMinimumWidth(560)
@@ -94,8 +95,12 @@ class EnterCodeDialog(QDialog):
         layout.addWidget(text)
         form = QFormLayout()
         self.field = QLineEdit()
-        self.field.setFont(_code_font())
-        self.field.setPlaceholderText("000000-000000-000000-000000-000000-000000-000000-000000")
+        self.secret = secret
+        if secret:  # PIN: verdeckt, keine Vorgabe
+            self.field.setEchoMode(QLineEdit.Password)
+        else:
+            self.field.setFont(_code_font())
+            self.field.setPlaceholderText("000000-000000-000000-000000-000000-000000-000000-000000")
         form.addRow(label, self.field)
         self.error = QLabel("")
         self.error.setWordWrap(True)
@@ -105,6 +110,10 @@ class EnterCodeDialog(QDialog):
         buttons = QDialogButtonBox()
         self.ok = buttons.addButton(ok_text, QDialogButtonBox.AcceptRole)
         buttons.addButton(cancel_text, QDialogButtonBox.RejectRole)
+        self.extra_chosen = False
+        if extra:  # z. B. „PIN vergessen? Wiederherstellungsschlüssel …“
+            other = buttons.addButton(extra, QDialogButtonBox.ActionRole)
+            other.clicked.connect(lambda: (setattr(self, "extra_chosen", True), self.reject()))
         buttons.accepted.connect(self._try)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
@@ -116,7 +125,7 @@ class EnterCodeDialog(QDialog):
         QApplication.setOverrideCursor(Qt.WaitCursor)
         try:
             self._check(code)
-        except (datakey.BadCode, datakey.WrongKey, ValueError) as e:
+        except (datakey.BadCode, datakey.WrongKey, ValueError, LookupError) as e:
             self.error.setText(str(e))
             self.error.show()
             self.field.setFocus()
@@ -124,13 +133,97 @@ class EnterCodeDialog(QDialog):
             return
         finally:
             QApplication.restoreOverrideCursor()
-        self.code = datakey.normalize_code(code)
+        self.code = code if self.secret else datakey.normalize_code(code)
         self.accept()
 
 
+class NewPinDialog(QDialog):
+    """Neue PIN zweimal eingeben. Fehler stehen als Text neben dem Feld, OK erst, wenn alles passt."""
+
+    def __init__(self, title, intro, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(title)
+        self.setMinimumWidth(520)
+        layout = QVBoxLayout(self)
+        text = QLabel(intro)
+        text.setWordWrap(True)
+        layout.addWidget(text)
+        form = QFormLayout()
+        self.pin = QLineEdit()
+        self.pin.setEchoMode(QLineEdit.Password)
+        self.again = QLineEdit()
+        self.again.setEchoMode(QLineEdit.Password)
+        form.addRow("&PIN:", self.pin)
+        form.addRow("PIN &wiederholen:", self.again)
+        self.error = QLabel("")
+        self.error.setWordWrap(True)
+        form.addRow("", self.error)
+        layout.addLayout(form)
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        self.ok = buttons.button(QDialogButtonBox.Ok)
+        self.ok.setText("PIN &speichern")
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+        self.pin.textChanged.connect(self.validate)
+        self.again.textChanged.connect(self.validate)
+        self.validate()
+        text.setMinimumHeight(text.heightForWidth(self.minimumWidth() - 24))
+
+    def validate(self):
+        pin, again = self.pin.text(), self.again.text()
+        error = ""
+        if len(pin) < datakey.PIN_MIN:
+            error = f"Mindestens {datakey.PIN_MIN} Zeichen. Länger ist sicherer, z. B. ein kurzer Satz."
+        elif again and again != pin:
+            error = "Die beiden Eingaben sind verschieden."
+        self.error.setText(error)
+        self.ok.setEnabled(not error and again == pin)
+        return not error
+
+    def value(self):
+        return self.pin.text()
+
+
+PIN_INTRO = (
+    "Mit PIN reicht die Windows-Anmeldung allein nicht: Zeitzeuge fragt beim Start danach. "
+    "So kommen auch Domänen-Admins nicht an deine Daten.\n\n"
+    "Nimm 10 Zeichen oder mehr, z. B. einen kurzen Satz. Eine kurze PIN lässt sich mit einer "
+    "Kopie der Datei durchprobieren. Leg sie nicht in RDM ab. Vergisst du sie, hilft der "
+    "Wiederherstellungsschlüssel.")
+
+
+def ask_new_pin(parent=None, title="PIN festlegen", intro=PIN_INTRO):
+    """Neue PIN erfragen. "" bei Abbruch."""
+    dialog = NewPinDialog(title, intro, parent)
+    return dialog.value() if dialog.exec() == QDialog.Accepted else ""
+
+
+def _ask_pin(store, parent):
+    """PIN beim Start. True = geöffnet, False = beenden, None = Wiederherstellungsschlüssel nehmen."""
+    def check(pin):
+        try:
+            store.unlock_with_pin(pin)
+        except datastore.Locked as e:  # dieses Konto hat kein PIN-Fach
+            raise LookupError(f"{e} Nimm den Wiederherstellungsschlüssel.") from e
+    dialog = EnterCodeDialog(
+        "Zeitzeuge entsperren",
+        "Deine Daten sind mit Windows-Anmeldung und PIN geschützt. Gib deine PIN ein.",
+        "&PIN:", check, ok_text="Ö&ffnen", cancel_text="Zeitzeuge &beenden", parent=parent,
+        secret=True, extra="PIN &vergessen …")
+    if dialog.exec() == QDialog.Accepted:
+        return True
+    return None if dialog.extra_chosen else False
+
+
 def ask_unlock(store, parent=None):
-    """Daten gesperrt (anderer PC oder Windows-Konto): Wiederherstellungsschlüssel erfragen.
-    True, wenn entsperrt. Abbrechen ändert nichts an den Daten."""
+    """Daten gesperrt: PIN erfragen (wenn eingeschaltet) oder den Wiederherstellungsschlüssel
+    (anderer PC oder Windows-Konto, PIN vergessen). True, wenn entsperrt.
+    Abbrechen ändert nichts an den Daten."""
+    if store.pin_required():
+        answer = _ask_pin(store, parent)
+        if answer is not None:
+            return answer
     if not store.has_recovery():
         QMessageBox.critical(
             parent, "Daten sind gesperrt",
@@ -147,7 +240,16 @@ def ask_unlock(store, parent=None):
         "Zeitzeuge hier wieder ohne Abfrage.\n\nAbbrechen beendet Zeitzeuge, die Daten bleiben unverändert.",
         "&Wiederherstellungsschlüssel:", store.unlock_with_code, ok_text="Ö&ffnen",
         cancel_text="Zeitzeuge &beenden", parent=parent)
-    return dialog.exec() == QDialog.Accepted
+    if dialog.exec() != QDialog.Accepted:
+        return False
+    if store.pin_required():
+        pin = ask_new_pin(parent, "Neue PIN für dieses Windows-Konto",
+                          "Deine Daten sind offen. Lege für dieses Windows-Konto eine PIN fest; "
+                          "beim nächsten Start fragt Zeitzeuge danach.\n\nOhne PIN brauchst du beim "
+                          "nächsten Start wieder den Wiederherstellungsschlüssel.")
+        if pin:
+            store.set_pin(pin)
+    return True
 
 
 RECOVERY_INTRO = (

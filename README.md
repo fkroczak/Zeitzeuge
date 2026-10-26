@@ -432,10 +432,12 @@ Zeitzeuge verschlüsselt alle Inhalte mit einem zufälligen Schlüssel (AES-256-
 Den Schlüssel selbst speichert Zeitzeuge nur verpackt, in zwei „Schlüsselfächern“:
 
 1. **Windows-Anmeldung:** Standard. Zeitzeuge startet ohne Abfrage, nur dein Windows-Konto kann das Fach öffnen (DPAPI).
-2. **Wiederherstellungsschlüssel:** 48 Ziffern in 8 Blöcken, wie bei BitLocker. Zeitzeuge zeigt ihn einmal beim Einrichten. Leg ihn in RDM ab (Eintrag „Zeitzeuge Wiederherstellung“). Damit öffnest du die Daten auf einem neuen PC oder mit einem anderen Windows-Konto; danach startet Zeitzeuge dort wieder ohne Abfrage. Jeder Block ist durch 11 teilbar, so meldet Zeitzeuge einen Tippfehler direkt mit dem Block.
+2. **Windows-Anmeldung und PIN** (wahlweise, siehe unten): Dann fragt Zeitzeuge beim Start nach der PIN.
+3. **Wiederherstellungsschlüssel:** 48 Ziffern in 8 Blöcken, wie bei BitLocker. Zeitzeuge zeigt ihn einmal beim Einrichten. Leg ihn in RDM ab (Eintrag „Zeitzeuge Wiederherstellung“). Damit öffnest du die Daten auf einem neuen PC oder mit einem anderen Windows-Konto; danach startet Zeitzeuge dort wieder ohne Abfrage. Jeder Block ist durch 11 teilbar, so meldet Zeitzeuge einen Tippfehler direkt mit dem Block.
 
 **Einstellungen → Datenspeicher → Schutz …** zeigt den Stand und hat diese Knöpfe:
 
+- **PIN beim Start → Einschalten …:** Ab dann reicht die Windows-Anmeldung allein nicht mehr. Zeitzeuge löscht alle Fächer ohne PIN, auch die anderer PCs und Konten. Geht nur, wenn es schon einen Wiederherstellungsschlüssel gibt. **Ändern …** setzt eine neue PIN für dieses Windows-Konto, **Ausschalten** geht zurück zur Windows-Anmeldung allein.
 - **Neu erzeugen …:** neuer Wiederherstellungsschlüssel, der alte wird ungültig. Ersetze dann den Eintrag in RDM.
 - **Prüfen …:** prüft, ob der Schlüssel aus RDM passt. Dabei ändert sich nichts.
 - **Ändern …** beim Übertragungsschlüssel: neu erzeugen oder vom anderen PC eingeben (siehe [Zwei PCs](#zwei-pcs-arbeits-pc-und-paw)).
@@ -444,7 +446,14 @@ Fehlt der Wiederherstellungsschlüssel noch, steht rechts unten der blaue Knopf 
 
 Schlüssel gehören nie in eine Befehlszeile oder Verknüpfung: Virenscanner wie Cortex XDR speichern Befehlszeilen zentral. Zeitzeuge hat darum keinen Startparameter für einen Schlüssel.
 
-Grenzen: Wer als dein Windows-Benutzer angemeldet ist, kommt an die Daten, genau wie Zeitzeuge selbst. Domänen-Admins können DPAPI mit dem Sicherungsschlüssel der Domäne umgehen. Soll auch das nicht gehen, braucht es eine zusätzliche Abfrage beim Start (Windows Hello oder PIN). Die gibt es noch nicht.
+**PIN beim Start:** Domänen-Admins können die Windows-Anmeldung (DPAPI) mit dem Sicherungsschlüssel der Domäne umgehen. Mit PIN hilft ihnen das nicht: Der Datenschlüssel ist zusätzlich mit der PIN verpackt (Argon2id, etwa 0,3 Sekunden und 128 MB je Versuch).
+
+- Beim Start fragt Zeitzeuge nach der PIN. **PIN vergessen …** führt zum Wiederherstellungsschlüssel; danach legst du eine neue PIN fest.
+- Nach 3 Fehlversuchen wartet Zeitzeuge: 30 Sekunden, dann doppelt so lange, höchstens 15 Minuten.
+- Auf einem neuen PC oder mit einem neuen Windows-Konto öffnest du einmal mit dem Wiederherstellungsschlüssel und legst dort eine PIN fest.
+- Leg die PIN **nicht** in RDM ab, sonst kommt ein Admin über RDM daran. Den Wiederherstellungsschlüssel schon: Er öffnet die Daten ohne PIN, also schütze den RDM-Eintrag entsprechend.
+
+Grenzen: Die Wartezeit nach Fehlversuchen bremst nur in Zeitzeuge. Wer eine Kopie der Datei und Admin-Rechte hat, kann eine kurze PIN in Stunden bis Tagen durchprobieren. Nimm darum 10 Zeichen oder mehr, z. B. einen kurzen Satz. Wer Zeitzeuge oder deinen PC beobachtet, während die Daten offen sind (z. B. mit Admin-Rechten auf den laufenden Prozess), kommt trotzdem heran. Windows Hello statt PIN gibt es noch nicht: Dafür bräuchte Zeitzeuge ein weiteres Paket (Windows-Laufzeit), das auf der PAW neu geprüft werden müsste.
 
 ### Aktivitätsprotokoll
 
@@ -558,9 +567,9 @@ Für Tests und Hilfsskripte gibt es zwei Umgebungsvariablen: `ZEITZEUGE_DATA` se
 | `rules.py` | Klassifizierung ohne KI: Regeln, Blöcke bilden, Vorrang (ohne Qt) |
 | `storage.py` | Speicherort: Datenordner, Datenbank, Sicherung, Umziehen |
 | `datastore.py` | Verschlüsselte SQLite-Datenbank: Ablagen je Tag, Zeilen, Schlüsselfächer, Migration der alten Dateien, Sicherung (ohne Qt) |
-| `datakey.py` | Schlüssel: AES-256-GCM, Ziffernschlüssel (Wiederherstellung, Übertragung), Windows-Anmeldung (DPAPI) (ohne Qt) |
+| `datakey.py` | Schlüssel: AES-256-GCM, Ziffernschlüssel (Wiederherstellung, Übertragung), Windows-Anmeldung (DPAPI), PIN (Argon2id) (ohne Qt) |
 | `app_protect.py` | Hauptfenster: Dialog „Schutz …“, Wiederherstellungs- und Übertragungsschlüssel, Sicherung alle 2 Stunden |
-| `protect_dialogs.py` | Dialoge: Schlüssel einmal zeigen, Schlüssel eingeben, „Daten sind gesperrt“ |
+| `protect_dialogs.py` | Dialoge: Schlüssel einmal zeigen, Schlüssel oder PIN eingeben, PIN festlegen, „Daten sind gesperrt“ |
 | `safe_io.py` | Dateien sicher lesen und schreiben, kaputte Dateien beiseitelegen, große Logs nur am Ende lesen, `fehler.log` |
 | `net.py` | Prüfen, ob ein Server erreichbar ist, und Wartezeit nach Fehlern |
 | `tests/` | Tests (pytest), laufen bei jedem Build: Start, Bedienbarkeit, Infobereich, Log-Parser, VPN-Logs, 3CX und ITM mit nachgebauten Seiten, KI-Vorschläge mit nachgebauter API, Fensterabfrage, Anrufliste. Dazu `start_bench.py` (Startzeit messen) und `screenshots.sh` (Bildschirmfotos mit Demodaten) |
