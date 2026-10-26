@@ -56,6 +56,10 @@ class Locked(Exception):
     Dann nie neu anlegen oder überschreiben, sondern den Wiederherstellungsschlüssel erfragen."""
 
 
+class NeedPin(Locked):
+    """Daten sind mit Windows-Anmeldung und PIN geschützt: PIN abfragen (unlock_with_pin)."""
+
+
 class Busy(OSError):
     """Datenbank gerade nicht beschreibbar (gesperrt, Platte voll …)."""
 
@@ -181,14 +185,116 @@ class Store:
                 self._use_key(key)
                 return self
             for _id, kind, _lbl, _created, data in slots:
-                if kind == RECOVERY:
+                if kind == RECOVERY or kind.endswith(datakey.PIN_SUFFIX):
                     continue
                 try:
                     self._use_key(datakey.auto_unwrap(kind, data))
                     return self
                 except datakey.WrongKey:
                     continue
+            if self.pin_required():
+                raise NeedPin("Zum Öffnen brauchst du deine PIN.")
             raise Locked("Kein Schlüsselfach passt zu diesem Windows-Benutzer.")
+
+    # ------------------------------------------------------------ PIN
+
+    PIN_FREE_TRIES = 3     # so viele Fehlversuche ohne Wartezeit
+    PIN_MAX_WAIT = 15 * 60
+
+    def pin_required(self):
+        with self._lock:
+            self.open()
+            return self._meta("pin") == "1"
+
+    def _pin_slots(self):
+        return [s for s in self._slots() if s[1].endswith(datakey.PIN_SUFFIX)]
+
+    def pin_wait(self):
+        """Sekunden bis zum nächsten erlaubten PIN-Versuch (0 = jetzt)."""
+        with self._lock:
+            self.open()
+            until = float(self._meta("pin_warten_bis") or 0)
+        return max(0, int(until - time.time() + 0.999))
+
+    def unlock_with_pin(self, pin):
+        """Mit Windows-Anmeldung und PIN öffnen. WrongKey bei falscher PIN (danach wachsende
+        Wartezeit), Locked, wenn dieses Windows-Konto kein PIN-Fach hat (Wiederherstellungsschlüssel)."""
+        with self._lock:
+            self.open()
+            wait = self.pin_wait()
+            if wait:
+                raise datakey.WrongKey(f"Zu viele Fehlversuche. Bitte warte noch {wait} Sekunden.")
+            mine = False
+            for _id, kind, _lbl, _created, data in self._pin_slots():
+                try:
+                    inner = datakey.auto_unwrap(kind[:-len(datakey.PIN_SUFFIX)], data)
+                except datakey.WrongKey:
+                    continue  # Fach eines anderen Kontos oder PCs
+                mine = True
+                try:
+                    self._use_key(datakey.unwrap_with_pin(inner, pin))
+                except datakey.WrongKey:
+                    continue
+                self._write_tx(lambda c: c.execute(
+                    "DELETE FROM meta WHERE key IN ('pin_fehlversuche', 'pin_warten_bis')"))
+                return self
+            if not mine:
+                raise Locked("Für dieses Windows-Konto ist noch keine PIN eingerichtet.")
+            fails = int(self._meta("pin_fehlversuche") or 0) + 1
+            wait = 0 if fails < self.PIN_FREE_TRIES else min(
+                30 * 2 ** (fails - self.PIN_FREE_TRIES), self.PIN_MAX_WAIT)
+
+            def tx(c):
+                c.execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('pin_fehlversuche', ?)", (str(fails),))
+                c.execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('pin_warten_bis', ?)",
+                          (str(time.time() + wait),))
+            self._write_tx(tx)
+            raise datakey.WrongKey("Die PIN stimmt nicht." + (
+                f" Nächster Versuch in {wait} Sekunden." if wait else ""))
+
+    def enable_pin(self, pin):
+        """PIN beim Start einschalten. Ab dann reicht die Windows-Anmeldung allein nicht mehr:
+        alle Fächer ohne PIN (auch die anderer PCs und Konten) werden gelöscht. Nur mit
+        Wiederherstellungsschlüssel, sonst wäre eine vergessene PIN das Ende der Daten."""
+        self._need_key()
+        datakey.check_pin_rules(pin)
+        if not self.has_recovery():
+            raise ValueError("Lege zuerst einen Wiederherstellungsschlüssel an.")
+        blob = datakey.pin_wrap(self._key, pin)
+
+        def tx(c):
+            c.execute("DELETE FROM key_slots WHERE kind != ?", (RECOVERY,))
+            c.execute("INSERT INTO key_slots (kind, label, created, data) VALUES (?, ?, ?, ?)",
+                      (datakey.pin_kind(), _label(), _now(), blob))
+            c.execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('pin', '1')")
+            c.execute("DELETE FROM meta WHERE key IN ('pin_fehlversuche', 'pin_warten_bis')")
+        self._write_tx(tx)
+
+    def set_pin(self, pin):
+        """PIN für dieses Windows-Konto ändern oder neu anlegen (z. B. nach dem Öffnen mit dem
+        Wiederherstellungsschlüssel auf einem neuen PC). Andere Konten behalten ihre PIN."""
+        self._need_key()
+        datakey.check_pin_rules(pin)
+        blob = datakey.pin_wrap(self._key, pin)
+        me = _label()
+
+        def tx(c):
+            c.execute("DELETE FROM key_slots WHERE kind = ? AND label = ?", (datakey.pin_kind(), me))
+            c.execute("INSERT INTO key_slots (kind, label, created, data) VALUES (?, ?, ?, ?)",
+                      (datakey.pin_kind(), me, _now(), blob))
+        self._write_tx(tx)
+
+    def disable_pin(self):
+        """PIN ausschalten: wieder nur die Windows-Anmeldung (dieses Konto)."""
+        self._need_key()
+        blob = datakey.auto_wrap(self._key)
+
+        def tx(c):
+            c.execute("DELETE FROM key_slots WHERE kind LIKE ?", ("%" + datakey.PIN_SUFFIX,))
+            c.execute("INSERT INTO key_slots (kind, label, created, data) VALUES (?, ?, ?, ?)",
+                      (datakey.auto_kind(), _label(), _now(), blob))
+            c.execute("DELETE FROM meta WHERE key IN ('pin', 'pin_fehlversuche', 'pin_warten_bis')")
+        self._write_tx(tx)
 
     def _init_key(self, conn, key):
         cipher = datakey.Cipher(key)
@@ -212,8 +318,11 @@ class Store:
                 except datakey.WrongKey:
                     continue
                 self._write_tx(lambda c: c.execute(
-                    "INSERT INTO key_slots (kind, label, created, data) VALUES (?, ?, ?, ?)",
-                    (datakey.auto_kind(), _label(), _now(), datakey.auto_wrap(key))))
+                    "DELETE FROM meta WHERE key IN ('pin_fehlversuche', 'pin_warten_bis')"))
+                if not self.pin_required():  # mit PIN legt set_pin das Fach an (Dialog fragt danach)
+                    self._write_tx(lambda c: c.execute(
+                        "INSERT INTO key_slots (kind, label, created, data) VALUES (?, ?, ?, ?)",
+                        (datakey.auto_kind(), _label(), _now(), datakey.auto_wrap(key))))
                 return self
             raise datakey.WrongKey("Der Wiederherstellungsschlüssel passt nicht zu diesen Daten.")
 
@@ -238,10 +347,11 @@ class Store:
         """Stand des Schutzes für die Anzeige."""
         with self._lock:
             slots = self._slots()
-            auto = [s for s in slots if s[1] != RECOVERY]
+            auto = [s for s in slots if s[1] != RECOVERY]  # mit und ohne PIN
             rec = [s for s in slots if s[1] == RECOVERY]
             return {"auto": [(s[1], s[2], s[3]) for s in auto],
                     "recovery": rec[0][3] if rec else None,
+                    "pin": self._meta("pin") == "1",
                     "created": self._meta("angelegt"),
                     "path": self.path}
 

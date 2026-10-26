@@ -182,15 +182,61 @@ class ProtectMixin:
         if others:
             win += f" (dazu {others} weitere PCs oder Konten)"
         recovery = f"angelegt am {_de(info['recovery'])}" if info["recovery"] else "fehlt noch"
+        pin = "an" if info["pin"] else "aus"
         transfer = "hinterlegt" if self.transfer_code() else "nicht hinterlegt"
         where = f"Datenbank: {info['path']}\nSicherung: " + (
             mt.BACKUP_FILE if mt.BACKUP_FILE else "keine (Datenbank liegt im Datenordner)")
-        return win, recovery, transfer, where
+        return win, pin, recovery, transfer, where
 
     def protection_text(self):
-        win, recovery, transfer, where = self.protection_state()
-        return (f"Windows-Anmeldung: {win}\nWiederherstellungsschlüssel: {recovery}\n"
+        win, pin, recovery, transfer, where = self.protection_state()
+        return (f"Windows-Anmeldung: {win}\nPIN beim Start: {pin}\nWiederherstellungsschlüssel: {recovery}\n"
                 f"Übertragungsschlüssel: {transfer}\n\n{where}")
+
+    # ---------------------- PIN ------------------------------------------------
+
+    def pin_on(self, parent=None):
+        """PIN einschalten oder ändern."""
+        parent = parent or self
+        store = self.data_store
+        if store.pin_required():
+            pin = protect_dialogs.ask_new_pin(parent, "PIN ändern")
+            if pin:
+                store.set_pin(pin)
+                self.statusBar().showMessage("PIN geändert", 6000)
+            return bool(pin)
+        if not store.has_recovery():
+            QMessageBox.information(parent, "PIN beim Start",
+                                    "Lege zuerst einen Wiederherstellungsschlüssel an. "
+                                    "Ohne ihn wären deine Daten bei vergessener PIN verloren.")
+            if not self.new_recovery_code(parent):
+                return False
+        pin = protect_dialogs.ask_new_pin(parent)
+        if not pin:
+            return False
+        try:
+            store.enable_pin(pin)
+        except (ValueError, datastore.Busy, datastore.Locked) as e:
+            QMessageBox.warning(parent, "PIN beim Start", str(e))
+            return False
+        mt.backup_store(force=True)  # Sicherung ohne Fach ohne PIN
+        self.statusBar().showMessage("PIN eingeschaltet: Zeitzeuge fragt beim nächsten Start danach", 8000)
+        return True
+
+    def pin_off(self, parent=None):
+        parent = parent or self
+        if not self.data_store.pin_required():
+            return False
+        answer = QMessageBox.question(
+            parent, "PIN ausschalten",
+            "Dann öffnet wieder die Windows-Anmeldung allein die Daten, ohne Abfrage. "
+            "Domänen-Admins könnten dann wieder herankommen.\n\nPIN ausschalten?",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if answer != QMessageBox.Yes:
+            return False
+        self.data_store.disable_pin()
+        mt.backup_store(force=True)
+        return True
 
     def show_protection(self):
         self.build_protection_dialog().exec()
@@ -208,15 +254,18 @@ class ProtectMixin:
         grid = QGridLayout()
         grid.setColumnStretch(1, 1)
         grid.setHorizontalSpacing(12)
-        labels = {}
+        labels, row_buttons = {}, {}
         rows = [("Windows-Anmeldung:", "win", []),
+                ("PIN beim Start:", "pin",
+                 [("&Einschalten …", "PIN beim Start einschalten oder ändern", lambda: self.pin_on(dialog)),
+                  ("&Ausschalten", "PIN beim Start ausschalten", lambda: self.pin_off(dialog))]),
                 ("Wiederherstellungsschlüssel:", "recovery",
                  [("&Neu erzeugen …", "Wiederherstellungsschlüssel neu erzeugen",
                    lambda: self.new_recovery_code(dialog)),
                   ("&Prüfen …", "Wiederherstellungsschlüssel prüfen",
                    lambda: self.check_recovery_code(dialog))]),
                 ("Übertragungsschlüssel:", "transfer",
-                 [("Ä&ndern …", "Übertragungsschlüssel erzeugen oder eingeben",
+                 [("Än&dern …", "Übertragungsschlüssel erzeugen oder eingeben",
                    lambda: self.setup_transfer_code(dialog))])]
         for row, (title, key, actions) in enumerate(rows):
             head = QLabel(title)
@@ -232,6 +281,7 @@ class ProtectMixin:
                 button.setToolTip(name)
                 button.clicked.connect(lambda _c=False, f=func: (f(), refresh()))
                 grid.addWidget(button, row, col)
+                row_buttons.setdefault(key, []).append(button)
         layout.addLayout(grid)
         where = QLabel()
         where.setObjectName("hint")
@@ -240,7 +290,12 @@ class ProtectMixin:
         layout.addWidget(where)
 
         def refresh():
-            win, recovery, transfer, path = self.protection_state()
+            win, pin, recovery, transfer, path = self.protection_state()
+            on = self.data_store.pin_required()
+            pin_set, pin_clear = row_buttons["pin"]
+            pin_set.setText("&Ändern …" if on else "&Einschalten …")
+            pin_clear.setEnabled(on)
+            labels["pin"].setText(pin)
             labels["win"].setText(win)
             labels["recovery"].setText(recovery)
             labels["transfer"].setText(transfer)

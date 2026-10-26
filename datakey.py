@@ -7,6 +7,8 @@ Schlüssel für die verschlüsselte Datenbank (ohne Qt).
     Start ohne Abfrage, nur dieser Windows-Benutzer kann es öffnen.
   * "wiederherstellung": mit dem Wiederherstellungsschlüssel verpackt (48 Ziffern in
     8 Blöcken wie bei BitLocker). Öffnet die Daten auf einem neuen PC oder Konto.
+  * "dpapi_pin": Windows-Anmeldung und zusätzlich eine PIN (Argon2id). Dann reicht die
+    Windows-Anmeldung allein nicht, auch nicht für Domänen-Admins mit dem DPAPI-Sicherungsschlüssel.
   * "datei": nur außerhalb von Windows (Entwicklung, Tests, CI). Schlüsseldatei im
     lokalen Ordner, schützt nicht vor Mitlesern.
 - Derselbe Ziffernblock-Typ dient als Übertragungsschlüssel für den PAW-Export.
@@ -121,6 +123,47 @@ def unwrap_with_code(blob, code, purpose=b"slot"):
         raise WrongKey("Der Schlüssel passt nicht zu diesen Daten.") from e
 
 
+# ------------------------------------------------------------ PIN (zusätzlich zur Windows-Anmeldung)
+
+PIN_MIN = 6
+# Argon2id, ~0,3 s und 128 MB je Versuch: bremst Durchprobieren, wenn jemand die Windows-Anmeldung
+# umgeht (z. B. Domänen-Admin mit dem DPAPI-Sicherungsschlüssel). Eine kurze PIN bleibt trotzdem
+# in Stunden bis Tagen durchprobierbar; eine längere Passphrase schützt deutlich besser.
+_PIN_V1 = 1
+_ARGON = dict(iterations=4, lanes=4, memory_cost=128 * 1024)
+
+
+class BadPin(ValueError):
+    """PIN erfüllt die Regeln nicht (zu kurz)."""
+
+
+def check_pin_rules(pin):
+    if len(pin or "") < PIN_MIN:
+        raise BadPin(f"Die PIN braucht mindestens {PIN_MIN} Zeichen. Länger ist sicherer.")
+    return pin
+
+
+def _pin_kek(pin, salt):
+    from cryptography.hazmat.primitives.kdf.argon2 import Argon2id
+    return Argon2id(salt=salt, length=KEY_BYTES, **_ARGON).derive(pin.encode("utf-8"))
+
+
+def wrap_with_pin(key, pin):
+    check_pin_rules(pin)
+    salt, nonce = secrets.token_bytes(16), secrets.token_bytes(NONCE_BYTES)
+    return bytes([_PIN_V1]) + salt + nonce + AESGCM(_pin_kek(pin, salt)).encrypt(nonce, key, b"zeitzeuge-pin")
+
+
+def unwrap_with_pin(blob, pin):
+    if not blob or blob[0] != _PIN_V1:
+        raise WrongKey("Unbekanntes PIN-Format")
+    salt, nonce, body = blob[1:17], blob[17:17 + NONCE_BYTES], blob[17 + NONCE_BYTES:]
+    try:
+        return AESGCM(_pin_kek(pin or "", salt)).decrypt(nonce, body, b"zeitzeuge-pin")
+    except InvalidTag as e:
+        raise WrongKey("Die PIN stimmt nicht.") from e
+
+
 # ------------------------------------------------------------ Windows-Anmeldung (DPAPI)
 
 def dpapi_available():
@@ -199,6 +242,26 @@ def auto_wrap(key):
         return dpapi(key, True, DPAPI_ENTROPY)
     nonce = secrets.token_bytes(NONCE_BYTES)
     return nonce + AESGCM(_file_key()).encrypt(nonce, key, b"zeitzeuge-datei")
+
+
+PIN_SUFFIX = "_pin"
+
+
+def pin_kind():
+    """Fach Windows-Anmeldung + PIN: erst DPAPI, darin mit der PIN verpackt."""
+    return auto_kind() + PIN_SUFFIX
+
+
+def pin_wrap(key, pin):
+    return auto_wrap(wrap_with_pin(key, pin))
+
+
+def pin_unwrap(kind, blob, pin):
+    """WrongKey, wenn das Fach nicht zu diesem Benutzer gehört oder die PIN falsch ist."""
+    if not kind.endswith(PIN_SUFFIX):
+        raise WrongKey("kein PIN-Fach")
+    inner = auto_unwrap(kind[:-len(PIN_SUFFIX)], blob)
+    return unwrap_with_pin(inner, pin)
 
 
 def auto_unwrap(kind, blob):
