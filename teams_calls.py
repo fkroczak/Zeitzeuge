@@ -182,7 +182,8 @@ def parse_log(lines, now=None):
 def log_files(globs=None, days=LOG_DAYS, now=None):
     """Teams-Logdateien der letzten Tage (älteste zuerst)."""
     now = now or datetime.now()
-    limit = (now - timedelta(days=days)).timestamp()
+    # Ohne datetime.timestamp(): das wirft unter Windows für Zeiten vor 1970 (OSError)
+    limit = now.timestamp() - days * 86400
     files = []
     for pattern in globs or LOG_GLOBS:
         for path in glob.glob(os.path.expandvars(pattern)):

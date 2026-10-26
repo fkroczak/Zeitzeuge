@@ -518,13 +518,18 @@ class Store:
 
         Gelöschte Seiten überschreibt SQLite mit Nullen (secure_delete). Die Datei wird
         nicht verkleinert (kein VACUUM): Der Platz wird für neue Zeilen wiederverwendet."""
+        if limit:
+            where = ("id IN (SELECT id FROM rows WHERE name = ? AND day < ? ORDER BY day, id LIMIT ?)",
+                     (name, day, int(limit)))
+        else:
+            where = ("name = ? AND day < ?", (name, day))
+
         def tx(c):
-            if limit:
-                cur = c.execute("DELETE FROM rows WHERE id IN (SELECT id FROM rows WHERE name = ? "
-                                "AND day < ? ORDER BY day, id LIMIT ?)", (name, day, int(limit)))
-            else:
-                cur = c.execute("DELETE FROM rows WHERE name = ? AND day < ?", (name, day))
-            return cur.rowcount
+            # Erst mit Nullen überschreiben, dann löschen: Ältere SQLite-Versionen (z. B. im
+            # Windows-Python) schreiben frei gewordene Seiten im WAL-Modus nicht neu, dann
+            # käme beim Checkpoint die alte Seite mit den Daten zurück in die Datei.
+            c.execute(f"UPDATE rows SET data = zeroblob(length(data)) WHERE {where[0]}", where[1])
+            return c.execute(f"DELETE FROM rows WHERE {where[0]}", where[1]).rowcount
         with self._lock:
             self.open()
             self._conn.execute("PRAGMA secure_delete = ON")
