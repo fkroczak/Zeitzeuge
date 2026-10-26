@@ -78,7 +78,17 @@ def test_geloeschte_inhalte_ueberschrieben():
     store.close()  # Checkpoint: WAL in die Datei
     with open(store.path, "rb") as f:
         raw = f.read()
-    assert not any(b[:24] in raw for b in blobs)
+    left = [raw.find(b[:24]) for b in blobs if b[:24] in raw]
+    if left:  # Angaben zur Ursache (nur bei Fehler)
+        import sqlite3
+        conn = sqlite3.connect(store.path)
+        info = {p: conn.execute(f"PRAGMA {p}").fetchone()[0]
+                for p in ("journal_mode", "page_size", "page_count", "freelist_count")}
+        info["sqlite"] = sqlite3.sqlite_version
+        info["wal"] = os.path.exists(store.path + "-wal")
+        conn.close()
+        raise AssertionError(f"{len(left)} von {len(blobs)} gelöschten Zeilen noch in der Datei, "
+                             f"Seiten {sorted({o // info['page_size'] for o in left})}, {info}")
 
 
 def test_uebernommener_pc_verlauf():

@@ -524,22 +524,35 @@ class Store:
         else:
             where = ("name = ? AND day < ?", (name, day))
 
-        def tx(c):
-            # Erst mit Nullen überschreiben, dann löschen: Ältere SQLite-Versionen (z. B. im
-            # Windows-Python) schreiben frei gewordene Seiten im WAL-Modus nicht neu, dann
-            # käme beim Checkpoint die alte Seite mit den Daten zurück in die Datei.
+        # Erst mit Nullen überschreiben und in die Datei übernehmen, dann in einem zweiten
+        # Schritt löschen. So hängt es nicht davon ab, ob SQLite frei gewordene Seiten im
+        # WAL-Modus neu schreibt (unter Windows blieben sonst alte Inhalte in der Datei).
+        def zero(c):
             c.execute(f"UPDATE rows SET data = zeroblob(length(data)) WHERE {where[0]}", where[1])
+
+        def delete(c):
             return c.execute(f"DELETE FROM rows WHERE {where[0]}", where[1]).rowcount
         with self._lock:
             self.open()
             self._conn.execute("PRAGMA secure_delete = ON")
             try:
-                return self._write_tx(tx)
+                self._write_tx(zero)
+                self._checkpoint()
+                count = self._write_tx(delete)
+                self._checkpoint()
+                return count
             finally:
                 try:
                     self._conn.execute("PRAGMA secure_delete = OFF")
                 except sqlite3.DatabaseError:
                     pass
+
+    def _checkpoint(self):
+        """WAL in die Datei übernehmen (Fehler egal: dann beim nächsten Checkpoint)."""
+        try:
+            self._conn.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchall()
+        except sqlite3.DatabaseError:
+            pass
 
     # ------------------------------------------------------------ Übersicht, Sicherung
 
