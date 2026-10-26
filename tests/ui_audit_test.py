@@ -192,7 +192,7 @@ for path in ["main_timeline.py", "theme.py", "app_menus.py", "app_daylist.py", "
              "app_readers.py", "app_tray.py", "settings_dialogs.py", "timeline_only.py",
              "app_protect.py", "protect_dialogs.py", "app_transfer.py", "snippets_dialogs.py",
              "billing_dialogs.py", "retention_dialogs.py", "journal_dialogs.py", "week_dialogs.py",
-             "customers_dialogs.py"]:
+             "customers_dialogs.py", "outlook_dialogs.py", "app_outlook.py"]:
     with open(os.path.join(ROOT, path), encoding="utf-8") as f:
         for no, line in enumerate(f, 1):
             if re.search(r"color:\s*(gray|grey|#999|#aaa)\b", line, re.I):
