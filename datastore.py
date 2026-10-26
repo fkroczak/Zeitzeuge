@@ -636,6 +636,9 @@ LEGACY_FILES = {"anrufe": "anrufe.json", "anrufe_stand": "anrufe_stand.json",
                 "m42_buchungen": "m42_buchungen.json", "uebernommen": "uebernommen.json",
                 "aktivitaet": "aktivitaet", "taetigkeiten": "taetigkeiten",
                 "ki_vorschlaege": "ki_vorschlaege"}
+# Ablagen ohne alte Datei (gab es nur in der Datenbank), zur Übersicht:
+#   "teamviewer_names" (ein Dokument), "outlook" (je Tag {termine, mails, gelesen},
+#   outlook_data.py), "teams_anrufe" (je Tag eine Liste, teams_calls.py)
 
 _stores = {}
 _stores_lock = threading.Lock()

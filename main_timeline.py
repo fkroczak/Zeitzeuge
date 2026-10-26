@@ -8,6 +8,7 @@ TimelineApp setzt sich aus Mixins zusammen:
   app_tray     Fensteraufzeichnung, Infobereich, Beenden
   app_transfer Export/Import für einen anderen PC (PAW)
   app_protect  Schutz der Daten: Schlüssel, Sicherung der Datenbank
+  app_outlook  Outlook (Termine, gesendete Mails) und Teams-Anrufe
 Aussehen in theme.py, Standardwerte der Config in config_defaults.py.
 """
 import os
@@ -52,13 +53,14 @@ from app_readers import ReadersMixin
 from app_tray import TrayMixin
 from app_transfer import TransferMixin
 from app_protect import ProtectMixin
+from app_outlook import OutlookMixin
 
 # Weiter über main_timeline erreichbar (Tests, Hilfsskripte)
 __all__ = [
     "TimelineApp", "AppStyle", "install_translator", "GERMAN", "THEMES", "STYLESHEET",
     "resource_path", "APP_DIR", "DATA_DIR", "CONFIG_FILE", "CALLS_FILE", "VPN_FILE",
     "ACTIVITY_DIR", "PBX_PROFILE_DIR", "ITM_FILE", "ITM_PROFILE_DIR", "ITM_AUTH_FILE",
-    "M42_FILE", "M42_PROFILE_DIR", "IMPORT_FILE", "AI_DIR", "JOURNAL_DIR", "DB_FILE", "BACKUP_FILE",
+    "M42_FILE", "M42_PROFILE_DIR", "OUTLOOK_FILE", "TEAMS_CALLS_FILE", "IMPORT_FILE", "AI_DIR", "JOURNAL_DIR", "DB_FILE", "BACKUP_FILE",
     "open_store", "backup_store",
     "CONFIG_LOCKED", "clean_path", "load_config_with_defaults", "save_config", "merged_seconds",
     "report_exception", "install_error_hooks", "acquire_single_instance",
@@ -111,6 +113,9 @@ IMPORT_FILE = os.path.join(DATA_DIR, "uebernommen.json")
 M42_PROFILE_DIR = os.path.join(storage.local_dir(), "m42_profil")
 AI_DIR = os.path.join(DATA_DIR, "ki_vorschlaege")
 JOURNAL_DIR = os.path.join(DATA_DIR, "taetigkeiten")
+# Outlook (Termine, gesendete Mails) und Teams-Anrufe, beide nur in der Datenbank
+OUTLOOK_FILE = os.path.join(DATA_DIR, "outlook.json")
+TEAMS_CALLS_FILE = os.path.join(DATA_DIR, "teams_anrufe.json")
 # Fehler und beiseitegelegte Dateien stehen in fehler.log (siehe safe_io)
 safe_io.set_log_path(os.path.join(DATA_DIR, "fehler.log"))
 CONFIG_LOCKED = False  # Config war beim Start gesperrt: dann nichts darüber speichern
@@ -213,7 +218,10 @@ def load_config_with_defaults():
                         (AI_TYPE, "#A55EEA"), ("Dokumentiert", "#2E9E5B"),
                         ("Undokumentiert", "#E06D10"), ("Klassifizierung", "#8395A7"),
                         ("Matrix42-Buchung", "#6E7781"), ("Personalzeit", "#3D8BFD"),
-                        ("Arbeitszeit", "#3D8BFD"), ("Nicht gebucht", "#E5484D")]:
+                        ("Arbeitszeit", "#3D8BFD"), ("Nicht gebucht", "#E5484D"),
+                        # Outlook und Teams (app_outlook.py)
+                        ("Termin", "#0F6CBD"), ("Teams-Besprechung", "#5B5FC7"),
+                        ("Mail gesendet", "#1F7A8C"), ("Teams-Anruf", "#464EB8")]:
         cfg["type_colors"].setdefault(kind, color)
     # Design "Metro Klar": alte Standardfarben einmalig umstellen, selbst gewählte Farben bleiben.
     # Nur einmal, damit eine später bewusst gewählte alte Farbe nicht wieder ersetzt wird.
@@ -282,7 +290,7 @@ def merged_seconds(activities):
 
 
 class TimelineApp(MenusMixin, DayListMixin, DocsMixin, ReadersMixin, TrayMixin, TransferMixin,
-                  ProtectMixin, QMainWindow):
+                  ProtectMixin, OutlookMixin, QMainWindow):
     COLUMNS = ["Von", "Bis", "Dauer", "Typ", "Kunde / Verbindung", "Details"]
 
     def __init__(self):
@@ -476,6 +484,9 @@ class TimelineApp(MenusMixin, DayListMixin, DocsMixin, ReadersMixin, TrayMixin, 
         # Gebuchte Zeiten aus Matrix42 (nur im Firmennetz erreichbar)
         if self.config.get("m42_reader_enabled", False):
             self.start_m42_reader()
+
+        # Outlook (Termine, gesendete Mails) und Teams-Anrufe, standardmäßig aus
+        self._init_outlook()
 
         self.apply_style()  # setzt auch Icons und Aufzeichnungs-Zustand
         self.timeline.setFocus()

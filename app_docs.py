@@ -219,7 +219,7 @@ class DocsMixin:
         date = QDate.fromString(date_str, "yyyy-MM-dd")
         entries = [e for e in group_entries(self.timeline.activities_for(date),
                                             self.config.get("merge_gap_minutes", 5))
-                   if e.get("type") != "Zugangsdaten"]
+                   if e.get("type") != "Zugangsdaten" and row_kind(e) != "outlook"]
         return [dict(e, m42_unbooked=True)
                 for e in m42.unbooked(entries, bookings, self.config.get("m42_gap_minutes", 5))]
 
@@ -252,7 +252,8 @@ class DocsMixin:
                 is_call = row_kind(e) == "call"
                 if is_call and "calls" in sources:
                     entries.append(e)
-                elif not is_call and "connections" in sources and e.get("type") != "Zugangsdaten":
+                elif (not is_call and "connections" in sources and e.get("type") != "Zugangsdaten"
+                      and row_kind(e) != "outlook"):  # Termine/Mails: keine Nachfrage
                     entries.append(e)
         if "rules" in sources:
             entries += self.rule_band(date_str)

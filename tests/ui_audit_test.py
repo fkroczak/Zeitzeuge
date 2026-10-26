@@ -249,6 +249,8 @@ if hasattr(window, "build_pbx_dialog"):
     dialogs["3CX direkt"] = window.build_pbx_dialog()
 if hasattr(window, "build_itm_dialog"):
     dialogs["ITM-Personalzeiten"] = window.build_itm_dialog()
+if hasattr(window, "build_outlook_dialog"):
+    dialogs["Outlook und Teams"] = window.build_outlook_dialog()
 import protect_dialogs  # noqa: E402
 dialogs["Schutz der Daten"] = window.build_protection_dialog()
 dialogs["Wiederherstellungsschlüssel"] = protect_dialogs.CodeDialog(

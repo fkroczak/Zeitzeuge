@@ -136,24 +136,32 @@ def _hm(text):
     return text[11:16]
 
 
+OUTLOOK_TYPES = ("Termin", "Teams-Besprechung", "Mail gesendet")  # wie timeline_only.OUTLOOK_TYPES
+
+
 def build_day_text(entries, pc_entries=None):
     """Einträge des Tages als kompakte Textliste (eine Zeile pro Eintrag)."""
-    lines = []
+    lines, outlook = [], []
     for e in sorted(entries, key=lambda e: e["start"]):
         if e.get("type") == AI_TYPE:
             continue
         kind = e.get("type", "")
-        if e.get("direction"):
+        if e.get("direction") and not (kind == "Teams-Anruf" and e["direction"] == "Anruf"):
             kind = f"{kind} {e['direction'].lower()}"
         parts = [f"{_hm(e['start'])}-{_hm(e['end'])}", kind, e.get("customer_name", "")]
         if e.get("details"):
             parts.append(e["details"])
-        lines.append(" | ".join(p for p in parts if p))
+        if e.get("email_domains") and not any(d in (e.get("details") or "") for d in e["email_domains"]):
+            parts.append("Domains: " + ", ".join(e["email_domains"]))
+        (outlook if kind in OUTLOOK_TYPES else lines).append(" | ".join(p for p in parts if p))
     pc_lines = []
     for p in sorted(pc_entries or [], key=lambda e: e["start"]):
         pc_lines.append(f"{_hm(p['start'])}-{_hm(p['end'])} | {p.get('app', '')} | "
                         f"{p.get('customer_name', '')}")
     text = "Verbindungen, Zugangsdaten und Telefonate:\n" + ("\n".join(lines) or "(keine)")
+    if outlook:  # nur mit eingeschalteter Datenquelle Outlook
+        text += ("\n\nTermine und gesendete Mails aus Outlook (Kalender zeigt Geplantes, "
+                 "eine Mail steht für wenige Minuten):\n" + "\n".join(outlook))
     if pc_entries is not None:
         text += "\n\nAktive Fenster am PC (Programm | Fenstertitel):\n" + ("\n".join(pc_lines) or "(keine)")
     return text

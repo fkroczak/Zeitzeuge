@@ -67,9 +67,12 @@ def entry_color(activity, config):
 
 
 # Eigene Zeile je Quelle (Kennung, Beschriftung links); nur RDM und der Rest teilen sich mehrere Spuren
-FIXED_ROWS = [("call", "Tel"), ("vpn", "VPN"), ("tv", "TV")]
+# Outlook (Termine, Mails) nur, wenn die Datenquelle an ist (sonst bliebe die Zeile leer)
+FIXED_ROWS = [("call", "Tel"), ("outlook", "Outlook"), ("vpn", "VPN"), ("tv", "TV")]
+OUTLOOK_TYPES = ("Termin", "Teams-Besprechung", "Mail gesendet")
 # Legende links: Name der Zeile und Schlüssel in config["type_colors"] für das Farbfeld
-LEGEND_FIXED = {"call": ("Telefon", "Telefonat"), "vpn": ("VPN", "VPN-Verbindung"),
+LEGEND_FIXED = {"call": ("Telefon", "Telefonat"), "outlook": ("Outlook", "Termin"),
+                "vpn": ("VPN", "VPN-Verbindung"),
                 "tv": ("TeamViewer", "TeamViewer")}
 LEGEND_BANDS = {"work": ("Personalzeit", "Personalzeit"), "doc": ("Dokumentation", "Dokumentiert"), "m42": ("Matrix42", "Matrix42-Buchung"),
                 "rule": ("Zuordnung o. KI", "Klassifizierung"), "ai": ("KI-Vorschläge", "KI-Vorschlag")}
@@ -83,21 +86,24 @@ TIMELINE_ROWS = [
     ("m42", "&Matrix42 (gebucht / nicht gebucht)"),
     ("rule", "&Zuordnung ohne KI (feste Regeln)"),
     ("ai", "&KI-Vorschläge"),
-    ("call", "&Telefon (3CX)"),
+    ("call", "&Telefon (3CX, Teams)"),
+    ("outlook", "&Outlook (Termine, Mails)"),
     ("vpn", "&VPN"),
     ("tv", "T&eamViewer"),
     ("other", "&Remote / Weitere (RDM, SSH, RDP …)"),
 ]
 ROW_NAMES = {"pc": "PC-Aktivität", "work": "Personalzeit", "doc": "Dokumentation", "m42": "Matrix42", "rule": "Zuordnung ohne KI",
-             "ai": "KI-Vorschläge", "call": "Telefon", "vpn": "VPN", "tv": "TeamViewer",
+             "ai": "KI-Vorschläge", "call": "Telefon", "outlook": "Outlook", "vpn": "VPN", "tv": "TeamViewer",
              "other": "Remote / Weitere"}
 
 
 def row_kind(activity):
-    """Feste Zeile eines Eintrags ("call", "vpn", "tv") oder None für die freien Spuren."""
+    """Feste Zeile eines Eintrags ("call", "outlook", "vpn", "tv") oder None für die freien Spuren."""
     kind = activity.get("type", "")
     if activity.get("direction") or kind == "Telefonat":
         return "call"
+    if kind in OUTLOOK_TYPES:
+        return "outlook"
     if kind.startswith("VPN"):
         return "vpn"
     if kind.startswith("TeamViewer"):
@@ -300,6 +306,7 @@ class TimelineView(QGraphicsView):
         self.doc_entries = None   # date_str -> eigene Tätigkeiten und noch offene
         self.m42_entries = None   # date_str -> Buchungen aus Matrix42 und Lücken ohne Buchung
         self.imported = None      # übernommene Daten anderer PCs (transfer.ImportStore)
+        self.outlook_entries = None  # date_str -> Termine, Mails, Teams-Anrufe (app_outlook.py)
 
         self._remote_cache = {}  # date_str -> list[conn]
         self._tv_parser = TeamViewerParser(self.config)
@@ -480,6 +487,11 @@ class TimelineView(QGraphicsView):
                 ignore_missed=self.config.get("calls_ignore_missed", True),
                 min_seconds=self.config.get("calls_min_duration", 0),
             )
+        if self.outlook_entries:
+            try:
+                result += self.outlook_entries(date_str)
+            except Exception as e:  # Outlook darf die Timeline nicht leeren
+                print(f"Fehler beim Lesen von Outlook/Teams: {e}")
         if self.imported:  # von einem anderen PC übernommen (z. B. auf der PAW)
             own = {(a.get("type"), a.get("start"), a.get("end")) for a in result}
             for a in self.imported.connections(date_str):
@@ -644,7 +656,11 @@ class TimelineView(QGraphicsView):
         # wird auf Spuren verteilt: überlappende Einträge kommen in die nächste Spur.
         # Ausgeblendete Zeilen (Menü "Zeilen der Timeline") fallen ganz weg.
         shown = self.config.get("timeline_rows", {})
-        fixed_rows = [(kind, label) for kind, label in FIXED_ROWS if shown.get(kind, True)]
+        # Outlook-Zeile nur mit eingeschalteter Quelle oder übernommenen Einträgen
+        has_outlook = self.config.get("outlook_enabled") or any(
+            row_kind(a) == "outlook" for a in activities)
+        fixed_rows = [(kind, label) for kind, label in FIXED_ROWS if shown.get(kind, True)
+                      and (kind != "outlook" or has_outlook)]
         show_other = shown.get("other", True)
         fixed_index = {kind: i for i, (kind, _label) in enumerate(fixed_rows)}
         n_fixed = len(fixed_rows)
