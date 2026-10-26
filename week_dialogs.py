@@ -121,7 +121,7 @@ def status_text(window, now=None):
                f"{br.level_text(br.level(seven.percent, goal), goal)}")
     if seven.unread:
         tip.append(f"{len(seven.unread)} Tag(e) ohne Matrix42-Daten zählen nicht mit")
-    tip.append("Klick: Wochenabschluss (F8)")
+    tip.append("Klick: Wochenabschluss")
     return text, lvl, "\n".join(tip)
 
 

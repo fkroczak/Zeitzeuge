@@ -87,11 +87,11 @@ def test_ticketzeile_mit_und_ohne_takt():
     i = item("10:05", "10:17")
     plain = "10:05–10:17 (12 min)  Müller GmbH · Fernwartung: Drucker eingerichtet"
     assert ticket_line(i) == plain  # ohne Regeln wie bisher
-    assert ticket_line(i, billing=Billing()) == ("10:05–10:17 (12 min → abgerechnet 0:15 h)  "
+    assert ticket_line(i, billing=Billing()) == ("10:05–10:17 (12 min) → abgerechnet 10:05–10:20 (0:15 h)  "
                                          "Müller GmbH · Fernwartung: Drucker eingerichtet")
     assert ticket_line(i, billing=Billing(mode="off")) == plain  # abschaltbar
     long = item("09:00", "12:10")
-    assert ticket_line(long, billing=Billing()).startswith("09:00–12:10 (3:10 h → abgerechnet 3:15 h)")
+    assert ticket_line(long, billing=Billing()).startswith("09:00–12:10 (3:10 h) → abgerechnet 09:00–12:15 (3:15 h)")
 
 
 def test_buchungszeiten_im_takt():

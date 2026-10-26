@@ -135,14 +135,14 @@ def gui_test():
     window.copy_selection()
     assert "Beispiel AG · Fernwartung: Outlook-Profil neu angelegt" in QApplication.clipboard().text()
     # Abrechnungstakt (Standard 15 min, angefangene Viertelstunde): Kopie, Liste, Statuszeile
-    assert "(35 min → abgerechnet 0:45 h)" in QApplication.clipboard().text(), QApplication.clipboard().text()
+    assert "(35 min) → abgerechnet " in QApplication.clipboard().text() and "(0:45 h)" in QApplication.clipboard().text(), QApplication.clipboard().text()
     assert "abgerechnet 0:45 h" in window.table.item(0, 2).text()
     assert "abgerechnet 0:45 h" in window.info_label.text(), window.info_label.text()
     window.config["billing_customers"] = {"beispiel ag": {"step": 30, "mode": "up"}}
     window.update_day_list(window.day_activities, window.pc_activities)
     window.table.selectRow(0)
     window.copy_selection()
-    assert "abgerechnet 1:00 h" in QApplication.clipboard().text()
+    assert "(1:00 h)" in QApplication.clipboard().text(), QApplication.clipboard().text()
     window.config["billing_customers"] = {}
     window.config["billing_mode"] = "off"  # abschaltbar: genau wie bisher
     window.update_day_list(window.day_activities, window.pc_activities)

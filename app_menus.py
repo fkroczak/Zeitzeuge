@@ -130,11 +130,11 @@ class MenusMixin:
             "KI-Vorschläge: Tätigkeiten des Tages von Claude einordnen lassen", "spark")
         tb.addAction(self.ai_button_action)
         self.doc_button_action = self._action(
-            "Nachtragen", lambda: self.add_doc(), "F7",
+            "Nachtragen", lambda: self.add_doc(), None,
             "Tätigkeit nachtragen (zur markierten Zeile oder zur letzten halben Stunde)", "edit")
         tb.addAction(self.doc_button_action)
         self.week_action = self._action(
-            "Wochenabschluss", self.show_week, "F8",
+            "Wochenabschluss", self.show_week, None,
             "Wochenabschluss: Buchungsquote, Lücken und Offenes der Woche", "gauge")
         tb.addAction(self.week_action)
         tb.addSeparator()
@@ -201,7 +201,7 @@ class MenusMixin:
             "Zusammengefasst: Verbindungen und Passwort-/OTP-Anzeigen je Eintrag eine Zeile\n"
             "Einzeln: jede Zeile aus den Logs\n"
             "Arbeitsblöcke: alles mit kurzer Pause dazwischen als ein Block, z. B. fürs Ticket\n"
-            "Dokumentation: deine eingetragenen Tätigkeiten und was noch offen ist (F7)\n"
+            "Dokumentation: deine eingetragenen Tätigkeiten und was noch offen ist\n"
             "Zuordnung ohne KI: Tätigkeiten, die Zeitzeuge über feste Regeln erkannt hat\n"
             "  (z. B. Outlook → E-Mail, TeamViewer → Fernwartung)\n"
             "KI-Vorschläge: Tätigkeiten, die Claude aus dem Tag erkannt hat\n"

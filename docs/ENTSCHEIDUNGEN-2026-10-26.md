@@ -35,8 +35,10 @@ Schlüssel in `zeitzeuge_config.json` (siehe unten).
 ### Verhalten, das sich für bestehende Nutzer ändert
 
 1. **15-Minuten-Takt ist sofort an** (`billing_mode: "up"`). Grund: ausdrücklicher Wunsch
-   („15-Min-Takt wird abgerechnet“). Folge: Kopierte Ticketzeilen und die Statuszeile
-   zeigen zusätzlich „→ abgerechnet 0:15 h“. Gerundet wird **je Tätigkeit**, die
+   („15-Min-Takt wird abgerechnet“). Folge: Kopierte Ticketzeilen zeigen echte und
+   abgerechnete Zeiten, z. B. „10:05–10:17 (12 min) → abgerechnet 10:05–10:20 (0:15 h)“
+   (Format auf Wunsch so festgelegt; Beginn bleibt, Ende im Takt). Die Statuszeile zeigt
+   „abgerechnet …“. Gerundet wird **je Tätigkeit**, die
    angefangene Viertelstunde zählt. Zurück: Einstellungen → Abrechnung → „Ohne Takt“
    (`billing_mode: "off"`), dann ist alles wie früher.
 2. **Feierabend-Erinnerung mit ITM-Stempelung:** Ist man ausgestempelt, kommt die
@@ -52,8 +54,9 @@ Schlüssel in `zeitzeuge_config.json` (siehe unten).
    ersetzen.
 5. **Statuszeile zeigt die Buchungsquote** („Quote heute 72 % · 7 Tage 81 %“), nur wenn
    Matrix42 Daten liefert. Aus: `booking_rate_status: false`.
-6. **Neuer Knopf und Kürzel F8** für den Wochenabschluss. STRG+W wurde nicht genommen, weil
-   es unter Windows meist „schließen“ heißt.
+6. **Wochenabschluss nur über die Oberfläche** (Knopf in der Werkzeugleiste, Klick auf die
+   Quote in der Statuszeile). Auf Wunsch kein Tastenkürzel; auch F7 (Nachtragen) ist
+   entfernt, damit F7–F12 für andere Werkzeuge frei bleiben.
 
 ### Datenschutz und Ablage
 

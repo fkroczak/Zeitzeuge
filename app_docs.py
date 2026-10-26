@@ -423,7 +423,7 @@ class DocsMixin(CustomersMixin):
         self.statusBar().showMessage("Tätigkeit gelöscht", 4000)
 
     def doc_for_row(self):
-        """F7 bei markierter Zeile: Tätigkeit dazu eintragen oder bearbeiten."""
+        """Nachtragen bei markierter Zeile: Tätigkeit dazu eintragen oder bearbeiten."""
         row = self.table.currentRow()
         if not 0 <= row < len(self.list_entries):
             return None
@@ -605,7 +605,7 @@ class DocsMixin(CustomersMixin):
         self._reminded_day = today
         lines = [f"- {f.text}" for f in findings[:4]]
         if len(findings) > 4:
-            lines.append(f"- und {len(findings) - 4} weitere (Wochenabschluss, F8)")
+            lines.append(f"- und {len(findings) - 4} weitere (Knopf „Wochenabschluss“)")
         if open_items:
             self._tray_doc_hint = True
             text = f"Heute sind noch {len(open_items)} Tätigkeiten offen. Klick hier zum Nachtragen."
@@ -616,10 +616,10 @@ class DocsMixin(CustomersMixin):
         else:
             self._tray_week_hint = True
             self.tray.showMessage("Feierabend: bitte prüfen", "\n".join(lines) +
-                                  "\nDetails im Wochenabschluss (F8).", QSystemTrayIcon.Warning, 15000)
+                                  "\nDetails im Wochenabschluss (Knopf in der Werkzeugleiste).", QSystemTrayIcon.Warning, 15000)
 
     def show_week(self):
-        """Wochenabschluss (F8): Buchungsquote, Lücken, Offenes und Prüfungen der Woche."""
+        """Wochenabschluss: Buchungsquote, Lücken, Offenes und Prüfungen der Woche."""
         week_dialogs.WeekDialog(self, self.current_date.toString("yyyy-MM-dd")).exec()
 
     def request_quit(self):

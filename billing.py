@@ -134,6 +134,16 @@ class Billing:
             return ""
         return f" → abgerechnet {hours_text(self.minutes(seconds, customer))}"
 
+    def span_note(self, start, seconds, customer=""):
+        """Zusatz mit Beginn und Ende im Takt, z. B. " → abgerechnet 10:05–10:20 (0:15 h)".
+        start: datetime (Beginn der Tätigkeit). "" ohne Takt."""
+        if not self.active(customer) or seconds <= 0:
+            return ""
+        minutes = self.minutes(seconds, customer)
+        start = start.replace(second=0, microsecond=0)
+        end = start + timedelta(minutes=minutes)
+        return f" → abgerechnet {start:%H:%M}–{end:%H:%M} ({hours_text(minutes)})"
+
     def describe(self, customer=""):
         """Kurzer Text zur Regel, z. B. "15-Minuten-Takt, angefangener Takt zählt"."""
         step, mode = self.rule(customer)
