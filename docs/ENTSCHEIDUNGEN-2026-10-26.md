@@ -170,4 +170,9 @@ Grundlage ist der Buchungs-Mitschnitt vom 02.11.2026 (Zeiterfassung TE0000088403
     unter `m42_booking_ids`; zuletzt gewählte Tätigkeitsart unter `m42_activity_type`.
 33. **Wochenabschluss:** „Tag in Matrix42 buchen …“ öffnet für jede offene Tätigkeit des markierten
     Tags das Fenster; Abbrechen beendet die Reihe.
+34. **Ticket-Kennung (Fehlerbehebung):** Die Ticketliste liefert „Id“ (Teil des Tickets) und
+    „Sys-ObjectId“ (das Ticket). Gebucht wird mit „Sys-ObjectId“; mit „Id“ fand Matrix42 keinen
+    Ticketbezug („Matrix42 liefert keinen Ticketbezug“). Ort: `m42_booking.ticket_object_id`.
+35. **Aktualisieren (F5) liest Matrix42 mit:** die Woche des angezeigten Tags sofort, nicht erst
+    nach 10 Minuten. Ort: `app_daylist.refresh`, `M42Reader.refresh`.
 

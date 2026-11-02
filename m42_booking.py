@@ -126,14 +126,21 @@ def _clean(text):
     return re.sub(r"\s+", " ", re.sub(r"\s*\(\d+\)\s*$", "", text or "")).strip()
 
 
+def ticket_object_id(item):
+    """Kennung des Tickets selbst. Die Ticketliste liefert zwei: "Id" ist ein Teil des Tickets
+    (SPSActivityClassBase), "Sys-ObjectId" das Ticket. Der Buchungsdialog braucht das Ticket
+    (im Mitschnitt: Id e5ee25ff…, Sys-ObjectId daee25ff…, gebucht mit daee25ff…)."""
+    return item.get("Sys-ObjectId") or item.get("Id") or ""
+
+
 def ticket_row(item):
     """Eintrag der Ticketliste -> dict für die Trefferliste (None ohne Nummer/Kennung)."""
     if not isinstance(item, dict):
         return None
     number = (item.get("TicketNumber") or item.get("Sys-Name") or "").upper()
-    if not TICKET_RE.fullmatch(number) or not item.get("Id"):
+    if not TICKET_RE.fullmatch(number) or not ticket_object_id(item):
         return None
-    return {"ticket": number, "id": item["Id"], "subject": (item.get("Subject") or "").strip(),
+    return {"ticket": number, "id": ticket_object_id(item), "subject": (item.get("Subject") or "").strip(),
             "customer": _clean(item.get("Customer")), "state": (item.get("State") or "").strip(),
             "initiator": _clean(item.get("Initiator")), "recipient": _clean(item.get("Recipient")),
             "created": item.get("CreatedDate") or ""}
@@ -162,10 +169,10 @@ def ticket_from_search(items, number):
     if not hits:
         raise BookingError(f"Ticket {number} nicht gefunden.")
     ticket = hits[0]
-    if not ticket.get("Id"):
+    if not ticket_object_id(ticket):
         raise BookingError(f"Ticket {number}: Matrix42 liefert keine Kennung.")
     customer = re.sub(r"\s*\(\d+\)\s*$", "", ticket.get("Customer") or "").strip()
-    return {"id": ticket["Id"], "type": ticket.get("Sys-Entity", ""),
+    return {"id": ticket_object_id(ticket), "type": ticket.get("Sys-Entity", ""),
             "subject": (ticket.get("Subject") or "").strip(), "customer": re.sub(r"\s+", " ", customer),
             "state": ticket.get("State", "")}
 

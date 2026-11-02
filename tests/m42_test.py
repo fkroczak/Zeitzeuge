@@ -100,7 +100,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self._json({"Message": "unbekannte Spalte"}, 400)
                 return True
             hits = [{"Sys-Entity": "SPSActivityTypeServiceRequest", "TicketNumber": "TCK0000049374",
-                     "Id": "ticket-1", "Subject": "Praktikanten", "Customer": "Systems  (999830)",
+                     "Id": "teil-1", "Sys-ObjectId": "ticket-1",  # wie im Original: zwei Kennungen
+                     "Subject": "Praktikanten", "Customer": "Systems  (999830)",
                      "Recipient": "Kroczak, Filip - Systems", "State": "In Bearbeitung",
                      "CreatedDate": "2026-10-01T08:00:00Z"},
                     {"TicketNumber": "TCK0000049374999", "Id": "falsch", "Subject": "Anderes",

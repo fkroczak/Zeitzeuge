@@ -38,7 +38,8 @@ def test_plan_im_takt_mit_ticket_und_text():
 def test_ticket_aus_der_suche():
     items = [{"TicketNumber": "TCK0000049375", "Id": "falsch"},
              {"Sys-Entity": "SPSActivityTypeServiceRequest", "TicketNumber": "TCK0000049374",
-              "Id": "daee25ff-87cd-f111-0dbd-0050569e2f05", "Subject": "Praktikanten",
+              "Id": "e5ee25ff-87cd-f111-0dbd-0050569e2f05", "Sys-ObjectId": "daee25ff-87cd-f111-0dbd-0050569e2f05",
+              "Subject": "Praktikanten",
               "Customer": "Systems  (999830)", "State": "In Bearbeitung"}]
     t = mb.ticket_from_search(items, "TCK0000049374")
     assert t["id"] == "daee25ff-87cd-f111-0dbd-0050569e2f05" and t["customer"] == "Systems"
