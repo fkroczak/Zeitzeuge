@@ -73,3 +73,44 @@ def test_unbooked():
     outside = {"start": f"{D} 11:00:00", "end": f"{D} 11:30:00"}
     short = {"start": f"{D} 12:00:00", "end": f"{D} 12:02:00"}
     assert m.unbooked([inside, half, outside, short], bookings, 5) == [half, outside]
+
+
+def _utc(local_text):
+    """Lokale Zeit -> wie die Schnittstelle sie liefert (UTC mit Z)."""
+    from datetime import timezone
+    value = datetime.strptime(local_text, "%Y-%m-%d %H:%M").astimezone(timezone.utc)
+    return value.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+API_ITEM = {"Sys-Entity": "ITMTimeEntryType", "ObjectId": "TE0000085085",
+            "Customer": "Creacam Frästechnik GmbH & Co.KG  (1142)",
+            "Activity": "TCK0000036258 - Nacharbeit", "State": "Neu", "ActivityType": "Administration",
+            "TicketInfo": "Creacam Frästechnik GmbH & Co.KG  - TCK0000036258 - Nacharbeit",
+            "WorktimeRounded": 15}
+
+
+def test_buchung_aus_der_schnittstelle():
+    item = dict(API_ITEM, Start=_utc("2026-10-05 08:00"), End=_utc("2026-10-05 08:15"))
+    b = m.booking_from_api(item)
+    assert b["start"] == "2026-10-05 08:00:00" and b["end"] == "2026-10-05 08:15:00"  # Ortszeit
+    assert b["customer"] == "Creacam Frästechnik GmbH & Co.KG" and b["ticket"] == "TCK0000036258"
+    assert b["subject"] == "Nacharbeit" and b["entry"] == "TE0000085085"
+    assert b["state"] == "Neu" and b["activity_type"] == "Administration" and b["minutes_rounded"] == 15
+    # ohne TicketInfo: aus Kunde (ohne Kundennummer) und Tätigkeit
+    item.pop("TicketInfo")
+    b = m.booking_from_api(item)
+    assert b["customer"] == "Creacam Frästechnik GmbH & Co.KG" and b["ticket"] == "TCK0000036258"
+    # Kaputtes und Fremdes wird übersprungen
+    assert m.booking_from_api(dict(item, Start="kaputt")) is None
+    assert m.booking_from_api(dict(item, **{"Sys-Entity": "SPSActivityTypeTicket"})) is None
+    assert m.booking_from_api(dict(item, End=item["Start"])) is None
+
+
+def test_woche_aus_der_schnittstelle():
+    items = [dict(API_ITEM, Start=_utc("2026-10-06 14:00"), End=_utc("2026-10-06 15:00")),
+             dict(API_ITEM, Start=_utc("2026-10-06 08:00"), End=_utc("2026-10-06 08:30")),
+             dict(API_ITEM, Start=_utc("2026-10-13 08:00"), End=_utc("2026-10-13 08:30"))]  # nächste Woche
+    week = m.api_bookings_by_day("2026-10-05", items)
+    assert sorted(week) == [f"2026-10-{d:02d}" for d in range(5, 12)]  # alle 7 Tage, auch leere
+    assert [b["start"][11:16] for b in week["2026-10-06"]] == ["08:00", "14:00"]
+    assert week["2026-10-05"] == [] and "2026-10-13" not in week

@@ -71,6 +71,63 @@ def week_start(day):
     return (d - timedelta(days=d.weekday())).isoformat()
 
 
+# ------------------------------------------------------------------ Schnittstelle
+
+# Zeiterfassung über die Schnittstelle (WidgetList/GetData), Felder wie im Mitschnitt
+API_ENTITY = "ITMTimeEntryType"
+CUSTOMER_NO = re.compile(r"\s*\(\d+\)\s*$")  # "Bernhard Twents GmbH  (273)" -> Kundennummer weg
+
+
+def _local(text):
+    """'2026-10-05T06:00:00Z' (UTC) -> lokale Zeit ohne Zeitzone."""
+    value = datetime.fromisoformat(str(text).replace("Z", "+00:00"))
+    if value.tzinfo is not None:
+        value = value.astimezone().replace(tzinfo=None)
+    return value
+
+
+def booking_from_api(item):
+    """Eintrag der Schnittstelle -> Buchung wie aus dem Kalender, dazu Status, Tätigkeitsart
+    und gerundete Minuten. None, wenn Zeit fehlt oder es keine Zeiterfassung ist."""
+    if not isinstance(item, dict) or item.get("Sys-Entity", API_ENTITY) != API_ENTITY:
+        return None
+    try:
+        start, end = _local(item["Start"]), _local(item["End"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    if end <= start:
+        return None
+    title = (item.get("TicketInfo") or "").strip()
+    customer, ticket, subject = parse_title(title)
+    if not ticket:  # ohne TicketInfo: Kunde und Ticket aus den Einzelfeldern
+        customer = re.sub(r"\s+", " ", CUSTOMER_NO.sub("", item.get("Customer") or "")).strip()
+        m = re.match(r"\s*(TCK\d+)\s*-\s*(.*)", item.get("Activity") or "")
+        ticket, subject = (m.group(1), m.group(2).strip()) if m else ("", (item.get("Activity") or "").strip())
+    booking = {"start": start.strftime(TIME_FMT), "end": end.strftime(TIME_FMT),
+               "customer": customer, "ticket": ticket, "subject": subject,
+               "entry": (item.get("ObjectId") or "").strip(), "title": title}
+    for key, field in (("state", "State"), ("activity_type", "ActivityType")):
+        if item.get(field):
+            booking[key] = str(item[field]).strip()
+    if isinstance(item.get("WorktimeRounded"), (int, float)):
+        booking["minutes_rounded"] = item["WorktimeRounded"]
+    return booking
+
+
+def api_bookings_by_day(monday, items):
+    """Antwort der Schnittstelle für die Woche ab monday -> {Tag: [Buchungen]} (alle 7 Tage)."""
+    first = date.fromisoformat(monday)
+    days = [(first + timedelta(days=i)).isoformat() for i in range(7)]
+    result = {d: [] for d in days}
+    for item in items or []:
+        b = booking_from_api(item)
+        if b and b["start"][:10] in result:
+            result[b["start"][:10]].append(b)
+    for found in result.values():
+        found.sort(key=lambda b: b["start"])
+    return result
+
+
 # ------------------------------------------------------------------ Abgleich
 
 

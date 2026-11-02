@@ -369,14 +369,15 @@ class BrowserReader(QObject):
         self._set_status(f"{self.NAME}: Anmeldung im Edge-Fenster …")
         threading.Thread(target=self._login_window, daemon=True).start()
 
-    def record(self, out_file, mode="login", max_seconds=30 * 60):
+    def record(self, out_file, mode="login", max_seconds=30 * 60, full_writes=False):
         """Mitschnitt: Edge-Fenster öffnen und aufzeichnen, welche Abfragen die Seite
-        an ihren Server schickt, bis du das Fenster schließt. Ergebnis über recording_done."""
+        an ihren Server schickt, bis du das Fenster schließt. Ergebnis über recording_done.
+        full_writes: Abfragen, die etwas speichern, ungekürzt (Buchungs-Mitschnitt)."""
         if self._login_open:
             return False
         self._login_open = True
         self._record_stop.clear()
-        threading.Thread(target=self._record_window, args=(out_file, mode, max_seconds),
+        threading.Thread(target=self._record_window, args=(out_file, mode, max_seconds, full_writes),
                          daemon=True).start()
         return True
 
@@ -565,7 +566,7 @@ class BrowserReader(QObject):
                 self.needs_login = timed_out  # nach Zeitüberschreitung weiter nötig
         self._wake.set()
 
-    def _record_window(self, out_file, mode, max_seconds):
+    def _record_window(self, out_file, mode, max_seconds, full_writes=False):
         from request_recorder import Recorder  # nur hier gebraucht
 
         self._wake.set()  # Lese-Schleife aus dem Warten holen
@@ -580,7 +581,8 @@ class BrowserReader(QObject):
                 pages = json.load(urllib.request.urlopen(f"http://127.0.0.1:{port}/json/list", timeout=10))
                 page = next(p for p in pages if p.get("type") == "page")
                 version = json.load(urllib.request.urlopen(f"http://127.0.0.1:{port}/json/version", timeout=10))
-                recorder = Recorder(page["webSocketDebuggerUrl"], self.start_url(), self.NAME)
+                recorder = Recorder(page["webSocketDebuggerUrl"], self.start_url(), self.NAME,
+                                    full_writes=full_writes)
                 self._set_status(f"{self.NAME}: Mitschnitt läuft, Fenster schließen zum Beenden")
                 recorder.run(self._record_stop, max_seconds)
                 data = recorder.result(version.get("Browser", ""))

@@ -13,6 +13,11 @@ Ein Eintrag im Kalender sieht so aus:
     TE0000087192
 also Zeit, "Kunde - Ticket - Betreff" und die Nummer des Zeiterfassungseintrags.
 
+Seit dem Mitschnitt vom 02.11.2026 liest Zeitzeuge die Woche zuerst direkt über die
+Schnittstelle, die auch die Kalenderseite nutzt (API_JS: WidgetList/GetData mit Datumsfilter,
+Anmeldung über das Token der Seite). Das liefert zusätzlich Status (Neu/Freigegeben),
+Tätigkeitsart und gerundete Minuten. Klappt das nicht, liest es wie bisher aus der Seite.
+
 Gelesene Tage landen in m42_buchungen.json. Die aktuelle Woche liest Zeitzeuge alle
 10 Minuten, die letzten Wochen einmal pro Sitzung, ältere Wochen beim Blättern.
 
@@ -27,7 +32,9 @@ from urllib.parse import urlsplit
 
 from PySide6.QtCore import Signal
 
-from m42_data import bookings_by_day, load_store, save_days, week_start  # noqa: F401 (auch für Tests)
+import safe_io
+from m42_data import (api_bookings_by_day, bookings_by_day, load_store, save_days,  # noqa: F401
+                      week_start)
 from pbx_reader import BrowserReader
 
 
@@ -140,6 +147,70 @@ READ_JS = r"""
 })(%s)
 """
 
+# Woche direkt über die Schnittstelle lesen (wie die Kalenderseite selbst, siehe
+# Mitschnitt): POST /m42Services/api/WidgetList/GetData/<Widget> mit Datumsfilter, Anmeldung
+# über das Token, das die Seite im localStorage hält. Gibt JSON zurück:
+# {state: "ok" | "login" | "notoken" | "error", status, widget, total, items: [...]}
+DEFAULT_WIDGET = "05d8b58d-5764-ef11-debc-0050569e2f05"  # Kalender-Widget laut Mitschnitt
+API_JS = r"""
+(async function (monday, widgetDefault) {
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const isLogin = () => !!document.querySelector("input[type=password]") || /\/(wm\/)?login\b/i.test(location.pathname);
+  const token = () => { try { return localStorage.getItem("mx.auth.session.token"); } catch (e) { return null; } };
+  // Auf Token oder fertige Seite warten (Anmeldung im Firmennetz läuft oft von selbst)
+  for (let i = 0; i < 60 && !token(); i++) {
+    if (isLogin() && (document.querySelector("input[type=password]") || i >= 40)) break;
+    if (document.querySelector(".fc-view") && i >= 4) break;  // Seite da, aber ohne Token
+    await sleep(500);
+  }
+  if (!token()) return JSON.stringify({state: isLogin() ? "login" : "notoken", url: location.href});
+  // Widget der Kalenderseite: aus den Abfragen der Seite, sonst der eingestellte
+  const widgets = [];
+  try {
+    for (const e of performance.getEntriesByType("resource")) {
+      const m = /\/WidgetList\/GetData\/([0-9a-f-]{36})(?:[?#]|$)/i.exec(e.name);
+      if (m && !widgets.includes(m[1])) widgets.push(m[1]);
+    }
+  } catch (e) {}
+  if (widgetDefault && !widgets.includes(widgetDefault)) widgets.push(widgetDefault);
+  const from = new Date(monday + "T00:00:00"), to = new Date(from.getTime());
+  to.setDate(to.getDate() + 7);
+  const a = from.toISOString(), b = to.toISOString();
+  const range = (p, q) => ({Groups: [], LogicalOperator: 1, Conditions: [
+    {Property: p, Operator: 12, Value: [a, ""]}, {Property: q, Operator: 12, Value: ["", b]}]});
+  const filter = {Conditions: [], LogicalOperator: 1, Groups: [
+    {Groups: [], Conditions: [], LogicalOperator: 1},
+    {Conditions: [], LogicalOperator: 2, Groups: [range("Start", "Start"), range("End", "End"),
+      {Groups: [], LogicalOperator: 1, Conditions: [
+        {Property: "Start", Operator: 12, Value: ["", a]}, {Property: "End", Operator: 12, Value: [b, ""]}]}]},
+    {Groups: [], Conditions: [], LogicalOperator: 1}]};
+  const keep = ["Sys-Entity", "ObjectId", "Customer", "Activity", "TicketInfo", "State", "ActivityType",
+                "Start", "End", "WorktimeRounded", "WorktimeNominal"];
+  let last = {state: "error", status: 0, url: location.href};
+  for (const widget of widgets) {
+    let r;
+    try {
+      r = await fetch("/m42Services/api/WidgetList/GetData/" + widget, {
+        method: "POST", credentials: "include",
+        headers: {"Authorization": "Bearer " + token(), "Content-Type": "application/json;charset=UTF-8",
+                  "Accept": "application/json, text/plain, */*"},
+        body: JSON.stringify(filter)});
+    } catch (e) { last = {state: "error", status: 0, error: String(e)}; continue; }
+    if (r.status === 401) return JSON.stringify({state: "login", status: 401});
+    if (!r.ok) { last = {state: "error", status: r.status, widget: widget}; continue; }
+    let data;
+    try { data = await r.json(); } catch (e) { last = {state: "error", status: r.status, widget: widget}; continue; }
+    if (!Array.isArray(data)) { last = {state: "error", status: r.status, widget: widget}; continue; }
+    if (data.some(x => x && x["Sys-Entity"] && x["Sys-Entity"] !== "ITMTimeEntryType")) {
+      last = {state: "error", status: r.status, widget: widget, reason: "keine Zeiterfassung"}; continue;
+    }
+    const items = data.map(x => Object.fromEntries(keep.filter(k => k in (x || {})).map(k => [k, x[k]])));
+    return JSON.stringify({state: "ok", widget: widget, total: r.headers.get("TotalCount"), items: items});
+  }
+  return JSON.stringify(last);
+})(%s, %s)
+"""
+
 
 class M42Reader(BrowserReader):
     day_read = Signal(str)  # Tag (YYYY-MM-DD), dessen Buchungen neu sind
@@ -148,7 +219,8 @@ class M42Reader(BrowserReader):
     READ_INTERVAL = 10 * 60   # aktuelle Woche so oft neu lesen
     LOAD_TIMEOUT = 60         # so lange darf das Lesen einer Woche dauern
 
-    def __init__(self, url, data_file, profile_dir, parent=None, weeks_back=4):
+    def __init__(self, url, data_file, profile_dir, parent=None, weeks_back=4, use_api=True,
+                 widget_id=""):
         url = (url or "").strip()
         super().__init__(url, profile_dir, parent)
         self.page_url = url  # die Kalenderseite selbst (base_url ist ohne / am Ende)
@@ -159,6 +231,10 @@ class M42Reader(BrowserReader):
         self._wanted = set()   # Montage der Wochen, die gelesen werden sollen
         self._checked = set()  # in dieser Sitzung gelesene Wochen
         self._week_read = 0    # Zeitpunkt, zu dem die aktuelle Woche zuletzt gelesen wurde
+        # Erst über die Schnittstelle lesen; klappt das nicht, aus der Seite (wie bisher)
+        self.use_api = use_api
+        self.widget_id = (widget_id or "").strip() or DEFAULT_WIDGET
+        self.source = ""       # "Schnittstelle" oder "Seite": womit zuletzt gelesen wurde
 
     def start_url(self):
         return self.page_url
@@ -249,6 +325,10 @@ class M42Reader(BrowserReader):
     def _read_week(self, monday):
         """Eine Woche lesen und speichern. False, wenn eine Anmeldung nötig ist."""
         self._set_status(f"Matrix42: lese Woche ab {monday[8:10]}.{monday[5:7]}. …")
+        if self.use_api:
+            done = self._read_week_api(monday)
+            if done is not None:
+                return done
         raw = self._evaluate(READ_JS % json.dumps(monday), timeout=self.LOAD_TIMEOUT)
         data = json.loads(raw) if raw else {}
         state = data.get("state")
@@ -263,11 +343,43 @@ class M42Reader(BrowserReader):
         if data.get("missing"):
             raise RuntimeError(f"Woche ab {monday} ließ sich im Kalender nicht anzeigen")
         self.needs_login = False
+        self.source = "Seite"
         self._save(bookings_by_day(data.get("days") or [], data.get("events") or []))
         self._checked.add(monday)
         if monday == week_start(date.today().isoformat()):
             self._week_read = time.time()
         return True
+
+    def _read_week_api(self, monday):
+        """Woche über die Schnittstelle lesen. True = gelesen, False = Anmeldung nötig,
+        None = Schnittstelle geht nicht (dann für diese Sitzung aus der Seite lesen)."""
+        try:
+            raw = self._evaluate(API_JS % (json.dumps(monday), json.dumps(self.widget_id)),
+                                 timeout=self.LOAD_TIMEOUT)
+            data = json.loads(raw) if raw else {}
+        except Exception as e:  # Seite hängt o. Ä.: wie bisher aus der Seite lesen
+            data = {"state": "error", "error": str(e)}
+        state = data.get("state")
+        if state == "login":
+            self._need_login()
+            return False
+        items = data.get("items")
+        total = str(data.get("total") or "")
+        if state == "ok" and isinstance(items, list) and not (total.isdigit() and int(total) > len(items)):
+            self.needs_login = False
+            self.source = "Schnittstelle"
+            if data.get("widget") and data["widget"] != self.widget_id:
+                self.widget_id = data["widget"]
+            self._save(api_bookings_by_day(monday, items))
+            self._checked.add(monday)
+            if monday == week_start(date.today().isoformat()):
+                self._week_read = time.time()
+            return True
+        if state == "ok":
+            data = {"state": "error", "reason": f"nur {len(items or [])} von {total} Einträgen"}
+        self.use_api = False  # für diese Sitzung aus der Seite lesen
+        safe_io.log(f"Matrix42: Schnittstelle geht nicht ({data}), lese aus der Seite")
+        return None
 
     def _save(self, by_day):
         now = datetime.now().strftime("%Y-%m-%d %H:%M")
