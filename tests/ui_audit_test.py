@@ -192,7 +192,8 @@ for path in ["main_timeline.py", "theme.py", "app_menus.py", "app_daylist.py", "
              "app_readers.py", "app_tray.py", "settings_dialogs.py", "timeline_only.py",
              "app_protect.py", "protect_dialogs.py", "app_transfer.py", "snippets_dialogs.py",
              "billing_dialogs.py", "retention_dialogs.py", "journal_dialogs.py", "week_dialogs.py",
-             "customers_dialogs.py", "outlook_dialogs.py", "app_outlook.py"]:
+             "customers_dialogs.py", "outlook_dialogs.py", "app_outlook.py",
+             "m42_booking_dialogs.py"]:
     with open(os.path.join(ROOT, path), encoding="utf-8") as f:
         for no, line in enumerate(f, 1):
             if re.search(r"color:\s*(gray|grey|#999|#aaa)\b", line, re.I):
@@ -279,6 +280,12 @@ _rdm.form.category_edit.setCurrentText("Beratung")
 dialogs["Tätigkeit mit Lernen"] = _rdm
 import week_dialogs  # noqa: E402
 dialogs["Wochenabschluss"] = week_dialogs.WeekDialog(window, day)
+import m42_booking_dialogs  # noqa: E402
+_plan = {"ticket": "TCK0000049374", "start": _dt(2026, 10, 20, 9), "end": _dt(2026, 10, 20, 9, 30),
+         "text": "- Drucker eingerichtet", "customer": "Musterkunde GmbH"}
+dialogs["In Matrix42 buchen"] = m42_booking_dialogs.BookingDialog(
+    _plan, None, [{"start": "2026-10-20 09:15:00", "end": "2026-10-20 09:45:00", "ticket": "TCK1",
+                   "subject": "Anderes"}], parent=window)
 if hasattr(window, "build_pbx_dialog"):
     dialogs["3CX direkt"] = window.build_pbx_dialog()
 if hasattr(window, "build_itm_dialog"):

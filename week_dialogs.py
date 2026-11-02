@@ -249,9 +249,11 @@ class WeekDialog(QDialog):
         layout.addWidget(legend)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Close, self)
-        self.book_button = QPushButton("In Matrix42 &buchen (kommt bald)", self)
-        self.book_button.setEnabled(m42_booking.AVAILABLE)
-        self.book_button.setToolTip(m42_booking.COMING_SOON)
+        self.book_button = QPushButton("Tag in Matrix42 &buchen …", self)
+        self.book_button.setEnabled(m42_booking.AVAILABLE and hasattr(window, "book_day_in_m42"))
+        self.book_button.setToolTip("Noch nicht gebuchte Tätigkeiten des markierten Tags nacheinander "
+                                    "prüfen und in Matrix42 buchen")
+        self.book_button.clicked.connect(self.book_day)
         buttons.addButton(self.book_button, QDialogButtonBox.ActionRole)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
@@ -370,6 +372,12 @@ class WeekDialog(QDialog):
             item = QListWidgetItem(f"{name}: {text}")
             item.setData(Qt.UserRole, d)
             self.hints.addItem(item)
+
+    def book_day(self):
+        row = self.table.currentRow()
+        if 0 <= row < len(self.rows) and hasattr(self.window, "book_day_in_m42"):
+            self.window.book_day_in_m42(self.rows[row], parent=self)
+            self.fill()
 
     # ---- Springen
 

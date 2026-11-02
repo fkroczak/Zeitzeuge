@@ -145,3 +145,29 @@ Grundlage ist der Mitschnitt vom 02.11.2026 (nur Lesen, keine Buchung angelegt).
     geschwärzt, alles andere ist gekürzt wie bisher. Zurück: Knopf in
     `app_readers.build_reader_dialog` und `full_writes` in `request_recorder.py`.
 
+## Nachtrag 02.11.2026 (2): In Matrix42 buchen
+
+Grundlage ist der Buchungs-Mitschnitt vom 02.11.2026 (Zeiterfassung TE0000088403 angelegt).
+
+26. **Buchen nur nach Bestätigung:** Fenster mit Ticket, Zeit, Tätigkeitsart und Text, gebucht
+    wird erst mit „In Matrix42 buchen“. Status „Neu“ (10) wie im Matrix42-Dialog, Freigeben
+    bleibt in Matrix42. Zurück: Eintrag `m42_book` in `timeline_only.entry_menu_items`.
+27. **Zeiten im Abrechnungstakt:** Beginn bleibt, Ende = Beginn + abgerechnete Dauer
+    (`billing.booking_span`); im Fenster änderbar. „Gebucht“ und „abgerechnet“ sind dieselben
+    Minuten (`WorktimeNominal` = `WorktimeRounded`). Zurück: in `m42_booking.plan` echte Zeiten.
+28. **Text** wie in der Tätigkeit; mit Ticket-Format „- “/„-- “ nur, wenn das unter Textbausteine
+    eingeschaltet ist.
+29. **Benutzer** aus den gelesenen eigenen Buchungen (`Anwender_Value`) oder aus der Abfrage der
+    Seite `AutoTimeTracking/Settings/<id>`. Ohne beides bucht Zeitzeuge nicht (kein Raten).
+30. **Ticketsuche:** je Feld (Ticketnummer, Titel, Kunde, Melder, Bearbeiter) eine Abfrage
+    „enthält“, Treffer zusammengeführt, neueste zuerst, höchstens 50. Kennt die Ticketliste ein
+    Feld nicht, zählen die übrigen (Grund in `fehler.log`). Ohne Ticket sucht das Fenster gleich
+    nach dem Kunden.
+31. **Doppelt buchen vermeiden:** Nach dem Buchen steht die Nummer (`m42_entry`) an der Tätigkeit;
+    Rechtsklick zeigt dann nur noch „In Matrix42 gebucht (TE…)“. Überschneidungen mit schon
+    gebuchten Zeiten zeigt das Fenster als Hinweis, gebucht werden darf trotzdem.
+32. **Kennungen** (Ticketliste, Dialog, Datenquelle) aus dem Mitschnitt, änderbar in der Config
+    unter `m42_booking_ids`; zuletzt gewählte Tätigkeitsart unter `m42_activity_type`.
+33. **Wochenabschluss:** „Tag in Matrix42 buchen …“ öffnet für jede offene Tätigkeit des markierten
+    Tags das Fenster; Abbrechen beendet die Reihe.
+

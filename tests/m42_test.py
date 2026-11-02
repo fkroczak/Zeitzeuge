@@ -7,6 +7,9 @@ Die Einträge kommen verzögert per Abfrage, wie im Original.
 Danach dieselbe Seite mit Token im localStorage: Zeitzeuge liest über die Schnittstelle
 (POST /m42Services/api/WidgetList/GetData/<Widget>, wie im Mitschnitt vom 02.11.2026), ohne
 den Kalender anzufassen.
+
+Zum Schluss eine Buchung wie im Buchungs-Mitschnitt: Ticket suchen, Vorlage holen, Ticketbezug
+holen, Zeiterfassung speichern (m42_booking.py, M42Reader.book).
 """
 import http.server
 import json
@@ -65,20 +68,74 @@ def api_items(a, b):
                         "Customer": f"{customer}  (273)", "Activity": f"{ticket} - {subject}",
                         "TicketInfo": e["title"], "State": "Neu", "ActivityType": "Administration",
                         "Start": s.strftime("%Y-%m-%dT%H:%M:%SZ"), "End": t.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                        "WorktimeRounded": 45, "Anwender": "nicht gebraucht"})
+                        "WorktimeRounded": 45, "Anwender": "nicht gebraucht",
+                        "Anwender_Value": "user-1"})
         day += timedelta(days=1)
     return out
 
 
+BOOKED = []  # gespeicherte Zeiterfassungen (UpdateData)
+IDS = {"ticket_list": "31db2d14-df00-cddd-4759-08dcbac24c70",
+       "dialog": "98661499-140b-ce9b-55da-08dc798f2fc8",
+       "target_source": "b949cab7-a12d-a5bd-b855-d32a6a00074e"}
+API = "/m42Services/api"
+
+
 class Handler(http.server.BaseHTTPRequestHandler):
+    def _json(self, value, status=200):
+        data = json.dumps(value).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _booking(self, path, body):
+        """Buchen wie im Mitschnitt. True, wenn die Abfrage hierher gehörte."""
+        text = body.decode("utf-8")
+        ctype = self.headers.get("Content-Type", "")
+        if path == f"{API}/WidgetList/GetData/{IDS['ticket_list']}":
+            cond = json.loads(text)["Groups"][0]["Conditions"][0]
+            field, value = cond["Property"], cond["Value"][0].lower()
+            if field == "Initiator":  # ein Feld, das die Liste nicht kennt: nur dieses fehlt
+                self._json({"Message": "unbekannte Spalte"}, 400)
+                return True
+            hits = [{"Sys-Entity": "SPSActivityTypeServiceRequest", "TicketNumber": "TCK0000049374",
+                     "Id": "ticket-1", "Subject": "Praktikanten", "Customer": "Systems  (999830)",
+                     "Recipient": "Kroczak, Filip - Systems", "State": "In Bearbeitung",
+                     "CreatedDate": "2026-10-01T08:00:00Z"},
+                    {"TicketNumber": "TCK0000049374999", "Id": "falsch", "Subject": "Anderes",
+                     "Customer": "Müller GmbH  (12)", "CreatedDate": "2026-10-02T08:00:00Z"}]
+            self._json([h for h in hits if value in (h.get(field) or "").lower()])
+        elif path == f"{API}/WidgetDialog/GetNewData/{IDS['dialog']}":
+            ok = text == "'\"objectType=ITMTimeEntryType&selectedObjects=ticket-1\"'" and "text/plain" in ctype
+            self._json({"Entity": {"Sys-Entity": "ITMTimeEntryType", "ID": "neu-1", "Sys-IsNew": True,
+                                   "SPSCommonClassBase": {"CostCenter": "cc", "OU": "ou", "Location": "loc"},
+                                   "ITMTimeEntryClassBase": {"Pause": 0}, "ITMILVClassBase": {"State": None}}}
+                       if ok else {"Message": "falscher Inhalt"}, 200 if ok else 400)
+        elif path == f"{API}/WidgetCommon/{IDS['dialog']}/{IDS['target_source']}/custom_Target.ITMTimeEntryClassTarget":
+            ok = json.loads(text) == [{"Name": "@id", "Value": "ticket-1", "Type": 1}]
+            self._json({"Entity": {"ITMTimeEntryClassTarget": [{"ID": "target-1", "TargetSLA": "sla-1"}]}}
+                       if ok else {}, 200 if ok else 400)
+        elif path == f"{API}/WidgetDialog/UpdateData/{IDS['dialog']}":
+            if not (text.startswith("'{") and text.endswith("}'")):
+                self._json({"Message": "Inhalt nicht in Anführungszeichen"}, 400)
+                return True
+            BOOKED.append(json.loads(text[1:-1]))
+            self._json({"Entity": {"Sys-Entity": "ITMTimeEntryType", "ID": "neu-1", "Sys-Name": "TE0000099999"}})
+        else:
+            return False
+        return True
+
     def do_POST(self):
         parts = urlsplit(self.path)
         body = self.rfile.read(int(self.headers.get("Content-Length") or 0))
-        if not parts.path.startswith("/m42Services/api/WidgetList/GetData/"):
-            self.send_error(404)
-            return
         if self.headers.get("Authorization") != f"Bearer {TOKEN}":
             self.send_error(401)
+            return
+        if self._booking(parts.path, body):
+            return
+        if not parts.path.startswith("/m42Services/api/WidgetList/GetData/"):
+            self.send_error(404)
             return
         if parts.path.rsplit("/", 1)[-1] != WIDGET:
             self.send_error(400)
@@ -203,6 +260,54 @@ assert first["customer"] == "Systems" and first["ticket"] == "TCK0000049374", fi
 assert first["entry"] == "TE0000087192" and first["state"] == "Neu", first
 assert items[1]["customer"] == "Elektroanlagen Röring GmbH", items[1]
 assert saved().get(sunday) == []
+
+# 5. Buchen wie im Buchungs-Mitschnitt (Benutzer aus den gelesenen Buchungen)
+results = []
+reader = M42Reader(URL + "-api", data_file, profile, weeks_back=0)
+reader.booking_done.connect(results.append)
+reader.start()
+deadline = time.time() + 60
+while time.time() < deadline and not reader.user_id:
+    time.sleep(0.5)
+assert reader.user_id == "user-1", reader.user_id
+start = datetime.combine(monday, datetime.min.time()).replace(hour=15, minute=50)
+assert reader.book({"ticket": "tck0000049374", "start": start, "end": start + timedelta(minutes=30),
+                    "minutes": 30, "text": "- Praktikantenbetreuung", "activity_type": 20})
+deadline = time.time() + 60
+while time.time() < deadline and not results:  # Signal aus dem Hintergrund: Ereignisse abarbeiten
+    app.processEvents()
+    time.sleep(0.2)
+reader.stop()
+time.sleep(2)
+assert results and results[0]["ok"], results
+assert results[0]["entry"] == "TE0000099999" and results[0]["ticket"]["customer"] == "Systems"
+entry = BOOKED[0]
+base = entry["ITMTimeEntryClassBase"]
+assert entry["ID"] == "neu-1" and entry["ITMILVClassBase"] == {"State": 10}
+assert (base["Target"], base["SLA"], base["User"], base["ActivityType"]) == ("target-1", "sla-1", "user-1", 20)
+assert base["Start"] == start.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+assert base["WorktimeRounded"] == 30 and base["Description"] == "- Praktikantenbetreuung"
+assert entry["SPSCommonClassBase"]["CostCenter"] == "cc"
+print("ok: Buchung angelegt |", reader.status)
+
+# 6. Tickets suchen: Kunde, Benutzer, Ticketnummer oder Titel (ein Feld geht nicht: egal)
+found = []
+reader = M42Reader(URL + "-api", data_file, profile, weeks_back=0)
+reader.tickets_found.connect(found.append)
+reader.start()
+for text in ("systems", "prakt", "kroczak", "müller"):
+    reader.search_tickets(text)
+    deadline = time.time() + 60
+    while time.time() < deadline and len(found) < 1:
+        app.processEvents()
+        time.sleep(0.2)
+    assert found and not found[0]["error"], found
+    numbers = [r["ticket"] for r in found.pop()["rows"]]
+    want = ["TCK0000049374999"] if text == "müller" else ["TCK0000049374"]
+    assert numbers == want, (text, numbers)
+reader.stop()
+time.sleep(2)
+print("ok: Tickets gesucht")
 
 print("Matrix42 ok")
 sys.stdout.flush()

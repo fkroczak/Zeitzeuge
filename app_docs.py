@@ -313,6 +313,8 @@ class DocsMixin(CustomersMixin):
             self.name_teamviewer_id(entry)
         elif key == "assign_customer":
             self.assign_customer(entry)
+        elif key == "m42_book":
+            self.book_in_m42(entry["doc_item"])
         elif key == "copy":
             if entry.get("doc"):
                 text = ticket_line(entry["doc_item"], self.config.get("ticket_format", ""),
@@ -618,6 +620,63 @@ class DocsMixin(CustomersMixin):
             self._tray_week_hint = True
             self.tray.showMessage("Feierabend: bitte prüfen", "\n".join(lines) +
                                   "\nDetails im Wochenabschluss (Knopf in der Werkzeugleiste).", QSystemTrayIcon.Warning, 15000)
+
+    # ---------------------- In Matrix42 buchen (m42_booking.py) -----------------
+
+    def book_in_m42(self, item, parent=None):
+        """Tätigkeit prüfen und in Matrix42 buchen. True, wenn gebucht; None bei Abbruch."""
+        import m42_booking
+        from m42_booking_dialogs import BookingDialog
+        if self._foreign_doc(item):
+            return None
+        reader = getattr(self, "m42_reader", None)
+        if reader is None:
+            QMessageBox.information(parent or self, "In Matrix42 buchen",
+                                    "Schalte zuerst Matrix42 ein: Einstellungen → Datenquellen → "
+                                    "Matrix42-Buchungen (Firmennetz).")
+            return None
+        if item.get("m42_entry"):
+            QMessageBox.information(parent or self, "In Matrix42 buchen",
+                                    f"Diese Tätigkeit ist schon gebucht ({item['m42_entry']}).")
+            return None
+        plan = m42_booking.plan(item, self.billing(), self.config.get("ticket_format", ""))
+        overlaps = m42_booking.overlaps(self._m42_bookings(plan["start"].strftime("%Y-%m-%d")),
+                                        plan["start"], plan["end"], plan["ticket"])
+        dialog = BookingDialog(plan, reader, overlaps, reader.activity_types or None,
+                               self.config.get("m42_activity_type", m42_booking.DEFAULT_ACTIVITY_TYPE),
+                               m42_booking.ids(self.config), parent or self)
+        reader.load_activity_types()
+        accepted = dialog.exec() == QDialog.Accepted
+        entry, chosen = dialog.result_entry, dialog.type_edit.currentData()
+        dialog.deleteLater()  # sonst bliebe es mit booking_done verbunden
+        if not accepted or not entry:
+            return None
+        if chosen is not None and chosen != self.config.get("m42_activity_type"):
+            self.config["m42_activity_type"] = chosen  # beim nächsten Mal vorbelegt
+            mt.save_config(self.config)
+        booked = dict(item, m42_entry=entry, m42_booked=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+        if not item.get("ticket") and dialog.ticket_info:
+            booked["ticket"] = m42_booking.normalize_ticket(dialog.ticket_edit.text())
+        try:
+            self.journal.update(item, booked)
+        except (OSError, ValueError) as e:
+            QMessageBox.warning(parent or self, "In Matrix42 buchen",
+                                f"Gebucht als {entry}, aber in Zeitzeuge nicht vermerkt: {e}")
+        self.timeline.draw_timeline(self.current_date)
+        self.statusBar().showMessage(f"In Matrix42 gebucht: {entry}", 6000)
+        return True
+
+    def book_day_in_m42(self, date_str, parent=None):
+        """Noch nicht gebuchte eigene Tätigkeiten eines Tages nacheinander buchen."""
+        todo = [i for i in self.journal.items(date_str)
+                if not i.get("m42_entry") and not i.get("von_pc")]
+        if not todo:
+            QMessageBox.information(parent or self, "In Matrix42 buchen",
+                                    "An diesem Tag ist nichts mehr zu buchen.")
+            return
+        for item in todo:
+            if self.book_in_m42(item, parent) is None:
+                break  # abgebrochen: nicht weiter fragen
 
     def show_week(self):
         """Wochenabschluss: Buchungsquote, Lücken, Offenes und Prüfungen der Woche."""

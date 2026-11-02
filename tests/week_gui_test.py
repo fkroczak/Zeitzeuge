@@ -1,4 +1,4 @@
-"""Wochenabschluss im Hauptfenster: Statuszeile, Dialog, Prüfung bei Feierabend, „kommt bald“."""
+"""Wochenabschluss im Hauptfenster: Statuszeile, Dialog, Prüfung bei Feierabend, „In Matrix42 buchen“."""
 import os
 import sys
 import tempfile
@@ -110,7 +110,7 @@ assert "Mittwoch: Matrix42 nicht gelesen" in hints, hints
 text = dialog.seven_label.text()
 # 7-Tage: Mo + Di zählen (16 h Personalzeit, 12:20 h gebucht), Mi ohne Matrix42-Daten
 assert "77 %" in text and "21.10." in text and "Ohne Matrix42-Daten" in text, text
-assert not dialog.book_button.isEnabled() and "Kommt bald" in dialog.book_button.toolTip()
+assert dialog.book_button.isEnabled() and "Matrix42" in dialog.book_button.text()  # Tag buchen
 assert not dialog.next_button.isEnabled(), "Zukunft nicht blättern"
 dialog.move_week(-1)
 assert dialog.rows[0] == "2026-10-12" and "2026-10-12" in window.m42_reader.wanted
@@ -153,12 +153,15 @@ assert button.isHidden(), "ohne Matrix42 keine Quote"
 window.imported = saved_imported
 window.m42_reader = FakeM42(m42)
 
-# Rechtsklick auf eine Tätigkeit: „In Matrix42 buchen“ sichtbar, aber deaktiviert
+# Rechtsklick auf eine Tätigkeit: „In Matrix42 buchen …“; schon gebucht: nur Anzeige mit Nummer
 doc = {"doc": True, "doc_item": {"start": f"{D} 08:00:00", "end": f"{D} 09:00:00"},
        "start": f"{D} 08:00:00", "end": f"{D} 09:00:00"}
 items = [i for i in entry_menu_items(doc) if i]
 book = [i for i in items if i[1] == "m42_book"]
-assert book and book[0][2] is False and "kommt bald" in book[0][0], items
+assert book and len(book[0]) == 2 and "Matrix42 buchen" in book[0][0].replace("&", ""), items
+doc["doc_item"]["m42_entry"] = "TE0000088403"
+book = [i for i in entry_menu_items(doc) if i and i[1] == "m42_book"]
+assert book[0][2] is False and "TE0000088403" in book[0][0], book
 
 # Prüfung bei Feierabend: Montag 18:00, ausgestempelt um 16:30, PC danach noch aktiv
 window.tray = FakeTray()
