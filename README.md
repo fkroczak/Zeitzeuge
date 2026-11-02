@@ -160,7 +160,16 @@ pip install -r requirements.txt
 pyinstaller --noconfirm --clean ZeitZeuge.spec
 ```
 
-Die fertige `ZeitZeuge.exe` liegt danach in `dist/`. Die Versionsnummer steht nur in `version.py`; sie erscheint unter **Info** und in den Dateieigenschaften der EXE. Ein Tag `v…` muss dazu passen, sonst bricht der Build ab.
+Die fertige `ZeitZeuge.exe` liegt danach in `dist/`. Die Versionsnummer (**MAJOR.MINOR.PATCH**, Regeln in `CHANGELOG.md`) steht nur in `version.py`. Beim Bauen schreibt `ZeitZeuge.spec` die Herkunft dazu (Buildnummer der GitHub Actions, Commit, Datum). Zu sehen ist sie im Fenstertitel, unter **Info**, in `fehler.log` und in den Dateieigenschaften der EXE (`5.0.0.<Build>`):
+
+| Build | Fenstertitel | Info |
+|---|---|---|
+| Release (Tag `v5.0.0`) | Zeitzeuge 5.0.0 | Build 140 · a8d4d3e · 02.11.2026 |
+| Testversion (jeder andere Push) | Zeitzeuge 5.0.0 (Build 141) | Testversion · Build 141 · Branch · Commit · Datum |
+| `build.bat` | Zeitzeuge 5.0.0-local | lokal gebaut · Commit · Datum |
+| aus dem Quelltext | Zeitzeuge 5.0.0-dev | aus dem Quelltext · Commit · Datum |
+
+Neue Version veröffentlichen: Nummer in `version.py` erhöhen, in `CHANGELOG.md` einen Abschnitt `## <Nummer> – <Datum>` anlegen (ein Test prüft das), dann Tag `v<Nummer>` pushen. Der Tag muss zur Nummer passen, sonst bricht der Build ab; GitHub legt dann ein Release mit EXE an.
 
 **Signieren:** Unsignierte EXE-Dateien melden Virenscanner und Windows SmartScreen öfter als verdächtig. Hinterlegst du im Repository unter **Settings → Secrets and variables → Actions** ein Code-Signing-Zertifikat als `SIGN_PFX_BASE64` (PFX-Datei Base64-kodiert) und `SIGN_PFX_PASSWORD`, signiert GitHub die EXE automatisch. Ohne Zertifikat bleibt sie unsigniert.
 
@@ -549,7 +558,8 @@ Für Tests und Hilfsskripte gibt es zwei Umgebungsvariablen: `ZEITZEUGE_DATA` se
 | `app_tray.py` | Infobereich, Fensteraufzeichnung, Beenden |
 | `theme.py` | Design: Farben (hell/dunkel), Stylesheet, Qt-Stil, deutsche Dialogknöpfe |
 | `config_defaults.py` | Standardwerte der Einstellungen |
-| `version.py` | Versionsnummer |
+| `version.py` | Versionsnummer und Herkunft des Builds (Anzeige im Fenstertitel, unter Info, in fehler.log) |
+| `CHANGELOG.md` | Änderungen je Version, Regeln für die Nummer |
 | `timeline_only.py` | Zeichnen der Timeline, Tooltips, Zoom, Logs im Hintergrund lesen |
 | `icons.py` | Linien-Icons (Lucide, ISC-Lizenz) und Zustandspunkt der Aufzeichnung |
 | `log_parsers.py` | Einlesen der TeamViewer- und RDM-Logs |

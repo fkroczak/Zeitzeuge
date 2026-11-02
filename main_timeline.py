@@ -36,6 +36,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QApplication, QHeaderView, QLa
 
 from ai_classifier import AI_TYPE, AiClassifier, AiStore
 from busy_bar import BusyBar
+from version import version_details, version_label
 from transfer import ImportStore
 from retention_dialogs import RetentionRunner
 import datastore
@@ -368,7 +369,7 @@ class TimelineApp(MenusMixin, DayListMixin, DocsMixin, ReadersMixin, TrayMixin, 
     def __init__(self):
         super().__init__()
 
-        self.setWindowTitle("Zeitzeuge")
+        self.setWindowTitle(f"Zeitzeuge {version_label()}")
         self.setWindowIcon(QIcon(resource_path("zeitzeuge.ico")))
         self.resize(1200, 720)
 
@@ -588,7 +589,8 @@ def report_exception(exc_type, exc, tb, where=""):
         # Ins Log nur Art und Stelle, den Text nur bei Datei-/Datenbankfehlern (Pfade).
         detail = str(exc)[:200] if isinstance(exc, (OSError, sqlite3.Error)) else "(Text weggelassen)"
         stack = "Traceback (most recent call last):\n" + "".join(traceback.format_tb(tb))
-        safe_io.log(f"Unbehandelter Fehler{where}: {exc_type.__name__}: {detail}\n{stack.rstrip()}")
+        safe_io.log(f"Unbehandelter Fehler{where} (Zeitzeuge {version_details()}): "
+                    f"{exc_type.__name__}: {detail}\n{stack.rstrip()}")
         if time.time() - _last_error_report[0] > 60:
             _last_error_report[0] = time.time()
             safe_io.report(f"Interner Fehler ({exc_type.__name__}). "

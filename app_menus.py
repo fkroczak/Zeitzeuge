@@ -19,7 +19,7 @@ from vpn_reader import vpn_sources
 from settings_dialogs import ActivityTypeSettingsDialog, ConnectionSettingsDialog, WorkHoursDialog
 from theme import GERMAN, STYLESHEET, THEMES
 from timeline_only import TIMELINE_ROWS
-from version import VERSION
+from version import VERSION, build_details
 import main_timeline as mt  # Pfade und save_config zur Laufzeit von dort (Tests ersetzen sie dort)
 
 
@@ -403,8 +403,10 @@ class MenusMixin:
         msg.setWindowTitle("Über Zeitzeuge")
         msg.setTextFormat(Qt.RichText)
         msg.setText(
-            f"<b>Zeitzeuge</b><br>Version {VERSION}<br><br>"
-            "<a href='https://github.com/fkroczak/Zeitzeuge'>github.com/fkroczak/Zeitzeuge</a>"
+            f"<b>Zeitzeuge</b><br>Version {VERSION}<br>"
+            f"{' · '.join(build_details())}<br><br>"
+            "<a href='https://github.com/fkroczak/Zeitzeuge/blob/main/CHANGELOG.md'>Was ist neu?</a>"
+            "<br><a href='https://github.com/fkroczak/Zeitzeuge'>github.com/fkroczak/Zeitzeuge</a>"
         )
         msg.setStandardButtons(QMessageBox.Ok)
         if os.path.exists(icon_path):
