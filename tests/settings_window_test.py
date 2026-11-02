@@ -42,12 +42,20 @@ def gui_test():
     assert bar.index(window.doc_button_action) < bar.index(window.ai_button_action)
     assert window.tools_bar.widgetForAction(window.whole_day_action).toolButtonStyle() == Qt.ToolButtonIconOnly
 
-    # Ansicht: Ansichten mit Hilfe, Zeilen mit sichtbarem Kästchen, Design
+    # Ansicht: Ansichten mit Hilfe, Zeilen als Untermenü (auch per Rechtsklick auf die Legende).
+    # Zeitraum steht nur in der Werkzeugleiste, Design in den Einstellungen.
     menu = window.view_button.menu()
     texts = [a.text().replace("&", "").split("\t")[0] for a in menu.actions()]
-    for text in ("Zusammengefasst", "Einzeln", "Was zeigen die Ansichten? …", "Dunkles Design",
-                 "Ganzer Tag", "Wochenabschluss …"):
+    for text in ("Zusammengefasst", "Einzeln", "Was zeigen die Ansichten? …", "Zeilen der Timeline",
+                 "Wochenabschluss …"):
         assert text in texts, (text, texts)
+    for text in ("Dunkles Design", "Ganzer Tag", "Arbeitszeit"):
+        assert text not in texts, (text, texts)
+    assert len([a for a in menu.actions() if not a.isSeparator()]) <= 14, texts
+    settings_texts = [a.text().replace("&", "") for a in window.menu_button.menu().actions()]
+    assert "Dunkles Design" in settings_texts and "Datenquellen …" in settings_texts, settings_texts
+    # Zoom-Knöpfe: nur Ganzer Tag und Arbeitszeit, feiner per Tastatur/Strg+Mausrad
+    assert window.zoom_in_action not in bar and window.zoom_out_action not in bar
     assert "5 Minuten" in window.view_actions["grouped"].toolTip()
     assert "Logs" in window.view_actions["single"].toolTip()
     proxy = window._check_proxies[window.row_actions["doc"]]

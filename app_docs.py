@@ -33,6 +33,12 @@ from theme import GERMAN
 import main_timeline as mt  # Pfade und save_config zur Laufzeit von dort (Tests ersetzen sie dort)
 
 
+def _overlap(a, b):
+    """Gemeinsame Zeit zweier Einträge (Text "YYYY-MM-DD HH:MM:SS" lässt sich direkt vergleichen)."""
+    start, end = max(a["start"], b["start"]), min(a["end"], b["end"])
+    return (parse_time(end) - parse_time(start)).total_seconds() if start < end else 0
+
+
 class DocsMixin(CustomersMixin):
     # ---------------------- KI-Vorschläge -------------------------------------
 
@@ -285,8 +291,19 @@ class DocsMixin(CustomersMixin):
     def doc_band(self, date_str):
         """Zeile "Doku": eigene Tätigkeiten und (gestrichelt) was noch offen ist."""
         entries = self.journal.entries(date_str)
-        entries += [open_entry(e) for e in self.doc_candidates(date_str)]
-        return sorted(entries, key=lambda e: e["start"])
+        opened = [open_entry(e) for e in self.doc_candidates(date_str)]
+        # Zuordnung ohne KI fließt hier ein: offene Einträge ohne Kunden bekommen den Vorschlag
+        # der Regel, die sie am meisten überdeckt (eigene Zeile ist standardmäßig aus)
+        if any(not e.get("customer_name") for e in opened):
+            blocks = [b for b in self.rule_band(date_str) if b.get("customer_name")]
+            for e in opened:
+                if e.get("customer_name") or e["source_entry"].get("rule"):
+                    continue
+                best = max(blocks, key=lambda b: _overlap(b, e), default=None)
+                if best and _overlap(best, e) > 0:
+                    e["customer_name"] = best["customer_name"]
+                    e["details"] += f" · Vorschlag (Regel): {best['customer_name']}"
+        return sorted(entries + opened, key=lambda e: e["start"])
 
     def on_doc_request(self, action, entry):
         """Klick in der Timeline (offen: eintragen, Tätigkeit: bearbeiten)."""

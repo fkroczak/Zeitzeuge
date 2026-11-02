@@ -4,7 +4,7 @@ import time
 from datetime import datetime
 from html import escape
 
-from PySide6.QtCore import QDate, QDateTime, Qt, QTimer, Signal
+from PySide6.QtCore import QDate, QDateTime, QPoint, Qt, QTimer, Signal
 from PySide6.QtGui import QBrush, QColor, QFontMetrics, QPainter, QPen
 from PySide6.QtWidgets import (QDialog, QDialogButtonBox, QFormLayout, QGraphicsRectItem,
                                QGraphicsScene, QGraphicsView, QLabel, QLineEdit, QMenu,
@@ -295,6 +295,8 @@ class TimelineView(QGraphicsView):
     doc_request = Signal(str, dict)
     # Rechtsklick-Menü: (Befehl aus entry_menu_items, Eintrag oder {"minute": …})
     entry_action = Signal(str, dict)
+    # Rechtsklick auf die Legende links: Menü „Zeilen der Timeline“ an dieser Stelle (global)
+    rows_menu_requested = Signal(QPoint)
     # Hintergrund-Thread hat TeamViewer- und RDM-Logs gelesen
     logs_loaded = Signal(object, object, object)
     # Logs werden gelesen (True) oder sind fertig (False) – für die Ladeanzeige
@@ -311,7 +313,7 @@ class TimelineView(QGraphicsView):
     LANE_H = 26        # Höhe eines Eintrags (wird kleiner, wenn sonst nicht alles ins Fenster passt)
     LANE_GAP = 6
     MIN_LANE_H = 16
-    MIN_LANES = 2      # freie Spuren unter den festen Zeilen (RDM, eigene Einträge)
+    MIN_LANES = 0      # freie Spuren unter den festen Zeilen (RDM …), nur so viele wie nötig
     MAX_LANES = 10
     BASE_PX_PER_MIN = 1.2
 
@@ -686,11 +688,10 @@ class TimelineView(QGraphicsView):
         # wird auf Spuren verteilt: überlappende Einträge kommen in die nächste Spur.
         # Ausgeblendete Zeilen (Menü "Zeilen der Timeline") fallen ganz weg.
         shown = self.config.get("timeline_rows", {})
-        # Outlook-Zeile nur mit eingeschalteter Quelle oder übernommenen Einträgen
-        has_outlook = self.config.get("outlook_enabled") or any(
-            row_kind(a) == "outlook" for a in activities)
+        # Feste Zeilen nur, wenn es an diesem Tag etwas darin gibt (leere Zeilen lenken ab)
+        present = {row_kind(a) for a in activities}
         fixed_rows = [(kind, label) for kind, label in FIXED_ROWS if shown.get(kind, True)
-                      and (kind != "outlook" or has_outlook)]
+                      and kind in present]
         show_other = shown.get("other", True)
         fixed_index = {kind: i for i, (kind, _label) in enumerate(fixed_rows)}
         n_fixed = len(fixed_rows)
@@ -723,6 +724,7 @@ class TimelineView(QGraphicsView):
         bands = self.band_rows(date)
         ai_band = next((e for k, _t, e in bands if k == "ai"), [])
         n_lanes = max(self.MIN_LANES, len(lanes_end)) if show_other else 0
+        show_other = show_other and n_lanes > 0
         band_y = self.AXIS_H + 6
         show_band = show_pc and bool(self.tracker or pc_band)
         top = band_y + (self.PC_BAND_H + 10 if show_band else 2)
@@ -1266,6 +1268,10 @@ class TimelineView(QGraphicsView):
 
     def contextMenuEvent(self, event):
         """Rechtsklick: dasselbe Menü wie in der Tagesliste (entry_menu_items)."""
+        if self._legend and event.pos().x() < self.LEFT - 6:  # Legende: Zeilen ein-/ausblenden
+            self._hide_hover()
+            self.rows_menu_requested.emit(event.globalPos())
+            return
         a = self._activity_at(event.pos())
         self._hide_hover()
         if a is None:

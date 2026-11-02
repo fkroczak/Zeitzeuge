@@ -2,6 +2,8 @@
 
 Teil von TimelineApp (main_timeline.py), nur über main_timeline laden.
 """
+import re
+
 from PySide6.QtCore import QDate, QTimer
 from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtWidgets import QApplication, QInputDialog, QHeaderView, QTableWidgetItem
@@ -18,6 +20,29 @@ import week_dialogs
 from theme import GERMAN
 import main_timeline as mt  # Pfade und save_config zur Laufzeit von dort (Tests ersetzen sie dort)
 
+
+# Wörter, die allein nichts Neues sagen ("TeamViewer-ID 1 123 …", wenn die Nummer schon dasteht)
+_FILLER = {"id", "verbindung", "dauer"}
+
+
+def _words(text):
+    return re.sub(r"[^\w]+", " ", text.lower()).split()
+
+
+def new_details(details, type_text, customer_text):
+    """Details ohne das, was Typ, Kunde oder Dauer schon zeigen.
+
+    "VPN-Verbindung Kanzlei Schmidt - SSL VPN" -> "", "Eingehend, Dauer 4:00" (Telefonat eingehend) -> "",
+    "2 Verbindungen · 1× OTP" bleibt.
+    """
+    known = set(_words(f"{type_text} {customer_text}"))
+    kept = []
+    for part in re.split(r"\s+·\s+|,\s+", details or ""):
+        if re.fullmatch(r"\s*Dauer \d+:\d\d(:\d\d)?\s*", part):
+            continue  # steht in der Spalte Dauer
+        if set(_words(part)) - known - _FILLER:
+            kept.append(part.strip())
+    return " · ".join(p for p in kept if p)
 
 class DayListMixin:
     # ---------------------- Tagesliste ----------------------------------------
@@ -60,6 +85,9 @@ class DayListMixin:
             else:
                 pix.fill(entry_color(a, self.config))
             type_item = QTableWidgetItem(QIcon(pix), type_label(a))
+            customer_text = customers.with_customer(a, index)
+            details = a.get("details", "")
+            details_item = QTableWidgetItem(new_details(details, type_label(a), customer_text))
             values = [
                 QTableWidgetItem(f"{start:%H:%M}"),
                 QTableWidgetItem(f"{end:%H:%M}"),
@@ -67,12 +95,13 @@ class DayListMixin:
                                  + (billing.note((end - start).total_seconds(), a.get("customer_name", ""))
                                     if billing and a.get("doc") else "")),
                 type_item,
-                QTableWidgetItem(customers.with_customer(a, index)),
-                QTableWidgetItem(a.get("details", "")),
+                QTableWidgetItem(customer_text),
+                details_item,
             ]
             for col, item in enumerate(values):
                 item.setToolTip(item.text())
                 self.table.setItem(row, col, item)
+            details_item.setToolTip(details)  # im Hinweis alles, in der Zelle nur Neues
         for col in range(4):
             header.setSectionResizeMode(col, QHeaderView.ResizeToContents)  # einmal messen
         self.table.setUpdatesEnabled(True)
@@ -145,25 +174,28 @@ class DayListMixin:
         self.statusBar().showMessage(f"{len(lines)} Zeile(n) kopiert", 3000)
 
     def update_status_text(self):
-        day = GERMAN.toString(self.current_date, "dddd, dd.MM.yyyy")
-        parts = [day]
+        """Statuszeile kurz: belegt, dokumentiert, Personalzeit, Matrix42. Der Rest im Hinweis.
+
+        Datum (steht im Datumsfeld) und Zahl der Einträge (steht in der Liste) nicht wiederholen.
+        """
+        parts, more = [], [GERMAN.toString(self.current_date, "dddd, dd.MM.yyyy")]
         n = len(self.day_activities)
         if n:
-            parts.append(f"{n} Einträge")
             parts.append(f"belegt {format_duration(mt.merged_seconds(self.day_activities))}")
+            more.append(f"{n} Einträge")
         elif self.timeline.loading:
             parts.append("Logs werden gelesen …")
         else:
             parts.append("keine Einträge")
         if self.pc_activities:
-            parts.append(f"am PC aktiv {format_duration(mt.merged_seconds(self.pc_activities))}")
+            more.append(f"am PC aktiv {format_duration(mt.merged_seconds(self.pc_activities))}")
         doc = self.doc_band(self.current_date.toString("yyyy-MM-dd"))
         done = [e for e in doc if e.get("doc")]
         open_count = len(doc) - len(done)
-        if done or open_count:
-            text = f"dokumentiert {format_duration(mt.merged_seconds(done))}" if done else "nichts dokumentiert"
+        if done:  # "nichts dokumentiert" sagt schon der Knopf "… offen – jetzt eintragen"
+            text = f"dokumentiert {format_duration(mt.merged_seconds(done))}"
             billing = self.billing()
-            if done and billing.any_active():
+            if billing.any_active():
                 text += f", abgerechnet {hours_text(billing.total_minutes([e['doc_item'] for e in done]))}"
             parts.append(text)
         self.open_docs_button.setVisible(bool(open_count))
@@ -181,6 +213,7 @@ class DayListMixin:
         if m42:
             parts.append(m42)
         self.info_label.setText("   ·   ".join(parts))
+        self.info_label.setToolTip("\n".join(more + parts))
         week_dialogs.update_rate_button(self)
         self.update_source_indicators()
 

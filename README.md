@@ -1,4 +1,4 @@
-Im Fenster **Einstellungen → Datenquellen** schaltest du jede Quelle in ihrer Kachel ein oder aus und siehst ihren Zustand. Schneller geht es über den Pfeil am Knopf **Einstellungen → Datenquellen**:
+Im Fenster **Einstellungen → Datenquellen** schaltest du jede Quelle in ihrer Kachel ein oder aus und siehst ihren Zustand. Schneller geht es über den Pfeil am Knopf **Einstellungen → Datenquellen …** (öffnet direkt diese Seite) oder über das Menü im Infobereich:
 
 | Gruppe | Quellen |
 |---|---|
@@ -18,7 +18,7 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
 
 ## Funktionen
 
-- **Tages-Timeline** von 00:00 bis 24:00 mit markierter Arbeitszeit. Telefonate, VPN und TeamViewer haben je eine feste Zeile („Tel“, „VPN“, „TV“). So siehst du sofort, wann du telefoniert hast oder verbunden warst. Darunter folgen RDM und eigene Einträge; überlappen sie sich, rücken sie in die nächste Zeile. Links steht eine Legende mit Name und Farbe jeder Zeile; sie bleibt beim Blättern stehen. Alle Zeilen passen ohne senkrechte Scrollleiste ins Fenster, bei vielen Zeilen werden sie niedriger (UMSCHALT + Mausrad blättert, falls es trotzdem eng wird).
+- **Tages-Timeline** von 00:00 bis 24:00 mit markierter Arbeitszeit. Telefonate, VPN und TeamViewer haben je eine feste Zeile („Tel“, „VPN“, „TV“). So siehst du sofort, wann du telefoniert hast oder verbunden warst. Darunter folgen RDM und weitere Verbindungen; überlappen sie sich, rücken sie in die nächste Zeile. Zeilen ohne Einträge an diesem Tag blendet Zeitzeuge aus, damit die Timeline ruhig bleibt. Links steht eine Legende mit Name und Farbe jeder Zeile; sie bleibt beim Blättern stehen. Alle Zeilen passen ohne senkrechte Scrollleiste ins Fenster, bei vielen Zeilen werden sie niedriger (UMSCHALT + Mausrad blättert, falls es trotzdem eng wird).
 - **TeamViewer:** liest `Connections.txt` mit Sitzungs-ID, Beginn und Ende. Verbindungen unter 1 Minute werden ausgeblendet.
   - Statt der ID kannst du einen Namen vergeben: Rechtsklick auf die Verbindung (Tagesliste oder Timeline), dann **TeamViewer-ID benennen …**.
 - **Remote Desktop Manager (Devolutions):** liest `Connections.log`.
@@ -69,9 +69,10 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
   - Fenster mit bestimmten Wörtern im Titel werden nur als „(ausgeblendet)“ gespeichert, zum Beispiel Passwortmanager.
   - Mit dem **Fenster-Filter** lässt du private Programme ganz weg oder zeichnest nur erlaubte Programme auf.
 - **PC-Verlauf automatisch löschen:** Auf Wunsch löscht Zeitzeuge die aufgezeichneten aktiven Fenster nach einer einstellbaren Zahl von Tagen (Standard: aus, sonst 90 Tage). Das gilt auch für den Fensterverlauf, den du von einem anderen PC übernommen hast. Deine Tätigkeiten, Buchungen, KI-Vorschläge, Anrufe und Verbindungen bleiben erhalten. Einschalten unter **Einstellungen → Datenspeicher → PC-Verlauf automatisch löschen …**. Beim Einschalten zeigt Zeitzeuge, wie viele Tage betroffen sind, und fragt nach. Danach löscht es beim Start (nach einer Minute) und einmal am Tag.
-- **Zuordnung ohne KI:** Feste Regeln ordnen Verbindungen, Telefonate und Fenster einer Kategorie und einem Kunden zu, zum Beispiel Outlook als „E-Mail / Kommunikation“ oder TeamViewer als „Fernwartung“. Das Ergebnis steht in der Zeile „Zuordnung o. KI“. Es läuft lokal, kostet nichts und braucht kein Internet (früher hieß das „Regeln“).
+- **Zuordnung ohne KI:** Feste Regeln ordnen Verbindungen, Telefonate und Fenster einer Kategorie und einem Kunden zu, zum Beispiel Outlook als „E-Mail / Kommunikation“ oder TeamViewer als „Fernwartung“. Das Ergebnis fließt in die Zeile „Dokumentation“ ein: Offene Einträge ohne Kunden zeigen den Kunden der passenden Regel als Vorschlag. Die eigene Zeile „Zuordnung o. KI“ ist standardmäßig aus, du kannst sie unter **Zeilen der Timeline** einschalten. Es läuft lokal, kostet nichts und braucht kein Internet (früher hieß das „Regeln“).
 - **Tagesliste** unter der Timeline mit Von, Bis, Dauer, Typ, Kunde und Details.
-  - Die Statuszeile zeigt die belegte Zeit des Tages. Überschneidungen werden nicht doppelt gezählt.
+  - Die Statuszeile zeigt die belegte Zeit des Tages. Überschneidungen werden nicht doppelt gezählt. Datum, Zahl der Einträge und die Zeit am PC stehen im Hinweis beim Darüberfahren.
+  - Die Spalte **Details** zeigt nur, was Typ, Kunde und Dauer nicht schon sagen (z. B. „1× Passwort“, „2 Verbindungen“). Den vollen Text zeigt der Hinweis und das Detailfenster.
   - Markierte Zeilen kopierst du mit STRG + C, zum Beispiel für die Ticket-Dokumentation.
   - Das Menü **Ansicht** (Auge) legt fest, wie die Liste aussieht (Erklärung mit Beispielen: **Was zeigen die Ansichten? …**, F1):
     - **Zusammengefasst** (Standard): Verbindungen zum selben Eintrag mit weniger als 5 Minuten Pause werden eine Zeile. Passwort-, Benutzernamen- und OTP-Anzeigen aus RDM stehen als Zähler bei der Verbindung, zum Beispiel „3 Verbindungen · 2× OTP, 1× Passwort“. Ohne passende Verbindung erscheinen sie als „Zugangsdaten“.
@@ -107,7 +108,7 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
 - **Kunde zuordnen per Rechtsklick.** Hat eine Verbindung, ein Telefonat oder eine Mail noch keinen Kunden, wählst du im Rechtsklick-Menü *Kunde zuordnen …*. „TeamViewer-ID benennen …“ gibt es weiter, es landet in derselben Kundenliste.
 - **Zeitzeuge lernt aus deinen Korrekturen.** Änderst du beim Eintragen den vorgeschlagenen Kunden, merkt Zeitzeuge ihn zur Spur („Kunde für RDM-Eintrag „srv01“ merken“ ist angehakt). Änderst du die Kategorie, bietet der Dialog „Als Regel merken: „srv01“ → Beratung“ an. Dieser Haken ist aus: Nur wenn du ihn setzt, entsteht eine Regel in der *Zuordnung ohne KI*. Sie steht vor den Standardregeln und schlägt beim nächsten Mal auch im Dialog die Kategorie vor. Doppelte Regeln legt Zeitzeuge nicht an.
 - **Abrechnungstakt:** Zeitzeuge zeigt zu jeder Tätigkeit auch die abgerechnete Zeit. Standard ist der 15-Minuten-Takt: Jede angefangene Viertelstunde wird abgerechnet. Beim Kopieren stehen echte und abgerechnete Zeiten mit Beginn und Ende in der Zeile, z. B. `10:05–10:17 (12 min) → abgerechnet 10:05–10:20 (0:15 h)  Müller GmbH · Fernwartung: Drucker eingerichtet`. Der Beginn bleibt, das Ende rückt auf den Takt. Du siehst sie auch in der Ansicht „Dokumentation“, in der Statuszeile („dokumentiert 3:10 h, abgerechnet 3:30 h“) und im Eintragen-Fenster neben der Dauer. Jede Tätigkeit wird für sich gerundet. Unter **Einstellungen → Abrechnung …** stellst du den Takt (Minuten) und die Rundung ein: „Angefangener Takt zählt“, „Auf den nächsten Takt runden“ oder „Ohne Takt“ (dann ist alles wie früher). Für einzelne Kunden kannst du einen anderen Takt oder eine andere Rundung festlegen.
-- **Jede Zeile der Timeline ein- und ausblenden:** PC-Aktivität, Dokumentation, Zuordnung ohne KI, KI-Vorschläge, Telefon, Outlook, VPN, TeamViewer und Remote / Weitere schaltest du einzeln unter **Einstellungen → Zeilen der Timeline**. **Alle einblenden** holt alles zurück. Die Tagesliste zeigt weiter alle Einträge.
+- **Jede Zeile der Timeline ein- und ausblenden:** PC-Aktivität, Dokumentation, Zuordnung ohne KI, KI-Vorschläge, Telefon, Outlook, VPN, TeamViewer und Remote / Weitere schaltest du einzeln unter **Ansicht → Zeilen der Timeline** oder per Rechtsklick auf die Legende links in der Timeline. **Alle Zeilen einblenden** holt alles zurück. Die Tagesliste zeigt weiter alle Einträge.
 - **Verschlüsselte Datenbank:** Alle Daten (Anrufe, Fenster, Tätigkeiten, KI-Vorschläge, Personalzeit, Matrix42, VPN, Kundennamen) liegen in einer Datei `zeitzeuge.db`, verschlüsselt mit AES-256. Auf deinem PC öffnet sie deine Windows-Anmeldung ohne Abfrage. Für einen neuen PC gibt es einen Wiederherstellungsschlüssel, den du in RDM ablegst. Siehe [Schutz der Daten](#schutz-der-daten).
 - **Ladeanzeige:** Solange Zeitzeuge etwas lädt (Logs, 3CX, ITM, Matrix42 oder KI-Vorschläge), läuft in der Werkzeugleiste rechts neben „Arbeitszeit“ ein drehender Kreis mit Text, dazu ein dünner Streifen über die ganze Fensterbreite oben über der Timeline (beides schwebt, nichts verschiebt sich), z. B. „Lädt: 3CX-Anrufe · KI-Vorschläge (Claude ordnet 25.10. ein) …“. Kurze Lesevorgänge im Hintergrund erscheinen erst nach 1,5 Sekunden, damit nichts flackert.
 - **Zustand der Datenquellen in der Statusleiste:** Rechts unten stehen 3CX und ITM nebeneinander, jeweils mit Symbol:
@@ -126,7 +127,7 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
   - Mit **Klicken und Ziehen** markierst du einen Zeitraum. Beim Loslassen wird genau dieser Zeitraum angezeigt.
   - Ein Doppelklick auf eine freie Stelle oder **Ganzer Tag** führt zurück zur Tagesansicht. **Arbeitszeit** zeigt die Arbeitszeit des Tages.
   - STRG + Mausrad zoomt an der Mausposition, das Mausrad allein blättert durch den Tag.
-  - Design „Metro Klar“: eckige Formen, ruhige Werkzeugleiste ohne Rahmen, Verbindungen als volle Farbbalken, hellblaue Auswahl. Gestaltet nach 16 UI-Design-Regeln (Kontrast, eine Schrift, keine Großbuchstaben, siehe `docs/quality-guardrails.md`). Hell und dunkel (**Einstellungen → Dunkles Design**), eigene Aktivitätstypen mit frei wählbaren Farben.
+  - Design „Metro Klar“: eckige Formen, ruhige Werkzeugleiste ohne Rahmen, Verbindungen als volle Farbbalken, hellblaue Auswahl. Gestaltet nach 16 UI-Design-Regeln (Kontrast, eine Schrift, keine Großbuchstaben, siehe `docs/quality-guardrails.md`). Hell und dunkel (Pfeil am Knopf **Einstellungen → Dunkles Design**), eigene Aktivitätstypen mit frei wählbaren Farben.
 
 ### Tastenkürzel
 
@@ -214,7 +215,7 @@ Browser-Tests (3CX, ITM, Mitschnitt) brauchen Edge oder Chrome; ohne Browser wer
 Die Werkzeugleiste ist so aufgeteilt:
 
 - **Links:** vorheriger Tag, Datum, nächster Tag und **Heute**.
-- **Daneben (Schnellzugriffe):** Aktualisieren, Nachtragen (Stift), KI-Vorschläge (Stern), Lupen, Ganzer Tag und Arbeitszeit. Heute, Ganzer Tag und Arbeitszeit sind nur Symbole, der Hinweis beim Darüberfahren nennt sie. PC-Verlauf und Wochenabschluss stehen im Menü **Ansicht**, der Wochenabschluss auch hinter der Quote in der Statuszeile.
+- **Daneben (Schnellzugriffe):** Aktualisieren, Nachtragen (Stift), KI-Vorschläge (Stern), Ganzer Tag und Arbeitszeit. Feiner zoomst du mit STRG + Mausrad oder STRG + Plus/Minus. Heute, Ganzer Tag und Arbeitszeit sind nur Symbole, der Hinweis beim Darüberfahren nennt sie. PC-Verlauf und Wochenabschluss stehen im Menü **Ansicht**, der Wochenabschluss auch hinter der Quote in der Statuszeile.
 - **Rechts:** **Ansicht** (Auge) und **Einstellungen** (Zahnrad).
 
 Fährst du über einen Knopf, erklärt ein Hinweis, was er tut. Im schmalen Fenster zeigen Ansicht und Einstellungen nur noch ihr Symbol, danach rutschen Werkzeuge in den Überlauf (»). Tag, Ansicht und Einstellungen bleiben immer sichtbar.
@@ -224,10 +225,10 @@ Fährst du über einen Knopf, erklärt ein Hinweis, was er tut. Im schmalen Fens
 Alles, was nur die Anzeige ändert, nie die Daten:
 
 - **Tagesliste:** Zusammengefasst, Einzeln, Arbeitsblöcke, Dokumentation, Zuordnung ohne KI, KI-Vorschläge, Matrix42-Abgleich. Die aktuelle Ansicht ist fett und blau. Fährst du über eine Ansicht, steht dort, was sie zeigt. **Was zeigen die Ansichten? …** (F1) erklärt alle mit Beispielen. Darunter **PC-Verlauf in der Liste**.
-- **Zeilen der Timeline:** jede Zeile mit einem Kästchen in ihrer Farbe zum Ein- und Ausblenden, dazu **Alle Zeilen einblenden**.
-- **Zeitraum:** Ganzer Tag, Arbeitszeit.
+- **Zeilen der Timeline** (Untermenü, auch per Rechtsklick auf die Legende links): jede Zeile mit einem Kästchen in ihrer Farbe zum Ein- und Ausblenden, dazu **Alle Zeilen einblenden**. Leere Zeilen blendet Zeitzeuge von selbst aus.
 - **Übersichten:** Wochenabschluss, Offene Tätigkeiten.
-- **Design:** Dunkles Design.
+
+Ganzer Tag und Arbeitszeit stehen in der Werkzeugleiste, **Dunkles Design** im Pfeil-Menü am Knopf **Einstellungen**.
 
 ### Fenster Einstellungen
 
@@ -260,7 +261,7 @@ Unter **Einstellungen → Datenquellen** schaltest du jede Quelle mit einem Klic
 | VPN | Sophos Connect, FortiClient, weitere VPN-Logs (OpenVPN …) |
 | Telefon und Zeiten | 3CX-Anrufe, ITM-Personalzeiten |
 
-Pfade, Zeitzonen und Anmeldungen stellst du unter **Einstellungen → Datenquellen → Einrichten** ein. Das Aufzeichnen der aktiven Fenster schaltest du direkt im Menü **Einstellungen** oder unten rechts in der Statuszeile.
+Pfade, Zeitzonen und Anmeldungen stellst du unter **Einstellungen → Datenquellen** über **Einrichten …** in der Kachel ein. Das Aufzeichnen der aktiven Fenster schaltest du direkt im Menü **Einstellungen** oder unten rechts in der Statuszeile.
 
 ### TeamViewer und RDM
 
@@ -410,7 +411,7 @@ Unter **Einstellungen → Nachfragen und Erinnerungen …** legst du fest, wann 
 | `m42_reader_enabled` | `false` | Gebuchte Zeiten aus Matrix42 lesen |
 | `m42_weeks_back` | `4` | So viele Wochen zurück einmal pro Sitzung lesen |
 | `m42_gap_minutes` | `5` | Kürzere Lücken ohne Buchung zählen nicht |
-| `timeline_rows` | alle an | Sichtbare Zeilen der Timeline: `pc`, `work` (Personalzeit), `doc`, `m42`, `rule` (Zuordnung ohne KI), `ai`, `call`, `vpn`, `tv`, `other` (Remote / Weitere) |
+| `timeline_rows` | alle an außer `rule` | Sichtbare Zeilen der Timeline: `pc`, `work` (Personalzeit), `doc`, `m42`, `rule` (Zuordnung ohne KI), `ai`, `call`, `vpn`, `tv`, `other` (Remote / Weitere) |
 
 Gefragt wird nur nach Tätigkeiten, die gerade erst geendet haben. Ältere offene Einträge stehen gestrichelt in der Zeile „Doku“, damit nichts verloren geht. Als dokumentiert gilt ein Eintrag, wenn mindestens die Hälfte seiner Zeit in deinen Tätigkeiten steckt.
 

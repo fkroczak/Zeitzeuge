@@ -271,6 +271,11 @@ def load_config_with_defaults():
             if isinstance(color, str) and color.upper() in CONTRAST_TYPE_COLORS:
                 cfg["type_colors"][kind] = CONTRAST_TYPE_COLORS[color.upper()]
         cfg["type_colors_version"] = 4
+    # Aufgeräumte Timeline: Zeile "Zuordnung ohne KI" einmalig aus (fließt in "Dokumentation" ein),
+    # wer sie danach wieder einschaltet, behält sie
+    if cfg.get("layout_version", 1) < 2:
+        cfg["timeline_rows"]["rule"] = False
+        cfg["layout_version"] = 2
     # Alte Standardpfade enthielten doppelte Backslashes (C:\Users\x\\TeamViewer)
     for key in ("teamviewer_paths", "rdm_paths", "vpn_paths"):
         cfg[key] = [clean_path(p) for p in cfg.get(key, []) if isinstance(p, str)]
@@ -454,6 +459,7 @@ class TimelineApp(MenusMixin, DayListMixin, DocsMixin, ReadersMixin, TrayMixin, 
         self.timeline.m42_entries = self.m42_band
         self.timeline.doc_request.connect(self.on_doc_request)
         self.timeline.entry_action.connect(self.on_entry_action)
+        self.timeline.rows_menu_requested.connect(self.show_rows_menu)
         self._rule_cache = {}
         self._prompt_window = None
         self._prompt_queue = []
