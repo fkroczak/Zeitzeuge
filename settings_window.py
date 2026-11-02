@@ -58,9 +58,10 @@ ROWS = [
      "edit_tracking_filters", None),
     ("general", "spin", "pause", "Leerlauf nach", "Ohne Maus und Tastatur zeichnet Zeitzeuge nichts auf.",
      "tracking_idle_minutes", (1, 60, "min", "", "idle_limit")),
-    ("general", "check", "blocks", "PC-Aktivität als Arbeitsblöcke",
-     "Fenster zu Blöcken je Tätigkeit zusammenfassen statt jedes Fenster einzeln zu zeigen.",
-     "pc_blocks", True),
+    ("general", "toggle", "blocks", "PC-Aktivität als Arbeitsblöcke",
+     "Fenster zu Blöcken je Tätigkeit zusammenfassen statt jedes Fenster einzeln zu zeigen. "
+     "Auch im Menü Ansicht und per Rechtsklick auf die Legende der Timeline.",
+     "pc_blocks_action", None),
     ("general", "spin", "layers", "Kurze Sprünge bis",
      "Kürzere Wechsel zählen zur Haupttätigkeit, wenn es danach dort weitergeht oder der Kunde passt.",
      "pc_jump_seconds", (0, 600, "s", "aus", "redraw")),

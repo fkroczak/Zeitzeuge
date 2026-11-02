@@ -67,7 +67,7 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
   - Die Tätigkeit kommt aus der **Zuordnung ohne KI** (Outlook und Thunderbird sind beide „E-Mail“, ein Remotedesktop-Fenster „DC01 – Remotedesktopverbindung“ ist „DC01 · Fernwartung“), sonst ist es das Programm.
   - **Kurze Sprünge** (Standard: unter 2 Minuten) zählen zur Haupttätigkeit, wenn es danach dort weitergeht oder der Kunde passt. Ein kurzer Blick in Teams mitten im Mail-Bearbeiten bleibt also im Block „E-Mail“. Blöcke unter 3 Minuten gehen im Nachbarblock auf, Pausen über 5 Minuten trennen Blöcke.
   - Fährst du über einen Block, siehst du die Anteile der Programme („Outlook 26 min (87 %), Teams 3 min (10 %)“), die Zahl der Fensterwechsel und den Fokus (Anteil der Haupttätigkeit). Rechtsklick: **Tätigkeit dazu eintragen …** mit Kunde und Kategorie des Blocks.
-  - Unter **Einstellungen → Allgemein** schaltest du die Arbeitsblöcke ab (dann wieder jedes Fenster einzeln als schmales Band) und stellst ein, bis wann ein Wechsel als kurzer Sprung gilt.
+  - Zwischen **Arbeitsblöcken** und **jedem Fenster einzeln** (schmales Band, eine Farbe pro Programm) schaltest du mit **Ansicht → PC-Aktivität als Arbeitsblöcke** um, ebenso per Rechtsklick auf die Legende links in der Timeline oder unter **Einstellungen → Allgemein**. Dort stellst du auch ein, bis wann ein Wechsel als kurzer Sprung gilt.
   - Mit **Ansicht → PC-Verlauf in der Liste** stehen die Arbeitsblöcke auch in der Tagesliste.
   - Nach 5 Minuten ohne Maus und Tastatur oder bei gesperrtem PC wird nichts aufgezeichnet.
   - Fenster mit bestimmten Wörtern im Titel werden nur als „(ausgeblendet)“ gespeichert, zum Beispiel Passwortmanager.
@@ -230,6 +230,7 @@ Alles, was nur die Anzeige ändert, nie die Daten:
 
 - **Tagesliste:** Zusammengefasst, Einzeln, Arbeitsblöcke, Dokumentation, Zuordnung ohne KI, KI-Vorschläge, Matrix42-Abgleich. Die aktuelle Ansicht ist fett und blau. Fährst du über eine Ansicht, steht dort, was sie zeigt. **Was zeigen die Ansichten? …** (F1) erklärt alle mit Beispielen. Darunter **PC-Verlauf in der Liste**.
 - **Zeilen der Timeline** (Untermenü, auch per Rechtsklick auf die Legende links): jede Zeile mit einem Kästchen in ihrer Farbe zum Ein- und Ausblenden, dazu **Alle Zeilen einblenden**. Leere Zeilen blendet Zeitzeuge von selbst aus.
+- **PC-Aktivität als Arbeitsblöcke:** an = Blöcke je Tätigkeit, aus = jedes Fenster einzeln.
 - **Übersichten:** Wochenabschluss, Offene Tätigkeiten.
 
 Ganzer Tag und Arbeitszeit stehen in der Werkzeugleiste, **Dunkles Design** im Pfeil-Menü am Knopf **Einstellungen**.

@@ -51,9 +51,17 @@ def gui_test():
         assert text in texts, (text, texts)
     for text in ("Dunkles Design", "Ganzer Tag", "Arbeitszeit"):
         assert text not in texts, (text, texts)
-    assert len([a for a in menu.actions() if not a.isSeparator()]) <= 14, texts
+    assert len([t for t in texts if t]) <= 14, texts  # Einträge ohne Überschriften
     settings_texts = [a.text().replace("&", "") for a in window.menu_button.menu().actions()]
     assert "Dunkles Design" in settings_texts and "Datenquellen …" in settings_texts, settings_texts
+    # PC-Aktivität: Arbeitsblöcke <-> jedes Fenster, im Menü Ansicht und im Menü der Zeilen
+    assert "PC-Aktivität als Arbeitsblöcke" in texts, texts
+    assert any(a.text().replace("&", "") == "PC-Aktivität als Arbeitsblöcke"
+               for a in window.rows_menu.actions())
+    window._check_proxies[window.pc_blocks_action].trigger()
+    assert window.config["pc_blocks"] is False and not window.pc_blocks_action.isChecked()
+    window._rows_blocks_proxy.trigger()
+    assert window.config["pc_blocks"] is True and window.pc_blocks_action.isChecked()
     # Zoom-Knöpfe: nur Ganzer Tag und Arbeitszeit, feiner per Tastatur/Strg+Mausrad
     assert window.zoom_in_action not in bar and window.zoom_out_action not in bar
     assert "5 Minuten" in window.view_actions["grouped"].toolTip()

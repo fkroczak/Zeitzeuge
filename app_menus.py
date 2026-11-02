@@ -107,6 +107,13 @@ class MenusMixin:
         self.pc_list_action.setChecked(self.config.get("show_pc_in_list", False))
         self.pc_list_action.toggled.connect(self.toggle_pc_list)
         self._icon_actions.append((self.pc_list_action, "monitor"))
+        # PC-Aktivität: Arbeitsblöcke je Tätigkeit oder jedes Fenster einzeln (focus.py)
+        self.pc_blocks_action = QAction("PC-Aktivität als &Arbeitsblöcke", self)
+        self.pc_blocks_action.setCheckable(True)
+        self.pc_blocks_action.setChecked(self.config.get("pc_blocks", True))
+        self.pc_blocks_action.setToolTip("An: Fenster je Tätigkeit zu Blöcken zusammengefasst. "
+                                         "Aus: jedes Fenster einzeln als schmales Band.")
+        self.pc_blocks_action.toggled.connect(self.toggle_pc_blocks)
         # PC-Verlauf: nur im Menü Ansicht
         self.update_pc_list_tip()
 
@@ -294,6 +301,7 @@ class MenusMixin:
         self.rows_menu = self._build_rows_menu()
         menu.addSeparator()
         self._icon_actions.append((menu.addMenu(self.rows_menu), "rows"))
+        self._add_check(menu, self.pc_blocks_action, accent)
 
         self._menu_header(menu, "Übersichten")
         self._icon_actions.append((menu.addAction("Wochen&abschluss …", self.show_week), "gauge"))
@@ -313,6 +321,16 @@ class MenusMixin:
         """Menü „Zeilen der Timeline“: jede Zeile ein- und ausblenden."""
         menu = QMenu("&Zeilen der Timeline", self)
         menu.setToolTipsVisible(True)
+        # Auch hier umschaltbar (Rechtsklick auf die Legende), ohne das Kästchen im Menü Ansicht zu ersetzen
+        accent = THEMES["dark" if self.dark_mode else "light"]["accent"]
+        blocks = menu.addAction(self.pc_blocks_action.text())
+        blocks.setToolTip(self.pc_blocks_action.toolTip())
+        blocks.triggered.connect(self.pc_blocks_action.toggle)
+        blocks.setData(accent)
+        self.pc_blocks_action.toggled.connect(lambda on, p=blocks: p.setIcon(icons.check_box(p.data(), on)))
+        blocks.setIcon(icons.check_box(accent, self.pc_blocks_action.isChecked()))
+        self._rows_blocks_proxy = blocks
+        menu.addSeparator()
         self.row_actions = {}
         for key, text in TIMELINE_ROWS:
             if key in ("doc", "call"):  # Gruppen: Zeit | Auswertung | Verbindungen
@@ -348,6 +366,13 @@ class MenusMixin:
             if proxy is not None:
                 proxy.setData(color)
                 proxy.setIcon(icons.check_box(color, action.isChecked()))
+
+    def toggle_pc_blocks(self, on):
+        self.config["pc_blocks"] = on
+        mt.save_config(self.config)
+        self.timeline.draw_timeline(self.current_date)
+        self.statusBar().showMessage("PC-Aktivität: " + ("Arbeitsblöcke je Tätigkeit" if on
+                                                         else "jedes Fenster einzeln"), 3000)
 
     def update_pc_list_tip(self):
         on = self.pc_list_action.isChecked()
@@ -611,11 +636,12 @@ class MenusMixin:
             in_menu = any(isinstance(o, QMenu) for o in action.associatedObjects())
             action.setIcon(icons.icon(name, theme["text" if in_menu else "bandtext"]))
         self.update_view_button()
-        for action in (self.pc_list_action, self.dark_action):
-            proxy = self._check_proxies.get(action)
-            if proxy is not None:
-                proxy.setData(theme["accent"])
-                proxy.setIcon(icons.check_box(theme["accent"], action.isChecked()))
+        for action in (self.pc_list_action, self.dark_action, self.pc_blocks_action):
+            for proxy in (self._check_proxies.get(action),
+                          self._rows_blocks_proxy if action is self.pc_blocks_action else None):
+                if proxy is not None:
+                    proxy.setData(theme["accent"])
+                    proxy.setIcon(icons.check_box(theme["accent"], action.isChecked()))
         self.menu_button.setIcon(icons.icon("settings", theme["bandtext"]))
         self.view_button.setIcon(icons.icon("eye", theme["bandtext"]))
         old_window = getattr(self, "_settings_window", None)
