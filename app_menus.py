@@ -19,7 +19,7 @@ from vpn_reader import vpn_sources
 from settings_dialogs import ActivityTypeSettingsDialog, ConnectionSettingsDialog, WorkHoursDialog
 from theme import GERMAN, STYLESHEET, THEMES
 from timeline_only import TIMELINE_ROWS
-from version import VERSION, build_details
+from version import build_details, full_version
 import main_timeline as mt  # Pfade und save_config zur Laufzeit von dort (Tests ersetzen sie dort)
 
 
@@ -419,7 +419,7 @@ class MenusMixin:
         msg.setWindowTitle("Über Zeitzeuge")
         msg.setTextFormat(Qt.RichText)
         msg.setText(
-            f"<b>Zeitzeuge</b><br>Version {VERSION}<br>"
+            f"<b>Zeitzeuge</b><br>Version {full_version()}<br>"
             f"{' · '.join(build_details())}<br><br>"
             "<a href='https://github.com/fkroczak/Zeitzeuge/blob/main/CHANGELOG.md'>Was ist neu?</a>"
             "<br><a href='https://github.com/fkroczak/Zeitzeuge'>github.com/fkroczak/Zeitzeuge</a>"

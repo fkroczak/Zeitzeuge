@@ -7,45 +7,22 @@ from PyInstaller.utils.win32.versioninfo import (FixedFileInfo, StringFileInfo, 
                                                  StringTable, VarFileInfo, VarStruct,
                                                  VSVersionInfo)
 
-import datetime  # noqa: E402
-import subprocess  # noqa: E402
-
 sys.path.insert(0, os.path.abspath(SPECPATH))
 
+import version  # noqa: E402
 
-def _build_info():
-    """Herkunft des Builds: GitHub Actions (Tag = Release, sonst Testversion) oder lokal."""
-    env = os.environ
-    info = {"date": datetime.date.today().isoformat()}
-    if env.get("GITHUB_ACTIONS") == "true":
-        info["channel"] = "release" if env.get("GITHUB_REF_TYPE") == "tag" else "test"
-        info["build"] = int(env.get("GITHUB_RUN_NUMBER", "0") or 0)
-        info["commit"] = env.get("GITHUB_SHA", "")[:7]
-        info["branch"] = env.get("GITHUB_HEAD_REF") or env.get("GITHUB_REF_NAME", "")
-    else:
-        info["channel"] = "local"
-        try:
-            info["commit"] = subprocess.run(["git", "-C", SPECPATH, "rev-parse", "--short", "HEAD"],
-                                            capture_output=True, text=True, timeout=5).stdout.strip()
-        except OSError:
-            pass
-    return info
-
-
-# build_info.py wird mit in die EXE gepackt (version.py liest es) und danach wieder gelöscht
+# Herkunft des Builds (Version z. B. 4.1.3, Buildnummer, Commit, Datum). build_info.py wird mit
+# in die EXE gepackt (version.py liest es) und am Ende wieder gelöscht.
+BUILD = version.collect_build_info()
 BUILD_INFO_FILE = os.path.join(SPECPATH, "build_info.py")
-BUILD = _build_info()
 with open(BUILD_INFO_FILE, "w", encoding="utf-8") as f:
     f.write("# Beim Bauen erzeugt (ZeitZeuge.spec), nicht von Hand ändern\n")
     f.write(f"BUILD = {BUILD!r}\n")
-
-import version  # noqa: E402
-from version import VERSION, file_version, version_details  # noqa: E402
-
 version._INFO = BUILD  # Angaben dieses Builds, nicht die aus git
 
-nums = file_version()
-print(f"Zeitzeuge {version_details()}")
+nums = version.file_version()
+VERSION = version.full_version()
+print(f"Zeitzeuge {version.version_details()}")
 
 # Versionsangaben in der EXE (Eigenschaften → Details). Virenscanner stufen
 # EXE-Dateien ohne diese Angaben eher als verdächtig ein.
