@@ -74,3 +74,16 @@ def test_kulanz_und_reise_in_matrix42():
     p = mb.plan({"start": "2026-11-02 10:00:00", "end": "2026-11-02 10:30:00", "goodwill": True})
     assert p["goodwill"] and not p["travel"]
 
+
+
+def test_bekannte_anrufrichtung_bleibt(tmp_path):
+    """Liest 3CX einen Anruf später ohne Richtung, bleibt die bekannte Richtung erhalten."""
+    import call_import
+    path = str(tmp_path / "anrufe.json")
+    call = {"start": "2026-11-02 10:00:00", "number": "0251", "duration_s": 60, "direction": "Ausgehend"}
+    call_import.merge_calls(path, [call])
+    call_import.merge_calls(path, [{**call, "direction": "Anruf", "name": "Neu"}])
+    stored = call_import.load_calls(path)
+    assert stored[0]["direction"] == "Ausgehend" and stored[0]["name"] == "Neu"
+    call_import.merge_calls(path, [{**call, "direction": "Eingehend"}])
+    assert call_import.load_calls(path)[0]["direction"] == "Eingehend"

@@ -182,6 +182,31 @@ QCalendarWidget QWidget#qt_calendar_navigationbar { background-color: $band; }
 QCalendarWidget QAbstractItemView { background-color: $surface; color: $text;
     selection-background-color: $accent; selection-color: $onaccent; }
 QCalendarWidget QAbstractItemView:disabled { color: $muted; }
+QMenu#view_menu::item { padding: 4px 28px 4px 12px; }
+QLabel#menu_header { color: $muted; background: transparent; font-size: 11px; font-weight: 700;
+                     padding: 8px 12px 2px 12px; }
+QLabel#example { background-color: $surface; color: $text; padding: 6px 8px;
+                 font-family: "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace; font-size: 12px; }
+QLabel#page_title { font-size: 20px; font-weight: 700; }
+QLabel#row_title { font-weight: 600; }
+QLabel#row_page { color: $muted; font-size: 11px; font-weight: 700; }
+QLabel#row_value { color: $accent; font-weight: 600; }
+QListWidget#settings_nav { border: none; border-right: 1px solid $border; background-color: $surface;
+                           padding: 6px 0; }
+QListWidget#settings_nav::item { padding: 4px 10px; border-left: 3px solid transparent; }
+QListWidget#settings_nav::item:selected { background-color: $sel; color: $seltext;
+                                          border-left: 3px solid $accent; font-weight: 600; }
+QListWidget#settings_nav::item:hover:!selected { background-color: $hover; }
+QFrame#tile { background-color: $surface; border: 1px solid $border; }
+QFrame#tile QLabel, QFrame#tile QCheckBox { background: transparent; }
+QCheckBox#switch { spacing: 6px; font-weight: 600; }
+QCheckBox#switch::indicator { width: 30px; height: 16px; border: 2px solid $muted; border-radius: 10px;
+                              background-color: $surface; }
+QCheckBox#switch::indicator:checked { border-color: $accent; background-color: $accent; }
+QCheckBox#switch::indicator:focus { border-color: $text; }
+QFrame#setting_row { border: none; border-bottom: 1px solid $line; }
+QFrame#setting_row QLabel, QFrame#setting_row QCheckBox { background: transparent; }
+QPushButton#result_link { text-align: left; background: transparent; border: 1px solid $border; padding: 8px 12px; }
 QToolTip { background-color: #1B1F24; color: #F2F4F7; border: 1px solid #3A424C; border-radius: 0;
            padding: 4px 6px; }
 """

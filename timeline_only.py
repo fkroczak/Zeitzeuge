@@ -54,7 +54,10 @@ def work_hours(config, weekday):
 
 
 # Farben für Telefonate wie im 3CX-Client (in der Config unter "call_colors" änderbar)
-DEFAULT_CALL_COLORS = {"Eingehend": "#3D8BFD", "Ausgehend": "#2E9E5B", "Verpasst": "#E5484D"}
+# Eingehend blau, ausgehend orange: unterscheiden sich auch in der Helligkeit, nicht nur im Farbton.
+# Dazu ein Pfeil im Balken (CALL_MARKS), damit es nicht nur an der Farbe hängt.
+DEFAULT_CALL_COLORS = {"Eingehend": "#1F5FD6", "Ausgehend": "#F08A24", "Verpasst": "#E5484D"}
+CALL_MARKS = {"Eingehend": "↙", "Ausgehend": "↗", "Verpasst": "✕"}
 
 
 def _blend(fill, background):
@@ -824,6 +827,8 @@ class TimelineView(QGraphicsView):
             self.activity_rects[rect] = a
 
             label_text = a["customer_name"] or a["type"]
+            if a.get("direction") in CALL_MARKS:  # Richtung auch als Form, nicht nur als Farbe
+                label_text = f"{CALL_MARKS[a['direction']]} {label_text}"
             if w > 28:
                 text = metrics.elidedText(label_text, Qt.ElideRight, int(w - 8))
                 item = self.scene.addText(text, label_font)

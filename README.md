@@ -1,3 +1,13 @@
+Im Fenster **Einstellungen → Datenquellen** schaltest du jede Quelle in ihrer Kachel ein oder aus und siehst ihren Zustand. Schneller geht es über den Pfeil am Knopf **Einstellungen → Datenquellen**:
+
+| Gruppe | Quellen |
+|---|---|
+| Fernwartung | TeamViewer, RDM |
+| VPN | Sophos Connect, FortiClient, weitere VPN-Logs (OpenVPN …) |
+| Telefon und Zeiten | 3CX-Anrufe, ITM-Personalzeiten, Matrix42, Outlook, Teams-Anrufe |
+
+Pfade, Zeitzonen und Anmeldungen stellst du über **Einrichten …** in der Kachel ein. Das Aufzeichnen der aktiven Fenster schaltest du in der Kachel „Aktive Fenster“, über den Pfeil am Knopf **Einstellungen** oder unten rechts in der Statuszeile.
+
 # Zeitzeuge
 
 **Zeitzeuge zeigt dir auf einer Tages-Timeline, woran du gearbeitet hast.** Das Programm liest die Spuren, die deine Werkzeuge ohnehin hinterlassen: TeamViewer-Verbindungen, Sitzungen aus dem Remote Desktop Manager, VPN-Verbindungen aus Sophos Connect und FortiClient und Telefonate aus 3CX. Dazu merkt es sich, welches Fenster gerade aktiv war. So kannst du Tickets lückenlos schreiben und musst nicht mehr raten, wann du bei welchem Kunden warst.
@@ -63,7 +73,7 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
 - **Tagesliste** unter der Timeline mit Von, Bis, Dauer, Typ, Kunde und Details.
   - Die Statuszeile zeigt die belegte Zeit des Tages. Überschneidungen werden nicht doppelt gezählt.
   - Markierte Zeilen kopierst du mit STRG + C, zum Beispiel für die Ticket-Dokumentation.
-  - Das Auge in der Werkzeugleiste legt fest, wie die Liste aussieht:
+  - Das Menü **Ansicht** (Auge) legt fest, wie die Liste aussieht (Erklärung mit Beispielen: **Was zeigen die Ansichten? …**, F1):
     - **Zusammengefasst** (Standard): Verbindungen zum selben Eintrag mit weniger als 5 Minuten Pause werden eine Zeile. Passwort-, Benutzernamen- und OTP-Anzeigen aus RDM stehen als Zähler bei der Verbindung, zum Beispiel „3 Verbindungen · 2× OTP, 1× Passwort“. Ohne passende Verbindung erscheinen sie als „Zugangsdaten“.
     - **Einzeln:** jede Zeile aus den Logs, wie bisher.
     - **Arbeitsblöcke:** alles mit weniger als 10 Minuten Pause wird ein Block, zum Beispiel „01:18–02:05 · SSL VPN, EPM, OPNsense“. Praktisch fürs Ticket.
@@ -131,8 +141,9 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
 | STRG + 9 | Arbeitszeit zeigen |
 | STRG + C | Markierte Zeilen der Tagesliste kopieren |
 | Enter | Details zur markierten Zeile der Tagesliste |
-| ALT + E | Menü Einstellungen öffnen |
-| ALT + E, Q | Untermenü Datenquellen |
+| STRG + , | Fenster Einstellungen öffnen |
+| ALT + A | Menü Ansicht öffnen |
+| F1 | Was zeigen die Ansichten der Tagesliste? |
 
 F7 bis F12 belegt Zeitzeuge bewusst nicht, damit sie für andere Werkzeuge frei bleiben. Nachtragen und Wochenabschluss erreichst du über die Knöpfe in der Werkzeugleiste.
 
@@ -202,21 +213,42 @@ Browser-Tests (3CX, ITM, Mitschnitt) brauchen Edge oder Chrome; ohne Browser wer
 
 Die Werkzeugleiste ist so aufgeteilt:
 
-- **Links:** vorheriger Tag, Datum, nächster Tag und Heute.
-- **Daneben:** Aktualisieren, Ansicht der Tagesliste (Auge), PC-Verlauf (Bildschirm), KI-Vorschläge (Stern), Lupen, Ganzer Tag und Arbeitszeit.
-- **Rechts:** **Einstellungen** (☰).
+- **Links:** vorheriger Tag, Datum, nächster Tag und **Heute**.
+- **Daneben (Schnellzugriffe):** Aktualisieren, PC-Verlauf (Bildschirm), KI-Vorschläge (Stern), Nachtragen (Stift), Wochenabschluss (Tacho), Lupen, **Ganzer Tag** und **Arbeitszeit**.
+- **Rechts:** **Ansicht** (Auge) und **Einstellungen** (Zahnrad).
 
-Fährst du über einen Knopf, erklärt ein Hinweis, was er tut. Im schmalen Fenster zeigen „Ganzer Tag“ und „Arbeitszeit“ nur noch ihr Symbol, danach rutschen Werkzeuge in den Überlauf (»). Tag und Einstellungen bleiben immer sichtbar.
+Fährst du über einen Knopf, erklärt ein Hinweis, was er tut. Im schmalen Fenster zeigen die Knöpfe nur noch ihr Symbol, danach rutschen Werkzeuge in den Überlauf (»). Tag, Ansicht und Einstellungen bleiben immer sichtbar.
+
+### Menü Ansicht
+
+Alles, was nur die Anzeige ändert, nie die Daten:
+
+- **Tagesliste:** Zusammengefasst, Einzeln, Arbeitsblöcke, Dokumentation, Zuordnung ohne KI, KI-Vorschläge, Matrix42-Abgleich. Die aktuelle Ansicht ist fett und blau. Fährst du über eine Ansicht, steht dort, was sie zeigt. **Was zeigen die Ansichten? …** (F1) erklärt alle mit Beispielen. Darunter **PC-Verlauf in der Liste**.
+- **Zeilen der Timeline:** jede Zeile mit einem Kästchen in ihrer Farbe zum Ein- und Ausblenden, dazu **Alle Zeilen einblenden**.
+- **Zeitraum:** Ganzer Tag, Arbeitszeit.
+- **Übersichten:** Wochenabschluss, Offene Tätigkeiten.
+- **Design:** Dunkles Design.
+
+### Fenster Einstellungen
+
+Ein Klick auf **Einstellungen** (oder STRG + ,) öffnet ein eigenes Fenster. Es bleibt offen, während du weiterarbeitest, und alles gilt sofort.
+
+- **Links die Bereiche:** Allgemein, Datenquellen, Nachfragen & Grenzwerte, Zuordnung & KI, Matrix42 & Abrechnung, Kunden & Texte, Daten & Schutz, Über Zeitzeuge.
+- **Oben die Suche:** z. B. „Minuten“ zeigt alle Grenzwerte aus allen Bereichen, und du änderst sie direkt dort.
+- **Datenquellen als Kacheln:** je Quelle ihr Zeichen in der Farbe des Herstellers, ein Schalter An/Aus, der Zustand („läuft“, „Logdatei nicht gefunden“, „Anmeldung nötig“) und **Einrichten …**.
+- **Grenzwerte als Zahlen:** Abwesenheit am PC, „Später fragen“, Zusammenfassen und Arbeitsblock (Pausen), Leerlauf, Ziel der Buchungsquote und mehr.
+
+Der kleine Pfeil am Knopf **Einstellungen** zeigt Schnellzugriffe: Aufzeichnung an/aus, Datenquellen, Nachfragen, Kundenliste, Textbausteine, Über und Beenden.
 
 ### Einrichtungsassistent
 
 Beim allerersten Start öffnet sich der Assistent **Zeitzeuge einrichten**. Er geht alle Datenquellen mit dir durch:
 
 1. **Auswahl:** Eine Liste aller Quellen (TeamViewer, RDM, Sophos Connect, FortiClient, weitere VPN-Logs, 3CX, ITM-Zeiterfassung, Matrix42, Outlook, Teams-Anrufe, aktive Fenster) und dazu Arbeitszeiten, KI-Vorschläge und der Wiederherstellungsschlüssel. Vorausgewählt ist, was Zeitzeuge auf dem PC gefunden hat, z. B. „TeamViewer (gefunden)“. Was du hier abwählst, schaltet Zeitzeuge aus.
-2. **Ein Schritt je gewählter Quelle:** was die Quelle liest, was auf dem PC gefunden wurde (Pfad, Browser) und ein Knopf zur Einrichtung, z. B. **3CX einrichten und anmelden …**. Das sind dieselben Dialoge wie unter **Einstellungen → Datenquellen → Einrichten**. Mit **Weiter** gilt das Häkchen „… verwenden“.
+2. **Ein Schritt je gewählter Quelle:** was die Quelle liest, was auf dem PC gefunden wurde (Pfad, Browser) und ein Knopf zur Einrichtung, z. B. **3CX einrichten und anmelden …**. Das sind dieselben Dialoge wie unter **Einrichten …** in den Kacheln der Datenquellen. Mit **Weiter** gilt das Häkchen „… verwenden“.
 3. **Übersicht:** welche Quelle jetzt an oder aus ist.
 
-Mit **Zurück** wählst du neu. **Abbrechen** lässt alles, was du bis dahin eingestellt hast. Danach öffnet sich der Assistent nicht mehr von selbst. Wieder aufrufen: **Einstellungen → Datenquellen → Einrichtungsassistent …**. Bestehende Installationen sehen ihn nach dem Update nicht von selbst, auf einer PAW auch nicht.
+Mit **Zurück** wählst du neu. **Abbrechen** lässt alles, was du bis dahin eingestellt hast. Danach öffnet sich der Assistent nicht mehr von selbst. Wieder aufrufen: Fenster **Einstellungen → Datenquellen → Einrichtungsassistent**. Bestehende Installationen sehen ihn nach dem Update nicht von selbst, auf einer PAW auch nicht.
 
 ### Datenquellen ein- und ausschalten
 
@@ -277,7 +309,7 @@ Die Einstellungen für Telefonate stehen in `zeitzeuge_config.json`:
 |---|---|---|
 | `calls_ignore_missed` | `true` | Verpasste Anrufe ausblenden |
 | `calls_min_duration` | `0` | Kürzere Anrufe ausblenden (in Sekunden) |
-| `call_colors` | blau / grün / rot | Farben für eingehende, ausgehende und verpasste Anrufe, z. B. `{"Eingehend": "#3D8BFD"}` |
+| `call_colors` | blau / orange / rot | Farben für eingehende, ausgehende und verpasste Anrufe, z. B. `{"Eingehend": "#2F7BFF"}`. Im Balken steht dazu ein Pfeil: ↙ eingehend, ↗ ausgehend |
 | `calls_3cx_url` | `https://voice.visaas.de:5001` | Adresse des 3CX-Webclients |
 | `pbx_reader_enabled` | `false` | Zeitzeuge liest 3CX selbst |
 | `calls_days_back` | `14` | So viele Tage liest Zeitzeuge zurück |
@@ -581,6 +613,8 @@ Für Tests und Hilfsskripte gibt es zwei Umgebungsvariablen: `ZEITZEUGE_DATA` se
 | `app_daylist.py` | Tagesliste, Statuszeile, Tageswechsel |
 | `app_docs.py` | Tätigkeiten dokumentieren, Nachfragen, KI-Vorschläge |
 | `idle_watch.py` | Abwesenheit am PC erkennen (für die Nachfrage) |
+| `settings_window.py` | Fenster Einstellungen: Bereiche, Suche, Kacheln der Datenquellen |
+| `view_help.py` | Hilfe zu den Ansichten der Tagesliste |
 | `app_readers.py` | 3CX- und ITM-Leser im Hauptfenster |
 | `app_tray.py` | Infobereich, Fensteraufzeichnung, Beenden |
 | `theme.py` | Design: Farben (hell/dunkel), Stylesheet, Qt-Stil, deutsche Dialogknöpfe |

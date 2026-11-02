@@ -78,7 +78,10 @@ def merge_calls(path, new_calls):
                     k = _key(c)
                     if k not in calls:
                         added += 1
-                    if calls.get(k) != c:
+                    old = calls.get(k)
+                    if old and c.get("direction") == "Anruf" and old.get("direction") not in (None, "Anruf"):
+                        c = {**c, "direction": old["direction"]}  # bekannte Richtung nicht vergessen
+                    if old != c:
                         dirty = True
                     calls[k] = c  # neuere Daten (z. B. Name aus CRM) gewinnen
                 if dirty:

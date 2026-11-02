@@ -60,6 +60,41 @@ PATHS = {
     "lock": '<rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
     "rules": '<path d="m3 17 2 2 4-4M3 7l2 2 4-4M13 6h8M13 12h8M13 18h8"/>',
     "gauge": '<path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/>',  # Wochenabschluss
+    "settings": '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08'
+                'a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74'
+                'l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73'
+                'V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08'
+                'a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74'
+                'l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25'
+                'a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>',
+    "help": '<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3M12 17h.01"/>',
+    # Ansichten der Tagesliste
+    "layers": '<path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0'
+              'l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65'
+              'M22 12.65l-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/>',
+    "list": '<path d="M3 12h.01M3 18h.01M3 6h.01M8 12h13M8 18h13M8 6h13"/>',
+    "blocks": '<rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/>'
+              '<rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/>',
+    "doc": '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/>'
+           '<path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="m9 15 2 2 4-4"/>',
+    "alert": '<circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/>',
+    "search": '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+    "sliders": '<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M2 14h4M10 8h4M18 16h4"/>',
+    "database": '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/>'
+                '<path d="M3 12a9 3 0 0 0 18 0"/>',
+    "shield": '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1'
+              'c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/>',
+    "sun": '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66'
+           'l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>',
+    "download": '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>',
+    "upload": '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>',
+    "trash": '<path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>',
+    "server": '<rect width="20" height="8" x="2" y="2" rx="2"/><rect width="20" height="8" x="2" y="14" rx="2"/>'
+              '<path d="M6 6h.01M6 18h.01"/>',
+    "phone": '<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6'
+             ' 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81'
+             ' 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0'
+             ' 2.81.7A2 2 0 0 1 22 16.92z"/>',
 }
 
 
@@ -137,4 +172,66 @@ def source_icon(state):
                f'<path d="M12 7v5l3 2" stroke="{BUSY_COLOR}" stroke-width="2" fill="none" '
                'stroke-linecap="round"/>')
     return _render(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">{svg}</svg>',
+                   (16, 20, 24, 32))
+
+
+def dot(color, size=10):
+    """Gefüllter Farbpunkt, z. B. für die Zeilen der Timeline im Menü Ansicht."""
+    r = size / 2
+    svg = (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">'
+           f'<rect x="{12 - r}" y="{12 - r}" width="{size}" height="{size}" rx="2" '
+           f'fill="{QColor(color).name()}"/></svg>')
+    return _render(svg, (16, 20, 24, 32))
+
+
+# Datenquellen: Zeichen in der Hausfarbe des Herstellers (vereinfacht nachgezeichnet, keine
+# Original-Logodateien). Schlüssel wie in den Einstellungen.
+_BRAND_TEXT = ('<text x="12" y="{y}" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" '
+               'font-weight="700" font-size="{size}" fill="#FFFFFF">{text}</text>')
+BRANDS = {
+    # TeamViewer: blauer Kreis mit Doppelpfeil
+    "teamviewer": ('#0E8EE9', 'circle',
+                   '<path d="M5 12h14M8.5 8.5 5 12l3.5 3.5M15.5 8.5 19 12l-3.5 3.5" stroke="#FFFFFF" '
+                   'stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>'),
+    "rdm": ('#E8412C', 'square', _BRAND_TEXT.format(y=15.5, size=8, text="RDM")),  # Devolutions RDM
+    "sophos": ('#005BC8', 'square', _BRAND_TEXT.format(y=17, size=14, text="S")),
+    # Fortinet: rotes Feld mit weißem Raster
+    "forti": ('#DA291C', 'square',
+              ''.join(f'<rect x="{x}" y="{y}" width="4" height="3" fill="#FFFFFF"/>'
+                      for x, y in ((5, 6), (10, 6), (15, 6), (5, 10.5), (15, 10.5), (5, 15), (10, 15), (15, 15)))),
+    "vpn": ('#0F9D8A', 'square',
+            '<path d="M12 5.5 17.5 7.5v4c0 3.4-2.4 5.3-5.5 6.5-3.1-1.2-5.5-3.1-5.5-6.5v-4z" fill="none" '
+            'stroke="#FFFFFF" stroke-width="1.8" stroke-linejoin="round"/>'),
+    "pbx": ('#00A3E0', 'square', _BRAND_TEXT.format(y=15.5, size=8.5, text="3CX")),
+    "itm": ('#1B1F24', 'square', _BRAND_TEXT.format(y=15.5, size=8, text="ITM")),
+    "m42": ('#0B2D6B', 'square', _BRAND_TEXT.format(y=16.5, size=11, text="42")),
+    "outlook": ('#0F6CBD', 'square', _BRAND_TEXT.format(y=17, size=13, text="O")),
+    "teams": ('#5B5FC7', 'square', _BRAND_TEXT.format(y=17, size=13, text="T")),
+    "tracking": ('#2F7BFF', 'square',
+                 '<rect x="5" y="6" width="14" height="9.5" rx="1.2" fill="none" stroke="#FFFFFF" '
+                 'stroke-width="1.8"/><path d="M9.5 19h5M12 15.5V19" stroke="#FFFFFF" stroke-width="1.8" '
+                 'stroke-linecap="round"/>'),
+}
+
+
+def brand_icon(key):
+    """Zeichen einer Datenquelle (BRANDS), z. B. für Einstellungen und Menü Datenquellen."""
+    color, shape, glyph = BRANDS[key]
+    ground = (f'<circle cx="12" cy="12" r="11" fill="{color}"/>' if shape == "circle"
+              else f'<rect x="1" y="1" width="22" height="22" rx="4.5" fill="{color}"/>')
+    return _render(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">{ground}{glyph}</svg>',
+                   (16, 20, 24, 32, 48))
+
+
+def check_box(color, on):
+    """Kästchen in Farbe color: an = gefüllt mit weißem Haken, aus = nur Rahmen.
+    Für Menüs, in denen ein Symbol sonst den Haken verdecken würde."""
+    c = QColor(color).name()
+    if on:
+        body = (f'<rect x="3" y="3" width="18" height="18" rx="3" fill="{c}"/>'
+                '<path d="m7.5 12.5 3 3 6-6.5" stroke="#FFFFFF" stroke-width="2.6" fill="none" '
+                'stroke-linecap="round" stroke-linejoin="round"/>')
+    else:
+        body = f'<rect x="4" y="4" width="16" height="16" rx="3" fill="none" stroke="{c}" stroke-width="2"/>'
+    return _render(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">{body}</svg>',
                    (16, 20, 24, 32))

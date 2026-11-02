@@ -1,0 +1,559 @@
+"""Fenster „Einstellungen“: Bereiche links, Suche oben, Datenquellen als Kacheln mit Zustand.
+
+Alles wirkt sofort: Schalter sind dieselben Aktionen wie im Hauptfenster (Menü, Infobereich),
+Zahlen werden gleich gespeichert, „Ändern …“ öffnet die bisherigen Dialoge. Die Bereiche
+stehen in PAGES und ROWS; die Suche geht über Titel, Beschreibung und Bereich jeder Zeile.
+
+Teil von TimelineApp (main_timeline.py): SettingsWindow(main) bekommt das Hauptfenster.
+"""
+from PySide6.QtCore import QSize, Qt, QTimer, QUrl
+from PySide6.QtGui import QDesktopServices
+from PySide6.QtWidgets import (QCheckBox, QDialog, QFrame, QGridLayout, QHBoxLayout, QLabel,
+                               QLineEdit, QListWidget, QListWidgetItem, QPushButton, QScrollArea,
+                               QSpinBox, QStackedWidget, QVBoxLayout, QWidget)
+
+import icons
+from theme import THEMES
+import main_timeline as mt  # Pfade und save_config zur Laufzeit von dort (Tests ersetzen sie dort)
+
+# Bereiche: Schlüssel, Name, Symbol, Satz darunter
+PAGES = [
+    ("general", "Allgemein", "settings", "Aussehen, Arbeitszeiten und Aufzeichnung der aktiven Fenster."),
+    ("sources", "Datenquellen", "plug", "Woher Zeitzeuge deine Spuren liest. Schalter und Zustand je Quelle."),
+    ("prompts", "Nachfragen & Grenzwerte", "bell", "Wann Zeitzeuge nachfragt und ab welchen Minuten."),
+    ("rules", "Zuordnung & KI", "rules", "Regeln ohne KI, KI-Vorschläge, Typen und Farben."),
+    ("booking", "Matrix42 & Abrechnung", "gauge", "Buchen, Abrechnungstakt und Buchungsquote."),
+    ("customers", "Kunden & Texte", "users", "Kundenliste mit Spuren und Textbausteine."),
+    ("data", "Daten & Schutz", "shield", "Speicherort, PIN, Löschen, Übernehmen von einem anderen PC."),
+    ("about", "Über Zeitzeuge", "info", "Version und Beenden."),
+]
+
+
+def _prompt_summary(main):
+    c = main.config
+    mode = {"window": "Fenster", "tray": "Infobereich", "off": "aus"}.get(c.get("prompt_mode", "window"))
+    return f"{mode} · später nach {c.get('prompt_snooze_minutes', 15)} min"
+
+
+def _billing_summary(main):
+    c = main.config
+    if c.get("billing_mode", "up") == "off":
+        return "echte Dauer"
+    return f"{c.get('billing_step_minutes', 15)}-Minuten-Takt"
+
+
+# Zeilen: (Bereich, Art, Symbol, Titel, Beschreibung, Ziel, Zusatz)
+#   toggle: Ziel = Name einer QAction am Hauptfenster
+#   button: Ziel = Methode am Hauptfenster (oder Funktion main -> None), Zusatz = Wert-Funktion
+#   spin:   Ziel = Config-Schlüssel, Zusatz = (min, max, Einheit, Text bei 0, Nachlauf)
+#   check:  Ziel = Config-Schlüssel, Zusatz = Standardwert
+ROWS = [
+    ("general", "toggle", "moon", "Dunkles Design", "Helles oder dunkles Aussehen, gilt sofort.",
+     "dark_action", None),
+    ("general", "button", "clock", "Arbeitszeiten", "Arbeitstage und Zeiten, wenn keine ITM-Personalzeit da ist.",
+     "edit_work_hours", None),
+    ("general", "toggle", "monitor", "Aktive Fenster aufzeichnen",
+     "Alle 5 Sekunden das aktive Fenster merken (Band „PC“).", "tracking_action", None),
+    ("general", "button", "filter", "Fenster-Filter", "Private Programme ausblenden oder nur erlaubte aufzeichnen.",
+     "edit_tracking_filters", None),
+    ("general", "spin", "pause", "Leerlauf nach", "Ohne Maus und Tastatur zeichnet Zeitzeuge nichts auf.",
+     "tracking_idle_minutes", (1, 60, "min", "", "idle_limit")),
+
+    ("sources", "button", "spark", "Einrichtungsassistent", "Alle Quellen Schritt für Schritt neu einrichten.",
+     "show_setup_wizard", None),
+
+    ("prompts", "button", "bell", "Nachfragen und Erinnerungen",
+     "Fenster oder Infobereich, wonach gefragt wird, Erinnerung bei Feierabend und Beenden.",
+     "edit_prompt_settings", _prompt_summary),
+    ("prompts", "spin", "clock", "Abwesenheit am PC: fragen ab",
+     "Nach so vielen Minuten ohne Eingabe fragt Zeitzeuge bei der Rückkehr, was war.",
+     "idle_prompt_minutes", (0, 240, "min", "aus", "idle_watch")),
+    ("prompts", "spin", "pause", "„Später fragen“ nach", "So lange wartet eine zurückgestellte Nachfrage.",
+     "prompt_snooze_minutes", (1, 480, "min", "", None)),
+    ("prompts", "spin", "layers", "Zusammenfassen bis Pause",
+     "Ansicht „Zusammengefasst“: gleiche Verbindungen mit kürzerer Pause werden eine Zeile.",
+     "merge_gap_minutes", (0, 120, "min", "nie", "redraw")),
+    ("prompts", "spin", "blocks", "Arbeitsblock bis Pause",
+     "Ansicht „Arbeitsblöcke“: alles mit kürzerer Pause wird ein Block.",
+     "block_gap_minutes", (1, 240, "min", "", "redraw")),
+    ("prompts", "spin", "monitor", "Gesendete Mail als Block",
+     "So breit steht eine gesendete Mail in der Timeline (Outlook).",
+     "outlook_mail_minutes", (1, 60, "min", "", "redraw")),
+
+    ("rules", "button", "rules", "Zuordnung ohne KI (Regeln)", "Feste Regeln: Programm oder Verbindung → Kategorie und Kunde.",
+     "edit_rules", None),
+    ("rules", "button", "spark", "KI-Vorschläge", "Modell, Schlüssel und Kategorien für Claude.",
+     "edit_ai_settings", None),
+    ("rules", "button", "palette", "Aktivitätstypen und Farben", "Farbe je Art in der Timeline.",
+     "edit_activity_types", None),
+
+    ("booking", "button", "gauge", "Matrix42 einrichten", "Adresse der Kalenderseite und Anmeldung (nur im Firmennetz).",
+     "open_m42_settings", None),
+    ("booking", "button", "tag", "Abrechnung", "Abrechnungstakt, auch je Kunde.", "edit_billing", _billing_summary),
+    ("booking", "spin", "gauge", "Ziel Buchungsquote", "So viel der Personalzeit soll in Matrix42 gebucht sein.",
+     "booking_target_percent", (10, 150, "%", "", "redraw")),
+    ("booking", "check", "details", "Quote in der Statuszeile", "„Quote heute 72 % · 7 Tage 81 %“ unten anzeigen.",
+     "booking_rate_status", True),
+    ("booking", "check", "alert", "Bei Feierabend prüfen",
+     "Pausen, Stempelung, Buchungen außerhalb der Personalzeit, Quote unter Ziel.", "day_checks_enabled", True),
+
+    ("customers", "button", "users", "Kundenliste", "Kunden mit ihren Spuren (TeamViewer-ID, RDM, VPN, Telefon, Domain).",
+     "edit_customers", None),
+    ("customers", "button", "edit", "Textbausteine", "Bausteine und Ticket-Format beim Eintragen.",
+     "edit_snippets", None),
+
+    ("data", "button", "folder", "Datenordner öffnen", "Ordner mit Einstellungen und Sicherung im Explorer zeigen.",
+     lambda main: QDesktopServices.openUrl(QUrl.fromLocalFile(mt.DATA_DIR)), lambda _m: mt.DATA_DIR),
+    ("data", "button", "folder", "Speicherort ändern", "Daten in einen anderen Ordner verschieben (startet neu).",
+     "change_data_dir", None),
+    ("data", "button", "lock", "Schutz", "PIN beim Start und Wiederherstellungsschlüssel.", "show_protection", None),
+    ("data", "button", "trash", "PC-Verlauf automatisch löschen", "Aufgezeichnete Fenster nach einigen Tagen löschen.",
+     lambda main: main.retention.edit(),
+     lambda m: f"nach {m.config.get('pc_history_days', 90)} Tagen" if m.config.get("pc_history_purge") else "aus"),
+    ("data", "button", "upload", "Daten exportieren", "Für einen anderen PC, z. B. die PAW.", "export_data", None),
+    ("data", "button", "download", "Daten übernehmen", "Von einem anderen PC einlesen.", "import_data", None),
+    ("data", "toggle", "server", "Dieser PC ist eine PAW", "Nur RDM sammeln, alles andere aus.", "paw_action", None),
+
+    ("about", "button", "info", "Über Zeitzeuge", "Version, Neuigkeiten und Projektseite.", "show_about", None),
+    ("about", "button", "power", "Zeitzeuge beenden", "Aufzeichnung und Datenquellen stoppen.", "request_quit", None),
+]
+
+# Datenquellen als Kacheln: (Schalter, Zeichen, Name, Beschreibung, Einrichten, Zustand)
+#   Schalter: Schlüssel in main.source_actions, "tracking" = Aufzeichnung der Fenster
+#   Zustand: ("log", Name in missing_sources) oder ("reader", Attribut am Hauptfenster) oder None
+SOURCE_TILES = [
+    ("teamviewer_enabled", "teamviewer", "TeamViewer", "Verbindungen aus Connections.txt",
+     "edit_teamviewer_settings", ("log", "TeamViewer")),
+    ("rdm_enabled", "rdm", "Remote Desktop Manager", "Sitzungen und Passwort-Anzeigen",
+     "edit_rdm_settings", ("log", "RDM")),
+    ("sophos_enabled", "sophos", "Sophos Connect", "VPN-Verbindungen mit Namen", "edit_vpn_settings", None),
+    ("forti_enabled", "forti", "FortiClient", "VPN-Zeiten (über Sophos-Log)", "edit_vpn_settings", None),
+    ("vpn_enabled", "vpn", "Weitere VPN-Logs", "OpenVPN und andere Clients", "edit_vpn_settings", None),
+    ("pbx_reader_enabled", "pbx", "3CX-Telefonate", "Anrufliste aus dem Webclient", "open_pbx_settings",
+     ("reader", "pbx_reader")),
+    ("itm_reader_enabled", "itm", "ITM-Personalzeiten", "Gestempelte Zeiten und Pausen", "open_itm_settings",
+     ("reader", "itm_reader")),
+    ("m42_reader_enabled", "m42", "Matrix42", "Gebuchte Zeiten (Firmennetz)", "open_m42_settings",
+     ("reader", "m42_reader")),
+    ("outlook_enabled", "outlook", "Outlook", "Termine und gesendete Mails", "open_outlook_settings", None),
+    ("teams_calls_enabled", "teams", "Teams-Anrufe", "Anrufe aus Microsoft Teams", "open_outlook_settings", None),
+    ("tracking", "tracking", "Aktive Fenster", "Band „PC“, alle 5 Sekunden", "edit_tracking_filters", None),
+]
+
+STATE_TEXT = {"ok": "läuft", "warn": "Problem", "busy": "liest gerade", "off": "aus"}
+
+
+def tile_state(main, key, kind):
+    """(Zustand, Text) einer Datenquelle: ok, warn, busy oder off."""
+    action = main.tracking_action if key == "tracking" else main.source_actions.get(key)
+    if action is not None and not action.isChecked():
+        return "off", "Aus"
+    if kind and kind[0] == "reader":
+        reader = getattr(main, kind[1], None)
+        if reader is None:
+            return "busy", "startet …"
+        try:
+            state, why = reader.health()
+        except Exception:  # ein Leser darf die Einstellungen nie blockieren
+            return "warn", "Zustand unbekannt"
+        return state, why
+    if kind and kind[0] == "log":
+        try:
+            missing = [] if main.timeline.loading else main.timeline.missing_sources()
+        except Exception:
+            missing = []
+        if kind[1] in missing:
+            return "warn", "Logdatei nicht gefunden"
+    if key == "tracking":
+        return "ok", "zeichnet auf"
+    return "ok", "an"
+
+
+def matches(query, *texts):
+    """Passt die Suche? Alle Wörter müssen irgendwo vorkommen (ohne Groß/Klein)."""
+    hay = " ".join(t for t in texts if t).lower()
+    return all(word in hay for word in query.lower().split())
+
+
+def _unit_words(spec):
+    """Suchwörter zur Einheit einer Zahl: „min“ findet man auch mit „Minuten“."""
+    if spec[1] != "spin":
+        return ""
+    return {"min": "min Minuten Grenzwert", "%": "Prozent Grenzwert"}.get(spec[6][2], spec[6][2])
+
+
+def _switch(name):
+    """Schalter mit Text „An“ / „Aus“ (Aussehen: theme.py, QCheckBox#switch)."""
+    box = QCheckBox("Aus")
+    box.setObjectName("switch")
+    box.setAccessibleName(name)
+    box.toggled.connect(lambda on: box.setText("An" if on else "Aus"))
+    box.setChecked(False)
+    return box
+
+
+def _set_quiet(box, on):
+    """Schalter setzen, ohne die Änderung erneut auszulösen."""
+    box.blockSignals(True)
+    box.setChecked(bool(on))
+    box.blockSignals(False)
+    if box.objectName() == "switch":
+        box.setText("An" if on else "Aus")
+
+
+class _Row(QFrame):
+    """Eine Einstellung: Symbol, Titel, Beschreibung, rechts Schalter, Zahl oder „Ändern …“."""
+
+    def __init__(self, window, spec, show_page=False):
+        super().__init__()
+        self.setObjectName("setting_row")
+        self.window, self.spec = window, spec
+        main = window.main
+        page, kind, icon_name, title, desc, target, extra = spec
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(4, 10, 4, 10)
+        layout.setSpacing(12)
+        pic = QLabel()
+        pic.setPixmap(icons.icon(icon_name, window.icon_color).pixmap(20, 20))
+        pic.setAlignment(Qt.AlignTop)
+        layout.addWidget(pic)
+        text = QVBoxLayout()
+        text.setSpacing(2)
+        head = QLabel(title)
+        head.setObjectName("row_title")
+        text.addWidget(head)
+        if show_page:
+            where = QLabel(dict((k, n) for k, n, _i, _s in PAGES)[page].upper())
+            where.setObjectName("row_page")
+            text.insertWidget(0, where)
+        body = QLabel(desc)
+        body.setObjectName("hint")
+        body.setWordWrap(True)
+        text.addWidget(body)
+        layout.addLayout(text, 1)
+        self.value = None
+        self.control = None
+
+        if kind == "toggle":
+            action = getattr(main, target)
+            self.control = _switch(title)
+            self.control.setChecked(action.isChecked())
+            self.control.toggled.connect(lambda on: action.isChecked() != on and action.setChecked(on))
+            action.toggled.connect(self._sync_toggle)
+        elif kind == "check":
+            self.control = _switch(title)
+            self.control.setChecked(bool(main.config.get(target, extra)))
+            self.control.toggled.connect(lambda on: self._set_config(target, on, "redraw"))
+        elif kind == "spin":
+            low, high, unit, zero_text, after = extra
+            self.control = QSpinBox()
+            self.control.setRange(low, high)
+            self.control.setSuffix(f" {unit}")
+            if zero_text:
+                self.control.setSpecialValueText(zero_text)
+            self.control.setAccessibleName(title)
+            self.control.setValue(int(main.config.get(target, low) or 0))
+            self.control.valueChanged.connect(lambda v: self._set_config(target, v, after))
+        else:  # button
+            if extra:
+                self.value = QLabel()
+                self.value.setObjectName("row_value")
+                layout.addWidget(self.value)
+            self.control = QPushButton("Öffnen …" if kind == "button" else "")
+            self.control.setAccessibleName(f"{title} öffnen")
+            self.control.setAutoDefault(False)
+            self.control.clicked.connect(self._run)
+        layout.addWidget(self.control)
+        self.refresh()
+
+    def _sync_toggle(self, on):
+        if self.control.isChecked() != on:
+            _set_quiet(self.control, on)
+
+    def _run(self):
+        target = self.spec[5]
+        main = self.window.main
+        (getattr(main, target) if isinstance(target, str) else (lambda: target(main)))()
+        self.window.refresh()
+
+    def _set_config(self, key, value, after):
+        main = self.window.main
+        if main.config.get(key) == value:
+            return
+        main.config[key] = value
+        mt.save_config(main.config)
+        if after == "idle_watch" and getattr(main, "idle_watch", None):
+            main.idle_watch.minutes = value
+        elif after == "idle_limit" and getattr(main, "tracker", None):
+            main.tracker.idle_limit = value * 60
+        if after in ("redraw", "idle_watch"):
+            main.timeline.draw_timeline(main.current_date)
+        if key in ("booking_rate_status", "booking_target_percent"):
+            import week_dialogs
+            week_dialogs.update_rate_button(main)
+
+    def refresh(self):
+        kind, target, extra = self.spec[1], self.spec[5], self.spec[6]
+        main = self.window.main
+        if self.value is not None and extra:
+            self.value.setText(extra(main))
+        elif kind == "spin":
+            self.control.blockSignals(True)
+            self.control.setValue(int(main.config.get(target, extra[0]) or 0))
+            self.control.blockSignals(False)
+        elif kind == "check":
+            _set_quiet(self.control, main.config.get(target, extra))
+        elif kind == "toggle":
+            self._sync_toggle(getattr(main, target).isChecked())
+
+
+class _Tile(QFrame):
+    """Datenquelle: Zeichen, Name, Schalter, Zustand und „Einrichten …“."""
+
+    def __init__(self, window, spec):
+        super().__init__()
+        self.setObjectName("tile")
+        self.window, self.spec = window, spec
+        key, brand, name, desc, setup, _kind = spec
+        main = window.main
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setSpacing(6)
+        head = QHBoxLayout()
+        pic = QLabel()
+        pic.setPixmap(icons.brand_icon(brand).pixmap(28, 28))
+        head.addWidget(pic)
+        title = QLabel(name)
+        title.setObjectName("row_title")
+        title.setWordWrap(True)
+        head.addWidget(title, 1)
+        self.switch = _switch(f"{name} einschalten")
+        self.action = main.tracking_action if key == "tracking" else main.source_actions.get(key)
+        if self.action is not None:
+            self.switch.setChecked(self.action.isChecked())
+            self.switch.toggled.connect(self._toggle)
+            self.action.toggled.connect(self._on_action)
+        head.addWidget(self.switch)
+        layout.addLayout(head)
+        info = QLabel(desc)
+        info.setObjectName("hint")
+        info.setWordWrap(True)
+        layout.addWidget(info)
+        state = QHBoxLayout()
+        self.state_icon = QLabel()
+        self.state_text = QLabel()
+        self.state_text.setWordWrap(True)
+        state.addWidget(self.state_icon)
+        state.addWidget(self.state_text, 1)
+        layout.addLayout(state)
+        layout.addStretch(1)
+        button = QPushButton("Einrichten …")
+        button.setAutoDefault(False)
+        button.setAccessibleName(f"{name} einrichten")
+        button.clicked.connect(lambda: (getattr(main, setup)(), window.refresh()))
+        layout.addWidget(button, 0, Qt.AlignLeft)
+        self.refresh()
+
+    def _on_action(self, _on):
+        self.refresh()
+
+    def _toggle(self, on):
+        if self.action.isChecked() != on:
+            self.action.setChecked(on)
+        self.window.refresh()
+
+    def refresh(self):
+        key, _brand, name, _desc, _setup, kind = self.spec
+        state, text = tile_state(self.window.main, key, kind)
+        if self.action is not None and self.switch.isChecked() != self.action.isChecked():
+            _set_quiet(self.switch, self.action.isChecked())
+        if state == "off":
+            self.state_icon.clear()
+        else:
+            self.state_icon.setPixmap(icons.source_icon(state).pixmap(16, 16))
+        self.state_text.setText(text)
+        self.state_text.setObjectName("hint" if state == "off" else "")
+        self.state_text.style().unpolish(self.state_text)
+        self.state_text.style().polish(self.state_text)
+        self.setToolTip(f"{name}: {STATE_TEXT.get(state, state)} – {text}")
+        self.state = state
+
+
+class SettingsWindow(QDialog):
+    """Alle Einstellungen in einem Fenster. Bleibt offen, während du weiterarbeitest."""
+
+    def __init__(self, main):
+        super().__init__(main)
+        self.main = main
+        self.setWindowTitle("Zeitzeuge – Einstellungen")
+        self.setObjectName("settings_window")
+        self.resize(1000, 660)
+        self.setMinimumSize(720, 480)
+        theme = THEMES["dark" if main.dark_mode else "light"]
+        self.icon_color = theme["text"]
+        self.rows, self.tiles = [], []
+
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+        top = QHBoxLayout()
+        top.setContentsMargins(16, 12, 16, 12)
+        heading = QLabel("Einstellungen")
+        heading.setObjectName("page_title")
+        top.addWidget(heading)
+        top.addSpacing(24)
+        self.search = QLineEdit()
+        self.search.setPlaceholderText("Einstellung suchen, z. B. Minuten, VPN, PIN")
+        self.search.setAccessibleName("Einstellungen durchsuchen")
+        self.search.setClearButtonEnabled(True)
+        self.search.addAction(icons.icon("search", theme["muted"]), QLineEdit.ActionPosition.LeadingPosition)
+        self.search.textChanged.connect(self.on_search)
+        top.addWidget(self.search, 1)
+        outer.addLayout(top)
+
+        body = QHBoxLayout()
+        body.setSpacing(0)
+        self.nav = QListWidget()
+        self.nav.setObjectName("settings_nav")
+        self.nav.setAccessibleName("Bereiche")
+        self.nav.setFixedWidth(240)
+        self.nav.setIconSize(QSize(18, 18))
+        self.stack = QStackedWidget()
+        self.pages = {}
+        for key, name, icon_name, subtitle in PAGES:
+            item = QListWidgetItem(icons.icon(icon_name, self.icon_color), name)
+            item.setData(Qt.UserRole, key)
+            item.setSizeHint(QSize(0, 40))
+            self.nav.addItem(item)
+            self.pages[key] = self.stack.addWidget(self._page(key, name, subtitle))
+        self.results_index = self.stack.addWidget(self._results_page())
+        self.nav.currentRowChanged.connect(self._show_row)
+        body.addWidget(self.nav)
+        body.addWidget(self.stack, 1)
+        outer.addLayout(body, 1)
+
+        # Zustände der Quellen nachziehen, solange das Fenster offen ist
+        self._timer = QTimer(self)
+        self._timer.timeout.connect(self.refresh_tiles)
+        self._timer.start(3000)
+        self.nav.setCurrentRow(0)
+
+    # ---- Aufbau
+
+    def _scroll(self, widget):
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setWidget(widget)
+        return scroll
+
+    def _page(self, key, name, subtitle):
+        page = QWidget()
+        page.setObjectName("settings_page")
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(28, 20, 28, 20)
+        layout.setSpacing(4)
+        title = QLabel(name)
+        title.setObjectName("page_title")
+        layout.addWidget(title)
+        sub = QLabel(subtitle)
+        sub.setObjectName("hint")
+        sub.setWordWrap(True)
+        layout.addWidget(sub)
+        layout.addSpacing(10)
+        if key == "sources":
+            grid = QGridLayout()
+            grid.setSpacing(12)
+            for i, spec in enumerate(SOURCE_TILES):
+                tile = _Tile(self, spec)
+                self.tiles.append(tile)
+                grid.addWidget(tile, i // 3, i % 3)
+            for col in range(3):
+                grid.setColumnStretch(col, 1)
+            layout.addLayout(grid)
+            layout.addSpacing(12)
+        for spec in ROWS:
+            if spec[0] == key:
+                row = _Row(self, spec)
+                self.rows.append(row)
+                layout.addWidget(row)
+        layout.addStretch(1)
+        return self._scroll(page)
+
+    def _results_page(self):
+        page = QWidget()
+        page.setObjectName("settings_page")
+        self.results_layout = QVBoxLayout(page)
+        self.results_layout.setContentsMargins(28, 20, 28, 20)
+        self.results_title = QLabel()
+        self.results_title.setObjectName("page_title")
+        self.results_layout.addWidget(self.results_title)
+        self.results_box = QVBoxLayout()
+        self.results_layout.addLayout(self.results_box)
+        self.results_layout.addStretch(1)
+        return self._scroll(page)
+
+    # ---- Bedienen
+
+    def _show_row(self, row):
+        if row < 0:
+            return
+        if self.search.text():
+            self.search.blockSignals(True)
+            self.search.clear()
+            self.search.blockSignals(False)
+        key = self.nav.item(row).data(Qt.UserRole)
+        self.stack.setCurrentIndex(self.pages[key])
+        self.refresh()
+
+    def show_page(self, key):
+        """Bereich zeigen, z. B. show_page("sources")."""
+        for i in range(self.nav.count()):
+            if self.nav.item(i).data(Qt.UserRole) == key:
+                self.nav.setCurrentRow(i)
+                self._show_row(i)
+                return
+
+    def current_page(self):
+        item = self.nav.currentItem()
+        return item.data(Qt.UserRole) if item else None
+
+    def on_search(self, text):
+        while self.results_box.count():
+            widget = self.results_box.takeAt(0).widget()
+            if widget:
+                widget.deleteLater()
+        text = text.strip()
+        if not text:
+            self._show_row(self.nav.currentRow())
+            return
+        names = {k: n for k, n, _i, _s in PAGES}
+        found = [spec for spec in ROWS if matches(text, spec[3], spec[4], names[spec[0]], _unit_words(spec))]
+        tiles = [spec for spec in SOURCE_TILES if matches(text, spec[2], spec[3], "Datenquellen")]
+        for spec in tiles:
+            row = QPushButton(icons.brand_icon(spec[1]), f"  {spec[2]} – Datenquellen")
+            row.setObjectName("result_link")
+            row.setAutoDefault(False)
+            row.clicked.connect(lambda: self.show_page("sources"))
+            self.results_box.addWidget(row)
+        for spec in found:
+            self.results_box.addWidget(_Row(self, spec, show_page=True))
+        count = len(found) + len(tiles)
+        self.results_title.setText(f"{count} Treffer für „{text}“" if count
+                                   else f"Nichts gefunden für „{text}“")
+        self.results_found = count
+        self.stack.setCurrentIndex(self.results_index)
+
+    def refresh_tiles(self):
+        if self.isVisible():
+            for tile in self.tiles:
+                tile.refresh()
+
+    def refresh(self):
+        for row in self.rows:
+            row.refresh()
+        self.refresh_tiles()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self.refresh()

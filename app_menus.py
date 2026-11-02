@@ -1,4 +1,4 @@
-"""Hauptfenster: Werkzeugleiste, Menü Einstellungen, Design, Einstellungsdialoge, Speicherort.
+"""Hauptfenster: Werkzeugleiste, Menüs Ansicht und Einstellungen, Design, Einstellungsdialoge, Speicherort.
 
 Teil von TimelineApp (main_timeline.py), nur über main_timeline laden.
 """
@@ -8,8 +8,8 @@ import sys
 from PySide6.QtCore import QPoint, QProcess, QSize, Qt, QTimer, QUrl
 from PySide6.QtGui import (QAction, QActionGroup, QColor, QDesktopServices, QIcon, QKeySequence,
                            QPalette)
-from PySide6.QtWidgets import (QApplication, QDateEdit, QDialog, QFileDialog, QMenu, QMessageBox,
-                               QToolBar, QToolButton, QHBoxLayout, QSizePolicy, QWidget)
+from PySide6.QtWidgets import (QApplication, QDateEdit, QDialog, QFileDialog, QLabel, QMenu, QMessageBox,
+                               QToolBar, QToolButton, QHBoxLayout, QSizePolicy, QWidget, QWidgetAction)
 
 import datastore
 import icons
@@ -18,7 +18,8 @@ from log_parsers import VpnParser
 from vpn_reader import vpn_sources
 from settings_dialogs import ActivityTypeSettingsDialog, ConnectionSettingsDialog, WorkHoursDialog
 from theme import GERMAN, STYLESHEET, THEMES
-from timeline_only import TIMELINE_ROWS
+from timeline_only import DEFAULT_CALL_COLORS, LEGEND_BANDS, LEGEND_FIXED, TIMELINE_ROWS
+from view_help import VIEW_HELP, ViewHelpDialog, help_text
 from version import build_details, full_version
 import main_timeline as mt  # Pfade und save_config zur Laufzeit von dort (Tests ersetzen sie dort)
 
@@ -81,7 +82,9 @@ class MenusMixin:
         self.date_edit.dateChanged.connect(self.date_changed)
         days.addWidget(self.date_edit)
         days.addAction(next_day)
-        days.addAction(self._action("Heute", self.show_today, "Ctrl+T", "Heute zeigen", "today"))
+        today = self._action("Heute", self.show_today, "Ctrl+T", "Heute zeigen", "today")
+        days.addAction(today)
+        self._today_button = days.widgetForAction(today)
         days.addSeparator()
         days.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Preferred)
         row.addWidget(days, 0)
@@ -98,26 +101,7 @@ class MenusMixin:
                                            "refresh")
         tb.addAction(self.refresh_action)
         tb.addSeparator()
-        # Tagesliste: Ansicht (Auge), PC-Verlauf, KI-Vorschläge (Stern)
-        self.view_button = QToolButton(tb)
-        self.view_button.setAccessibleName("Ansicht der Tagesliste")
-        self.view_button.setPopupMode(QToolButton.InstantPopup)
-        view_menu = QMenu(self.view_button)
-        group = QActionGroup(view_menu)
-        self.view_actions = {}
-        for key, text in self.VIEWS:
-            if key == "doc":  # Trennlinie: Einträge aus den Logs | eingeordnete Tätigkeiten
-                view_menu.addSeparator()
-            action = view_menu.addAction(text)
-            action.setCheckable(True)
-            action.setActionGroup(group)
-            action.triggered.connect(lambda _c=False, k=key: self.change_view(k))
-            self.view_actions[key] = action
-        self.view_button.setMenu(view_menu)
-        tb.addWidget(self.view_button)
-        self._view_icon = True
-        self.update_view_button()
-
+        # PC-Verlauf, KI-Vorschläge (Stern), Nachtragen, Wochenabschluss
         self.pc_list_action = QAction("PC-Verlauf", self)
         self.pc_list_action.setCheckable(True)
         self.pc_list_action.setChecked(self.config.get("show_pc_in_list", False))
@@ -140,16 +124,19 @@ class MenusMixin:
         tb.addAction(self.week_action)
         tb.addSeparator()
         # Ausschnitt der Timeline
-        tb.addAction(self._action("Verkleinern", self.zoom_out, "Ctrl+-", "Timeline verkleinern",
-                                  "zoom_out"))
-        tb.addAction(self._action("Vergrößern", self.zoom_in, ["Ctrl++", "Ctrl+="],
-                                  "Timeline vergrößern", "zoom_in"))
+        self.zoom_out_action = self._action("Verkleinern", self.zoom_out, "Ctrl+-", "Timeline verkleinern",
+                                            "zoom_out")
+        self.zoom_in_action = self._action("Vergrößern", self.zoom_in, ["Ctrl++", "Ctrl+="],
+                                           "Timeline vergrößern", "zoom_in")
+        tb.addAction(self.zoom_out_action)
+        tb.addAction(self.zoom_in_action)
         whole_day = self._action("Ganzer Tag", self.timeline_whole_day, "Ctrl+0",
                                  "Ganzen Tag zeigen (oder Doppelklick in die Timeline)", "whole_day")
         work_time = self._action("Arbeitszeit", self.timeline_work_time, "Ctrl+9",
                                  "Arbeitszeit des Tages zeigen", "work_time")
         tb.addAction(whole_day)
         tb.addAction(work_time)
+        self.whole_day_action, self.work_time_action = whole_day, work_time
         # Mit Text, solange Platz ist; im schmalen Fenster nur das Symbol
         self._adaptive_buttons = [tb.widgetForAction(whole_day), tb.widgetForAction(work_time)]
 
@@ -157,6 +144,8 @@ class MenusMixin:
         right = QToolBar("Einstellungen", header)
         right.setObjectName("fixed")
         right.setIconSize(QSize(18, 18))
+        right.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        right.addWidget(self._build_view_button())
         right.addWidget(self._build_settings_button())
         right.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Preferred)
         row.addWidget(right, 0)
@@ -185,6 +174,11 @@ class MenusMixin:
         if tb.sizeHint().width() > tb.width():
             for button in self._adaptive_buttons:
                 button.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        # Heute, Ansicht und Einstellungen mit Text, solange das Fenster breit genug ist
+        wide = self.width() >= 980
+        for button in (getattr(self, "_today_button", None), self.view_button, self.menu_button):
+            if button is not None:
+                button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon if wide else Qt.ToolButtonIconOnly)
         self.place_busy_bar()
 
     def place_busy_bar(self):
@@ -217,23 +211,142 @@ class MenusMixin:
         QTimer.singleShot(0, self.fit_toolbar)  # erst wenn die Leiste ihre neue Breite hat
 
     def update_view_button(self):
-        """Hinweis am Auge: aktuelle Ansicht und was die Ansichten zeigen."""
+        """Haken an der aktuellen Ansicht und Hinweis am Knopf „Ansicht“."""
         key = self.config.get("list_view", "grouped")
         if key not in self.view_actions:
             key = "grouped"
         self.view_actions[key].setChecked(True)
         current = dict(self.VIEWS)[key]
-        self.view_button.setToolTip(
-            f"Ansicht der Tagesliste: {current}\n\n"
-            "Zusammengefasst: Verbindungen und Passwort-/OTP-Anzeigen je Eintrag eine Zeile\n"
-            "Einzeln: jede Zeile aus den Logs\n"
-            "Arbeitsblöcke: alles mit kurzer Pause dazwischen als ein Block, z. B. fürs Ticket\n"
-            "Dokumentation: deine eingetragenen Tätigkeiten und was noch offen ist\n"
-            "Zuordnung ohne KI: Tätigkeiten, die Zeitzeuge über feste Regeln erkannt hat\n"
-            "  (z. B. Outlook → E-Mail, TeamViewer → Fernwartung)\n"
-            "KI-Vorschläge: Tätigkeiten, die Claude aus dem Tag erkannt hat\n"
-            "Matrix42-Abgleich: Buchungen, Personalzeit ohne Buchung, Verbindungen ohne Buchung")
-        self.view_button.setAccessibleDescription(f"Aktuell: {current}")
+        self.view_button.setToolTip(f"Ansicht: Tagesliste ({current}), Zeilen der Timeline, "
+                                    "Zeitraum, Übersichten und Design (Alt+A)")
+        self.view_button.setAccessibleDescription(f"Tagesliste aktuell: {current}")
+        theme = THEMES["dark" if self.dark_mode else "light"]
+        for k, action in self.view_actions.items():  # Hilfe mit den aktuellen Pausen
+            action.setToolTip(help_text(k, self.config))
+            action.setStatusTip(help_text(k, self.config))
+            # Symbol statt Haken: die aktuelle Ansicht in Akzentfarbe und fett
+            action.setIcon(icons.icon(VIEW_HELP[k][0], theme["accent" if k == key else "text"]))
+            font = action.font()
+            font.setBold(k == key)
+            action.setFont(font)
+
+    def show_view_help(self):
+        """Erklärung der Ansichten der Tagesliste mit Beispielen."""
+        theme = THEMES["dark" if self.dark_mode else "light"]
+        ViewHelpDialog(self.VIEWS, self.config, theme["text"],
+                       self.config.get("list_view", "grouped"), self).exec()
+
+    def _menu_header(self, menu, text):
+        """Überschrift eines Abschnitts im Menü (klein, grau, nicht anklickbar)."""
+        if menu.actions():
+            menu.addSeparator()
+        label = QLabel(text.upper())
+        label.setObjectName("menu_header")
+        action = QWidgetAction(menu)
+        action.setDefaultWidget(label)
+        action.setEnabled(False)
+        menu.addAction(action)
+        return action
+
+    # Ansichten im Menü mit Alt-Buchstaben (VIEWS bleibt ohne, für Hinweise und Hilfe)
+    VIEW_MNEMONICS = {"grouped": "Zus&ammengefasst", "single": "E&inzeln", "blocks": "Arbeits&blöcke",
+                      "doc": "Dok&umentation", "rules": "Zuordnung o&hne KI", "ai": "K&I-Vorschläge",
+                      "m42": "Matri&x42-Abgleich"}
+
+    def _add_check(self, menu, action, color, text=None):
+        """Schalter im Menü mit sichtbarem Kästchen: eigener Eintrag, der action umschaltet.
+        Das Kästchen hat die Farbe color (z. B. Farbe der Zeile) und folgt action."""
+        proxy = menu.addAction(text or action.text())
+        proxy.setToolTip(action.toolTip() if action.toolTip() != action.text() else "")
+        proxy.triggered.connect(action.toggle)
+        proxy.setData(color)
+        action.toggled.connect(lambda on, p=proxy: p.setIcon(icons.check_box(p.data(), on)))
+        proxy.setIcon(icons.check_box(color, action.isChecked()))
+        self._check_proxies[action] = proxy
+        return proxy
+
+    def _build_view_button(self):
+        """Knopf „Ansicht“: alles, was nur die Anzeige ändert, nichts an den Daten."""
+        menu = QMenu(self)
+        menu.setObjectName("view_menu")
+        menu.setToolTipsVisible(True)  # Hilfe zu den Ansichten beim Darüberfahren
+        self._check_proxies = {}
+        accent = THEMES["dark" if self.dark_mode else "light"]["accent"]
+        self._menu_header(menu, "Tagesliste")
+        group = QActionGroup(menu)
+        self.view_actions = {}
+        for key, text in self.VIEWS:
+            if key == "doc":  # Trennlinie: Einträge aus den Logs | eingeordnete Tätigkeiten
+                menu.addSeparator()
+            action = menu.addAction(self.VIEW_MNEMONICS.get(key, text))
+            action.setCheckable(True)
+            action.setActionGroup(group)
+            action.triggered.connect(lambda _c=False, k=key: self.change_view(k))
+            self.view_actions[key] = action
+        menu.addSeparator()
+        self._add_check(menu, self.pc_list_action, accent, "PC-&Verlauf in der Liste")
+        help_action = menu.addAction("&Was zeigen die Ansichten? …", self.show_view_help)
+        help_action.setShortcut(QKeySequence("F1"))
+        help_action.setToolTip("Zusammengefasst, Einzeln, Arbeitsblöcke … mit Beispielen erklärt")
+        self.addAction(help_action)
+        self._icon_actions.append((help_action, "help"))
+
+        self._menu_header(menu, "Zeilen der Timeline")
+        self.row_actions = {}
+        for key, text in TIMELINE_ROWS:
+            if key in ("doc", "call"):  # Gruppen: Zeit | Auswertung | Verbindungen
+                menu.addSeparator()
+            action = QAction(text, self)
+            action.setCheckable(True)
+            action.setChecked(self.config.get("timeline_rows", {}).get(key, True))
+            action.toggled.connect(lambda on, k=key: self.toggle_row(k, on))
+            self.row_actions[key] = action
+            self._add_check(menu, action, "#4682B4")
+        menu.addSeparator()
+        self._icon_actions.append((menu.addAction("A&lle Zeilen einblenden", self.show_all_rows), "rows"))
+        self.update_row_icons()
+
+        # Eigene Einträge (mit Alt-Buchstaben), Kürzel nur angezeigt: es gilt das der Werkzeugleiste
+        self._menu_header(menu, "Zeitraum")
+        self._icon_actions += [
+            (menu.addAction("&Ganzer Tag\tStrg+0", self.timeline_whole_day), "whole_day"),
+            (menu.addAction("A&rbeitszeit\tStrg+9", self.timeline_work_time), "work_time"),
+        ]
+
+        self._menu_header(menu, "Übersichten")
+        self._icon_actions.append((menu.addAction("Wochen&abschluss …", self.show_week), "gauge"))
+        self._icon_actions.append((menu.addAction("&Offene Tätigkeiten …", self.show_open_docs), "alert"))
+
+        self._menu_header(menu, "Design")
+        self.dark_action = QAction("&Dunkles Design", self)
+        self.dark_action.setCheckable(True)
+        self.dark_action.setChecked(self.dark_mode)
+        self.dark_action.toggled.connect(self.toggle_dark_mode)
+        self._add_check(menu, self.dark_action, accent)
+
+        self.view_button = QToolButton(self)
+        self.view_button.setText("&Ansicht")
+        self.view_button.setAccessibleName("Ansicht")
+        self.view_button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self.view_button.setMenu(menu)
+        self.view_button.setPopupMode(QToolButton.InstantPopup)
+        self.update_view_button()
+        return self.view_button
+
+    def update_row_icons(self):
+        """Kästchen je Zeile der Timeline, in der Farbe ihrer Einträge."""
+        colors = self.config.get("type_colors", {})
+        call = {**DEFAULT_CALL_COLORS, **self.config.get("call_colors", {})}["Eingehend"]
+        fixed = {"pc": "#2F7BFF", "call": call, "other": colors.get("RDP-Sitzung", "#D99A00")}
+        for key, action in self.row_actions.items():
+            color = fixed.get(key)
+            if color is None:
+                legend = LEGEND_BANDS.get(key) or LEGEND_FIXED.get(key)
+                color = colors.get(legend[1], "#4682B4") if legend else "#4682B4"
+            proxy = self._check_proxies.get(action)
+            if proxy is not None:
+                proxy.setData(color)
+                proxy.setIcon(icons.check_box(color, action.isChecked()))
 
     def update_pc_list_tip(self):
         on = self.pc_list_action.isChecked()
@@ -241,80 +354,67 @@ class MenusMixin:
             "PC-Verlauf: aktive Fenster in der Tagesliste " + ("zeigen (an)" if on else "zeigen (aus)"))
 
     def _build_settings_button(self):
-        """Knopf "Einstellungen" mit dem Menü. Steht links in der Werkzeugleiste, damit er
-        auch im schmalen Fenster nie im Überlauf (») verschwindet."""
-        # Menü nach Aufgaben: Ansicht | Aufzeichnung | Einstellen | Info.
-        # Seltenes (Datenquellen, Speicherort) steckt in Untermenüs.
+        """Knopf „Einstellungen“: Klick öffnet das Einstellungsfenster (settings_window.py),
+        der Pfeil daneben zeigt Schnellzugriffe. Steht rechts außerhalb des Überlaufs (»)."""
         menu = QMenu(self)
-        self.dark_action = menu.addAction("&Dunkles Design")
-        self.dark_action.setCheckable(True)
-        self.dark_action.setChecked(self.dark_mode)
-        self.dark_action.toggled.connect(self.toggle_dark_mode)
+        menu.setToolTipsVisible(True)
+        self._icon_actions.append(
+            (menu.addAction("&Alle Einstellungen …", self.show_settings), "settings"))
         menu.addSeparator()
         self.tracking_action = menu.addAction("Aktive &Fenster aufzeichnen")
         self.tracking_action.setCheckable(True)
         self.tracking_action.setChecked(self.config.get("tracking_enabled", True))
         self.tracking_action.toggled.connect(self.toggle_tracking)
-        self._icon_actions += [
-            (menu.addAction("Fenster-F&ilter …", self.edit_tracking_filters), "filter"),
-            (menu.addAction("&Zuordnung ohne KI (Regeln) …", self.edit_rules), "rules"),
-        ]
-        menu.addSeparator()
-        self._icon_actions += [
-            (menu.addAction("&Arbeitszeiten …", self.edit_work_hours), "clock"),
-            (menu.addAction("Aktivitäts&typen und Farben …", self.edit_activity_types), "palette"),
-            (menu.addAction("&KI-Vorschläge …", self.edit_ai_settings), "spark"),
-            (menu.addAction("Abre&chnung …", self.edit_billing), "tag"),
-            (menu.addAction("Kunden&liste …", self.edit_customers), "users"),
-        ]
-        menu.addSeparator()
-        self._icon_actions.append(
-            (menu.addAction("&Nachfragen und Erinnerungen …", self.edit_prompt_settings), "bell"))
-        self._icon_actions.append((menu.addAction("Text&bausteine …", self.edit_snippets), "edit"))
-        rows_menu = menu.addMenu("&Zeilen der Timeline")
-        self.row_actions = {}
-        for key, text in TIMELINE_ROWS:
-            if key in ("doc", "call"):  # Gruppen: Zeit | Auswertung | Verbindungen
-                rows_menu.addSeparator()
-            action = rows_menu.addAction(text)
-            action.setCheckable(True)
-            action.setChecked(self.config.get("timeline_rows", {}).get(key, True))
-            action.toggled.connect(lambda on, k=key: self.toggle_row(k, on))
-            self.row_actions[key] = action
-        rows_menu.addSeparator()
-        rows_menu.addAction("&Alle einblenden", self.show_all_rows)
-        self._icon_actions.append((rows_menu.menuAction(), "rows"))
-        menu.addSeparator()
+        self._icon_actions.append((self.tracking_action, "monitor"))
         self.sources_menu = self._build_sources_menu(menu)
-        storage_menu = menu.addMenu("Daten&speicher")
-        self.open_folder_action = storage_menu.addAction(
-            "&Datenordner öffnen", lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(mt.DATA_DIR)))
-        storage_menu.addAction("&Speicherort ändern …", self.change_data_dir)
-        self._icon_actions.append((storage_menu.addAction("Sc&hutz …", self.show_protection), "lock"))
-        storage_menu.addAction("PC-&Verlauf automatisch löschen …", lambda: self.retention.edit())
-        storage_menu.addSeparator()  # zwei PCs, z. B. Arbeits-PC und PAW
-        storage_menu.addAction("Daten &exportieren (für einen anderen PC) …", self.export_data)
-        storage_menu.addAction("Daten &übernehmen (von einem anderen PC) …", self.import_data)
-        self.paw_action = storage_menu.addAction("Dieser PC ist eine &PAW (nur RDM sammeln)")
+        menu.addSeparator()
+        self._icon_actions += [
+            (menu.addAction("&Nachfragen und Erinnerungen …", self.edit_prompt_settings), "bell"),
+            (menu.addAction("Kunden&liste …", self.edit_customers), "users"),
+            (menu.addAction("Text&bausteine …", self.edit_snippets), "edit"),
+        ]
+        # Datenspeicher: im Einstellungsfenster unter „Daten & Schutz“. Die Aktionen gibt es
+        # trotzdem, der Infobereich nutzt „Datenordner öffnen“ und den PAW-Schalter.
+        self.open_folder_action = QAction("&Datenordner öffnen", self)
+        self.open_folder_action.triggered.connect(
+            lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(mt.DATA_DIR)))
+        self.paw_action = QAction("Dieser PC ist eine &PAW (nur RDM sammeln)", self)
         self.paw_action.setCheckable(True)
         self.paw_action.setChecked(self.config.get("pc_role") == "paw")
         self.paw_action.toggled.connect(self.toggle_paw)
         self._icon_actions += [(self.sources_menu.menuAction(), "plug"),
-                               (storage_menu.menuAction(), "folder"),
                                (self.open_folder_action, "folder")]
         menu.addSeparator()
         self._icon_actions += [
             (menu.addAction("Ü&ber Zeitzeuge", self.show_about), "info"),
             (menu.addAction("Zeitzeuge be&enden", self.request_quit), "power"),
         ]
+        settings_shortcut = QAction(self)
+        settings_shortcut.setShortcut(QKeySequence("Ctrl+,"))
+        settings_shortcut.triggered.connect(self.show_settings)
+        self.addAction(settings_shortcut)
         self.menu_button = QToolButton(self)
         self.menu_button.setText("&Einstellungen")
-        self.menu_button.setToolTip("Einstellungen, Datenquellen und mehr (Alt+E)")
+        self.menu_button.setToolTip("Einstellungen öffnen (Strg+,) · Pfeil: Schnellzugriffe")
         self.menu_button.setAccessibleName("Einstellungen")
-        self.menu_button.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        self.menu_button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
         self.menu_button.setMenu(menu)
-        self.menu_button.setPopupMode(QToolButton.InstantPopup)
+        self.menu_button.setPopupMode(QToolButton.MenuButtonPopup)
+        self.menu_button.clicked.connect(lambda: self.show_settings())
         return self.menu_button
+
+    def show_settings(self, page=None):
+        """Einstellungsfenster zeigen (bleibt offen), optional auf einem Bereich."""
+        from settings_window import SettingsWindow
+        window = getattr(self, "_settings_window", None)
+        if window is None:
+            window = self._settings_window = SettingsWindow(self)
+        if page:
+            window.show_page(page)
+        window.show()
+        window.raise_()
+        window.activateWindow()
+        return window
 
     # Datenquellen: Schlüssel in der Config, Text im Menü (Gruppen mit Trennlinie)
     SOURCES = [
@@ -325,6 +425,11 @@ class MenusMixin:
          ("m42_reader_enabled", "&Matrix42-Buchungen (Firmennetz)"),
          ("outlook_enabled", "&Outlook (Termine, Mails)"), ("teams_calls_enabled", "Tea&ms-Anrufe")],
     ]
+
+    SOURCE_BRANDS = {"teamviewer_enabled": "teamviewer", "rdm_enabled": "rdm", "sophos_enabled": "sophos",
+                     "forti_enabled": "forti", "vpn_enabled": "vpn", "pbx_reader_enabled": "pbx",
+                     "itm_reader_enabled": "itm", "m42_reader_enabled": "m42", "outlook_enabled": "outlook",
+                     "teams_calls_enabled": "teams"}
 
     def _build_sources_menu(self, parent_menu):
         """Jede Datenquelle als Schalter, die Einrichtung (Pfade, Anmeldung) im Untermenü."""
@@ -342,18 +447,27 @@ class MenusMixin:
                                                                           "outlook_enabled",
                                                                           "teams_calls_enabled"))))
                 action.toggled.connect(lambda on, k=key: self.toggle_source(k, on))
+                action.setIcon(icons.brand_icon(self.SOURCE_BRANDS[key]))
                 self.source_actions[key] = action
         menu.addSeparator()
         setup = menu.addMenu("&Einrichten")
-        setup.addAction("Team&Viewer-Logs …", self.edit_teamviewer_settings)
-        setup.addAction("&RDM-Logs …", self.edit_rdm_settings)
-        setup.addAction("&VPN-Logs …", self.edit_vpn_settings)
-        setup.addSeparator()  # Webseiten im Hintergrund
-        setup.addAction("&3CX …", self.open_pbx_settings)
-        setup.addAction("&ITM-Personalzeiten …", self.open_itm_settings)
-        setup.addAction("&Matrix42 …", self.open_m42_settings)
-        setup.addAction("&Outlook und Teams …", self.open_outlook_settings)
-        menu.addAction("Einrichtungs&assistent …", self.show_setup_wizard)
+        for entry in (("Team&Viewer-Logs …", self.edit_teamviewer_settings, "teamviewer"),
+                                  ("&RDM-Logs …", self.edit_rdm_settings, "rdm"),
+                                  ("&VPN-Logs …", self.edit_vpn_settings, "vpn"), None,
+                                  ("&3CX …", self.open_pbx_settings, "pbx"),
+                                  ("&ITM-Personalzeiten …", self.open_itm_settings, "itm"),
+                                  ("&Matrix42 …", self.open_m42_settings, "m42"),
+                                  ("&Outlook und Teams …", self.open_outlook_settings, "outlook")):
+            if entry is None:
+                setup.addSeparator()  # Webseiten im Hintergrund
+                continue
+            text, slot, brand = entry
+            setup.addAction(icons.brand_icon(brand), text, slot)
+        self._icon_actions += [
+            (setup.menuAction(), "settings"),
+            (menu.addAction("Einrichtungs&assistent …", self.show_setup_wizard), "spark"),
+            (menu.addAction("Alle Datenquellen im &Überblick …", lambda: self.show_settings("sources")), "plug"),
+        ]
         return menu
 
     def show_setup_wizard(self):
@@ -472,8 +586,22 @@ class MenusMixin:
         for action, name in self._icon_actions:
             in_menu = any(isinstance(o, QMenu) for o in action.associatedObjects())
             action.setIcon(icons.icon(name, theme["text" if in_menu else "bandtext"]))
-        self.menu_button.setIcon(icons.icon("menu", theme["bandtext"]))
+        self.update_view_button()
+        for action in (self.pc_list_action, self.dark_action):
+            proxy = self._check_proxies.get(action)
+            if proxy is not None:
+                proxy.setData(theme["accent"])
+                proxy.setIcon(icons.check_box(theme["accent"], action.isChecked()))
+        self.menu_button.setIcon(icons.icon("settings", theme["bandtext"]))
         self.view_button.setIcon(icons.icon("eye", theme["bandtext"]))
+        old_window = getattr(self, "_settings_window", None)
+        if old_window is not None:  # Symbole in neuer Farbe: Fenster neu aufbauen
+            page = old_window.current_page() if old_window.isVisible() else None
+            old_window.hide()
+            old_window.deleteLater()
+            self._settings_window = None
+            if page:
+                QTimer.singleShot(0, lambda: self.show_settings(page))
         self.busy_bar.set_color(theme["accent"])
         self.update_tracking_state()
         self.timeline.set_dark_mode(self.dark_mode)
@@ -540,6 +668,7 @@ class MenusMixin:
         if dialog.exec() == QDialog.Accepted:
             self.config["activity_types"] = dialog.get_types()
             mt.save_config(self.config)
+            self.update_row_icons()  # Farbpunkte im Menü Ansicht
             self.timeline.draw_timeline(self.current_date)
 
     # ---------------------- Speicherort ----------------------------------------

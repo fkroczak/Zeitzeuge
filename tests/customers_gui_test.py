@@ -48,9 +48,12 @@ def gui_test():
         window.quit_app()
         return
 
-    # Menü „Einstellungen“ hat den Eintrag „Kundenliste …“
+    # Schnellzugriff am Knopf „Einstellungen“ und Einstellungsfenster haben die Kundenliste
     texts = [a.text() for a in window.menu_button.menu().actions()]
     assert "Kunden&liste …" in texts, texts
+    settings = window.show_settings("customers")
+    assert any(r.spec[5] == "edit_customers" for r in settings.rows)
+    settings.hide()
 
     # RDM-Verbindung ohne Kunde: Rechtsklick bietet „Kunde zuordnen …“
     rdm = {"start": t(now - timedelta(minutes=40)), "end": t(now - timedelta(minutes=20)),
