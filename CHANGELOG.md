@@ -2,21 +2,20 @@
 
 Alle sichtbaren Änderungen an Zeitzeuge, die neueste Version oben.
 
-Versionsnummern nach [Semantic Versioning](https://semver.org/lang/de/): **MAJOR.MINOR.PATCH**
-- **MAJOR**: Daten lassen sich mit einer älteren Version nicht mehr lesen (z. B. neues
-  Speicherformat), oder die Bedienung ändert sich grundlegend.
-- **MINOR**: neue Funktionen, alles Bisherige geht weiter.
-- **PATCH**: nur Fehlerbehebungen.
+Versionsnummer **MAJOR.MINOR.PATCH**, z. B. 4.1.3. Sie zählt von selbst (siehe `version.py`):
+- **PATCH**: +1 für jeden PR, der in main gemergt wird.
+- **MINOR**: +1 mit dem ersten Merge in einem neuen Monat (oder `[minor]` im PR-Titel);
+  PATCH beginnt dann bei 0.
+- **MAJOR**: nur mit `[major]` im PR-Titel, z. B. wenn ältere Versionen die Daten nicht mehr
+  lesen können.
 
-Die Nummer steht nur in `version.py`. Eine neue Version: Nummer dort erhöhen, Abschnitt
-hier unter „Unveröffentlicht“ umbenennen, dann Tag `v…` setzen (siehe README, „EXE bauen“).
+Testversionen aus Branches tragen die Version ihres main-Stands plus Buildnummer
+(„4.1.3 · Test 186“). Ein Abschnitt hier gehört zu einer MINOR-Stufe.
 
-## Unveröffentlicht
+## 4.1 – November 2026
 
-## 5.0.0 – 2026-11-02
-
-**Achtung:** Die Daten liegen jetzt verschlüsselt in einer Datenbank. Ältere Versionen (4.x)
-können sie nicht mehr lesen.
+**Achtung:** Die Daten liegen jetzt verschlüsselt in einer Datenbank. Versionen vor dem
+26.10.2026 können sie nicht mehr lesen.
 
 ### Neu
 - Daten verschlüsselt in einer Datenbank statt vieler Dateien, PIN beim Start (schützt auch vor Domänen-Admins).
@@ -32,7 +31,7 @@ können sie nicht mehr lesen.
 - ITM: Anmeldung ohne Edge, eigene Buchungen aus dem alten Backend, fehlerhafte Buchungen werden gemeldet.
 - Nachfragen ab 1 Minute, Schwelle je Art einstellbar.
 - Ladeanzeige: drehender Kreis mit Text neben „Arbeitszeit“ und Streifen über die ganze Breite; Timeline springt beim Laden nicht mehr.
-- Versionsnummer mit Buildnummer, Commit und Datum im Fenstertitel, unter **Info** und in fehler.log.
+- Versionsnummer zählt von selbst (4.1.0, 4.1.1, …); steht im Fenstertitel, unter **Info**, in fehler.log, in der EXE und im Namen der Downloads.
 
 ### Behoben
 - Absturz beim Start, wenn „3CX direkt auslesen“ eingeschaltet ist.
