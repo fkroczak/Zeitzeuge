@@ -5,7 +5,7 @@ Teil von TimelineApp (main_timeline.py), nur über main_timeline laden.
 import os
 import sys
 
-from PySide6.QtCore import QProcess, QSize, Qt, QTimer, QUrl
+from PySide6.QtCore import QPoint, QProcess, QSize, Qt, QTimer, QUrl
 from PySide6.QtGui import (QAction, QActionGroup, QColor, QDesktopServices, QIcon, QKeySequence,
                            QPalette)
 from PySide6.QtWidgets import (QApplication, QDateEdit, QDialog, QFileDialog, QMenu, QMessageBox,
@@ -62,6 +62,7 @@ class MenusMixin:
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(4)
         outer.addWidget(header)
+        self._band_row = header
 
         # ---- links: Tag wählen (immer sichtbar)
         days = QToolBar("Tag", header)
@@ -184,6 +185,29 @@ class MenusMixin:
         if tb.sizeHint().width() > tb.width():
             for button in self._adaptive_buttons:
                 button.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        self.place_busy_bar()
+
+    def place_busy_bar(self):
+        """Ladeanzeige in den freien Platz zwischen Werkzeugen und Menü legen.
+
+        Sie schwebt über der Leiste, statt im Layout Platz zu belegen: Ein- und
+        Ausblenden verschiebt so weder Knöpfe noch die Timeline."""
+        bar, tb = getattr(self, "busy_bar", None), getattr(self, "tools_bar", None)
+        if bar is None or tb is None:
+            return
+        header = self._band_row
+        tools_right = 0
+        for action in tb.actions():
+            widget = tb.widgetForAction(action)
+            if widget is not None and widget.isVisible():
+                tools_right = max(tools_right, widget.geometry().right())
+        ext = tb.findChild(QToolButton, "qt_toolbar_ext_button")
+        if ext is not None and ext.isVisible():
+            tools_right = max(tools_right, ext.geometry().right())
+        left = tb.mapTo(header, QPoint(tools_right, 0)).x() + 16
+        right = tb.geometry().right() - 4
+        height = min(header.height(), 30)
+        bar.setGeometry(left, (header.height() - height) // 2, max(right - left, 0), height)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
