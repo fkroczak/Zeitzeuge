@@ -329,6 +329,21 @@ class M42Reader(BrowserReader):
         if not self.needs_login:
             self._wake.set()
 
+    def refresh(self, date_str):
+        """Woche mit diesem Tag sofort neu lesen (Aktualisieren, F5), auch wenn sie in dieser
+        Sitzung schon gelesen ist."""
+        if date_str > date.today().isoformat():
+            return
+        monday = week_start(date_str)
+        self._checked.discard(monday)
+        if monday == week_start(date.today().isoformat()):
+            self._week_read = 0  # aktuelle Woche: beim nächsten Durchlauf gleich lesen
+        else:
+            with self._lock:
+                self._wanted.add(monday)
+        if not self.needs_login:
+            self._wake.set()
+
     def _todo(self):
         this_week = week_start(date.today().isoformat())
         with self._lock:

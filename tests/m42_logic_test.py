@@ -114,3 +114,23 @@ def test_woche_aus_der_schnittstelle():
     assert sorted(week) == [f"2026-10-{d:02d}" for d in range(5, 12)]  # alle 7 Tage, auch leere
     assert [b["start"][11:16] for b in week["2026-10-06"]] == ["08:00", "14:00"]
     assert week["2026-10-05"] == [] and "2026-10-13" not in week
+
+
+def test_aktualisieren_liest_woche_neu(tmp_path):
+    """F5: schon gelesene Woche (aktuelle und ältere) sofort noch einmal lesen."""
+    import time
+    from datetime import date, timedelta
+
+    from m42_reader import M42Reader
+
+    reader = M42Reader("http://m42.invalid/kalender", str(tmp_path / "m42_buchungen.json"),
+                       str(tmp_path / "profil"), weeks_back=0)
+    this_week = m.week_start(date.today().isoformat())
+    old = m.week_start((date.today() - timedelta(weeks=3)).isoformat())
+    reader._checked.update({this_week, old})
+    reader._week_read = time.time()
+    assert reader._todo() == []  # alles gelesen: nichts zu tun
+    reader.refresh(date.today().isoformat())
+    reader.refresh(old)
+    assert reader._todo() == [this_week, old]
+    assert reader._wake.is_set()

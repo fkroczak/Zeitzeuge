@@ -285,7 +285,12 @@ class DayListMixin:
 
     def refresh(self):
         self.timeline.refresh()
-        self.statusBar().showMessage("Logs werden neu eingelesen …", 2000)
+        reader = getattr(self, "m42_reader", None)
+        if reader is not None and hasattr(reader, "refresh"):  # Matrix42 gleich mit (sonst alle 10 min)
+            reader.refresh(self.current_date.toString("yyyy-MM-dd"))
+            self.statusBar().showMessage("Logs und Matrix42 werden neu eingelesen …", 3000)
+        else:
+            self.statusBar().showMessage("Logs werden neu eingelesen …", 2000)
 
     def auto_refresh(self):
         try:
