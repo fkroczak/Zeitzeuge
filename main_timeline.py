@@ -378,7 +378,13 @@ class TimelineApp(MenusMixin, DayListMixin, DocsMixin, ReadersMixin, TrayMixin, 
             print(f"Nach {DATA_DIR} verschoben: {', '.join(moved)}")
         os.makedirs(DATA_DIR, exist_ok=True)
         self.data_store = open_store()  # im Start (unten) schon mit Dialog geöffnet, in Tests hier
+        first_start = not os.path.exists(CONFIG_FILE)
         self.config = load_config_with_defaults()
+        # Einrichtungsassistent nur beim allerersten Start (bestehende Installationen nicht)
+        self._wizard_open = False
+        self._wizard_pending = (first_start and not self.config.get("setup_done")
+                                and not os.environ.get("ZEITZEUGE_DATA")
+                                and self.config.get("pc_role") != "paw")
         self.dark_mode = self.config.get("dark_mode", False)
         self.current_date = QDate.currentDate()
         self.activities = []
@@ -575,6 +581,14 @@ class TimelineApp(MenusMixin, DayListMixin, DocsMixin, ReadersMixin, TrayMixin, 
         self._init_robustness()
         # PC-Verlauf nach N Tagen löschen (Standard aus), beim Start verzögert und täglich
         self.retention = RetentionRunner(self, ACTIVITY_DIR, save_config)
+        if self._wizard_pending:
+            QTimer.singleShot(800, self._start_setup_wizard)
+
+    def _start_setup_wizard(self):
+        """Erster Start: Datenquellen mit dem Assistenten einrichten (danach nie mehr von selbst)."""
+        self._wizard_pending = False
+        if not self._quitting:
+            self.show_setup_wizard()
 
 
 _last_error_report = [0.0]

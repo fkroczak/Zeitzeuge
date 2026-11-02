@@ -184,6 +184,16 @@ Die Werkzeugleiste ist so aufgeteilt:
 
 Fährst du über einen Knopf, erklärt ein Hinweis, was er tut. Im schmalen Fenster zeigen „Ganzer Tag“ und „Arbeitszeit“ nur noch ihr Symbol, danach rutschen Werkzeuge in den Überlauf (»). Tag und Einstellungen bleiben immer sichtbar.
 
+### Einrichtungsassistent
+
+Beim allerersten Start öffnet sich der Assistent **Zeitzeuge einrichten**. Er geht alle Datenquellen mit dir durch:
+
+1. **Auswahl:** Eine Liste aller Quellen (TeamViewer, RDM, Sophos Connect, FortiClient, weitere VPN-Logs, 3CX, ITM-Zeiterfassung, Matrix42, Outlook, Teams-Anrufe, aktive Fenster) und dazu Arbeitszeiten, KI-Vorschläge und der Wiederherstellungsschlüssel. Vorausgewählt ist, was Zeitzeuge auf dem PC gefunden hat, z. B. „TeamViewer (gefunden)“. Was du hier abwählst, schaltet Zeitzeuge aus.
+2. **Ein Schritt je gewählter Quelle:** was die Quelle liest, was auf dem PC gefunden wurde (Pfad, Browser) und ein Knopf zur Einrichtung, z. B. **3CX einrichten und anmelden …**. Das sind dieselben Dialoge wie unter **Einstellungen → Datenquellen → Einrichten**. Mit **Weiter** gilt das Häkchen „… verwenden“.
+3. **Übersicht:** welche Quelle jetzt an oder aus ist.
+
+Mit **Zurück** wählst du neu. **Abbrechen** lässt alles, was du bis dahin eingestellt hast. Danach öffnet sich der Assistent nicht mehr von selbst. Wieder aufrufen: **Einstellungen → Datenquellen → Einrichtungsassistent …**. Bestehende Installationen sehen ihn nach dem Update nicht von selbst, auf einer PAW auch nicht.
+
 ### Datenquellen ein- und ausschalten
 
 Unter **Einstellungen → Datenquellen** schaltest du jede Quelle mit einem Klick ein oder aus:
@@ -576,6 +586,7 @@ Für Tests und Hilfsskripte gibt es zwei Umgebungsvariablen: `ZEITZEUGE_DATA` se
 | `safe_io.py` | Dateien sicher lesen und schreiben, kaputte Dateien beiseitelegen, große Logs nur am Ende lesen, `fehler.log` |
 | `net.py` | Prüfen, ob ein Server erreichbar ist, und Wartezeit nach Fehlern |
 | `tests/` | Tests (pytest), laufen bei jedem Build: Start, Bedienbarkeit, Infobereich, Log-Parser, VPN-Logs, 3CX und ITM mit nachgebauten Seiten, KI-Vorschläge mit nachgebauter API, Fensterabfrage, Anrufliste. Dazu `start_bench.py` (Startzeit messen) und `screenshots.sh` (Bildschirmfotos mit Demodaten) |
+| `setup_wizard.py` | Einrichtungsassistent: beim ersten Start alle Datenquellen Schritt für Schritt |
 | `settings_dialogs.py` | Dialoge für Logpfade, Aktivitätstypen, Arbeitszeiten, KI, Fenster-Filter und Regeln |
 | `zeitzeuge_anrufe.user.js` | Liest die Anrufliste aus der 3CX-Webseite (für das Lesen über Edge) |
 | `pbx_direct.py` | 3CX direkt abfragen (Anmeldung, Protobuf) |
