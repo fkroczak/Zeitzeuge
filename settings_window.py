@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (QCheckBox, QDialog, QFrame, QGridLayout, QHBoxLay
                                QSpinBox, QStackedWidget, QVBoxLayout, QWidget)
 
 import icons
-from theme import THEMES
+from theme import THEMES, prose
 import main_timeline as mt  # Pfade und save_config zur Laufzeit von dort (Tests ersetzen sie dort)
 
 # Bereiche: Schlüssel, Name, Symbol, Satz darunter
@@ -223,12 +223,13 @@ class _Row(QFrame):
         head.setObjectName("row_title")
         text.addWidget(head)
         if show_page:
-            where = QLabel(dict((k, n) for k, n, _i, _s in PAGES)[page].upper())
+            where = QLabel(dict((k, n) for k, n, _i, _s in PAGES)[page])
             where.setObjectName("row_page")
             text.insertWidget(0, where)
         body = QLabel(desc)
         body.setObjectName("hint")
         body.setWordWrap(True)
+        prose(body)
         text.addWidget(body)
         layout.addLayout(text, 1)
         self.value = None

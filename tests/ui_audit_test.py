@@ -10,6 +10,9 @@ zuverlässig automatisch prüfen lässt:
   4. Die Tagesliste lässt sich mit der Tastatur öffnen (Enter = Details).
   5. Menüs bleiben überschaubar (Hick: höchstens 5 Einträge pro Gruppe).
   6. Die Oberfläche skaliert mit der Windows-Anzeigegröße (WCAG 1.4.4).
+  7. UI-Regeln (16 kleine UI-Design-Regeln): Rahmen und Balken mind. 3 : 1,
+     eine Schrift, nur normal und fett, keine Großbuchstaben, kein reines Schwarz,
+     linksbündig, Fließtext mit Zeilenhöhe 1,5, höchstens ein Hauptknopf je Dialog.
 
 Aufruf:  python tests/ui_audit_test.py
 Ergebnis: Liste der Befunde, Exit-Code 1 bei mindestens einem Befund.
@@ -27,8 +30,8 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QColor
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (QAbstractButton, QAbstractSpinBox, QApplication,
-                               QComboBox, QLabel, QLineEdit, QListWidget,
-                               QMenu, QTableWidget, QTextEdit, QToolBar,
+                               QComboBox, QHeaderView, QLabel, QLineEdit, QListWidget,
+                               QMenu, QPushButton, QTableWidget, QTextEdit, QToolBar,
                                QToolButton, QWidget)
 
 import settings_dialogs
@@ -147,6 +150,10 @@ if not window.timeline._ai_band:
     problem("KI", "KI-Vorschläge erscheinen nicht in der Timeline")
 QTest.qWait(200)
 
+# Eine gefüllte Hauptaktion im Hauptfenster (Statuszeile)
+if len(window.findChildren(QToolButton, "cta")) > 1:
+    problem("Hauptfenster", "mehr als ein gefüllter Hauptknopf (cta) in der Statuszeile")
+
 # 1. Namen im Hauptfenster
 check_names("Hauptfenster", window)
 for name, w in [("Timeline", window.timeline), ("Tagesliste", window.table),
@@ -166,8 +173,13 @@ for theme_name, t in main_timeline.THEMES.items():
     check_contrast(area, t["bandtext"], t["bandhover"])
     check_contrast(area, t["seltext"], t["sel"])  # markierte Zeile
     check_contrast(area, t["muted"], t["bg"])  # Hinweistexte (QLabel#hint)
+    check_contrast(area, t["accent"], t["bg"])  # umrandeter Knopf in der Statuszeile (cta_secondary)
     for lvl in ("low", "mid", "ok", "over"):  # Buchungsquote (Statuszeile, Wochenabschluss)
         check_contrast(area, t[f"rate_{lvl}_text"], t[f"rate_{lvl}"])
+    # Bedienelemente (WCAG 1.4.11): Rahmen von Feldern/Knöpfen und Scrollbalken mind. 3 : 1
+    for token in ("control", "handle"):
+        for ground in ("bg", "surface"):
+            check_contrast(f"{area}, {token}", t[token], t[ground], minimum=3.0)
 for dark in (False, True):
     window.timeline.dark_mode = dark
     window.timeline.init_timeline_colors()
@@ -178,6 +190,8 @@ for dark in (False, True):
     # Balken sind volle Kacheln (Metro): Schrift wählt readable_on, mindestens 4.5 : 1
     for type_name, color in window.config.get("type_colors", {}).items():
         check_contrast(f"{area}, Balken {type_name}", timeline_only.readable_on(color), color)
+        # Der Balken selbst hebt sich vom Grund ab (auch ohne Schrift, z. B. kurze Balken)
+        check_contrast(f"{area}, Balken {type_name} auf Grund", color, tl.background_color, minimum=3.0)
 window.timeline.dark_mode = window.dark_mode
 window.timeline.init_timeline_colors()
 
@@ -198,6 +212,36 @@ for path in ["main_timeline.py", "theme.py", "app_menus.py", "app_daylist.py", "
         for no, line in enumerate(f, 1):
             if re.search(r"color:\s*(gray|grey|#999|#aaa)\b", line, re.I):
                 problem("Kontrast", f"{path}:{no} blasser Text ({line.strip()[:60]})")
+
+# 7. UI-Regeln im Quelltext
+UI_FILES = ["main_timeline.py", "theme.py", "app_menus.py", "app_daylist.py", "app_docs.py",
+            "app_readers.py", "app_tray.py", "settings_dialogs.py", "settings_window.py",
+            "timeline_only.py", "app_protect.py", "protect_dialogs.py", "app_transfer.py",
+            "snippets_dialogs.py", "billing_dialogs.py", "retention_dialogs.py", "journal_dialogs.py",
+            "week_dialogs.py", "customers_dialogs.py", "outlook_dialogs.py", "app_outlook.py",
+            "m42_booking_dialogs.py", "view_help.py", "setup_wizard.py", "config_defaults.py",
+            "busy_bar.py", "booking_rate.py"]
+UI_RULES = [
+    (r"(QLabel|setText|setHorizontalHeaderLabels|addAction|setTitle)\(.*\.upper\(\)",
+     "Großbuchstaben sind schwerer zu lesen"),
+    (r"font-weight:\s*\d", "nur zwei Schnitte: normal und bold"),
+    (r"QFont\.(Weight\.)?(DemiBold|Medium|Light|ExtraLight|Thin|Black|ExtraBold)",
+     "nur zwei Schnitte: normal und fett"),
+    (r"#000000\b|#000\b|Qt\.black\b", "kein reines Schwarz, Text in $text"),
+    (r"QFont\(\s*[\"']", "Schrift über theme.ui_font, nicht fest eingetragen"),
+    (r"AlignCenter|AlignHCenter|text-align:\s*center", "Text linksbündig"),
+]
+# Bewusste Ausnahmen: kurze Überschrift zwischen den Pfeilen der Wochen-Navigation
+UI_ALLOWED = {("week_dialogs.py", "AlignCenter")}
+for path in UI_FILES:
+    with open(os.path.join(ROOT, path), encoding="utf-8") as f:
+        for no, line in enumerate(f, 1):
+            for pattern, why in UI_RULES:
+                found = re.search(pattern, line)
+                if found and (path, found.group(0)) not in UI_ALLOWED:
+                    problem("UI-Regeln", f"{path}:{no} {why} ({line.strip()[:60]})")
+if "line-height" not in open(os.path.join(ROOT, "theme.py"), encoding="utf-8").read():
+    problem("UI-Regeln", "Fließtext ohne Zeilenhöhe 1,5 (theme.prose)")
 
 # 3. Sichtbarer Fokus
 sheet = main_timeline.STYLESHEET
@@ -310,6 +354,14 @@ for area, dialog in dialogs.items():
     dialog.show()
     QTest.qWait(50)
     check_names(area, dialog)
+    # Eine klare Hauptaktion: höchstens ein hervorgehobener Knopf (Standardknopf) je Dialog
+    primary = [b.text() for b in dialog.findChildren(QPushButton) if b.isVisible() and b.isDefault()]
+    if len(primary) > 1:
+        problem(area, f"mehrere Hauptknöpfe gleichzeitig: {', '.join(primary)}")
+    # Spaltenköpfe linksbündig wie der Text darunter
+    for head in dialog.findChildren(QHeaderView):
+        if head.orientation() == Qt.Horizontal and head.isVisible() and head.defaultAlignment() & Qt.AlignHCenter:
+            problem(area, "Spaltenkopf zentriert statt linksbündig")
     dialog.close()
 
 # Arbeitszeiten: "bis" vor "von" muss als Fehler erkennbar sein

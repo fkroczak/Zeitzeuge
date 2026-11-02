@@ -5,7 +5,7 @@ from datetime import datetime
 from html import escape
 
 from PySide6.QtCore import QDate, QDateTime, Qt, QTimer, Signal
-from PySide6.QtGui import QBrush, QColor, QFont, QFontMetrics, QPainter, QPen
+from PySide6.QtGui import QBrush, QColor, QFontMetrics, QPainter, QPen
 from PySide6.QtWidgets import (QDialog, QDialogButtonBox, QFormLayout, QGraphicsRectItem,
                                QGraphicsScene, QGraphicsView, QLabel, QLineEdit, QMenu,
                                QTextEdit, QVBoxLayout)
@@ -15,7 +15,7 @@ from call_import import load_call_suggestions
 import customers
 from grouping import format_tv_id, group_entries
 from log_parsers import ConnectionIndex, RdmParser, TeamViewerParser, VpnParser
-from theme import THEMES, readable_on
+from theme import THEMES, readable_on, ui_font
 from vpn_reader import VpnReader, vpn_sources
 
 TIME_FMT = "%Y-%m-%d %H:%M:%S"
@@ -761,7 +761,7 @@ class TimelineView(QGraphicsView):
 
         # Stundenleiste
         self.scene.addRect(0, 0, width, self.AXIS_H, no_pen, QBrush(self.axis_bg))
-        hour_font = QFont("Segoe UI", 8)
+        hour_font = ui_font(8)
         step = 1 if self._ppm * 60 >= 45 else 2
         for hour in range(25):
             x = self._x(hour * 60)
@@ -805,7 +805,7 @@ class TimelineView(QGraphicsView):
         self._legend = legend
 
         # Einträge
-        label_font = QFont("Segoe UI", 8)
+        label_font = ui_font(8)
         metrics = QFontMetrics(label_font)
         for a, start, end, lane in placed:
             x1 = self._x(start.hour * 60 + start.minute + start.second / 60)
@@ -864,7 +864,7 @@ class TimelineView(QGraphicsView):
         self._hover_line = self.scene.addLine(0, 0, 0, height, QPen(self.text_color, 1, Qt.DashLine))
         self._hover_line.setZValue(90)
         self._hover_line.hide()
-        self._hover_label = self.scene.addText("", QFont("Segoe UI", 8, QFont.Weight.Bold))
+        self._hover_label = self.scene.addText("", ui_font(8, bold=True))
         self._hover_label.setDefaultTextColor(self.text_color)
         self._hover_label.setZValue(91)
         self._hover_label.hide()
@@ -1037,7 +1037,7 @@ class TimelineView(QGraphicsView):
             return
         painter.save()
         painter.resetTransform()  # ab hier Koordinaten des Fensters, nicht der Szene
-        font = QFont("Segoe UI", 8, QFont.Weight.DemiBold)
+        font = ui_font(8, bold=True)
         painter.setFont(font)
         fm = QFontMetrics(font)
         width = self.LEFT - 6

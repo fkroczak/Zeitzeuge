@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QDateEdit, QDialog, QDialog
                                QFormLayout, QHBoxLayout, QLabel, QMenu, QPlainTextEdit,
                                QPushButton, QSpinBox, QTimeEdit, QVBoxLayout, QWidget)
 
+from theme import prose
 from billing import hours_text
 import customers as customer_list
 from grouping import format_tv_id
@@ -325,6 +326,7 @@ class EntryDialog(QDialog):
         if info:
             label = QLabel(info)
             label.setWordWrap(True)
+            prose(label)
             label.setObjectName("hint")
             layout.addWidget(label)
         self.form = _EntryForm(start, end, customers, categories, customer, category, text,
@@ -524,6 +526,7 @@ class DocPromptDialog(QDialog):
                       "fragt es kurz nach: „Was hast du gemacht?“. So fehlt am Ende des Tages "
                       "nichts im Ticket.")
         info.setWordWrap(True)
+        prose(info)
         layout.addWidget(info)
 
         form = QFormLayout()

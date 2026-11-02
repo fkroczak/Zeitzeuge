@@ -15,6 +15,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (QCheckBox, QDialog, QGroupBox, QHBoxLayout, QLabel, QPushButton,
                                QScrollArea, QStackedWidget, QVBoxLayout, QWidget)
 
+from theme import prose
 import main_timeline as mt  # save_config zur Laufzeit von dort (Tests ersetzen sie dort)
 
 
@@ -218,6 +219,7 @@ class SetupWizard(QDialog):
                        "mit dir durch. Vorausgewählt ist, was auf diesem PC gefunden wurde. "
                        "Alles lässt sich später unter Einstellungen → Datenquellen ändern.")
         intro.setWordWrap(True)
+        prose(intro)
         intro.setTextFormat(Qt.RichText)
         outer.addWidget(intro)
         scroll = QScrollArea(page)
@@ -253,6 +255,7 @@ class SetupWizard(QDialog):
         col.addWidget(title)
         text = QLabel(s["text"])
         text.setWordWrap(True)
+        prose(text)
         col.addWidget(text)
         found = self.found[sid] or s.get("missing", "")
         if found:

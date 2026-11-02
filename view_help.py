@@ -7,6 +7,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (QDialog, QDialogButtonBox, QFrame, QGridLayout, QLabel,
                                QScrollArea, QVBoxLayout, QWidget)
 
+from theme import prose
 import icons
 
 # Ansicht -> (Symbol, Kurz-Erklärung, Beispielzeilen). {merge} und {block} sind die Pausen
@@ -65,6 +66,7 @@ class ViewHelpDialog(QDialog):
         intro = QLabel("Die Tagesliste unter der Timeline kann dieselben Daten unterschiedlich "
                        "zeigen. Umschalten im Menü <b>Ansicht</b>.")
         intro.setWordWrap(True)
+        prose(intro)
         layout.addWidget(intro)
 
         body = QWidget()
@@ -83,6 +85,7 @@ class ViewHelpDialog(QDialog):
             title = QLabel(f"<b>{name}</b>" + ("  · aktuell" if key == current else ""))
             text = QLabel(help_text(key, config))
             text.setWordWrap(True)
+            prose(text)
             sample = QLabel("\n".join(example))
             sample.setObjectName("example")
             sample.setTextInteractionFlags(Qt.TextSelectableByMouse)

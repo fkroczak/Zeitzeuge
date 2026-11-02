@@ -43,7 +43,7 @@ def default_config():
         "type_colors": {
             # Remote / Zugänge
             "VPN-Sitzung":           "#0F9D8A",  # Türkis
-            "RDP-Sitzung":           "#D99A00",  # Gelb
+            "RDP-Sitzung":           "#BB8400",  # Gelb
             "SSH-Sitzung":           "#E06D10",  # Orange
 
             # Admin-Oberflächen / Dienste
@@ -62,14 +62,14 @@ def default_config():
 
             # Parser-Typen aus TeamViewer/RDM
             "TeamViewer":            "#3460DB",
-            "RDP-Verbindung":        "#D99A00",
+            "RDP-Verbindung":        "#BB8400",
             "SSH":                   "#E06D10",
             "VPN":                   "#0F9D8A",
             "Website-Verbindung":    "#139FB3",
         },
 
         "suggestion_colors": {
-            "light": {"background": "#B4B4B4", "text": "#000000"},
+            "light": {"background": "#B4B4B4", "text": "#14181D"},
             "dark": {"background": "#4A4A4A", "text": "#FFFFFF"},
         },
 

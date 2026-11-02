@@ -35,6 +35,7 @@ Testversionen aus Branches tragen die Version ihres main-Stands plus Buildnummer
 - Personalzeit als eigene Zeile mit Beginn und Ende.
 - Jede Zeile der Timeline ausblendbar; „Regeln“ heißt jetzt „Zuordnung ohne KI“.
 - Design „Metro Klar“ (hell und dunkel), Werkzeugleiste in Klar-Farben, Timeline ohne senkrechte Scrollleiste.
+- Besser lesbar nach 16 UI-Design-Regeln: Spaltenköpfe und Menü-Überschriften ohne Großbuchstaben, nur noch normal und fett, kräftigere Rahmen um Felder und Knöpfe (3 : 1), Gruppen ohne Rahmen, Erklärtexte mit mehr Zeilenabstand und kürzeren Zeilen, eine Schrift auch in der Timeline. Sechs Timeline-Farben (u. a. RDP, Mail gesendet, Teams-Anruf) etwas kräftiger, damit sie sich in beiden Designs abheben; selbst gewählte Farben bleiben.
 - ITM: Anmeldung ohne Edge, eigene Buchungen aus dem alten Backend, fehlerhafte Buchungen werden gemeldet.
 - Nachfragen ab 1 Minute, Schwelle je Art einstellbar.
 - Ladeanzeige: drehender Kreis mit Text neben „Arbeitszeit“ und Streifen über die ganze Breite; Timeline springt beim Laden nicht mehr.

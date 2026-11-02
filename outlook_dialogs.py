@@ -3,6 +3,7 @@
 from PySide6.QtWidgets import (QCheckBox, QDialog, QDialogButtonBox, QFormLayout, QLabel,
                                QLineEdit, QPushButton, QSpinBox, QVBoxLayout)
 
+from theme import prose
 INTRO = ("Zeitzeuge liest aus dem klassischen Outlook deine Termine (auch Teams-Besprechungen) "
          "und gesendete Mails. Gespeichert werden nur Betreff, Zeit, Ort und die Domains der "
          "Teilnehmer, z. B. „kunde.de“, keine Adressen und keine Mailtexte. Das neue Outlook "
@@ -19,6 +20,7 @@ class OutlookSettingsDialog(QDialog):
         layout = QVBoxLayout(self)
         intro = QLabel(INTRO)
         intro.setWordWrap(True)
+        prose(intro)
         layout.addWidget(intro)
 
         form = QFormLayout()

@@ -4,6 +4,7 @@ from PySide6.QtWidgets import (QComboBox, QDialog, QDialogButtonBox, QFormLayout
                                QHeaderView, QLabel, QPushButton, QSpinBox, QTableWidget,
                                QVBoxLayout)
 
+from theme import prose
 import billing
 
 MODE_ITEMS = [("up", "Angefangener Takt zählt (aufrunden)"),
@@ -44,6 +45,7 @@ class BillingDialog(QDialog):
                       "abgerechnete Zeit. Standard: Jede angefangene Viertelstunde wird abgerechnet. "
                       "Jede Tätigkeit wird für sich gerundet.")
         info.setWordWrap(True)
+        prose(info)
         layout.addWidget(info)
 
         form = QFormLayout()

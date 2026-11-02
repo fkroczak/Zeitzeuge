@@ -236,10 +236,10 @@ class MenusMixin:
                        self.config.get("list_view", "grouped"), self).exec()
 
     def _menu_header(self, menu, text):
-        """Überschrift eines Abschnitts im Menü (klein, grau, nicht anklickbar)."""
+        """Überschrift eines Abschnitts im Menü (klein, grau, fett, nicht anklickbar)."""
         if menu.actions():
             menu.addSeparator()
-        label = QLabel(text.upper())
+        label = QLabel(text)  # keine Großbuchstaben: schwerer zu lesen
         label.setObjectName("menu_header")
         action = QWidgetAction(menu)
         action.setDefaultWidget(label)
@@ -336,7 +336,7 @@ class MenusMixin:
         """Kästchen je Zeile der Timeline, in der Farbe ihrer Einträge."""
         colors = self.config.get("type_colors", {})
         call = {**DEFAULT_CALL_COLORS, **self.config.get("call_colors", {})}["Eingehend"]
-        fixed = {"pc": "#2F7BFF", "call": call, "other": colors.get("RDP-Sitzung", "#D99A00")}
+        fixed = {"pc": "#2F7BFF", "call": call, "other": colors.get("RDP-Sitzung", "#BB8400")}
         for key, action in self.row_actions.items():
             color = fixed.get(key)
             if color is None:
