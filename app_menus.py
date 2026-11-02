@@ -188,7 +188,7 @@ class MenusMixin:
         self.place_busy_bar()
 
     def place_busy_bar(self):
-        """Ladeanzeige in den freien Platz zwischen Werkzeugen und Menü legen.
+        """Ladeanzeige in den freien Platz zwischen Werkzeugen und Menü legen, Streifen oben.
 
         Sie schwebt über der Leiste, statt im Layout Platz zu belegen: Ein- und
         Ausblenden verschiebt so weder Knöpfe noch die Timeline."""
@@ -208,6 +208,9 @@ class MenusMixin:
         right = tb.geometry().right() - 4
         height = min(header.height(), 30)
         bar.setGeometry(left, (header.height() - height) // 2, max(right - left, 0), height)
+        stripe = bar.stripe
+        if stripe.parentWidget() is not bar:
+            stripe.setGeometry(0, 0, stripe.parentWidget().width(), stripe.height())
 
     def resizeEvent(self, event):
         super().resizeEvent(event)

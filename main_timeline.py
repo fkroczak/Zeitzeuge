@@ -475,11 +475,12 @@ class TimelineApp(MenusMixin, DayListMixin, DocsMixin, ReadersMixin, TrayMixin, 
         splitter.setStretchFactor(1, 2)
         splitter.setSizes([260, 400])
         splitter.setContentsMargins(8, 8, 8, 8)
-        # Ladeanzeige in der Werkzeugleiste rechts neben den Werkzeugen (Logs, 3CX, ITM, KI)
-        self.busy_bar = BusyBar(self._band_row, placer=self.place_busy_bar)
+        central = QWidget(self)
+        # Ladeanzeige (Logs, 3CX, ITM, KI): drehender Kreis mit Text in der Werkzeugleiste,
+        # dazu ein Streifen über die ganze Breite oben über der Timeline. Beides schwebt.
+        self.busy_bar = BusyBar(self._band_row, placer=self.place_busy_bar, stripe_parent=central)
         self._ai_busy = set()  # Tage, für die Claude gerade Vorschläge erstellt
         self.timeline.loading_changed.connect(lambda _on: self.update_busy_bar())
-        central = QWidget(self)
         central_layout = QVBoxLayout(central)
         central_layout.setContentsMargins(0, 0, 0, 0)
         central_layout.setSpacing(0)

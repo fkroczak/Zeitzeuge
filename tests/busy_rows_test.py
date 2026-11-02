@@ -80,7 +80,7 @@ settle()
 assert bar.isVisible() and "KI-Vorschläge" in bar.text() and "19.10." in bar.text()
 window.on_ai_finished("2026-10-19", 0, 0.0)  # fertig: Anzeige weg
 settle()
-assert bar.isHidden() and not window._ai_busy
+assert bar.isHidden() and bar.stripe.isHidden() and not window._ai_busy
 
 # ---- Zeilen der Timeline
 assert set(window.row_actions) == {k for k, _t in TIMELINE_ROWS}, window.row_actions.keys()
