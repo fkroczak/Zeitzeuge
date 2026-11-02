@@ -67,7 +67,7 @@ So setzt Zeitzeuge sie um:
 | 13 | Kein reines Schwarz | Dunkle Schrift ist `#1B1F24`/`#14181D` (`readable_on`), nie `#000000`. |
 | 14 | Linksbündig | Text und Felder links, auch der Wiederherstellungsschlüssel. Ausnahme: kurze Wochenüberschrift zwischen ◀ ▶. |
 | 15 | Zeilenhöhe 1,5 für Fließtext | `theme.prose(label)` für Einleitungen und Erklärungen in Dialogen. |
-| 16 | Zeilen nicht zu lang | `theme.prose(label)` begrenzt auf etwa 80 Zeichen pro Zeile. |
+| 16 | Zeilen nicht zu lang | Dialoge mit fester, schmaler Breite (480–560 px, etwa 70–80 Zeichen). Keine Begrenzung am Label selbst: `setMaximumWidth` setzt Text mittig oder schneidet ihn ab, ein Ereignisfilter stürzt unter Windows beim Beenden ab. |
 
 ## Lokal ausführen
 
@@ -86,7 +86,7 @@ python tests/readability_check.py
 - Fehler neben dem Feld als Text zeigen (nicht nur farbig) und das Speichern sperren, bis sie
   behoben sind. Kein stilles Verwerfen.
 - Farben nur aus `THEMES` in `theme.py`. Neue Farbpaare in den Kontrasttest aufnehmen.
-- Längere Erklärtexte mit `prose(label)` aus `theme.py` (Zeilenhöhe 1,5, höchstens ~80 Zeichen).
+- Längere Erklärtexte mit `prose(label)` aus `theme.py` (Zeilenhöhe 1,5).
 - Selbst gezeichnete Schrift mit `ui_font()`, fett nur über `bold`, nie 600/700 oder DemiBold.
 - Alles, was nur per Maus geht (Timeline), braucht einen Tastaturweg (Tagesliste, Tastenkürzel).
 - Menügruppen mit Trennlinien, höchstens 5 Einträge pro Gruppe, mit `&` für Alt-Buchstaben.

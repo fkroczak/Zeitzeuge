@@ -7,7 +7,7 @@ Die Timeline (timeline_only.py) nimmt ihre Grundfarben ebenfalls aus THEMES.
 import html
 import re
 
-from PySide6.QtCore import QEvent, QLibraryInfo, QLocale, QObject, QSize, Qt, QTranslator
+from PySide6.QtCore import QLibraryInfo, QLocale, QSize, Qt, QTranslator
 from PySide6.QtGui import QColor, QFont
 from PySide6.QtWidgets import QDialogButtonBox, QHeaderView, QProxyStyle, QStyle, QStyleFactory
 
@@ -106,13 +106,12 @@ def ui_font(point_size, bold=False):
     return font
 
 
-# Fließtext: Zeilenhöhe 1,5 und höchstens etwa 80 Zeichen pro Zeile
+# Fließtext: Zeilenhöhe 1,5
 PROSE_LINE_HEIGHT = 150
-PROSE_MAX_CHARS = 80
 
 
 def prose(label):
-    """Längeren Hinweistext gut lesbar setzen: Zeilenabstand 1,5, Zeilen nicht zu lang.
+    """Längeren Hinweistext gut lesbar setzen: Zeilenabstand 1,5.
 
     Für feste Einleitungen und Erklärungen in Dialogen. label muss setWordWrap(True) haben.
     """
@@ -120,26 +119,10 @@ def prose(label):
     if not re.search(r"<[a-zA-Z/][^>]*>", text):
         text = html.escape(text, quote=False).replace("\n", "<br>")
     label.setText(f'<p style="line-height:{PROSE_LINE_HEIGHT}%; margin:0">{text}</p>')
-    # Zeilen nicht länger als ~80 Zeichen: in breiten Fenstern rechts Innenabstand statt
-    # begrenzter Breite (die würde den Text mittig setzen oder abschneiden)
-    _ProseWidth(label, label.fontMetrics().averageCharWidth() * PROSE_MAX_CHARS)
+    # Zeilenlänge: die Dialoge haben feste, schmale Breiten (480–560 px, etwa 70–80 Zeichen).
+    # Keine eigene Begrenzung am Label: setMaximumWidth setzt den Text in breiten Fenstern mittig
+    # oder schneidet ihn ab, ein Ereignisfilter stürzt unter Windows beim Beenden ab.
     return label
-
-
-class _ProseWidth(QObject):
-    """Hält die Textbreite eines QLabel bei höchstens max_width, Text bleibt links."""
-
-    def __init__(self, label, max_width):
-        super().__init__(label)  # lebt so lange wie das Label
-        self.max_width = max_width
-        label.installEventFilter(self)
-
-    def eventFilter(self, label, event):
-        if event.type() == QEvent.Resize:
-            extra = max(0, label.width() - self.max_width)
-            if label.contentsMargins().right() != extra:
-                label.setContentsMargins(0, 0, extra, 0)
-        return False
 
 
 STYLESHEET = """
