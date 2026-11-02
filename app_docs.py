@@ -200,7 +200,8 @@ class DocsMixin(CustomersMixin):
                 "start": b["start"], "end": b["end"], "type": "Matrix42-Buchung", "m42": True,
                 "customer_name": b.get("customer", ""), "category": b.get("ticket", ""),
                 "description": b.get("subject", ""),
-                "details": " · ".join(t for t in (b.get("ticket"), b.get("subject"), b.get("entry")) if t),
+                "details": " · ".join(t for t in (b.get("ticket"), b.get("subject"), b.get("entry"),
+                                                  b.get("activity_type"), b.get("state")) if t),
             })
         date = QDate.fromString(date_str, "yyyy-MM-dd")
         day = datetime.strptime(date_str, "%Y-%m-%d")

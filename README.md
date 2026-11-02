@@ -33,6 +33,7 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
 - **Gebuchte Zeiten aus Matrix42 (nur im Firmennetz):** Zeitzeuge liest deine Buchungen aus dem Matrix42-Kalender (Service Desk → Kalender) und gleicht sie mit dem Tag ab.
   - Einrichten: **Einstellungen → Datenquellen → Einrichten → Matrix42 …**, dort die Adresse der Kalenderseite aus der Adresszeile einfügen. Die Windows-Anmeldung klappt meist von selbst, sonst einmal **Bei Matrix42 anmelden …**.
   - Edge liest die Wochenansicht unsichtbar mit eigenem Profil (`m42_profil`): die aktuelle Woche alle 10 Minuten, die letzten 4 Wochen einmal pro Sitzung (einstellbar), ältere Wochen beim Blättern. Alles landet in der Datenbank und bleibt auch außerhalb des Firmennetzes da.
+  - Zeitzeuge fragt die Buchungen dabei direkt über die Schnittstelle ab, die auch die Kalenderseite nutzt. So kennt es zusätzlich Status (Neu, Freigegeben) und Tätigkeitsart; beides steht in den Details einer Buchung. Klappt die Schnittstelle nicht, liest es wie bisher aus der Seite. Ausschalten: `m42_api: false` in der `zeitzeuge_config.json`.
   - Außerhalb des Firmennetzes steht in der Statuszeile „M42: nicht im Firmennetz“; Zeitzeuge liest weiter, sobald du wieder im Netz oder im VPN bist.
   - **Zeile „Matrix42“** in der Timeline: graue Blöcke sind gebucht (Kunde · Betreff), rot gestrichelte Lücken sind Personalzeit (ohne ITM: Arbeitszeit) ohne Buchung. Ein Klick auf eine Lücke trägt ab dort eine Tätigkeit ein.
   - **Tagesliste → Matrix42-Abgleich:** Buchungen mit Ticketnummer, Lücken ohne Buchung und Verbindungen/Telefonate, die höchstens zur Hälfte gebucht sind („Nicht gebucht: TeamViewer“).
@@ -301,14 +302,16 @@ Gut zu wissen:
   Gegenüber kennt Teams hier nicht.
 - Auf der PAW bleiben Outlook und Teams aus.
 
-### Abfragen mitschneiden (3CX und ITM)
+### Abfragen mitschneiden (3CX, ITM und Matrix42)
 
 Mit einem Mitschnitt lässt sich prüfen, ob Zeitzeuge die Daten später direkt beim Server abfragen kann, ohne die Seite dauerhaft in Edge offen zu halten. Das spart viel Arbeitsspeicher.
 
-1. **Einstellungen → Datenquellen → Einrichten → 3CX …** oder **ITM-Personalzeiten …** öffnen.
+1. **Einstellungen → Datenquellen → Einrichten → 3CX …**, **ITM-Personalzeiten …** oder **Matrix42 …** öffnen.
 2. **Abfragen mitschneiden …** klicken. Ein Edge-Fenster öffnet sich.
 3. Falls nötig anmelden. Bei 3CX die Anrufliste ein Stück nach unten scrollen, bei ITM zwei oder drei andere Tage aufrufen.
-4. Das Fenster schließen. Zeitzeuge speichert `mitschnitt_pbx_….json` oder `mitschnitt_itm_….json` im Datenordner.
+4. Das Fenster schließen. Zeitzeuge speichert `mitschnitt_pbx_….json`, `mitschnitt_itm_….json` oder `mitschnitt_m42_….json` im Datenordner.
+
+**Buchung mitschneiden (Matrix42):** Für „In Matrix42 buchen“ muss Zeitzeuge wissen, wie Matrix42 eine Zeiterfassung speichert. Im Dialog **Matrix42 …** klickst du **Buchung mitschneiden …**, legst im Edge-Fenster eine Zeiterfassung an, öffnest sie noch einmal, änderst etwas und speicherst. Dann das Fenster schließen. Zeitzeuge speichert `mitschnitt_m42_buchung_….json`. Darin stehen Abfragen, die etwas speichern, vollständig. Passwörter und Token bleiben geschwärzt.
 
 Aufgezeichnet werden nur Datenabfragen, keine Bilder oder Skripte. Passwörter, Token und Cookie-Werte sind geschwärzt. Von Token und Cookies bleiben Name, Länge und Ablaufzeit, damit man sieht, wie lange eine Anmeldung hält. Antworten sind gekürzt (die ersten drei Einträge einer Liste). Darin können trotzdem Namen und Telefonnummern stehen, schau die Datei also vor dem Weitergeben durch.
 
