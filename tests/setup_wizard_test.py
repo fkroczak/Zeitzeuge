@@ -25,7 +25,16 @@ with open(os.path.join(DATA, "zeitzeuge_config.json"), "w", encoding="utf-8") as
                "tracking_enabled": False, "prompt_mode": "off"}, f)
 
 
+def flush_deletes():
+    """Gelöschte Fenster (deleteLater) jetzt wirklich löschen (Test läuft ohne app.exec())."""
+    from PySide6.QtCore import QCoreApplication, QEvent
+    QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+
+
 def gui_test():
+    # Global halten: Würde QApplication beim Verlassen der Funktion vor den Fenstern
+    # aufgeräumt, stürzt Qt unter Windows ab (Zugriffsfehler).
+    global app, window, wizard
     import main_timeline
     import setup_wizard
     from PySide6.QtWidgets import QApplication
@@ -101,6 +110,8 @@ def gui_test():
     wizard.next()
     wizard.next()
     assert wizard.result() == wizard.DialogCode.Accepted
+    wizard.deleteLater()
+    flush_deletes()
 
     # Aus dem Menü: setzt setup_done, auch nach Abbrechen
     setup_wizard.SetupWizard.exec = lambda self: self.reject()
@@ -109,6 +120,7 @@ def gui_test():
     assert window.config["setup_done"] and not window._wizard_open
     with open(os.path.join(DATA, "zeitzeuge_config.json"), encoding="utf-8") as f:
         assert json.load(f)["setup_done"] is True
+    flush_deletes()
     window.quit_app()
 
 
