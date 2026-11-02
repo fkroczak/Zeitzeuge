@@ -43,7 +43,7 @@ def default_config():
         "type_colors": {
             # Remote / Zugänge
             "VPN-Sitzung":           "#0F9D8A",  # Türkis
-            "RDP-Sitzung":           "#D99A00",  # Gelb
+            "RDP-Sitzung":           "#BB8400",  # Gelb
             "SSH-Sitzung":           "#E06D10",  # Orange
 
             # Admin-Oberflächen / Dienste
@@ -62,14 +62,14 @@ def default_config():
 
             # Parser-Typen aus TeamViewer/RDM
             "TeamViewer":            "#3460DB",
-            "RDP-Verbindung":        "#D99A00",
+            "RDP-Verbindung":        "#BB8400",
             "SSH":                   "#E06D10",
             "VPN":                   "#0F9D8A",
             "Website-Verbindung":    "#139FB3",
         },
 
         "suggestion_colors": {
-            "light": {"background": "#B4B4B4", "text": "#000000"},
+            "light": {"background": "#B4B4B4", "text": "#14181D"},
             "dark": {"background": "#4A4A4A", "text": "#FFFFFF"},
         },
 
@@ -172,13 +172,17 @@ def default_config():
         "ai_auto": False,          # vergangene Tage beim Anzeigen automatisch einordnen
 
         # Zeilen der Timeline, jede einzeln aus- und einblendbar (timeline_only.TIMELINE_ROWS)
-        "timeline_rows": {"pc": True, "work": True, "doc": True, "m42": True, "rule": True, "ai": True,
+        "timeline_rows": {"pc": True, "work": True, "doc": True, "m42": True, "rule": False, "ai": True,
                           "call": True, "outlook": True, "vpn": True, "tv": True, "other": True},
         # Nachfragen nach erkannten Tätigkeiten ("Was hast du gemacht?")
         "prompt_mode": "window",       # "window" (kleines Fenster), "tray" (nur Meldung), "off"
         # Erst ab dieser Dauer (Minuten) nachfragen, je Art der Tätigkeit
-        "prompt_thresholds": {"connections": 1, "calls": 1, "rules": 1},
-        "prompt_sources": ["connections", "calls"],  # auch "rules" (Blöcke aus den Regeln)
+        "prompt_thresholds": {"connections": 1, "calls": 1, "pc": 15, "meetings": 5, "mails": 0,
+                              "credentials": 0, "rules": 1},
+        # Wonach gefragt wird; auch "credentials" (Zugangsdaten) und "rules" (Blöcke aus den Regeln)
+        "prompt_sources": ["connections", "calls", "pc", "meetings", "mails"],
+        "prompt_pc_skip": ["E-Mail / Kommunikation"],  # Arbeitsblöcke dieser Kategorien nicht nachfragen
+        "prompt_topic_gap_minutes": 15,  # gleicher Kunde mit kürzerem Abstand: eine Nachfrage
         "prompt_snooze_minutes": 15,   # "Später fragen"
         # Nach so vielen Minuten ohne Maus/Tastatur bei der ersten Eingabe fragen,
         # was in der Zeit war (Telefonat, Besprechung, Vor Ort …). 0 = aus. (idle_watch.py)
@@ -202,6 +206,8 @@ def default_config():
         # PC-Verlauf (aktive Fenster) nach so vielen Tagen automatisch löschen. Standard: aus.
         # Tätigkeiten, Buchungen, KI-Vorschläge, Anrufe usw. bleiben immer erhalten.
         "pc_history_purge": False,
+        "pc_blocks": True,          # PC-Aktivität als Arbeitsblöcke (focus.py)
+        "pc_jump_seconds": 120,     # kürzere Fensterwechsel zählen zur Haupttätigkeit
         "pc_history_days": 90,
 
         # --- Kunden: Kundenliste und Lernen aus Korrekturen (customers.py, learning.py)

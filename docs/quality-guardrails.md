@@ -1,6 +1,6 @@
 # Qualitäts-Guardrails: Bedienbarkeit und Barrierefreiheit
 
-Zeitzeuge ist eine Windows-Desktop-App (PyQt5), keine Webseite. Lighthouse und WAVE
+Zeitzeuge ist eine Windows-Desktop-App (PySide6, Qt 6), keine Webseite. Lighthouse und WAVE
 passen deshalb nicht. Die gleichen Ziele (WCAG 2.2 AA, gute UX) prüfen wir mit
 Qt-eigenen Mitteln.
 
@@ -40,6 +40,34 @@ und prüft:
    Befehle sichtbar und groß genug.
 8. **Fehler in Formularen** (WCAG 3.3.1): Arbeitszeit mit Ende vor Beginn wird neben dem Tag
    als Fehler gezeigt, OK ist gesperrt.
+9. **UI-Regeln** (siehe unten): Rahmen von Feldern, Knöpfen, Scrollbalken und jeder
+   Timeline-Balken mindestens 3 : 1 zum Grund (WCAG 1.4.11), höchstens ein Hauptknopf je Dialog,
+   und im Quelltext: keine Großbuchstaben per `.upper()`, nur `normal` und `bold`, kein reines
+   Schwarz, keine fest eingetragene Schrift, Text linksbündig, Fließtext mit Zeilenhöhe 1,5.
+
+## 16 kleine UI-Design-Regeln
+
+Nach „16 kleine UI-Design-Regeln, die große Wirkung erzielen“ (Tech-Beat, nach Adham Dannaway).
+So setzt Zeitzeuge sie um:
+
+| # | Regel | Umsetzung in Zeitzeuge |
+|---|---|---|
+| 1 | Abstand gruppiert Zusammengehöriges | Beschriftung direkt am Feld (`QFormLayout`), Gruppen durch Abstand und fette Überschrift statt Rahmen. |
+| 2 | Einheitlich bleiben | Farben nur aus `THEMES`, Symbole nur aus `icons.py`, eine Schrift (`theme.FONT_FAMILIES`) auch in der Timeline. |
+| 3 | Was gleich aussieht, funktioniert gleich | Akzentfarbe nur für Bedienbares und Auswahl. Werte in den Einstellungen (`row_value`) in Textfarbe, weil sie nicht anklickbar sind. |
+| 4 | Klare Hierarchie | Seitentitel 20 px fett, Abschnittsköpfe fett, Hinweise grau (`hint`). Ein Hauptknopf je Dialog (Test). |
+| 5 | Unnötiges weglassen | Gruppen ohne Rahmen, Tabellenkopf mit 1-px-Linie, Werkzeugleiste ohne Rahmen. |
+| 6 | Farbe mit Absicht | Blau = bedienbar/ausgewählt, Rot = Fehler/Jetzt, Ampelfarben nur für die Buchungsquote. |
+| 7 | Bedienelemente mind. 3 : 1 | Token `control` für Rahmen von Feldern und Knöpfen, `handle` für Scrollbalken; Timeline-Farben in beiden Designs ≥ 3 : 1 zum Grund. |
+| 8 | Text mind. 4,5 : 1 | Alle Textfarben beider Designs und die Schrift auf Balken (Test). |
+| 9 | Nicht nur Farbe | Zustände mit Zeichen oder Text (Pause-Zeichen, „frei“/Fehlertext, Prozent der Buchungsquote, gestrichelte Lücken). |
+| 10 | Eine serifenlose Schrift | Segoe UI überall, `theme.ui_font()` für selbst gezeichnete Teile. Feste Breite nur für Schlüssel und Beispiele. |
+| 11 | Keine Großbuchstaben | Spaltenköpfe, Menü-Überschriften und Bereichsnamen in normaler Schreibung, dafür fett. |
+| 12 | Zwei Schriftschnitte | Nur `normal` und `bold` (kein 600/700/DemiBold gemischt). |
+| 13 | Kein reines Schwarz | Dunkle Schrift ist `#1B1F24`/`#14181D` (`readable_on`), nie `#000000`. |
+| 14 | Linksbündig | Text und Felder links, auch der Wiederherstellungsschlüssel. Ausnahme: kurze Wochenüberschrift zwischen ◀ ▶. |
+| 15 | Zeilenhöhe 1,5 für Fließtext | `theme.prose(label)` für Einleitungen und Erklärungen in Dialogen. |
+| 16 | Zeilen nicht zu lang | Dialoge mit fester, schmaler Breite (480–560 px, etwa 70–80 Zeichen). Keine Begrenzung am Label selbst: `setMaximumWidth` setzt Text mittig oder schneidet ihn ab, ein Ereignisfilter stürzt unter Windows beim Beenden ab. |
 
 ## Lokal ausführen
 
@@ -57,7 +85,9 @@ python tests/readability_check.py
 - Knöpfe mit Symbolen bekommen `setAccessibleName("…")` mit dem ausgeschriebenen Zweck.
 - Fehler neben dem Feld als Text zeigen (nicht nur farbig) und das Speichern sperren, bis sie
   behoben sind. Kein stilles Verwerfen.
-- Farben nur aus `THEMES` in `main_timeline.py`. Neue Farbpaare in den Kontrasttest aufnehmen.
+- Farben nur aus `THEMES` in `theme.py`. Neue Farbpaare in den Kontrasttest aufnehmen.
+- Längere Erklärtexte mit `prose(label)` aus `theme.py` (Zeilenhöhe 1,5).
+- Selbst gezeichnete Schrift mit `ui_font()`, fett nur über `bold`, nie 600/700 oder DemiBold.
 - Alles, was nur per Maus geht (Timeline), braucht einen Tastaturweg (Tagesliste, Tastenkürzel).
 - Menügruppen mit Trennlinien, höchstens 5 Einträge pro Gruppe, mit `&` für Alt-Buchstaben.
   Reine Anzeigen im Menü (deaktiviert, z. B. „Aufzeichnung aktiv“) brauchen keinen.
@@ -81,6 +111,7 @@ python tests/readability_check.py
 | 21.10.2026 vorher | 45 | 61 / 55 |
 | 21.10.2026 nachher | 0 | 61 / 55 |
 | 22.10.2026 Überarbeitung | 0 | 60 / 60 |
+| 02.11.2026 16 UI-Regeln | 0 | 60 / 60 |
 
 ## Ausnahmen
 

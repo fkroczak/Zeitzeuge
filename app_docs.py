@@ -14,7 +14,8 @@ from ai_classifier import to_entries
 from billing import Billing
 from journal import (describe, entry_key as journal_key, open_entry, suggest_category,
                      suggest_customer, ticket_line)
-from journal_dialogs import DocPromptDialog, prompt_thresholds, EntryDialog, PromptWindow, default_span
+from journal_dialogs import (DocPromptDialog, prompt_thresholds, EntryDialog, PromptWindow, default_span,
+                             PROMPT_SOURCES)
 import snippets
 import tickets
 from snippets_dialogs import SnippetsDialog
@@ -26,11 +27,20 @@ import m42_data as m42
 import week_dialogs
 import day_checks
 import idle_watch
-from grouping import group_entries
+from grouping import CREDENTIAL_TYPES, group_entries
+import customers as customer_list
+import focus
+import prompt_topics
 from timeline_only import (OUTLOOK_TYPES, ROW_NAMES, ActivityViewDialog, ai_copy_text, format_duration, parse_time,
                            row_kind, type_label)
 from theme import GERMAN
 import main_timeline as mt  # Pfade und save_config zur Laufzeit von dort (Tests ersetzen sie dort)
+
+
+def _overlap(a, b):
+    """Gemeinsame Zeit zweier Einträge (Text "YYYY-MM-DD HH:MM:SS" lässt sich direkt vergleichen)."""
+    start, end = max(a["start"], b["start"]), min(a["end"], b["end"])
+    return (parse_time(end) - parse_time(start)).total_seconds() if start < end else 0
 
 
 class DocsMixin(CustomersMixin):
@@ -256,37 +266,108 @@ class DocsMixin(CustomersMixin):
         return text
 
     def doc_candidates(self, date_str):
-        """Erkannte Tätigkeiten des Tages, die noch nicht dokumentiert sind."""
-        sources = self.config.get("prompt_sources", ["connections", "calls"])
+        """Erkannte, noch nicht dokumentierte Tätigkeiten des Tages, zu Themen zusammengefasst.
+
+        Quellen (Einstellung prompt_sources): Verbindungen, Telefonate, Arbeitsblöcke am PC,
+        Teams-Besprechungen mit Teilnahme, Mails an Kunden aus der Kundenliste, angezeigte
+        Zugangsdaten, Blöcke der Zuordnung ohne KI. Was zur selben Arbeit gehört (gleicher Kunde,
+        gleiche Zeit), wird ein Thema: eine Nachfrage statt mehrerer (prompt_topics.py).
+        """
+        sources = self.config.get("prompt_sources", PROMPT_SOURCES)
         date = QDate.fromString(date_str, "yyyy-MM-dd")
+        index = self.customer_index()
+        activities = self.timeline.activities_for(date)
         entries = []
-        if "connections" in sources or "calls" in sources:
-            grouped = group_entries(self.timeline.activities_for(date),
-                                    self.config.get("merge_gap_minutes", 5))
-            for e in grouped:
-                is_call = row_kind(e) == "call"
-                if is_call and "calls" in sources:
-                    entries.append(e)
-                elif (not is_call and "connections" in sources and e.get("type") != "Zugangsdaten"
-                      and row_kind(e) != "outlook"):  # Termine/Mails: keine Nachfrage
-                    entries.append(e)
+        grouped = group_entries([a for a in activities if a.get("type") not in OUTLOOK_TYPES],
+                                self.config.get("merge_gap_minutes", 5))
+        for e in grouped:
+            kind = self.prompt_kind(e)
+            if kind in sources and kind in ("connections", "calls", "credentials"):
+                entries.append(e)
+        if "meetings" in sources:
+            entries += self._attended_meetings(date, activities)
+        if "mails" in sources:
+            entries += [m for m in activities if m.get("type") == "Mail gesendet"
+                        and customer_list.customer_for(m, index)]
+        if "pc" in sources:
+            skip = set(self.config.get("prompt_pc_skip", ["E-Mail / Kommunikation"]))
+            entries += [b for b in self._pc_focus_blocks(date)
+                        if b.get("ruled") and b.get("category") not in skip]
         if "rules" in sources:
             # Blöcke nur aus Outlook-Terminen/-Mails nicht nachfragen (geplant ist nicht getan)
             entries += [b for b in self.rule_band(date_str)
                         if not b.get("sources") or any(s.get("type") not in OUTLOOK_TYPES
                                                        for s in b["sources"])]
-        return self.journal.open_items(entries, date_str, min_minutes=self.prompt_threshold)
+        opened = self.journal.open_items(entries, date_str, min_minutes=self.prompt_threshold)
+        topics = prompt_topics.build_topics(opened, index,
+                                            self.config.get("prompt_topic_gap_minutes", 15))
+        # Ein Thema, das (als Ganzes) schon beantwortet oder ignoriert ist, nicht wieder anbieten
+        return [t for t in topics if not t.get("topic") or not (
+            self.journal.is_ignored(t) or self.journal.is_answered(t, date_str))]
+
+    @staticmethod
+    def prompt_kind(entry):
+        """Art eines erkannten Eintrags für Quellen und Mindestdauer der Nachfragen."""
+        kind = entry.get("type", "")
+        if entry.get("rule"):
+            return "rules"
+        if entry.get("pc_block"):
+            return "pc"
+        if kind in ("Termin", "Teams-Besprechung"):
+            return "meetings"
+        if kind == "Mail gesendet":
+            return "mails"
+        if kind == "Zugangsdaten" or kind in CREDENTIAL_TYPES:
+            return "credentials"
+        return "calls" if row_kind(entry) == "call" else "connections"
 
     def prompt_threshold(self, entry):
         """Ab wie vielen Minuten nach diesem Eintrag gefragt wird (Einstellung je Art)."""
-        kind = "rules" if entry.get("rule") else "calls" if row_kind(entry) == "call" else "connections"
-        return prompt_thresholds(self.config)[kind]
+        return prompt_thresholds(self.config).get(self.prompt_kind(entry), 1)
+
+    def _pc_focus_blocks(self, date):
+        """Arbeitsblöcke am PC (focus.py), unabhängig davon, wie die Timeline sie zeigt."""
+        raw = self.timeline.pc_entries_for(date, min_seconds=5, max_gap=15)
+        if self.config.get("pc_blocks", True):
+            return [b for b in self.timeline.pc_blocks_for(date) if b.get("pc_block")]
+        segments = [{"start": e["start"], "end": e["end"], "app": e["app"], "title": e["customer_name"]}
+                    for e in raw]
+        return focus.focus_blocks(segments, self.config.get("rules") or [],
+                                  jump_seconds=self.config.get("pc_jump_seconds", focus.JUMP_SECONDS))
+
+    def _attended_meetings(self, date, activities):
+        """Teams-Besprechungen und Termine, an denen du erkennbar teilgenommen hast:
+        Teams-Anruf oder Teams im Vordergrund während mindestens 30 % der Zeit.
+        (Termine ohne Rechner, z. B. vor Ort, fragt die Abwesenheit am PC ab.)"""
+        meetings = [a for a in activities if a.get("type") in ("Termin", "Teams-Besprechung")]
+        if not meetings:
+            return []
+        teams = [a for a in activities if a.get("type") == "Teams-Anruf"]
+        teams += [p for p in self.timeline.pc_entries_for(date, min_seconds=5, max_gap=15)
+                  if "teams" in (p.get("app") or "").lower()]
+        result = []
+        for m in meetings:
+            length = (parse_time(m["end"]) - parse_time(m["start"])).total_seconds()
+            if length > 0 and sum(prompt_topics.overlap(m, t) for t in teams) >= 0.3 * length:
+                result.append(m)
+        return result
 
     def doc_band(self, date_str):
         """Zeile "Doku": eigene Tätigkeiten und (gestrichelt) was noch offen ist."""
         entries = self.journal.entries(date_str)
-        entries += [open_entry(e) for e in self.doc_candidates(date_str)]
-        return sorted(entries, key=lambda e: e["start"])
+        opened = [open_entry(e) for e in self.doc_candidates(date_str)]
+        # Zuordnung ohne KI fließt hier ein: offene Einträge ohne Kunden bekommen den Vorschlag
+        # der Regel, die sie am meisten überdeckt (eigene Zeile ist standardmäßig aus)
+        if any(not e.get("customer_name") for e in opened):
+            blocks = [b for b in self.rule_band(date_str) if b.get("customer_name")]
+            for e in opened:
+                if e.get("customer_name") or e["source_entry"].get("rule"):
+                    continue
+                best = max(blocks, key=lambda b: _overlap(b, e), default=None)
+                if best and _overlap(best, e) > 0:
+                    e["customer_name"] = best["customer_name"]
+                    e["details"] += f" · Vorschlag (Regel): {best['customer_name']}"
+        return sorted(entries + opened, key=lambda e: e["start"])
 
     def on_doc_request(self, action, entry):
         """Klick in der Timeline (offen: eintragen, Tätigkeit: bearbeiten)."""
@@ -369,6 +450,11 @@ class DocsMixin(CustomersMixin):
             self.timeline.draw_timeline(self.current_date)
 
     def _save_doc(self, item, entry=None, remember_tv=False, old=None, rule=False):
+        if entry and not old and not entry.get("ai"):
+            # Antwort auf ein erkanntes Thema: Zeitraum und Kunde merken, damit nicht noch einmal
+            # gefragt wird (auch wenn die eingetragene Zeit kürzer ist als die erkannte)
+            source = entry.get("source_entry", entry)
+            item = dict(item, answered=prompt_topics.answer_span(source, self.customer_index()))
         try:
             if old:
                 self.journal.update(old, item)
@@ -524,8 +610,24 @@ class DocsMixin(CustomersMixin):
             return covered >= (end - start).total_seconds() / 2
 
         self._idle_open = [e for e in self._idle_open if not documented(e)]
-        return [e for e in self._idle_open
-                if not (self._prompt_asked.get(journal_key(e)) or now) > now]
+        self._idle_open = [e for e in self._idle_open if not self.journal.is_answered(e)]
+        return [e for e in self._idle_open if not self._was_asked(e, now)]
+
+    def _mark_asked(self, entry, until):
+        """Nicht vor until wieder fragen: alle Teile des Themas und Zeitraum + Kunde."""
+        for e in [entry] + list(entry.get("parts") or []):
+            self._prompt_asked[journal_key(e)] = until
+        self._prompt_asked_spans.append((prompt_topics.answer_span(entry, self.customer_index()), until))
+
+    def _was_asked(self, entry, now):
+        """Schon gefragt und zurückgestellt (oder als Meldung gezeigt)? Auch wenn sich der Eintrag
+        seitdem verändert hat (andere Startzeit, Name nachgeladen, Thema um einen Teil gewachsen)."""
+        if any(self._prompt_asked.get(journal_key(e), now) > now
+               for e in [entry] + list(entry.get("parts") or [])):
+            return True
+        index = self.customer_index()
+        return any(until > now and prompt_topics.matches_span(entry, span, index)
+                   for span, until in self._prompt_asked_spans)
 
     def check_prompts(self):
         """Jede Minute: neu erkannte, noch nicht dokumentierte Tätigkeiten nachfragen."""
@@ -545,9 +647,14 @@ class DocsMixin(CustomersMixin):
             ended = parse_time(e["end"])
             if ended < min(self._started_at, now) - timedelta(hours=1):
                 continue
-            if key in self._prompt_asked and self._prompt_asked[key] > now:
+            if self._was_asked(e, now):
                 continue
-            if key not in (journal_key(q) for q in self._prompt_queue):
+            # Schon in der Warteschlange (auch als ähnliches, inzwischen gewachsenes Thema)?
+            queued = [i for i, q in enumerate(self._prompt_queue) if journal_key(q) == key
+                      or prompt_topics.matches_span(e, prompt_topics.answer_span(q, self.customer_index()))]
+            if queued:
+                self._prompt_queue[queued[0]] = e  # neuester Stand des Themas
+            else:
                 self._prompt_queue.append(e)
         idle = self._idle_pending(now)  # Abwesenheiten am PC
         for e in idle:
@@ -568,8 +675,8 @@ class DocsMixin(CustomersMixin):
         entry = self._prompt_queue[0]
         # Abwesenheit immer als Fenster: Du bist gerade zurück und sitzt davor
         if self.config.get("prompt_mode") == "tray" and not force and not entry.get("idle"):
-            if self.tray and journal_key(entry) not in self._prompt_asked:
-                self._prompt_asked[journal_key(entry)] = datetime.max
+            if self.tray and not self._was_asked(entry, datetime.now()):
+                self._mark_asked(entry, datetime.max)
                 self._tray_doc_hint = True
                 self.tray.showMessage("Was hast du gemacht?",
                                       f"{describe(entry)}\nKlick hier, um es einzutragen.",
@@ -598,7 +705,10 @@ class DocsMixin(CustomersMixin):
     def on_prompt_answered(self, action, entry, item):
         window, self._prompt_window = self._prompt_window, None
         key = journal_key(entry)
-        self._prompt_queue = [q for q in self._prompt_queue if journal_key(q) != key]
+        span = prompt_topics.answer_span(entry, self.customer_index())
+        # auch ein inzwischen gewachsenes oder verändertes Thema aus der Warteschlange nehmen
+        self._prompt_queue = [q for q in self._prompt_queue if journal_key(q) != key
+                              and not prompt_topics.matches_span(q, span, self.customer_index())]
         if action in ("save", "ignore") and entry.get("idle"):
             self._idle_open = [e for e in self._idle_open if journal_key(e) != key]
         if action == "save":
@@ -612,7 +722,7 @@ class DocsMixin(CustomersMixin):
             self.statusBar().showMessage("Wird nicht mehr nachgefragt", 4000)
         else:  # später
             snooze = self.config.get("prompt_snooze_minutes", 15)
-            self._prompt_asked[key] = datetime.now() + timedelta(minutes=snooze)
+            self._mark_asked(entry, datetime.now() + timedelta(minutes=snooze))
             self.statusBar().showMessage(f"Zeitzeuge fragt in {snooze} Minuten noch einmal", 4000)
         if window:
             window.deleteLater()

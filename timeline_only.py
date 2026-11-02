@@ -4,18 +4,19 @@ import time
 from datetime import datetime
 from html import escape
 
-from PySide6.QtCore import QDate, QDateTime, Qt, QTimer, Signal
-from PySide6.QtGui import QBrush, QColor, QFont, QFontMetrics, QPainter, QPen
+from PySide6.QtCore import QDate, QDateTime, QPoint, Qt, QTimer, Signal
+from PySide6.QtGui import QBrush, QColor, QFontMetrics, QPainter, QPen
 from PySide6.QtWidgets import (QDialog, QDialogButtonBox, QFormLayout, QGraphicsRectItem,
                                QGraphicsScene, QGraphicsView, QLabel, QLineEdit, QMenu,
                                QTextEdit, QVBoxLayout)
 
 from activity_tracker import app_label, merge_segments, read_segments
 from call_import import load_call_suggestions
+import focus
 import customers
 from grouping import format_tv_id, group_entries
 from log_parsers import ConnectionIndex, RdmParser, TeamViewerParser, VpnParser
-from theme import THEMES, readable_on
+from theme import THEMES, readable_on, ui_font
 from vpn_reader import VpnReader, vpn_sources
 
 TIME_FMT = "%Y-%m-%d %H:%M:%S"
@@ -166,6 +167,37 @@ def ai_copy_text(entry):
             f"{who}{entry.get('description', '')}")
 
 
+def cluster_open(band, gap_seconds=120):
+    """Zeile Dokumentation: offene Einträge, die sich überschneiden oder dicht folgen, als ein Block.
+
+    Statt mehrerer übereinanderliegender „? Ka…“-Kästchen steht dort „? 3 offen“. Der Block
+    verweist auf den ersten offenen Eintrag (Klick trägt ihn ein), der Hinweis zeigt alle.
+    """
+    result, group = [], []
+
+    def flush():
+        if len(group) == 1:
+            result.append(group[0])
+        elif group:
+            first = group[0]
+            result.append({**first, "end": max(e["end"] for e in group), "cluster": list(group),
+                           "customer_name": f"{len(group)} offen",
+                           "details": f"{len(group)} Tätigkeiten noch nicht dokumentiert"})
+        group.clear()
+
+    for e in sorted(band, key=lambda e: e["start"]):
+        if not e.get("open"):
+            flush()
+            result.append(e)
+            continue
+        if group and (parse_time(e["start"]) - parse_time(max(g["end"] for g in group))
+                      ).total_seconds() > gap_seconds:
+            flush()
+        group.append(e)
+    flush()
+    return result
+
+
 def entry_menu_items(entry, customer_known=False):
     """Befehle für einen Eintrag: [(Text, Befehl)], None = Trennlinie.
 
@@ -295,6 +327,8 @@ class TimelineView(QGraphicsView):
     doc_request = Signal(str, dict)
     # Rechtsklick-Menü: (Befehl aus entry_menu_items, Eintrag oder {"minute": …})
     entry_action = Signal(str, dict)
+    # Rechtsklick auf die Legende links: Menü „Zeilen der Timeline“ an dieser Stelle (global)
+    rows_menu_requested = Signal(QPoint)
     # Hintergrund-Thread hat TeamViewer- und RDM-Logs gelesen
     logs_loaded = Signal(object, object, object)
     # Logs werden gelesen (True) oder sind fertig (False) – für die Ladeanzeige
@@ -307,11 +341,20 @@ class TimelineView(QGraphicsView):
     LEFT = 136         # Rand links in Pixeln: Platz für die schwebende Beschriftung (Legende)
     RIGHT = 34         # Rand rechts
     AXIS_H = 26        # Höhe der Stundenleiste oben
-    PC_BAND_H = 14     # Band für die PC-Aktivität
+    PC_BAND_H = 22     # Zeile PC-Aktivität (Arbeitsblöcke mit Beschriftung)
+    PC_RAW_H = 14      # schmales Band, wenn jedes Fenster einzeln gezeigt wird (pc_blocks aus)
+    # Arbeitsblöcke am PC: ruhige, gedeckte Farben (in beiden Designs mind. 3 : 1 zum Grund),
+    # bekannte Tätigkeiten mit fester Farbe, alle anderen über den Namen verteilt
+    BLOCK_COLORS = ["#356CA9", "#25766B", "#267841", "#85642A", "#BB3B50", "#7C51C8", "#2A7285",
+                    "#9C5831"]
+    CATEGORY_COLORS = {"E-Mail / Kommunikation": "#356CA9", "Beratung / Abstimmung": "#7C51C8",
+                       "Fernwartung": "#85642A", "Cloud-/M365-Administration": "#2A7285",
+                       "Dokumentation / Ticket": "#267841", "Telefonsupport": "#25766B",
+                       "Zugangsdaten / Sicherheit": "#BB3B50"}
     LANE_H = 26        # Höhe eines Eintrags (wird kleiner, wenn sonst nicht alles ins Fenster passt)
     LANE_GAP = 6
     MIN_LANE_H = 16
-    MIN_LANES = 2      # freie Spuren unter den festen Zeilen (RDM, eigene Einträge)
+    MIN_LANES = 0      # freie Spuren unter den festen Zeilen (RDM …), nur so viele wie nötig
     MAX_LANES = 10
     BASE_PX_PER_MIN = 1.2
 
@@ -591,6 +634,33 @@ class TimelineView(QGraphicsView):
     def app_color(self, app):
         return QColor(self.APP_COLORS[sum(map(ord, app.lower())) % len(self.APP_COLORS)])
 
+    def block_color(self, block):
+        """Farbe eines Arbeitsblocks am PC (nach Tätigkeit), sonst des Programms."""
+        if not block.get("pc_block"):
+            return self.app_color(block.get("app", ""))
+        category = block.get("category", "")
+        color = self.CATEGORY_COLORS.get(category) or \
+            self.BLOCK_COLORS[sum(map(ord, category.lower())) % len(self.BLOCK_COLORS)]
+        return QColor(color)
+
+    def pc_blocks_for(self, date: QDate):
+        """PC-Aktivität für die Timeline: Arbeitsblöcke (focus.py) oder, abgeschaltet, jedes Fenster."""
+        raw = self.pc_entries_for(date, min_seconds=5, max_gap=15)
+        if not raw or not self.config.get("pc_blocks", True):
+            return raw
+        rule_list = self.config.get("rules") or []
+        key = (date.toString("yyyy-MM-dd"), len(raw), raw[-1]["end"], id(rule_list), len(rule_list),
+               self.config.get("pc_jump_seconds", focus.JUMP_SECONDS))
+        cached = getattr(self, "_block_cache", None)
+        if cached and cached[0] == key:
+            return cached[1]
+        segments = [{"start": e["start"], "end": e["end"], "app": e["app"], "title": e["customer_name"]}
+                    for e in raw]
+        blocks = focus.focus_blocks(segments, rule_list,
+                                    jump_seconds=self.config.get("pc_jump_seconds", focus.JUMP_SECONDS))
+        self._block_cache = (key, blocks)
+        return blocks
+
     # ----------------------------- Zeichnen ----------------------------------
 
     def _x(self, minutes):
@@ -686,11 +756,10 @@ class TimelineView(QGraphicsView):
         # wird auf Spuren verteilt: überlappende Einträge kommen in die nächste Spur.
         # Ausgeblendete Zeilen (Menü "Zeilen der Timeline") fallen ganz weg.
         shown = self.config.get("timeline_rows", {})
-        # Outlook-Zeile nur mit eingeschalteter Quelle oder übernommenen Einträgen
-        has_outlook = self.config.get("outlook_enabled") or any(
-            row_kind(a) == "outlook" for a in activities)
+        # Feste Zeilen nur, wenn es an diesem Tag etwas darin gibt (leere Zeilen lenken ab)
+        present = {row_kind(a) for a in activities}
         fixed_rows = [(kind, label) for kind, label in FIXED_ROWS if shown.get(kind, True)
-                      and (kind != "outlook" or has_outlook)]
+                      and kind in present]
         show_other = shown.get("other", True)
         fixed_index = {kind: i for i, (kind, _label) in enumerate(fixed_rows)}
         n_fixed = len(fixed_rows)
@@ -719,13 +788,16 @@ class TimelineView(QGraphicsView):
             placed.append((a, start, end, n_fixed + idx))
 
         show_pc = shown.get("pc", True)
-        pc_band = self.pc_entries_for(date, min_seconds=5, max_gap=15) if show_pc else []
+        pc_band = self.pc_blocks_for(date) if show_pc else []
+        blocks_on = any(p.get("pc_block") for p in pc_band)
+        pc_h = self.PC_BAND_H if blocks_on else self.PC_RAW_H
         bands = self.band_rows(date)
         ai_band = next((e for k, _t, e in bands if k == "ai"), [])
         n_lanes = max(self.MIN_LANES, len(lanes_end)) if show_other else 0
+        show_other = show_other and n_lanes > 0
         band_y = self.AXIS_H + 6
         show_band = show_pc and bool(self.tracker or pc_band)
-        top = band_y + (self.PC_BAND_H + 10 if show_band else 2)
+        top = band_y + (pc_h + 10 if show_band else 2)
         # Zeilenhöhe so wählen, dass alle Zeilen ohne senkrechte Scrollleiste ins Fenster passen;
         # Platz für die horizontale Scrollleiste lassen
         free_h = self.maximumViewportSize().height() - self.horizontalScrollBar().sizeHint().height()
@@ -761,7 +833,7 @@ class TimelineView(QGraphicsView):
 
         # Stundenleiste
         self.scene.addRect(0, 0, width, self.AXIS_H, no_pen, QBrush(self.axis_bg))
-        hour_font = QFont("Segoe UI", 8)
+        hour_font = ui_font(8)
         step = 1 if self._ppm * 60 >= 45 else 2
         for hour in range(25):
             x = self._x(hour * 60)
@@ -788,7 +860,7 @@ class TimelineView(QGraphicsView):
         colors = self.config.get("type_colors", {})
         legend = []
         if show_band:
-            legend.append((band_y, self.PC_BAND_H, "PC-Aktivität", None))
+            legend.append((band_y, pc_h, "PC-Aktivität", None))
         for (kind, _text, band), y in zip(bands, band_tops):
             name, key = LEGEND_BANDS[kind]
             if kind == "work" and band and not band[0].get("from_itm"):
@@ -805,7 +877,7 @@ class TimelineView(QGraphicsView):
         self._legend = legend
 
         # Einträge
-        label_font = QFont("Segoe UI", 8)
+        label_font = ui_font(8)
         metrics = QFontMetrics(label_font)
         for a, start, end, lane in placed:
             x1 = self._x(start.hour * 60 + start.minute + start.second / 60)
@@ -829,30 +901,28 @@ class TimelineView(QGraphicsView):
             label_text = a["customer_name"] or a["type"]
             if a.get("direction") in CALL_MARKS:  # Richtung auch als Form, nicht nur als Farbe
                 label_text = f"{CALL_MARKS[a['direction']]} {label_text}"
-            if w > 28:
-                text = metrics.elidedText(label_text, Qt.ElideRight, int(w - 8))
-                item = self.scene.addText(text, label_font)
-                item.setDefaultTextColor(label_color)
-                item.setPos(x1 + 2, y + (self.LANE_H - item.boundingRect().height()) / 2)
-                item.setAcceptedMouseButtons(Qt.NoButton)
+            self._add_label(label_text, x1, y, w, self.LANE_H, label_font, metrics, label_color)
 
         # Obere Zeilen: Doku (eigene Tätigkeiten, offene gestrichelt), Regeln, KI
         for (kind, text, band), y in zip(bands, band_tops):
-            for a in band:
+            for a in (cluster_open(band) if kind == "doc" else band):
                 self._draw_band_entry(a, y, label_font, metrics)
 
-        # PC-Aktivität als schmales Band
+        # PC-Aktivität: Arbeitsblöcke mit Beschriftung (oder schmales Band je Fenster)
         if show_band:
             for p in pc_band:
                 start, end = parse_time(p["start"]), parse_time(p["end"])
                 x1 = self._x(start.hour * 60 + start.minute + start.second / 60)
                 x2 = self._x(end.hour * 60 + end.minute + end.second / 60)
-                color = self.app_color(p["app"])
-                fill = QColor(color)
-                fill.setAlpha(235)
-                rect = self.scene.addRect(x1, band_y, max(1.5, x2 - x1), self.PC_BAND_H,
-                                          QPen(Qt.NoPen), QBrush(fill))
+                color = self.block_color(p)
+                # 1 px Abstand zwischen Blöcken, damit sie als einzelne Kacheln lesbar bleiben
+                w = max(1.5, x2 - x1 - (1 if p.get("pc_block") else 0))
+                rect = self.scene.addRect(x1, band_y, w, pc_h, QPen(Qt.NoPen), QBrush(color))
+                rect.setCursor(Qt.PointingHandCursor)
                 self.activity_rects[rect] = p
+                if p.get("pc_block"):
+                    self._add_label(p["label"], x1, band_y, w, pc_h, label_font, metrics,
+                                    readable_on(color), p.get("short_labels", ()))
 
         # Jetzt-Linie
         if date == QDate.currentDate():
@@ -864,7 +934,7 @@ class TimelineView(QGraphicsView):
         self._hover_line = self.scene.addLine(0, 0, 0, height, QPen(self.text_color, 1, Qt.DashLine))
         self._hover_line.setZValue(90)
         self._hover_line.hide()
-        self._hover_label = self.scene.addText("", QFont("Segoe UI", 8, QFont.Weight.Bold))
+        self._hover_label = self.scene.addText("", ui_font(8, bold=True))
         self._hover_label.setDefaultTextColor(self.text_color)
         self._hover_label.setZValue(91)
         self._hover_label.hide()
@@ -915,6 +985,28 @@ class TimelineView(QGraphicsView):
                 result.append((kind, text, entries))
         return result
 
+    MIN_LABEL_CHARS = 6  # weniger lesbare Zeichen: lieber keine Beschriftung als „Chro…“
+
+    def _add_label(self, text, x, y, w, h, font, metrics, color, alternatives=()):
+        """Beschriftung in einem Balken; zu wenig Platz: kürzere Alternative, sonst keine
+        (der Name steht im Hinweis beim Darüberfahren)."""
+        if w < 28 or not text:
+            return None
+        room = int(w - 8)
+        fitting = [t for t in (text, *alternatives) if t and metrics.horizontalAdvance(t) <= room]
+        if fitting:
+            shown = fitting[0]
+        else:
+            shown = metrics.elidedText(text, Qt.ElideRight, room)
+            visible = shown.rstrip("…").strip(" ?✓·↙↗")
+            if len(visible) < min(self.MIN_LABEL_CHARS, len(text.strip(" ?✓·↙↗"))):
+                return None
+        item = self.scene.addText(shown, font)
+        item.setDefaultTextColor(color)
+        item.setPos(x + 2, y + (h - item.boundingRect().height()) / 2)
+        item.setAcceptedMouseButtons(Qt.NoButton)
+        return item
+
     def _draw_band_entry(self, a, y, font, metrics):
         start, end = parse_time(a["start"]), parse_time(a["end"])
         x1 = self._x(start.hour * 60 + start.minute)
@@ -956,6 +1048,8 @@ class TimelineView(QGraphicsView):
             elif a.get("m42"):
                 label_text = " · ".join(t for t in (a.get("customer_name"), a.get("description")) if t) \
                     or a.get("category") or "Buchung"
+            elif a.get("cluster"):
+                label_text = f"? {len(a['cluster'])} offen"
             elif a.get("open"):
                 label_text = f"? {a.get('customer_name') or 'eintragen'}"
             elif a.get("doc"):  # Form statt nur Farbe: ✓ dokumentiert, ? offen
@@ -965,10 +1059,7 @@ class TimelineView(QGraphicsView):
                 label_text = " · ".join(t for t in (a.get("customer_name"), a.get("category"),
                                                     a.get("description") if a.get("doc") else "")
                                         if t) or a.get("type", "")
-            item = self.scene.addText(metrics.elidedText(label_text, Qt.ElideRight, int(w - 8)), font)
-            item.setDefaultTextColor(label_color)
-            item.setPos(x1 + 2, y + (self.LANE_H - item.boundingRect().height()) / 2)
-            item.setAcceptedMouseButtons(Qt.NoButton)
+            self._add_label(label_text, x1, y, w, self.LANE_H, font, metrics, label_color)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -1037,7 +1128,7 @@ class TimelineView(QGraphicsView):
             return
         painter.save()
         painter.resetTransform()  # ab hier Koordinaten des Fensters, nicht der Szene
-        font = QFont("Segoe UI", 8, QFont.Weight.DemiBold)
+        font = ui_font(8, bold=True)
         painter.setFont(font)
         fm = QFontMetrics(font)
         width = self.LEFT - 6
@@ -1193,6 +1284,13 @@ class TimelineView(QGraphicsView):
             elif hovered.get("m42_gap"):
                 lines.append(escape(hovered.get("details", "")))
                 lines.append("<i>Nicht gebucht · Rechtsklick: Tätigkeit eintragen</i>")
+            elif hovered.get("cluster"):
+                for e in hovered["cluster"][:8]:
+                    lines.append(f"{parse_time(e['start']):%H:%M}–{parse_time(e['end']):%H:%M}  "
+                                 f"{escape(e.get('customer_name') or type_label(e.get('source_entry', e)))}")
+                if len(hovered["cluster"]) > 8:
+                    lines.append(f"<i>… und {len(hovered['cluster']) - 8} weitere</i>")
+                lines.append("<i>Noch nicht dokumentiert · Klick: das erste eintragen</i>")
             elif hovered.get("open"):
                 lines.append("<i>Noch nicht dokumentiert · Klick: jetzt eintragen</i>")
             elif hovered.get("doc"):
@@ -1207,9 +1305,19 @@ class TimelineView(QGraphicsView):
                 lines.append(escape(hovered.get("description", "")))
                 lines.append(f"<i>KI-Vorschlag, Sicherheit {round(hovered.get('confidence', 0) * 100)} %"
                              " · Rechtsklick: übernehmen oder verwerfen</i>")
+            elif hovered.get("pc_block"):
+                total = sum(sec for _n, sec in hovered["parts"]) or 1
+                for name, sec in hovered["parts"][:5]:
+                    lines.append(f"{escape(name)}  {format_duration(sec)}  ({round(sec * 100 / total)} %)")
+                if len(hovered["parts"]) > 5:
+                    lines.append(f"<i>… und {len(hovered['parts']) - 5} weitere Programme</i>")
+                lines.append(f"<i>Arbeitsblock am PC · {hovered['switches']} Fensterwechsel · "
+                             f"Fokus {round(hovered['focus'] * 100)} %</i>")
             elif hovered.get("details"):
                 lines.append(escape(hovered["details"]))
-            if hovered.get("is_suggestion") and not any(hovered.get(k) for k in ("ai", "rule", "open", "work",
+            if hovered.get("pc_block"):
+                pass  # kein „Vorschlag aus Log“
+            elif hovered.get("is_suggestion") and not any(hovered.get(k) for k in ("ai", "rule", "open", "work",
                                                                                  "m42", "m42_gap")):
                 lines.append("<i>Vorschlag aus Log</i>")
 
@@ -1266,6 +1374,10 @@ class TimelineView(QGraphicsView):
 
     def contextMenuEvent(self, event):
         """Rechtsklick: dasselbe Menü wie in der Tagesliste (entry_menu_items)."""
+        if self._legend and event.pos().x() < self.LEFT - 6:  # Legende: Zeilen ein-/ausblenden
+            self._hide_hover()
+            self.rows_menu_requested.emit(event.globalPos())
+            return
         a = self._activity_at(event.pos())
         self._hide_hover()
         if a is None:

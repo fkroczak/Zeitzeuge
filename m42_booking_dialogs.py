@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, 
                                QLabel, QLineEdit, QListWidget, QListWidgetItem, QPlainTextEdit,
                                QPushButton, QTimeEdit, QVBoxLayout)
 
+from theme import prose
 import m42_booking as mb
 
 
@@ -35,6 +36,7 @@ class BookingDialog(QDialog):
         intro = QLabel("Zeitzeuge legt eine Zeiterfassung mit Status „Neu“ am Ticket an. "
                        "Freigeben kannst du sie danach wie gewohnt in Matrix42.")
         intro.setWordWrap(True)
+        prose(intro)
         intro.setObjectName("hint")
         layout.addWidget(intro)
 

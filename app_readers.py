@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (QCheckBox, QDialog, QDialogButtonBox, QFormLayout
                                QLineEdit, QMessageBox, QPushButton, QSpinBox, QSystemTrayIcon,
                                QVBoxLayout)
 
+from theme import prose
 import safe_io
 import main_timeline as mt  # Pfade und save_config zur Laufzeit von dort (Tests ersetzen sie dort)
 
@@ -199,6 +200,7 @@ class ReadersMixin:
         layout = QVBoxLayout(dialog)
         info = QLabel(spec["text"])
         info.setWordWrap(True)
+        prose(info)
         layout.addWidget(info)
 
         form = QFormLayout()

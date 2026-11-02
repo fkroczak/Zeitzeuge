@@ -50,6 +50,7 @@ def gui_test():
     window.check_prompts()
     assert window._prompt_window is None and len(window._idle_open) == 1
     window._prompt_asked.clear()             # Zeit "vergangen"
+    window._prompt_asked_spans.clear()
     window.check_prompts()
     prompt = window._prompt_window
     assert prompt is not None and prompt.entry.get("idle"), "nach „Später“ nicht wieder gefragt"

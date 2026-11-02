@@ -4,9 +4,12 @@ Ein neues Design ändert nur die Werte in THEMES und ergänzt bei Bedarf STYLESH
 ($name wird durch den Wert des Tokens ersetzt, siehe apply_style in app_menus.py).
 Die Timeline (timeline_only.py) nimmt ihre Grundfarben ebenfalls aus THEMES.
 """
-from PySide6.QtCore import QLibraryInfo, QLocale, QSize, QTranslator
-from PySide6.QtGui import QColor
-from PySide6.QtWidgets import QDialogButtonBox, QProxyStyle, QStyle, QStyleFactory
+import html
+import re
+
+from PySide6.QtCore import QLibraryInfo, QLocale, QSize, Qt, QTranslator
+from PySide6.QtGui import QColor, QFont
+from PySide6.QtWidgets import QDialogButtonBox, QHeaderView, QProxyStyle, QStyle, QStyleFactory
 
 
 class AppStyle(QProxyStyle):
@@ -31,6 +34,12 @@ class AppStyle(QProxyStyle):
             return QSize(size)
         return super().sizeFromContents(ct, option, size, widget)
 
+    def polish(self, target):
+        # Spaltenköpfe überall linksbündig wie der Text darunter (Qt zentriert sonst)
+        if isinstance(target, QHeaderView) and target.orientation() == Qt.Horizontal:
+            target.setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        return super().polish(target)
+
     def styleHint(self, hint, option=None, widget=None, data=None):
         # Dialogknöpfe überall wie unter Windows: OK links von Abbrechen, ohne Symbole
         if hint == QStyle.SH_DialogButtonLayout:
@@ -51,19 +60,20 @@ def install_translator(app):
 
 GERMAN = QLocale(QLocale.German, QLocale.Germany)
 
-# Design "Metro Klar": Form aus Metro (eckig, Großbuchstaben, volle Balken),
+# Design "Metro Klar": Form aus Metro (eckig, volle Balken; Überschriften ohne Großbuchstaben),
 # Farben aus "Klar" (ruhige Flächen, tonale Auswahl). Zusätzliche Tokens gegenüber früher:
 #   band/bandtext/bandhover/bandpressed  Werkzeugleiste (in "Klar"-Farben: ruhig wie der Hintergrund)
 #   sel/seltext                          markierte Zeile (tonal statt Vollton)
 #   onaccent                             Schrift auf Akzentfarbe (Standardknopf, "offen"-Knopf)
 #   line                                 feine Linie zwischen den Zeilen der Tagesliste
 #   now                                  Jetzt-Linie in der Timeline
+#   control                              Rahmen von Feldern und Knöpfen (mind. 3 : 1 zum Grund)
 THEMES = {
     "dark": {
         "bg": "#12161B", "surface": "#181D23", "bar": "#181D23",
         "border": "#2A323C", "text": "#E6EAF0", "muted": "#9AA4B1",
         "accent": "#4EA1FF", "onaccent": "#06121F", "hover": "#222A33", "pressed": "#2B3440",
-        "alt": "#181D23", "handle": "#3E4854", "line": "#20262E",
+        "alt": "#181D23", "handle": "#6B7682", "line": "#20262E", "control": "#6B7682",
         "band": "#12161B", "bandtext": "#E6EAF0", "bandhover": "#222A33", "bandpressed": "#2B3440",
         "sel": "#1F3B5C", "seltext": "#FFFFFF", "now": "#FF6369",
         # Buchungsquote (booking_rate.py): Fläche und Schrift je Stufe
@@ -74,7 +84,7 @@ THEMES = {
         "bg": "#F4F6F8", "surface": "#FFFFFF", "bar": "#FFFFFF",
         "border": "#DDE2E8", "text": "#1B1F24", "muted": "#5F6873",
         "accent": "#0067C0", "onaccent": "#FFFFFF", "hover": "#E9EDF2", "pressed": "#DDE3EA",
-        "alt": "#FFFFFF", "handle": "#C2CAD3", "line": "#EEF1F4",
+        "alt": "#FFFFFF", "handle": "#858F9B", "line": "#EEF1F4", "control": "#858F9B",
         "band": "#F4F6F8", "bandtext": "#1B1F24", "bandhover": "#E9EDF2", "bandpressed": "#DDE3EA",
         "sel": "#DCEBFA", "seltext": "#0A3B6B", "now": "#E5484D",
         # Buchungsquote (booking_rate.py): Fläche und Schrift je Stufe
@@ -83,9 +93,40 @@ THEMES = {
     },
 }
 
+# Eine Schrift für die ganze Oberfläche (Stylesheet, Timeline, Legende). Nur zwei Schnitte:
+# normal und fett. Feste Breite nur für Schlüssel und Beispiele.
+FONT_FAMILIES = ["Segoe UI Variable Text", "Segoe UI", "Inter", "Arial", "sans-serif"]
+FONT_CSS = ", ".join(f'"{f}"' if " " in f else f for f in FONT_FAMILIES)
+
+
+def ui_font(point_size, bold=False):
+    """Schrift der Oberfläche für selbst gezeichnete Teile (Timeline)."""
+    font = QFont(FONT_FAMILIES, point_size)
+    font.setBold(bold)
+    return font
+
+
+# Fließtext: Zeilenhöhe 1,5
+PROSE_LINE_HEIGHT = 150
+
+
+def prose(label):
+    """Längeren Hinweistext gut lesbar setzen: Zeilenabstand 1,5.
+
+    Für feste Einleitungen und Erklärungen in Dialogen. label muss setWordWrap(True) haben.
+    """
+    text = label.text()
+    if not re.search(r"<[a-zA-Z/][^>]*>", text):
+        text = html.escape(text, quote=False).replace("\n", "<br>")
+    label.setText(f'<p style="line-height:{PROSE_LINE_HEIGHT}%; margin:0">{text}</p>')
+    # Zeilenlänge: die Dialoge haben feste, schmale Breiten (480–560 px, etwa 70–80 Zeichen).
+    # Keine eigene Begrenzung am Label: setMaximumWidth setzt den Text in breiten Fenstern mittig
+    # oder schneidet ihn ab, ein Ereignisfilter stürzt unter Windows beim Beenden ab.
+    return label
+
+
 STYLESHEET = """
-QWidget { background-color: $bg; color: $text; font-size: 13px;
-          font-family: "Segoe UI Variable Text", "Segoe UI", "Inter", Arial, sans-serif; }
+QWidget { background-color: $bg; color: $text; font-size: 13px; font-family: $font; }
 QToolBar { background-color: $bar; border: none; padding: 6px 8px; spacing: 4px; }
 QToolBar::separator { background: $border; width: 1px; margin: 6px 6px; }
 QToolBar#tools, QToolBar#fixed { border: none; padding: 0; background: transparent; }
@@ -103,27 +144,27 @@ QToolBar#main_toolbar QToolButton:pressed, QToolBar#main_toolbar QToolButton:che
 QToolBar#main_toolbar QToolButton:focus { border: 2px solid $accent; }
 QToolBar#main_toolbar::separator, QToolBar#main_toolbar QToolBar::separator {
     background: $border; width: 1px; margin: 6px 6px; }
-QToolBar#main_toolbar QToolButton#qt_toolbar_ext_button { border: 1px solid $border;
+QToolBar#main_toolbar QToolButton#qt_toolbar_ext_button { border: 1px solid $control;
     background-color: $bandhover; color: $bandtext; }
 QStatusBar { background-color: $bg; color: $muted; border-top: 1px solid $border; }
 QStatusBar QLabel { background: transparent; color: $muted; padding: 3px 8px; }
 QStatusBar QToolButton { color: $text; padding: 2px 8px; margin: 2px 4px; }
 QStatusBar::item { border: none; }
 QDateEdit, QLineEdit, QTextEdit, QComboBox, QSpinBox, QTimeEdit, QListWidget {
-    background-color: $surface; color: $text; border: 1px solid $border;
+    background-color: $surface; color: $text; border: 1px solid $control;
     border-radius: 0; padding: 4px 6px; selection-background-color: $sel;
     selection-color: $seltext; }
 QDateEdit, QComboBox { min-height: 22px; }
-QDateEdit { font-weight: 600; }
+QDateEdit { font-weight: bold; }
 QSpinBox, QTimeEdit { padding-right: 6px; }
 QAbstractSpinBox::up-button, QAbstractSpinBox::down-button { width: 0; border: none;
     subcontrol-origin: content; subcontrol-position: center left; } /* sonst Text ohne Rand links (Qt 6.12) */
 QDateEdit { min-width: 102px; } /* + 18 px Kalenderpfeil (Qt 6) = 120 px wie bisher */
 QComboBox QAbstractItemView { padding: 4px; outline: none; }
-QPushButton { background-color: $hover; color: $text; border: 1px solid $border;
+QPushButton { background-color: $hover; color: $text; border: 1px solid $control;
               border-radius: 0; padding: 6px 14px; min-width: 80px; }
 QPushButton:hover { background-color: $pressed; }
-QPushButton:default { background-color: $accent; color: $onaccent; border-color: $accent; font-weight: 600; }
+QPushButton:default { background-color: $accent; color: $onaccent; border-color: $accent; font-weight: bold; }
 QToolButton:focus, QPushButton:focus { border: 2px solid $accent; }
 QToolButton:focus { padding: 3px 5px; }
 QPushButton:focus { padding: 5px 13px; }
@@ -131,22 +172,25 @@ QPushButton:default:focus { border-color: $text; }
 QDateEdit:focus, QTimeEdit:focus, QLineEdit:focus, QTextEdit:focus, QComboBox:focus,
 QSpinBox:focus, QListWidget:focus, QTableWidget:focus, QGraphicsView:focus {
     border: 1px solid $accent; }
-QToolButton#qt_toolbar_ext_button { border: 1px solid $border; background-color: $hover; }
+QToolButton#qt_toolbar_ext_button { border: 1px solid $control; background-color: $hover; }
 QLabel#hint { color: $muted; }
 QTableWidget QLabel { padding: 2px 8px; }
-QLabel#busy_text { color: $bandtext; background: transparent; font-weight: 600; padding: 2px 0; }
-QStatusBar QToolButton#cta { background-color: $accent; color: $onaccent; font-weight: 600;
+QLabel#busy_text { color: $bandtext; background: transparent; font-weight: bold; padding: 2px 0; }
+QStatusBar QToolButton#cta { background-color: $accent; color: $onaccent; font-weight: bold;
                              border-radius: 0; padding: 2px 12px; }
 QStatusBar QToolButton#cta:hover { background-color: $accent; border-color: $text; }
-QStatusBar QToolButton#rate_low, QLabel#rate_low { background-color: $rate_low; color: $rate_low_text; font-weight: 600; }
-QStatusBar QToolButton#rate_mid, QLabel#rate_mid { background-color: $rate_mid; color: $rate_mid_text; font-weight: 600; }
-QStatusBar QToolButton#rate_ok, QLabel#rate_ok { background-color: $rate_ok; color: $rate_ok_text; font-weight: 600; }
-QStatusBar QToolButton#rate_over, QLabel#rate_over { background-color: $rate_over; color: $rate_over_text; font-weight: 600; }
+QStatusBar QToolButton#cta_secondary { background: transparent; color: $accent; font-weight: bold;
+                                       border: 1px solid $accent; padding: 2px 12px; }
+QStatusBar QToolButton#cta_secondary:hover { background-color: $hover; }
+QStatusBar QToolButton#rate_low, QLabel#rate_low { background-color: $rate_low; color: $rate_low_text; font-weight: bold; }
+QStatusBar QToolButton#rate_mid, QLabel#rate_mid { background-color: $rate_mid; color: $rate_mid_text; font-weight: bold; }
+QStatusBar QToolButton#rate_ok, QLabel#rate_ok { background-color: $rate_ok; color: $rate_ok_text; font-weight: bold; }
+QStatusBar QToolButton#rate_over, QLabel#rate_over { background-color: $rate_over; color: $rate_over_text; font-weight: bold; }
 QPushButton:disabled, QToolButton:disabled, QLineEdit:disabled, QDateEdit:disabled,
 QTimeEdit:disabled, QSpinBox:disabled, QCheckBox:disabled { color: $muted; }
 QPushButton:disabled { background-color: $surface; }
-QGroupBox { border: 1px solid $border; border-radius: 0; margin-top: 1.2em;
-            padding: 12px 8px 8px 8px; background-color: $surface; font-weight: 600; }
+QGroupBox { border: none; border-radius: 0; margin-top: 1.4em;
+            padding: 12px 8px 8px 8px; background-color: $surface; font-weight: bold; }
 QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 6px; }
 QGroupBox QWidget { font-weight: normal; }
 QGroupBox QLabel, QGroupBox QCheckBox { background: transparent; }
@@ -164,8 +208,8 @@ QTableWidget { background-color: $surface; alternate-background-color: $alt;
 QTableWidget::item { padding: 2px 8px; border: none; border-bottom: 1px solid $line; }
 QTableWidget::item:selected { background-color: $sel; color: $seltext; }
 QHeaderView::section { background-color: $bar; color: $muted; border: none;
-                       border-bottom: 2px solid $border; padding: 6px 8px; font-weight: 600;
-                       font-size: 11px; }
+                       border-bottom: 1px solid $border; padding: 6px 8px; font-weight: bold;
+                       font-size: 12px; }
 QTableCornerButton::section { background-color: $bar; border: none; }
 QSplitter::handle { background: transparent; }
 QSplitter::handle:vertical { height: 8px; }
@@ -183,33 +227,33 @@ QCalendarWidget QAbstractItemView { background-color: $surface; color: $text;
     selection-background-color: $accent; selection-color: $onaccent; }
 QCalendarWidget QAbstractItemView:disabled { color: $muted; }
 QMenu#view_menu::item { padding: 4px 28px 4px 12px; }
-QLabel#menu_header { color: $muted; background: transparent; font-size: 11px; font-weight: 700;
+QLabel#menu_header { color: $muted; background: transparent; font-size: 12px; font-weight: bold;
                      padding: 8px 12px 2px 12px; }
 QLabel#example { background-color: $surface; color: $text; padding: 6px 8px;
                  font-family: "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace; font-size: 12px; }
-QLabel#page_title { font-size: 20px; font-weight: 700; }
-QLabel#row_title { font-weight: 600; }
-QLabel#row_page { color: $muted; font-size: 11px; font-weight: 700; }
-QLabel#row_value { color: $accent; font-weight: 600; }
+QLabel#page_title { font-size: 20px; font-weight: bold; }
+QLabel#row_title { font-weight: bold; }
+QLabel#row_page { color: $muted; font-size: 12px; font-weight: bold; }
+QLabel#row_value { color: $text; font-weight: bold; }
 QListWidget#settings_nav { border: none; border-right: 1px solid $border; background-color: $surface;
                            padding: 6px 0; }
 QListWidget#settings_nav::item { padding: 4px 10px; border-left: 3px solid transparent; }
 QListWidget#settings_nav::item:selected { background-color: $sel; color: $seltext;
-                                          border-left: 3px solid $accent; font-weight: 600; }
+                                          border-left: 3px solid $accent; font-weight: bold; }
 QListWidget#settings_nav::item:hover:!selected { background-color: $hover; }
 QFrame#tile { background-color: $surface; border: 1px solid $border; }
 QFrame#tile QLabel, QFrame#tile QCheckBox { background: transparent; }
-QCheckBox#switch { spacing: 6px; font-weight: 600; }
+QCheckBox#switch { spacing: 6px; font-weight: bold; }
 QCheckBox#switch::indicator { width: 30px; height: 16px; border: 2px solid $muted; border-radius: 10px;
                               background-color: $surface; }
 QCheckBox#switch::indicator:checked { border-color: $accent; background-color: $accent; }
 QCheckBox#switch::indicator:focus { border-color: $text; }
 QFrame#setting_row { border: none; border-bottom: 1px solid $line; }
 QFrame#setting_row QLabel, QFrame#setting_row QCheckBox { background: transparent; }
-QPushButton#result_link { text-align: left; background: transparent; border: 1px solid $border; padding: 8px 12px; }
+QPushButton#result_link { text-align: left; background: transparent; border: 1px solid $control; padding: 8px 12px; }
 QToolTip { background-color: #1B1F24; color: #F2F4F7; border: 1px solid #3A424C; border-radius: 0;
            padding: 4px 6px; }
-"""
+""".replace("$font", FONT_CSS)
 
 
 def readable_on(color):

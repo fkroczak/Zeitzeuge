@@ -14,6 +14,7 @@ from PySide6.QtCore import QDate, QStandardPaths, Qt
 from PySide6.QtWidgets import (QApplication, QDialog, QDialogButtonBox, QFileDialog, QFormLayout,
                                QLabel, QMessageBox, QPushButton, QSpinBox, QVBoxLayout)
 
+from theme import prose
 import datakey
 import datastore
 import protect_dialogs
@@ -96,6 +97,7 @@ class TransferMixin:
             "Der Inhalt ist mit deinem Übertragungsschlüssel verschlüsselt (in RDM unter "
             "„Zeitzeuge Übertragung“). Auf dem anderen PC gibst du ihn beim ersten Übernehmen ein.")
         info.setWordWrap(True)
+        prose(info)
         layout.addWidget(info)
         form = QFormLayout()
         days = QSpinBox()
@@ -219,6 +221,7 @@ class TransferMixin:
             "Die Daten erscheinen zusammen mit den Daten dieses PCs in Timeline und Tagesliste. "
             "Ein neuerer Export ersetzt die Tage des älteren.")
         info.setWordWrap(True)
+        prose(info)
         layout.addWidget(info)
         state = QLabel()
         state.setObjectName("hint")

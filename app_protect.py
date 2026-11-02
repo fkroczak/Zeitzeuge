@@ -17,6 +17,7 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (QDialog, QDialogButtonBox, QGridLayout, QLabel, QMessageBox,
                                QPushButton, QToolButton, QVBoxLayout)
 
+from theme import prose
 import datakey
 import datastore
 import protect_dialogs
@@ -38,7 +39,8 @@ class ProtectMixin:
         self.backup_timer.timeout.connect(lambda: mt.backup_store())
         self.backup_timer.start(BACKUP_INTERVAL)
         self.recovery_button = QToolButton(self)
-        self.recovery_button.setObjectName("cta")
+        # Nur umrandet: die gefüllte Hauptaktion der Statuszeile ist „offen – jetzt eintragen“
+        self.recovery_button.setObjectName("cta_secondary")
         self.recovery_button.setText("Wiederherstellungsschlüssel einrichten")
         self.recovery_button.setToolTip("Ohne ihn kommst du auf einem neuen PC nicht an deine Daten")
         self.recovery_button.clicked.connect(self.new_recovery_code)
@@ -252,6 +254,7 @@ class ProtectMixin:
         intro = QLabel("Deine Daten sind verschlüsselt gespeichert (AES-256). "
                        "Schlüssel gehören in RDM, nie in eine Befehlszeile oder Verknüpfung.")
         intro.setWordWrap(True)
+        prose(intro)
         layout.addWidget(intro)
         grid = QGridLayout()
         grid.setColumnStretch(1, 1)

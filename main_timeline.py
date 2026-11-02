@@ -29,7 +29,7 @@ if __name__ == "__main__":
 from datetime import datetime
 
 from PySide6.QtCore import QDate, QLocale, Qt, QTimer
-from PySide6.QtGui import QAction, QFont, QIcon, QKeySequence
+from PySide6.QtGui import QAction, QIcon, QKeySequence
 from PySide6.QtWidgets import (QAbstractItemView, QApplication, QHeaderView, QLabel,
                                QMainWindow, QMessageBox, QSplitter, QTableWidget, QToolButton,
                                QVBoxLayout, QWidget)
@@ -131,10 +131,21 @@ def clean_path(path):
     return re.sub(r"\\{2,}", r"\\", path)
 
 
+# Standardfarben mit weniger als 3 : 1 auf hellem oder dunklem Grund -> etwas kräftiger/dunkler
+# (Balken müssen sich in beiden Designs vom Hintergrund abheben). Nur genau diese Werte.
+CONTRAST_TYPE_COLORS = {
+    "#00A3C4": "#009BBB",  # Mail gesendet
+    "#0FB9B1": "#0D9F99",  # Klassifizierung
+    "#3B5BDB": "#3C5CDB",  # Matrix42-Buchung
+    "#464EB8": "#565EBF",  # Teams-Anruf
+    "#C2185B": "#C7195D",  # FTP-Verbindung
+    "#D99A00": "#BB8400",  # RDP
+}
+
 # Frühere Standard-Typfarben -> Farben aus "Metro Klar" (nur genau diese Werte werden ersetzt)
 OLD_TYPE_COLORS = {
     "#00B894": "#0F9D8A",  # VPN
-    "#F1C40F": "#D99A00",  # RDP
+    "#F1C40F": "#BB8400",  # RDP
     "#E67E22": "#E06D10",  # SSH, Undokumentiert
     "#1ABC9C": "#139FB3",  # Website
     "#27AE60": "#2E9E5B",  # Telefonat
@@ -231,15 +242,15 @@ def load_config_with_defaults():
                             for i, d in enumerate(["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"])}
     cfg["type_colors"].setdefault("Telefonat", "#2E9E5B")
     for kind, color in [("VPN-Verbindung", "#0F9D8A"), ("SSH-Verbindung", "#E06D10"),
-                        ("FTP-Verbindung", "#C2185B"), ("TeamViewer-Verbindung", "#3460DB"),
+                        ("FTP-Verbindung", "#C7195D"), ("TeamViewer-Verbindung", "#3460DB"),
                         ("Zugangsdaten", "#9B59B6"), ("Arbeitsblock", "#5B8DEF"),
                         (AI_TYPE, "#A55EEA"), ("Dokumentiert", "#2E9E5B"),
-                        ("Undokumentiert", "#E06D10"), ("Klassifizierung", "#0FB9B1"),
-                        ("Matrix42-Buchung", "#3B5BDB"), ("Personalzeit", "#3D8BFD"),
+                        ("Undokumentiert", "#E06D10"), ("Klassifizierung", "#0D9F99"),
+                        ("Matrix42-Buchung", "#3C5CDB"), ("Personalzeit", "#3D8BFD"),
                         ("Arbeitszeit", "#3D8BFD"), ("Nicht gebucht", "#E5484D"),
                         # Outlook und Teams (app_outlook.py)
                         ("Termin", "#0F6CBD"), ("Teams-Besprechung", "#5B5FC7"),
-                        ("Mail gesendet", "#00A3C4"), ("Teams-Anruf", "#464EB8")]:
+                        ("Mail gesendet", "#009BBB"), ("Teams-Anruf", "#565EBF")]:
         cfg["type_colors"].setdefault(kind, color)
     # Design "Metro Klar": alte Standardfarben einmalig umstellen, selbst gewählte Farben bleiben.
     # Nur einmal, damit eine später bewusst gewählte alte Farbe nicht wieder ersetzt wird.
@@ -254,6 +265,24 @@ def load_config_with_defaults():
             if str(cfg["type_colors"].get(kind, "")).upper() == old[0]:
                 cfg["type_colors"][kind] = old[1]
         cfg["type_colors_version"] = 3
+    # Kontrast 3 : 1 für Balken: zu helle/dunkle Standardwerte einmalig anpassen
+    if cfg.get("type_colors_version", 1) < 4:
+        for kind, color in list(cfg["type_colors"].items()):
+            if isinstance(color, str) and color.upper() in CONTRAST_TYPE_COLORS:
+                cfg["type_colors"][kind] = CONTRAST_TYPE_COLORS[color.upper()]
+        cfg["type_colors_version"] = 4
+    # Aufgeräumte Timeline: Zeile "Zuordnung ohne KI" einmalig aus (fließt in "Dokumentation" ein),
+    # wer sie danach wieder einschaltet, behält sie
+    if cfg.get("layout_version", 1) < 2:
+        cfg["timeline_rows"]["rule"] = False
+        cfg["layout_version"] = 2
+    # Mehr Themen fürs Nachfragen: neue Quellen einmalig dazunehmen (abwählen bleibt möglich)
+    if cfg.get("prompt_sources_version", 1) < 2:
+        if isinstance(cfg.get("prompt_sources"), list):
+            for kind in ("pc", "meetings", "mails"):
+                if kind not in cfg["prompt_sources"]:
+                    cfg["prompt_sources"].append(kind)
+        cfg["prompt_sources_version"] = 2
     # Alte Standardpfade enthielten doppelte Backslashes (C:\Users\x\\TeamViewer)
     for key in ("teamviewer_paths", "rdm_paths", "vpn_paths"):
         cfg[key] = [clean_path(p) for p in cfg.get(key, []) if isinstance(p, str)]
@@ -437,10 +466,12 @@ class TimelineApp(MenusMixin, DayListMixin, DocsMixin, ReadersMixin, TrayMixin, 
         self.timeline.m42_entries = self.m42_band
         self.timeline.doc_request.connect(self.on_doc_request)
         self.timeline.entry_action.connect(self.on_entry_action)
+        self.timeline.rows_menu_requested.connect(self.show_rows_menu)
         self._rule_cache = {}
         self._prompt_window = None
         self._prompt_queue = []
         self._prompt_asked = {}     # Schlüssel -> frühestens wieder fragen (datetime)
+        self._prompt_asked_spans = []  # [(Zeitraum + Kunde, bis)]: erkennt auch veränderte Einträge
         self._started_at = datetime.now()
         self._reminded_day = None   # Feierabend-Erinnerung nur einmal am Tag
 
@@ -451,11 +482,8 @@ class TimelineApp(MenusMixin, DayListMixin, DocsMixin, ReadersMixin, TrayMixin, 
         self.set_tracking(self.config.get("tracking_enabled", True))
 
         self.table = QTableWidget(0, len(self.COLUMNS), self)
-        # Metro: Spaltenköpfe in Großbuchstaben mit etwas Sperrung
-        self.table.setHorizontalHeaderLabels([c.upper() for c in self.COLUMNS])
-        header_font = self.table.horizontalHeader().font()
-        header_font.setLetterSpacing(QFont.PercentageSpacing, 106)
-        self.table.horizontalHeader().setFont(header_font)
+        # Spaltenköpfe fett statt in Großbuchstaben (besser lesbar)
+        self.table.setHorizontalHeaderLabels(self.COLUMNS)
         self.table.verticalHeader().setVisible(False)
         self.table.setAlternatingRowColors(True)
         self.table.setShowGrid(False)
@@ -598,7 +626,7 @@ class TimelineApp(MenusMixin, DayListMixin, DocsMixin, ReadersMixin, TrayMixin, 
         self.timeline.setFocus()
         # Erst zeichnen, wenn das Fenster seine echte Größe hat (spart ein Zeichnen beim Start).
         # Die Logs liest die Timeline dabei im Hintergrund.
-        QTimer.singleShot(0, lambda: self.timeline.draw_timeline(self.current_date))
+        QTimer.singleShot(0, self.show_preferred_range)  # Arbeitszeit (oder ganzer Tag, wie zuletzt)
         self._init_protection()
         self._init_robustness()
         # PC-Verlauf nach N Tagen löschen (Standard aus), beim Start verzögert und täglich

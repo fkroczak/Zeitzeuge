@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (QComboBox, QDialog, QDialogButtonBox, QFormLayout
                                QInputDialog, QLabel, QLineEdit, QListWidget, QMessageBox,
                                QPushButton, QVBoxLayout)
 
+from theme import prose
 import customers as cl
 import main_timeline as mt  # save_config zur Laufzeit von dort (Tests ersetzen es dort)
 
@@ -35,6 +36,7 @@ class CustomersDialog(QDialog):
                       "Telefonnummer oder E-Mail-Domain. Zeitzeuge schlägt den Kunden dann "
                       "beim Eintragen vor und zeigt ihn in der Tagesliste.")
         info.setWordWrap(True)
+        prose(info)
         layout.addWidget(info)
 
         columns = QHBoxLayout()

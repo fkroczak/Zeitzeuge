@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QButtonGroup, QCheckBox, QColo
                                QPushButton, QRadioButton, QSpinBox, QTableWidget,
                                QTableWidgetItem, QTimeEdit, QVBoxLayout)
 
+from theme import prose, readable_on
 class ConnectionSettingsDialog(QDialog):
     def __init__(self, config, config_key, default_paths, title, parent=None,
                  enabled_text=None, folders=False, hint=None):
@@ -36,6 +37,7 @@ class ConnectionSettingsDialog(QDialog):
         if self.hint:
             hint = QLabel(self.hint)
             hint.setWordWrap(True)
+            prose(hint)
             layout.addWidget(hint)
 
         # Pfadeinstellungen
@@ -204,8 +206,8 @@ class ActivityTypeSettingsDialog(QDialog):
         if self.type_list.currentItem():
             type_name = self.type_list.currentItem().text()
             color = self.config['type_colors'].get(type_name, "#FFFFFF")
-            # Schrift schwarz oder weiß, je nachdem was auf der Farbe lesbar ist
-            text = "#000000" if QColor(color).lightness() > 140 else "#FFFFFF"
+            # Schrift dunkel oder weiß, je nachdem was auf der Farbe lesbar ist (kein reines Schwarz)
+            text = readable_on(color).name()
             self.color_btn.setStyleSheet(f"background-color: {color}; color: {text};")
             self.color_btn.setText(f"{type_name}: Farbe ändern …")
     

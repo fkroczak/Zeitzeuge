@@ -24,7 +24,8 @@ with open(os.path.join(data, "aktivitaet", f"{start:%Y-%m-%d}.jsonl"), "w", enco
                             "app": random.choice(apps), "title": f"Fenster {i % 90}"}) + "\n")
         t = e
 with open(os.path.join(data, "zeitzeuge_config.json"), "w", encoding="utf-8") as f:
-    json.dump({"tracking_enabled": True, "show_pc_in_list": True}, f)
+    # Erst jedes Fenster einzeln (Belastungstest), danach als Arbeitsblöcke
+    json.dump({"tracking_enabled": True, "show_pc_in_list": True, "pc_blocks": False}, f)
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import main_timeline  # noqa: E402  (erst nach ZEITZEUGE_DATA laden)
@@ -48,5 +49,18 @@ if rows < 150 or took > 2:
     sys.stdout.flush()
     os._exit(1)
 print("Tagesliste schnell genug")
+
+# Arbeitsblöcke: viel weniger Zeilen, ebenso schnell
+window.config["pc_blocks"] = True
+t0 = time.perf_counter()
+window.timeline.draw_timeline(window.current_date)
+app.processEvents()
+took = time.perf_counter() - t0
+blocks = window.table.rowCount()
+print(f"Arbeitsblöcke: {blocks} Zeilen in {took:.2f} s")
+if not 0 < blocks < rows / 3 or took > 2:
+    print(f"::error title=Tagesliste::Arbeitsblöcke: {blocks} Zeilen (vorher {rows}) in {took:.1f} s")
+    sys.stdout.flush()
+    os._exit(1)
 sys.stdout.flush()
 os._exit(0)

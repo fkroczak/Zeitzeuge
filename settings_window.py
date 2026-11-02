@@ -7,21 +7,23 @@ stehen in PAGES und ROWS; die Suche geht über Titel, Beschreibung und Bereich j
 Teil von TimelineApp (main_timeline.py): SettingsWindow(main) bekommt das Hauptfenster.
 """
 from PySide6.QtCore import QSize, Qt, QTimer, QUrl
-from PySide6.QtGui import QDesktopServices
-from PySide6.QtWidgets import (QCheckBox, QDialog, QFrame, QGridLayout, QHBoxLayout, QLabel,
+from PySide6.QtGui import QCursor, QDesktopServices
+from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QFrame, QGridLayout, QHBoxLayout, QLabel,
                                QLineEdit, QListWidget, QListWidgetItem, QPushButton, QScrollArea,
                                QSpinBox, QStackedWidget, QVBoxLayout, QWidget)
 
 import icons
-from theme import THEMES
+from theme import THEMES, prose
 import main_timeline as mt  # Pfade und save_config zur Laufzeit von dort (Tests ersetzen sie dort)
 
 # Bereiche: Schlüssel, Name, Symbol, Satz darunter
 PAGES = [
-    ("general", "Allgemein", "settings", "Aussehen, Arbeitszeiten und Aufzeichnung der aktiven Fenster."),
+    ("general", "Allgemein", "settings", "Arbeitszeiten und Aufzeichnung der aktiven Fenster."),
+    ("view", "Ansicht", "eye", "Timeline, Tagesliste und Aussehen. Die Vorschau zeigt einen Beispieltag; "
+     "fährst du über eine Einstellung, siehst du die Änderung schon vorher."),
     ("sources", "Datenquellen", "plug", "Woher Zeitzeuge deine Spuren liest. Schalter und Zustand je Quelle."),
     ("prompts", "Nachfragen & Grenzwerte", "bell", "Wann Zeitzeuge nachfragt und ab welchen Minuten."),
-    ("rules", "Zuordnung & KI", "rules", "Regeln ohne KI, KI-Vorschläge, Typen und Farben."),
+    ("rules", "Zuordnung & KI", "rules", "Regeln ohne KI und KI-Vorschläge."),
     ("booking", "Matrix42 & Abrechnung", "gauge", "Buchen, Abrechnungstakt und Buchungsquote."),
     ("customers", "Kunden & Texte", "users", "Kundenliste mit Spuren und Textbausteine."),
     ("data", "Daten & Schutz", "shield", "Speicherort, PIN, Löschen, Übernehmen von einem anderen PC."),
@@ -47,9 +49,8 @@ def _billing_summary(main):
 #   button: Ziel = Methode am Hauptfenster (oder Funktion main -> None), Zusatz = Wert-Funktion
 #   spin:   Ziel = Config-Schlüssel, Zusatz = (min, max, Einheit, Text bei 0, Nachlauf)
 #   check:  Ziel = Config-Schlüssel, Zusatz = Standardwert
+#   choice: Ziel = Config-Schlüssel, Zusatz = ([(Wert, Text)] oder Funktion main -> Liste, Nachlauf)
 ROWS = [
-    ("general", "toggle", "moon", "Dunkles Design", "Helles oder dunkles Aussehen, gilt sofort.",
-     "dark_action", None),
     ("general", "button", "clock", "Arbeitszeiten", "Arbeitstage und Zeiten, wenn keine ITM-Personalzeit da ist.",
      "edit_work_hours", None),
     ("general", "toggle", "monitor", "Aktive Fenster aufzeichnen",
@@ -58,6 +59,27 @@ ROWS = [
      "edit_tracking_filters", None),
     ("general", "spin", "pause", "Leerlauf nach", "Ohne Maus und Tastatur zeichnet Zeitzeuge nichts auf.",
      "tracking_idle_minutes", (1, 60, "min", "", "idle_limit")),
+
+    # Ansicht: alles, was nur die Darstellung ändert (mit Vorschau, settings_preview.py)
+    ("view", "toggle", "moon", "Dunkles Design", "Helles oder dunkles Aussehen, gilt sofort.",
+     "dark_action", None),
+    ("view", "choice", "layers", "Tagesliste", "Wie die Liste unter der Timeline die Einträge zeigt (F1 erklärt alle).",
+     "list_view", (lambda main: [(k, t) for k, t in main.VIEWS], "view")),
+    ("view", "toggle", "monitor", "PC-Verlauf in der Liste", "Arbeitsblöcke am PC auch in der Tagesliste zeigen.",
+     "pc_list_action", None),
+    ("view", "toggle", "blocks", "PC-Aktivität als Arbeitsblöcke",
+     "Fenster zu Blöcken je Tätigkeit zusammenfassen statt jedes Fenster einzeln zu zeigen. "
+     "Auch im Menü Ansicht und per Rechtsklick auf die Legende der Timeline.",
+     "pc_blocks_action", None),
+    ("view", "spin", "layers", "Kurze Sprünge bis",
+     "Kürzere Wechsel zählen zur Haupttätigkeit, wenn es danach dort weitergeht oder der Kunde passt.",
+     "pc_jump_seconds", (0, 600, "s", "aus", "redraw")),
+    ("view", "choice", "clock", "Timeline beim Start",
+     "Zeitraum beim Start und beim Blättern zum nächsten Tag.",
+     "timeline_range", ([("work", "Arbeitszeit"), ("day", "Ganzer Tag")], "range")),
+    ("view", "button", "rows", "Zeilen der Timeline",
+     "Jede Zeile ein- oder ausblenden. Leere Zeilen blendet Zeitzeuge von selbst aus.",
+     lambda main: main.rows_menu.exec(QCursor.pos()), None),
 
     ("sources", "button", "spark", "Einrichtungsassistent", "Alle Quellen Schritt für Schritt neu einrichten.",
      "show_setup_wizard", None),
@@ -70,13 +92,13 @@ ROWS = [
      "idle_prompt_minutes", (0, 240, "min", "aus", "idle_watch")),
     ("prompts", "spin", "pause", "„Später fragen“ nach", "So lange wartet eine zurückgestellte Nachfrage.",
      "prompt_snooze_minutes", (1, 480, "min", "", None)),
-    ("prompts", "spin", "layers", "Zusammenfassen bis Pause",
+    ("view", "spin", "layers", "Zusammenfassen bis Pause",
      "Ansicht „Zusammengefasst“: gleiche Verbindungen mit kürzerer Pause werden eine Zeile.",
      "merge_gap_minutes", (0, 120, "min", "nie", "redraw")),
-    ("prompts", "spin", "blocks", "Arbeitsblock bis Pause",
+    ("view", "spin", "blocks", "Arbeitsblock bis Pause",
      "Ansicht „Arbeitsblöcke“: alles mit kürzerer Pause wird ein Block.",
      "block_gap_minutes", (1, 240, "min", "", "redraw")),
-    ("prompts", "spin", "monitor", "Gesendete Mail als Block",
+    ("view", "spin", "monitor", "Gesendete Mail als Block",
      "So breit steht eine gesendete Mail in der Timeline (Outlook).",
      "outlook_mail_minutes", (1, 60, "min", "", "redraw")),
 
@@ -84,7 +106,7 @@ ROWS = [
      "edit_rules", None),
     ("rules", "button", "spark", "KI-Vorschläge", "Modell, Schlüssel und Kategorien für Claude.",
      "edit_ai_settings", None),
-    ("rules", "button", "palette", "Aktivitätstypen und Farben", "Farbe je Art in der Timeline.",
+    ("view", "button", "palette", "Aktivitätstypen und Farben", "Farbe je Art in der Timeline.",
      "edit_activity_types", None),
 
     ("booking", "button", "gauge", "Matrix42 einrichten", "Adresse der Kalenderseite und Anmeldung (nur im Firmennetz).",
@@ -201,6 +223,22 @@ def _set_quiet(box, on):
         box.setText("An" if on else "Aus")
 
 
+class _Combo(QComboBox):
+    """Auswahlliste, die beim Schließen Bescheid gibt (Vorschau zurück auf den Stand)."""
+
+    def __init__(self, on_close):
+        super().__init__()
+        self._on_close = on_close
+
+    def hidePopup(self):
+        super().hidePopup()
+        self._on_close()
+
+
+# Schalter am Hauptfenster -> Config-Schlüssel, damit die Vorschau den umgeschalteten Wert zeigen kann
+ACTION_KEYS = {"dark_action": "dark_mode", "pc_blocks_action": "pc_blocks", "pc_list_action": "show_pc_in_list"}
+
+
 class _Row(QFrame):
     """Eine Einstellung: Symbol, Titel, Beschreibung, rechts Schalter, Zahl oder „Ändern …“."""
 
@@ -223,12 +261,13 @@ class _Row(QFrame):
         head.setObjectName("row_title")
         text.addWidget(head)
         if show_page:
-            where = QLabel(dict((k, n) for k, n, _i, _s in PAGES)[page].upper())
+            where = QLabel(dict((k, n) for k, n, _i, _s in PAGES)[page])
             where.setObjectName("row_page")
             text.insertWidget(0, where)
         body = QLabel(desc)
         body.setObjectName("hint")
         body.setWordWrap(True)
+        prose(body)
         text.addWidget(body)
         layout.addLayout(text, 1)
         self.value = None
@@ -254,6 +293,17 @@ class _Row(QFrame):
             self.control.setAccessibleName(title)
             self.control.setValue(int(main.config.get(target, low) or 0))
             self.control.valueChanged.connect(lambda v: self._set_config(target, v, after))
+        elif kind == "choice":
+            options, _after = extra
+            self.control = _Combo(lambda: window.preview_hover(None))
+            self.control.setAccessibleName(title)
+            for value, text in (options(main) if callable(options) else options):
+                self.control.addItem(text, value)
+            self.control.activated.connect(
+                lambda i: self._set_config(target, self.control.itemData(i), extra[1]))
+            # Vorschau schon beim Durchgehen der Liste, bevor etwas gewählt ist
+            self.control.highlighted.connect(
+                lambda i: window.preview_hover(self.spec, self.control.itemData(i), self.control.itemText(i)))
         else:  # button
             if extra:
                 self.value = QLabel()
@@ -269,6 +319,16 @@ class _Row(QFrame):
     def _sync_toggle(self, on):
         if self.control.isChecked() != on:
             _set_quiet(self.control, on)
+        self.window.refresh_preview_later()
+
+    # Vorschau: beim Darüberfahren zeigen, wie es nach dem Umschalten aussähe
+    def enterEvent(self, event):
+        self.window.preview_hover(self.spec)
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        self.window.preview_hover(None)
+        super().leaveEvent(event)
 
     def _run(self):
         target = self.spec[5]
@@ -288,6 +348,11 @@ class _Row(QFrame):
             main.tracker.idle_limit = value * 60
         if after in ("redraw", "idle_watch"):
             main.timeline.draw_timeline(main.current_date)
+        elif after == "view":
+            main.change_view(value)
+        elif after == "range":
+            main.show_preferred_range()
+        self.window.refresh_preview_later()
         if key in ("booking_rate_status", "booking_target_percent"):
             import week_dialogs
             week_dialogs.update_rate_button(main)
@@ -303,6 +368,12 @@ class _Row(QFrame):
             self.control.blockSignals(False)
         elif kind == "check":
             _set_quiet(self.control, main.config.get(target, extra))
+        elif kind == "choice":
+            default = self.control.itemData(0)
+            index = self.control.findData(main.config.get(target, default))
+            self.control.blockSignals(True)
+            self.control.setCurrentIndex(max(0, index))
+            self.control.blockSignals(False)
         elif kind == "toggle":
             self._sync_toggle(getattr(main, target).isChecked())
 
@@ -392,6 +463,11 @@ class SettingsWindow(QDialog):
         theme = THEMES["dark" if main.dark_mode else "light"]
         self.icon_color = theme["text"]
         self.rows, self.tiles = [], []
+        self.preview = None  # Vorschau auf der Seite „Ansicht“ (settings_preview.py)
+        self._preview_timer = QTimer(self)
+        self._preview_timer.setSingleShot(True)
+        self._preview_timer.setInterval(0)
+        self._preview_timer.timeout.connect(self._refresh_preview)
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -436,6 +512,11 @@ class SettingsWindow(QDialog):
         self._timer = QTimer(self)
         self._timer.timeout.connect(self.refresh_tiles)
         self._timer.start(3000)
+        # Änderungen aus dem Hauptfenster (Menü Ansicht, Zeilen der Timeline) auch in der Vorschau
+        for action in list(getattr(main, "row_actions", {}).values()):
+            action.toggled.connect(self.refresh_preview_later)
+        for action in getattr(main, "view_actions", {}).values():
+            action.triggered.connect(self.refresh_preview_later)
         self.nav.setCurrentRow(0)
 
     # ---- Aufbau
@@ -453,14 +534,27 @@ class SettingsWindow(QDialog):
         layout = QVBoxLayout(page)
         layout.setContentsMargins(28, 20, 28, 20)
         layout.setSpacing(4)
+        # Seite „Ansicht“: Titel und Vorschau bleiben stehen, nur die Einstellungen darunter blättern
+        head = layout
+        if key == "view":
+            fixed = QWidget()
+            fixed.setObjectName("settings_page")
+            head = QVBoxLayout(fixed)
+            head.setContentsMargins(28, 20, 28, 8)
+            head.setSpacing(4)
+            layout.setContentsMargins(28, 4, 28, 20)
         title = QLabel(name)
         title.setObjectName("page_title")
-        layout.addWidget(title)
+        head.addWidget(title)
         sub = QLabel(subtitle)
         sub.setObjectName("hint")
         sub.setWordWrap(True)
-        layout.addWidget(sub)
-        layout.addSpacing(10)
+        head.addWidget(sub)
+        head.addSpacing(10)
+        if key == "view":
+            from settings_preview import PreviewPane
+            self.preview = PreviewPane(self.main)
+            head.addWidget(self.preview)
         if key == "sources":
             grid = QGridLayout()
             grid.setSpacing(12)
@@ -478,7 +572,46 @@ class SettingsWindow(QDialog):
                 self.rows.append(row)
                 layout.addWidget(row)
         layout.addStretch(1)
+        if key == "view":
+            wrapper = QWidget()
+            box = QVBoxLayout(wrapper)
+            box.setContentsMargins(0, 0, 0, 0)
+            box.setSpacing(0)
+            box.addWidget(fixed)
+            box.addWidget(self._scroll(page), 1)
+            return wrapper
         return self._scroll(page)
+
+    # ---- Vorschau (Seite „Ansicht“)
+
+    def preview_hover(self, spec, value=None, text=None):
+        """Variante zeigen: Schalter umgedreht oder Eintrag einer Auswahl; spec None = aktueller Stand."""
+        if self.preview is None:
+            return
+        changes, caption = None, ""
+        if spec is not None:
+            main = self.main
+            kind, title, target, extra = spec[1], spec[3], spec[5], spec[6]
+            key = ACTION_KEYS.get(target) if kind == "toggle" else target
+            if kind == "toggle" and key:
+                on = not getattr(main, target).isChecked()
+                changes, caption = {key: on}, f"So sähe es aus mit „{title}“ {'an' if on else 'aus'}"
+            elif kind == "check":
+                on = not bool(main.config.get(target, extra))
+                changes, caption = {key: on}, f"So sähe es aus mit „{title}“ {'an' if on else 'aus'}"
+            elif kind == "choice" and value is not None and value != main.config.get(target):
+                changes, caption = {key: value}, f"So sähe es aus mit „{title}: {text}“"
+        if changes or self.preview.variant:
+            self.preview.show_variant(changes, caption)
+
+    def refresh_preview_later(self):
+        """Nach einer Änderung (auch aus dem Hauptfenster) die Vorschau einmal neu zeichnen."""
+        if self.preview is not None and not self._preview_timer.isActive():
+            self._preview_timer.start()
+
+    def _refresh_preview(self):
+        if self.preview is not None:
+            self.preview.show_variant(None)
 
     def _results_page(self):
         page = QWidget()

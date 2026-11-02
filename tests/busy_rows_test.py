@@ -112,7 +112,18 @@ window.row_actions["doc"].setChecked(False)
 assert "Dokumentation" not in legend()
 window.show_all_rows()
 names = legend()
-assert {"Dokumentation", "Telefon", "VPN", "TeamViewer", "Remote / Weitere"} <= set(names), names
+assert {"Dokumentation", "Telefon", "Remote / Weitere"} <= set(names), names
+# Leere Zeilen (an diesem Tag kein VPN, kein TeamViewer) blendet Zeitzeuge von selbst aus
+assert not {"VPN", "TeamViewer"} & set(names), names
+# Rechtsklick auf die Legende öffnet das Menü der Zeilen
+from PySide6.QtCore import QPoint  # noqa: E402
+from PySide6.QtGui import QContextMenuEvent  # noqa: E402
+shown_at = []
+window.rows_menu.exec = lambda pos: shown_at.append(pos)
+window.timeline.contextMenuEvent(QContextMenuEvent(QContextMenuEvent.Mouse, QPoint(10, 60)))
+assert shown_at, "Rechtsklick auf die Legende zeigt kein Menü"
+assert window.row_actions["vpn"] in window.rows_menu.actions() or any(
+    p.text() == window.row_actions["vpn"].text() for p in window.rows_menu.actions())
 assert all(window.config["timeline_rows"][k] for k, _t in TIMELINE_ROWS)
 
 window.quit_app()

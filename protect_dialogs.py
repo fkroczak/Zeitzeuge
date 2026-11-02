@@ -5,10 +5,11 @@ Sie gehören in RDM (Eintrag „Zeitzeuge“), nie in eine Befehlszeile: Cortex 
 Befehlszeilen zentral.
 """
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QFont, QFontDatabase
+from PySide6.QtGui import QFontDatabase
 from PySide6.QtWidgets import (QApplication, QCheckBox, QDialog, QDialogButtonBox, QFormLayout,
                                QLabel, QLineEdit, QMessageBox, QPushButton, QVBoxLayout)
 
+from theme import prose
 import datakey
 import datastore
 
@@ -18,7 +19,7 @@ CLIPBOARD_CLEAR_MS = 2 * 60 * 1000  # kopierten Schlüssel danach aus der Zwisch
 def _code_font():
     font = QFontDatabase.systemFont(QFontDatabase.FixedFont)
     font.setPointSizeF(max(font.pointSizeF(), 10) * 1.3)
-    font.setWeight(QFont.DemiBold)
+    font.setBold(True)
     return font
 
 
@@ -39,11 +40,12 @@ class CodeDialog(QDialog):
         layout = QVBoxLayout(self)
         text = QLabel(intro)
         text.setWordWrap(True)
+        prose(text)
         layout.addWidget(text)
         self.code = QLineEdit(code)
         self.code.setReadOnly(True)
         self.code.setFont(_code_font())
-        self.code.setAlignment(Qt.AlignCenter)
+        self.code.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         self.code.setAccessibleName(title)
         self.code.setMinimumHeight(self.code.sizeHint().height() + 12)
         layout.addWidget(self.code)
@@ -52,6 +54,7 @@ class CodeDialog(QDialog):
                       "Die Zwischenablage leert sich nach 2 Minuten von selbst.")
         hint.setObjectName("hint")
         hint.setWordWrap(True)
+        prose(hint)
         layout.addWidget(hint)
         self.saved = QCheckBox(f"Ich habe den Schlüssel in RDM unter „{rdm_name}“ abgelegt")
         layout.addWidget(self.saved)
@@ -92,6 +95,7 @@ class EnterCodeDialog(QDialog):
         layout = QVBoxLayout(self)
         text = QLabel(intro)
         text.setWordWrap(True)
+        prose(text)
         layout.addWidget(text)
         form = QFormLayout()
         self.field = QLineEdit()
@@ -147,6 +151,7 @@ class NewPinDialog(QDialog):
         layout = QVBoxLayout(self)
         text = QLabel(intro)
         text.setWordWrap(True)
+        prose(text)
         layout.addWidget(text)
         form = QFormLayout()
         self.pin = QLineEdit()

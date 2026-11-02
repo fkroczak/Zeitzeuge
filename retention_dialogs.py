@@ -9,6 +9,7 @@ from PySide6.QtCore import QObject, QTimer
 from PySide6.QtWidgets import (QCheckBox, QDialog, QDialogButtonBox, QHBoxLayout, QLabel,
                                QMessageBox, QSpinBox, QVBoxLayout)
 
+from theme import prose
 import datastore
 import retention
 import safe_io
@@ -46,6 +47,7 @@ class RetentionDialog(QDialog):
                       "und einmal am Tag.")
         hint.setObjectName("hint")
         hint.setWordWrap(True)
+        prose(hint)
         layout.addWidget(hint)
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self.accept)
