@@ -63,7 +63,9 @@ class DayListMixin:
         elif self.config.get("list_view") == "blocks":
             entries = work_blocks(entries, self.config.get("block_gap_minutes", 10))
         elif self.config.get("show_pc_in_list", False):
-            entries += self.pc_activities
+            # Arbeitsblöcke wie in der Timeline (abgeschaltet: jedes Fenster ab 30 s)
+            entries += (self.timeline.pc_blocks_for(self.current_date) if self.config.get("pc_blocks", True)
+                        else self.pc_activities)
         entries.sort(key=lambda a: a["start"])
         self.list_entries = entries
 
@@ -81,7 +83,7 @@ class DayListMixin:
             start, end = parse_time(a["start"]), parse_time(a["end"])
             pix = QPixmap(10, 10)
             if "app" in a:
-                pix.fill(self.timeline.app_color(a["app"]))
+                pix.fill(self.timeline.block_color(a))
             else:
                 pix.fill(entry_color(a, self.config))
             type_item = QTableWidgetItem(QIcon(pix), type_label(a))
@@ -297,7 +299,8 @@ class DayListMixin:
 
     def date_changed(self, date: QDate):
         self.current_date = date
-        self.timeline.draw_timeline(self.current_date)
+        self.timeline.current_date = date
+        self.show_preferred_range()  # zeichnet neu: Arbeitszeit des Tages oder ganzer Tag
         # Fehlende Daten für diesen Tag im Hintergrund nachlesen
         for reader in self.all_readers():
             if reader:

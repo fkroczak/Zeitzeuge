@@ -18,7 +18,7 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
 
 ## Funktionen
 
-- **Tages-Timeline** von 00:00 bis 24:00 mit markierter Arbeitszeit. Telefonate, VPN und TeamViewer haben je eine feste Zeile („Tel“, „VPN“, „TV“). So siehst du sofort, wann du telefoniert hast oder verbunden warst. Darunter folgen RDM und weitere Verbindungen; überlappen sie sich, rücken sie in die nächste Zeile. Zeilen ohne Einträge an diesem Tag blendet Zeitzeuge aus, damit die Timeline ruhig bleibt. Links steht eine Legende mit Name und Farbe jeder Zeile; sie bleibt beim Blättern stehen. Alle Zeilen passen ohne senkrechte Scrollleiste ins Fenster, bei vielen Zeilen werden sie niedriger (UMSCHALT + Mausrad blättert, falls es trotzdem eng wird).
+- **Tages-Timeline** von 00:00 bis 24:00 mit markierter Arbeitszeit. Telefonate, VPN und TeamViewer haben je eine feste Zeile („Tel“, „VPN“, „TV“). So siehst du sofort, wann du telefoniert hast oder verbunden warst. Darunter folgen RDM und weitere Verbindungen; überlappen sie sich, rücken sie in die nächste Zeile. Zeilen ohne Einträge an diesem Tag blendet Zeitzeuge aus, damit die Timeline ruhig bleibt. Beim Start und beim Blättern zeigt sie die Arbeitszeit des Tages (± 30 Minuten); wählst du **Ganzer Tag**, merkt sie sich das. Dicht aufeinanderfolgende offene Einträge stehen in der Zeile Dokumentation als ein Block („? 3 offen“), der Hinweis listet sie einzeln. Passt ein Name nicht in einen Balken, steht dort eine kürzere Form oder nichts, statt eines abgeschnittenen „Chro…“. Links steht eine Legende mit Name und Farbe jeder Zeile; sie bleibt beim Blättern stehen. Alle Zeilen passen ohne senkrechte Scrollleiste ins Fenster, bei vielen Zeilen werden sie niedriger (UMSCHALT + Mausrad blättert, falls es trotzdem eng wird).
 - **TeamViewer:** liest `Connections.txt` mit Sitzungs-ID, Beginn und Ende. Verbindungen unter 1 Minute werden ausgeblendet.
   - Statt der ID kannst du einen Namen vergeben: Rechtsklick auf die Verbindung (Tagesliste oder Timeline), dann **TeamViewer-ID benennen …**.
 - **Remote Desktop Manager (Devolutions):** liest `Connections.log`.
@@ -63,8 +63,12 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
   - Im Wochenabschluss bucht **Tag in Matrix42 buchen …** alle noch offenen Tätigkeiten des markierten Tags nacheinander, jede mit eigenem Fenster.
   - Matrix42 muss eingeschaltet und angemeldet sein (nur im Firmennetz). Zeitzeuge bucht über das unsichtbare Edge, wie die Matrix42-Seite selbst.
 - **Aktivitätsprotokoll:** Alle 5 Sekunden merkt sich Zeitzeuge das aktive Fenster, zum Beispiel eine RDP-Sitzung, einen Browser-Tab, Outlook oder PuTTY.
-  - Es erscheint als farbiges Band „PC“ oben in der Timeline, eine Farbe pro Programm.
-  - Mit **Ansicht → PC-Verlauf in der Liste** stehen die Fenster auch in der Tagesliste.
+  - Es erscheint oben in der Timeline als Zeile „PC-Aktivität“, zusammengefasst zu **Arbeitsblöcken** je Tätigkeit, z. B. „E-Mail“, „DC01 · Fernwartung“ oder „Excel“. Aus 180 Fensterwechseln an einem Tag werden so etwa 10 Blöcke.
+  - Die Tätigkeit kommt aus der **Zuordnung ohne KI** (Outlook und Thunderbird sind beide „E-Mail“, ein Remotedesktop-Fenster „DC01 – Remotedesktopverbindung“ ist „DC01 · Fernwartung“), sonst ist es das Programm.
+  - **Kurze Sprünge** (Standard: unter 2 Minuten) zählen zur Haupttätigkeit, wenn es danach dort weitergeht oder der Kunde passt. Ein kurzer Blick in Teams mitten im Mail-Bearbeiten bleibt also im Block „E-Mail“. Blöcke unter 3 Minuten gehen im Nachbarblock auf, Pausen über 5 Minuten trennen Blöcke.
+  - Fährst du über einen Block, siehst du die Anteile der Programme („Outlook 26 min (87 %), Teams 3 min (10 %)“), die Zahl der Fensterwechsel und den Fokus (Anteil der Haupttätigkeit). Rechtsklick: **Tätigkeit dazu eintragen …** mit Kunde und Kategorie des Blocks.
+  - Unter **Einstellungen → Allgemein** schaltest du die Arbeitsblöcke ab (dann wieder jedes Fenster einzeln als schmales Band) und stellst ein, bis wann ein Wechsel als kurzer Sprung gilt.
+  - Mit **Ansicht → PC-Verlauf in der Liste** stehen die Arbeitsblöcke auch in der Tagesliste.
   - Nach 5 Minuten ohne Maus und Tastatur oder bei gesperrtem PC wird nichts aufgezeichnet.
   - Fenster mit bestimmten Wörtern im Titel werden nur als „(ausgeblendet)“ gespeichert, zum Beispiel Passwortmanager.
   - Mit dem **Fenster-Filter** lässt du private Programme ganz weg oder zeichnest nur erlaubte Programme auf.
@@ -411,6 +415,9 @@ Unter **Einstellungen → Nachfragen und Erinnerungen …** legst du fest, wann 
 | `m42_reader_enabled` | `false` | Gebuchte Zeiten aus Matrix42 lesen |
 | `m42_weeks_back` | `4` | So viele Wochen zurück einmal pro Sitzung lesen |
 | `m42_gap_minutes` | `5` | Kürzere Lücken ohne Buchung zählen nicht |
+| `pc_blocks` | `true` | PC-Aktivität als Arbeitsblöcke je Tätigkeit statt jedes Fenster einzeln |
+| `pc_jump_seconds` | `120` | Kürzere Fensterwechsel zählen zur Haupttätigkeit (0 = aus) |
+| `timeline_range` | `work` | Zeitraum beim Start und beim Blättern: `work` (Arbeitszeit) oder `day` (ganzer Tag); merkt sich den zuletzt gewählten |
 | `timeline_rows` | alle an außer `rule` | Sichtbare Zeilen der Timeline: `pc`, `work` (Personalzeit), `doc`, `m42`, `rule` (Zuordnung ohne KI), `ai`, `call`, `vpn`, `tv`, `other` (Remote / Weitere) |
 
 Gefragt wird nur nach Tätigkeiten, die gerade erst geendet haben. Ältere offene Einträge stehen gestrichelt in der Zeile „Doku“, damit nichts verloren geht. Als dokumentiert gilt ein Eintrag, wenn mindestens die Hälfte seiner Zeit in deinen Tätigkeiten steckt.
@@ -612,6 +619,7 @@ Für Tests und Hilfsskripte gibt es zwei Umgebungsvariablen: `ZEITZEUGE_DATA` se
 | `main_timeline.py` | Start, Config laden/speichern, Hauptfenster (setzt sich aus den `app_*.py` zusammen) |
 | `app_menus.py` | Werkzeugleiste, Menü „Einstellungen“, Dialoge dazu |
 | `app_daylist.py` | Tagesliste, Statuszeile, Tageswechsel |
+| `focus.py` | PC-Aktivität zu Arbeitsblöcken zusammenfassen (kurze Sprünge, Splitter, Anteile) |
 | `app_docs.py` | Tätigkeiten dokumentieren, Nachfragen, KI-Vorschläge |
 | `idle_watch.py` | Abwesenheit am PC erkennen (für die Nachfrage) |
 | `settings_window.py` | Fenster Einstellungen: Bereiche, Suche, Kacheln der Datenquellen |

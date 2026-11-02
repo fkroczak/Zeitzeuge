@@ -618,7 +618,7 @@ class TimelineApp(MenusMixin, DayListMixin, DocsMixin, ReadersMixin, TrayMixin, 
         self.timeline.setFocus()
         # Erst zeichnen, wenn das Fenster seine echte Größe hat (spart ein Zeichnen beim Start).
         # Die Logs liest die Timeline dabei im Hintergrund.
-        QTimer.singleShot(0, lambda: self.timeline.draw_timeline(self.current_date))
+        QTimer.singleShot(0, self.show_preferred_range)  # Arbeitszeit (oder ganzer Tag, wie zuletzt)
         self._init_protection()
         self._init_robustness()
         # PC-Verlauf nach N Tagen löschen (Standard aus), beim Start verzögert und täglich

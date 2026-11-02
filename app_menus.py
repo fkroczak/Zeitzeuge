@@ -561,10 +561,25 @@ class MenusMixin:
         self.timeline.set_zoom(self.timeline.zoom_level / 1.25)
 
     def timeline_whole_day(self):
+        self._remember_range("day")
         self.timeline.show_whole_day()
 
     def timeline_work_time(self):
+        self._remember_range("work")
         self.timeline.show_work_time()
+
+    def _remember_range(self, value):
+        """Zuletzt gewählter Zeitraum gilt beim Start und beim Blättern zum nächsten Tag."""
+        if self.config.get("timeline_range", "work") != value:
+            self.config["timeline_range"] = value
+            mt.save_config(self.config)
+
+    def show_preferred_range(self):
+        """Timeline im bevorzugten Zeitraum zeichnen: Arbeitszeit (Standard) oder ganzer Tag."""
+        if self.config.get("timeline_range", "work") == "work":
+            self.timeline.show_work_time()
+        else:
+            self.timeline.show_whole_day()
 
     def toggle_dark_mode(self, enabled: bool):
         self.dark_mode = enabled

@@ -202,6 +202,8 @@ def default_config():
         # PC-Verlauf (aktive Fenster) nach so vielen Tagen automatisch löschen. Standard: aus.
         # Tätigkeiten, Buchungen, KI-Vorschläge, Anrufe usw. bleiben immer erhalten.
         "pc_history_purge": False,
+        "pc_blocks": True,          # PC-Aktivität als Arbeitsblöcke (focus.py)
+        "pc_jump_seconds": 120,     # kürzere Fensterwechsel zählen zur Haupttätigkeit
         "pc_history_days": 90,
 
         # --- Kunden: Kundenliste und Lernen aus Korrekturen (customers.py, learning.py)

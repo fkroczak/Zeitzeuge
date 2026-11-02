@@ -192,6 +192,10 @@ for dark in (False, True):
         check_contrast(f"{area}, Balken {type_name}", timeline_only.readable_on(color), color)
         # Der Balken selbst hebt sich vom Grund ab (auch ohne Schrift, z. B. kurze Balken)
         check_contrast(f"{area}, Balken {type_name} auf Grund", color, tl.background_color, minimum=3.0)
+    # Arbeitsblöcke am PC (focus.py): gedeckte Farben, ebenso lesbar und vom Grund abgehoben
+    for color in set(tl.BLOCK_COLORS) | set(tl.CATEGORY_COLORS.values()):
+        check_contrast(f"{area}, PC-Block {color}", timeline_only.readable_on(color), color)
+        check_contrast(f"{area}, PC-Block {color} auf Grund", color, tl.background_color, minimum=3.0)
 window.timeline.dark_mode = window.dark_mode
 window.timeline.init_timeline_colors()
 
