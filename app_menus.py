@@ -307,6 +307,9 @@ class MenusMixin:
         self._icon_actions.append((menu.addAction("Wochen&abschluss …", self.show_week), "gauge"))
         self._icon_actions.append((menu.addAction("&Offene Tätigkeiten …", self.show_open_docs), "alert"))
         # Zeitraum (Ganzer Tag, Arbeitszeit) steht in der Werkzeugleiste, Design in den Einstellungen
+        menu.addSeparator()
+        self._icon_actions.append((menu.addAction("An&passen mit Vorschau …",
+                                                  lambda: self.show_settings("view")), "eye"))
 
         self.view_button = QToolButton(self)
         self.view_button.setText("&Ansicht")

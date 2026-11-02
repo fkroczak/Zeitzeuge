@@ -7,7 +7,7 @@ Die Timeline (timeline_only.py) nimmt ihre Grundfarben ebenfalls aus THEMES.
 import html
 import re
 
-from PySide6.QtCore import QLibraryInfo, QLocale, QSize, Qt, QTranslator
+from PySide6.QtCore import QEvent, QLibraryInfo, QLocale, QObject, QSize, Qt, QTranslator
 from PySide6.QtGui import QColor, QFont
 from PySide6.QtWidgets import QDialogButtonBox, QHeaderView, QProxyStyle, QStyle, QStyleFactory
 
@@ -120,8 +120,26 @@ def prose(label):
     if not re.search(r"<[a-zA-Z/][^>]*>", text):
         text = html.escape(text, quote=False).replace("\n", "<br>")
     label.setText(f'<p style="line-height:{PROSE_LINE_HEIGHT}%; margin:0">{text}</p>')
-    label.setMaximumWidth(label.fontMetrics().averageCharWidth() * PROSE_MAX_CHARS)
+    # Zeilen nicht länger als ~80 Zeichen: in breiten Fenstern rechts Innenabstand statt
+    # begrenzter Breite (die würde den Text mittig setzen oder abschneiden)
+    _ProseWidth(label, label.fontMetrics().averageCharWidth() * PROSE_MAX_CHARS)
     return label
+
+
+class _ProseWidth(QObject):
+    """Hält die Textbreite eines QLabel bei höchstens max_width, Text bleibt links."""
+
+    def __init__(self, label, max_width):
+        super().__init__(label)  # lebt so lange wie das Label
+        self.max_width = max_width
+        label.installEventFilter(self)
+
+    def eventFilter(self, label, event):
+        if event.type() == QEvent.Resize:
+            extra = max(0, label.width() - self.max_width)
+            if label.contentsMargins().right() != extra:
+                label.setContentsMargins(0, 0, extra, 0)
+        return False
 
 
 STYLESHEET = """

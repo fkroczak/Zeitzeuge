@@ -232,6 +232,7 @@ Alles, was nur die Anzeige ändert, nie die Daten:
 - **Zeilen der Timeline** (Untermenü, auch per Rechtsklick auf die Legende links): jede Zeile mit einem Kästchen in ihrer Farbe zum Ein- und Ausblenden, dazu **Alle Zeilen einblenden**. Leere Zeilen blendet Zeitzeuge von selbst aus.
 - **PC-Aktivität als Arbeitsblöcke:** an = Blöcke je Tätigkeit, aus = jedes Fenster einzeln.
 - **Übersichten:** Wochenabschluss, Offene Tätigkeiten.
+- **Anpassen mit Vorschau …** öffnet die Seite **Ansicht** im Einstellungsfenster.
 
 Ganzer Tag und Arbeitszeit stehen in der Werkzeugleiste, **Dunkles Design** im Pfeil-Menü am Knopf **Einstellungen**.
 
@@ -239,8 +240,9 @@ Ganzer Tag und Arbeitszeit stehen in der Werkzeugleiste, **Dunkles Design** im P
 
 Ein Klick auf **Einstellungen** (oder STRG + ,) öffnet ein eigenes Fenster. Es bleibt offen, während du weiterarbeitest, und alles gilt sofort.
 
-- **Links die Bereiche:** Allgemein, Datenquellen, Nachfragen & Grenzwerte, Zuordnung & KI, Matrix42 & Abrechnung, Kunden & Texte, Daten & Schutz, Über Zeitzeuge.
+- **Links die Bereiche:** Allgemein, Ansicht, Datenquellen, Nachfragen & Grenzwerte, Zuordnung & KI, Matrix42 & Abrechnung, Kunden & Texte, Daten & Schutz, Über Zeitzeuge.
 - **Oben die Suche:** z. B. „Minuten“ zeigt alle Grenzwerte aus allen Bereichen, und du änderst sie direkt dort.
+- **Ansicht mit Vorschau:** Alle Einstellungen zur Darstellung an einer Stelle: Dunkles Design, Tagesliste, PC-Verlauf in der Liste, PC-Aktivität als Arbeitsblöcke, kurze Sprünge, Zeitraum beim Start, Zeilen der Timeline, Zusammenfassen und Arbeitsblock (Pausen), gesendete Mail als Block, Typen und Farben. Oben zeigt eine **Vorschau** einen erfundenen Beispieltag mit Timeline und Tagesliste, so wie Zeitzeuge sie mit deinen Einstellungen zeichnet. Fährst du über einen Schalter, zeigt sie schon, wie es nach dem Umschalten aussähe („So sähe es aus mit „PC-Aktivität als Arbeitsblöcke“ aus“), ohne etwas zu speichern. In Auswahllisten siehst du jede Möglichkeit, während du durch die Liste gehst. Zahlen wirken beim Ändern sofort. Erreichbar auch über **Ansicht → Anpassen mit Vorschau …**.
 - **Datenquellen als Kacheln:** je Quelle ihr Zeichen in der Farbe des Herstellers, ein Schalter An/Aus, der Zustand („läuft“, „Logdatei nicht gefunden“, „Anmeldung nötig“) und **Einrichten …**.
 - **Grenzwerte als Zahlen:** Abwesenheit am PC, „Später fragen“, Zusammenfassen und Arbeitsblock (Pausen), Leerlauf, Ziel der Buchungsquote und mehr.
 
@@ -620,6 +622,7 @@ Für Tests und Hilfsskripte gibt es zwei Umgebungsvariablen: `ZEITZEUGE_DATA` se
 | `main_timeline.py` | Start, Config laden/speichern, Hauptfenster (setzt sich aus den `app_*.py` zusammen) |
 | `app_menus.py` | Werkzeugleiste, Menü „Einstellungen“, Dialoge dazu |
 | `app_daylist.py` | Tagesliste, Statuszeile, Tageswechsel |
+| `settings_preview.py` | Vorschau mit Beispieltag auf der Seite Ansicht der Einstellungen |
 | `focus.py` | PC-Aktivität zu Arbeitsblöcken zusammenfassen (kurze Sprünge, Splitter, Anteile) |
 | `app_docs.py` | Tätigkeiten dokumentieren, Nachfragen, KI-Vorschläge |
 | `idle_watch.py` | Abwesenheit am PC erkennen (für die Nachfrage) |

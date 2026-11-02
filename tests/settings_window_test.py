@@ -77,7 +77,46 @@ def gui_test():
     settings = window._settings_window
     assert settings is not None and settings.isVisible()
     pages = [settings.nav.item(i).text() for i in range(settings.nav.count())]
-    assert pages[:2] == ["Allgemein", "Datenquellen"], pages
+    assert pages[:3] == ["Allgemein", "Ansicht", "Datenquellen"], pages
+
+    # Seite Ansicht: Vorschau mit Beispieltag, Varianten beim Darüberfahren, Änderungen sofort
+    settings.show_page("view")
+    QTest.qWait(50)
+    preview = settings.preview
+    assert preview is not None and preview.isVisible()
+    assert preview.table.rowCount() >= 5 and preview.timeline._legend, "Vorschau leer"
+    row = next(r for r in settings.rows if r.spec[5] == "pc_blocks_action")
+    QTest.mouseMove(row, row.rect().center())
+    settings.preview_hover(row.spec)  # wie enterEvent
+    assert preview.variant and preview.timeline.config["pc_blocks"] is False, preview.variant
+    assert window.config.get("pc_blocks", True) is True, "Darüberfahren darf nichts speichern"
+    assert not any(p.get("pc_block") for p in preview.timeline._pc_band)
+    settings.preview_hover(None)
+    assert preview.variant is None and any(p.get("pc_block") for p in preview.timeline._pc_band)
+    # Auswahl: schon beim Durchgehen der Liste, gespeichert erst beim Wählen
+    combo = next(r for r in settings.rows if r.spec[5] == "list_view").control
+    single = combo.findData("single")
+    combo.highlighted.emit(single)
+    assert preview.timeline.config["list_view"] == "single" and window.config.get("list_view") != "single"
+    rows_grouped = preview.table.rowCount()
+    combo.activated.emit(single)
+    QTest.qWait(20)
+    assert window.config["list_view"] == "single" and preview.variant is None
+    assert window.view_actions["single"].isChecked(), "Hauptfenster folgt der Auswahl"
+    assert preview.table.rowCount() >= rows_grouped
+    window.change_view("grouped")
+    # Zahl ändern wirkt sofort auf die Vorschau
+    spin = next(r for r in settings.rows if r.spec[5] == "merge_gap_minutes").control
+    spin.setValue(0)
+    QTest.qWait(20)
+    assert preview.timeline.config["merge_gap_minutes"] == 0
+    spin.setValue(5)
+    # Zeitraum beim Start
+    combo = next(r for r in settings.rows if r.spec[5] == "timeline_range").control
+    combo.activated.emit(combo.findData("day"))
+    QTest.qWait(20)
+    assert window.config["timeline_range"] == "day" and window.timeline.fit_day
+    combo.activated.emit(combo.findData("work"))
 
     # Datenquellen: Kacheln schalten dieselben Aktionen wie das Menü
     settings.show_page("sources")
