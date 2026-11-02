@@ -185,7 +185,7 @@ API_JS = r"""
         {Property: "Start", Operator: 12, Value: ["", a]}, {Property: "End", Operator: 12, Value: [b, ""]}]}]},
     {Groups: [], Conditions: [], LogicalOperator: 1}]};
   const keep = ["Sys-Entity", "ObjectId", "Customer", "Activity", "TicketInfo", "State", "ActivityType",
-                "Start", "End", "WorktimeRounded", "WorktimeNominal"];
+                "Start", "End", "WorktimeRounded", "WorktimeNominal", "Anwender_Value"];
   let last = {state: "error", status: 0, url: location.href};
   for (const widget of widgets) {
     let r;
@@ -212,8 +212,48 @@ API_JS = r"""
 """
 
 
+# Eine Abfrage an die Schnittstelle aus der angemeldeten Seite (zum Buchen). Gibt JSON zurück:
+# {state: "ok" | "login" | "notoken" | "error", status, data, user}
+# user: Kennung des eigenen Benutzers aus den Abfragen der Seite (AutoTimeTracking/Settings/<id>)
+FETCH_JS = r"""
+(async function (method, path, body, contentType) {
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const token = () => { try { return localStorage.getItem("mx.auth.session.token"); } catch (e) { return null; } };
+  const isLogin = () => !!document.querySelector("input[type=password]") || /\/(wm\/)?login\b/i.test(location.pathname);
+  for (let i = 0; i < 60 && !token(); i++) {
+    if (isLogin() && (document.querySelector("input[type=password]") || i >= 40)) break;
+    await sleep(500);
+  }
+  if (!token()) return JSON.stringify({state: isLogin() ? "login" : "notoken"});
+  let user = null;
+  try {
+    for (const e of performance.getEntriesByType("resource")) {
+      const m = /\/AutoTimeTracking\/Settings\/([0-9a-f-]{36})/i.exec(e.name);
+      if (m) user = m[1];
+    }
+  } catch (e) {}
+  const headers = {"Authorization": "Bearer " + token(), "Accept": "application/json, text/plain, */*",
+                   "Explicit-Language": "de-DE"};
+  if (body !== null) headers["Content-Type"] = contentType || "application/json;charset=UTF-8";
+  let r;
+  try {
+    r = await fetch(path, {method: method, credentials: "include", headers: headers,
+                           body: body === null ? undefined : body});
+  } catch (e) { return JSON.stringify({state: "error", status: 0, error: String(e), user: user}); }
+  if (r.status === 401) return JSON.stringify({state: "login", status: 401});
+  const text = await r.text();
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; } catch (e) { data = text.slice(0, 500); }
+  return JSON.stringify({state: r.ok ? "ok" : "error", status: r.status, data: data, user: user});
+})(%s, %s, %s, %s)
+"""
+
+
 class M42Reader(BrowserReader):
     day_read = Signal(str)  # Tag (YYYY-MM-DD), dessen Buchungen neu sind
+    booking_done = Signal(object)  # Ergebnis von book(): {ok, entry | error, request}
+    activity_types_loaded = Signal(object)  # [(Wert, Name)] der Tätigkeitsarten
+    tickets_found = Signal(object)  # Ergebnis von search_tickets(): {text, rows, error}
 
     NAME = "Matrix42"
     READ_INTERVAL = 10 * 60   # aktuelle Woche so oft neu lesen
@@ -235,6 +275,9 @@ class M42Reader(BrowserReader):
         self.use_api = use_api
         self.widget_id = (widget_id or "").strip() or DEFAULT_WIDGET
         self.source = ""       # "Schnittstelle" oder "Seite": womit zuletzt gelesen wurde
+        self.user_id = ""      # eigener Matrix42-Benutzer (aus gelesenen Buchungen), zum Buchen
+        self.activity_types = []  # [(Wert, Name)], beim ersten Buchen geholt
+        self._booking = False
 
     def start_url(self):
         return self.page_url
@@ -370,6 +413,9 @@ class M42Reader(BrowserReader):
             self.source = "Schnittstelle"
             if data.get("widget") and data["widget"] != self.widget_id:
                 self.widget_id = data["widget"]
+            users = {i.get("Anwender_Value") for i in items if isinstance(i, dict) and i.get("Anwender_Value")}
+            if len(users) == 1:  # eigene Buchungen: das ist dein Benutzer (zum Buchen)
+                self.user_id = users.pop()
             self._save(api_bookings_by_day(monday, items))
             self._checked.add(monday)
             if monday == week_start(date.today().isoformat()):
@@ -380,6 +426,138 @@ class M42Reader(BrowserReader):
         self.use_api = False  # für diese Sitzung aus der Seite lesen
         safe_io.log(f"Matrix42: Schnittstelle geht nicht ({data}), lese aus der Seite")
         return None
+
+    # ---- Buchen (m42_booking.py)
+
+    @property
+    def booking(self):
+        return self._booking
+
+    def book(self, request):
+        """Tätigkeit in Matrix42 buchen (im Hintergrund). request: dict mit ticket, start, end
+        (datetime), minutes, text, activity_type, ids (m42_booking.ids). Ergebnis über
+        booking_done. False, wenn gerade schon gebucht wird."""
+        if self._booking or self._login_open:
+            return False
+        self._booking = True
+        threading.Thread(target=self._book, args=(request,), daemon=True,
+                         name="Matrix42 buchen").start()
+        return True
+
+    def search_tickets(self, text, ticket_list=None):
+        """Tickets suchen (im Hintergrund): Kunde, Benutzer, Ticketnummer oder Titel enthält
+        text. Ergebnis über tickets_found."""
+        threading.Thread(target=self._search_tickets, args=(text, ticket_list), daemon=True,
+                         name="Matrix42 Tickets suchen").start()
+
+    def _search_tickets(self, text, ticket_list=None):
+        import m42_booking as mb
+        text = (text or "").strip()
+        found, errors = [], []
+        try:
+            with self._browser_lock:
+                for field in mb.SEARCH_FIELDS:
+                    path = (f"{mb.API}/WidgetList/GetData/{ticket_list or mb.DEFAULT_IDS['ticket_list']}"
+                            f"?orderBy=CreatedDate+desc&pageSize={mb.SEARCH_LIMIT}&page=0")
+                    try:
+                        data = self._fetch("POST", path, mb.search_query(field, text))
+                        found.append(data if isinstance(data, list) else [])
+                    except mb.BookingError as e:
+                        errors.append(f"{field}: {e}")
+                        if "anmelden" in str(e):
+                            raise
+            rows = mb.merge_tickets(*found)
+            error = "" if found else (errors[0] if errors else "keine Antwort")
+            if errors:
+                safe_io.log(f"Matrix42: Ticketsuche, nicht jedes Feld ging ({'; '.join(errors)})")
+        except Exception as e:
+            rows, error = [], str(e)
+        self.tickets_found.emit({"text": text, "rows": rows, "error": error})
+
+    def load_activity_types(self):
+        """Tätigkeitsarten aus Matrix42 holen (im Hintergrund), Ergebnis über activity_types_loaded."""
+        if self.activity_types:
+            self.activity_types_loaded.emit(list(self.activity_types))
+            return
+        threading.Thread(target=self._load_activity_types, daemon=True).start()
+
+    def _fetch(self, method, path, body=None, content_type=None):
+        """Abfrage aus der angemeldeten Seite. Aufruf nur mit gehaltenem _browser_lock.
+        -> data (JSON). LoginRequired/BookingError bei Problemen."""
+        import m42_booking
+        if not self._tools:
+            self._start_browser()
+        if isinstance(body, (dict, list)):
+            body = json.dumps(body, ensure_ascii=False)
+        raw = self._evaluate(FETCH_JS % (json.dumps(method), json.dumps(path), json.dumps(body),
+                                         json.dumps(content_type)), timeout=self.LOAD_TIMEOUT)
+        result = json.loads(raw) if raw else {"state": "error", "status": 0}
+        if result.get("user"):
+            self.user_id = self.user_id or result["user"]
+        if result.get("state") in ("login", "notoken"):
+            self._need_login()
+            raise m42_booking.BookingError("Bitte zuerst bei Matrix42 anmelden (Einstellungen → "
+                                           "Datenquellen → Einrichten → Matrix42 …).")
+        if result.get("state") != "ok":
+            detail = result.get("data") if isinstance(result.get("data"), str) else ""
+            raise m42_booking.BookingError(f"Matrix42 antwortet mit Fehler {result.get('status')}"
+                                           f"{': ' + detail[:200] if detail else ''}")
+        return result.get("data")
+
+    def _load_activity_types(self):
+        import m42_booking
+        try:
+            with self._browser_lock:
+                data = self._fetch("GET", f"{m42_booking.API}/entity/enumeration/ITMTimeEntryPickupActivityType")
+            self.activity_types = m42_booking.activity_types(data)
+        except Exception as e:
+            safe_io.log(f"Matrix42: Tätigkeitsarten nicht geladen ({e})")
+            self.activity_types = []
+        self.activity_types_loaded.emit(list(self.activity_types or m42_booking.ACTIVITY_TYPES))
+
+    def _book(self, request):
+        import m42_booking as mb
+        self._wake.set()
+        result = {"ok": False, "request": request}
+        try:
+            ids = request.get("ids") or mb.DEFAULT_IDS
+            number = mb.normalize_ticket(request.get("ticket", ""))
+            if not number:
+                raise mb.BookingError("Bitte eine Ticketnummer (TCK…) angeben.")
+            with self._browser_lock:
+                self._set_status(f"Matrix42: buche auf {number} …")
+                found = self._fetch("POST", f"{mb.API}/WidgetList/GetData/{ids['ticket_list']}"
+                                    "?pageSize=50&page=0", mb.ticket_query(number))
+                ticket = mb.ticket_from_search(found if isinstance(found, list) else [], number)
+                template = self._fetch("POST", f"{mb.API}/WidgetDialog/GetNewData/{ids['dialog']}",
+                                       mb.new_data_body(ticket["id"]), "text/plain;charset=UTF-8")
+                target, sla = mb.target_from_response(self._fetch(
+                    "POST", f"{mb.API}/WidgetCommon/{ids['dialog']}/{ids['target_source']}"
+                            "/custom_Target.ITMTimeEntryClassTarget", mb.target_body(ticket["id"])))
+                entry = mb.time_entry((template or {}).get("Entity"), target, sla, self.user_id,
+                                      request["start"], request["end"], request["minutes"],
+                                      request.get("text", ""),
+                                      request.get("activity_type", mb.DEFAULT_ACTIVITY_TYPE))
+                saved = self._fetch("POST", f"{mb.API}/WidgetDialog/UpdateData/{ids['dialog']}",
+                                    mb.wrap(entry))
+                result.update(ok=True, entry=mb.saved_entry(saved), ticket=ticket)
+            self._set_status(f"Matrix42: gebucht ({result['entry']} auf {number})")
+            # Woche neu lesen, damit Zeile „Matrix42“ und Buchungsquote die Buchung zeigen
+            day = request["start"].strftime("%Y-%m-%d")
+            self._checked.discard(week_start(day))
+            if week_start(day) == week_start(date.today().isoformat()):
+                self._week_read = 0
+            else:
+                with self._lock:
+                    self._wanted.add(week_start(day))
+            self._wake.set()
+        except Exception as e:
+            result["error"] = str(e)
+            safe_io.log(f"Matrix42: Buchen fehlgeschlagen ({e!r})")
+            self._set_status(f"Matrix42: Buchen fehlgeschlagen ({e})")
+        finally:
+            self._booking = False
+        self.booking_done.emit(result)
 
     def _save(self, by_day):
         now = datetime.now().strftime("%Y-%m-%d %H:%M")

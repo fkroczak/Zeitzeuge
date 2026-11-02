@@ -150,6 +150,10 @@ def default_config():
         # die Seite verrät ihr eigenes meist selbst.
         "m42_api": True,
         "m42_widget_id": "05d8b58d-5764-ef11-debc-0050569e2f05",
+        # In Matrix42 buchen: zuletzt gewählte Tätigkeitsart (10 = Administration) und, falls
+        # Matrix42 sie ändert, die Kennungen aus dem Buchungs-Mitschnitt (m42_booking.DEFAULT_IDS)
+        "m42_activity_type": 10,
+        "m42_booking_ids": {},
         # Zwei PCs (z. B. Arbeits-PC und PAW): "paw" = nur RDM sammeln, kein Edge, keine Nachfragen
         "pc_role": "",
         "export_days": 31,            # Zeitraum beim Export für den anderen PC
