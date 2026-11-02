@@ -103,6 +103,7 @@ def gui_test():
 
     # Ablauf der Wartezeit simulieren, dann eintragen
     window._prompt_asked.clear()
+    window._prompt_asked_spans.clear()
     window.check_prompts()
     prompt = window._prompt_window
     prompt.form.customer_edit.setCurrentText("Beispiel AG")

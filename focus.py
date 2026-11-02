@@ -170,6 +170,8 @@ def _finish(block):
         "parts": parts,
         "switches": switches,
         "focus": share,
+        # Tätigkeit kommt aus einer Regel (nicht nur der Programmname): Grundlage fürs Nachfragen
+        "ruled": key[0] not in {app_label(p["app"] or "Unbekannt") for p in pieces},
         "windows": [{"start": p["start"], "end": p["end"], "app": p["app"], "title": p["title"]}
                     for p in pieces],
         "is_suggestion": True,

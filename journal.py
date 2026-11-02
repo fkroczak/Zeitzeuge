@@ -6,7 +6,12 @@ taetigkeiten/JJJJ-MM-TT.json):
     {"items": [{"id", "start", "end", "customer", "category", "text",
                 "source", "created", "updated", "ticket" (optional),
                 "goodwill" / "travel" (optional, True: Kulanz / Reise)}],
-     "ignored": ["<Schlüssel eines Eintrags, nach dem nicht mehr gefragt wird>"]}
+     "ignored": ["<Schlüssel eines Eintrags, nach dem nicht mehr gefragt wird>"],
+     "ignored_spans": [{"start", "end", "customer"}]}  (Zeitraum + Kunde, prompt_topics.py)
+
+Eine auf Nachfrage gespeicherte Tätigkeit merkt sich in "answered" Zeitraum und Kunden des
+erkannten Themas. So fragt Zeitzeuge nicht noch einmal, auch wenn die eingetragene Zeit
+kürzer ist als die erkannte oder sich der erkannte Eintrag später ändert.
 
 Dazu die Logik, welche erkannten Tätigkeiten noch nicht dokumentiert sind
 (open_items). Daraus entstehen die Nachfrage-Fenster und die Zeile "Doku".
@@ -17,6 +22,7 @@ import uuid
 from datetime import datetime, timedelta
 
 import datastore
+import prompt_topics
 import safe_io
 from tickets import format_ticket_text
 
@@ -73,11 +79,14 @@ class Journal:
             except (datastore.Busy, datastore.Locked):
                 # Gerade nicht lesbar: nichts merken, sonst überschriebe das nächste Speichern
                 # den Tag mit nur dem neuen Eintrag
-                return {"items": [], "ignored": [], "locked": True}
+                return {"items": [], "ignored": [], "ignored_spans": [], "locked": True}
             if not isinstance(data, dict):
                 data = {}
             items = [i for i in data.get("items", []) if self._valid(i)]
-            self._cache[date_str] = {"items": items, "ignored": list(data.get("ignored", []))}
+            spans = [s for s in data.get("ignored_spans", []) if isinstance(s, dict)
+                     and isinstance(s.get("start"), str) and isinstance(s.get("end"), str)]
+            self._cache[date_str] = {"items": items, "ignored": list(data.get("ignored", [])),
+                                     "ignored_spans": spans}
         return self._cache[date_str]
 
     @staticmethod
@@ -148,17 +157,32 @@ class Journal:
         self._save(date_str)
 
     def ignore(self, entry):
+        """Nicht mehr nachfragen: Schlüssel des Eintrags (und aller Teile eines Themas) und
+        Zeitraum mit Kunde, damit auch ein später leicht veränderter Eintrag erkannt wird."""
         date_str = entry["start"][:10]
         data = self.load(date_str)
-        key = entry_key(entry)
-        if key not in data["ignored"] and not data.get("locked"):
-            data["ignored"].append(key)
-            self._save(date_str)
+        if data.get("locked"):
+            return
+        for e in [entry] + list(entry.get("parts") or []):
+            key = entry_key(e)
+            if key not in data["ignored"]:
+                data["ignored"].append(key)
+        data.setdefault("ignored_spans", []).append(prompt_topics.answer_span(entry))
+        self._save(date_str)
 
     def is_ignored(self, entry):
         date_str = entry["start"][:10]
-        key = entry_key(entry)
-        return key in self.load(date_str)["ignored"] or key in self._extra(date_str)["ignored"]
+        data, extra = self.load(date_str), self._extra(date_str)
+        if any(entry_key(e) in data["ignored"] or entry_key(e) in extra["ignored"]
+               for e in [entry] + list(entry.get("parts") or [])):
+            return True
+        return any(prompt_topics.matches_span(entry, s) for s in data.get("ignored_spans", []))
+
+    def is_answered(self, entry, date_str=None):
+        """Schon auf eine Nachfrage hin eingetragen (Zeitraum + Kunde der gespeicherten Antwort)?"""
+        date_str = date_str or entry["start"][:10]
+        return any(isinstance(i.get("answered"), dict) and prompt_topics.matches_span(entry, i["answered"])
+                   for i in self.items(date_str))
 
     def customers(self, days=60, today=None):
         """Kunden der letzten Tage, häufigste zuerst (für die Auswahl im Dialog)."""
@@ -238,7 +262,7 @@ class Journal:
         now = now or datetime.now()
         result = []
         for e in entries:
-            if e.get("doc") or e.get("ai") or e.get("open") or "app" in e:
+            if e.get("doc") or e.get("ai") or e.get("open") or ("app" in e and not e.get("pc_block")):
                 continue
             try:
                 start, end = _t(e["start"]), _t(e["end"])
@@ -254,7 +278,7 @@ class Journal:
             running = e.get("running") or any(p.get("running") for p in e.get("parts", []))
             if length < limit * 60 or running or end > now - timedelta(minutes=3):
                 continue
-            if self.is_ignored(e):
+            if self.is_ignored(e) or self.is_answered(e, date_str):
                 continue
             if self.covered_seconds(date_str, start, end) >= seconds * min_share:
                 continue
@@ -279,13 +303,16 @@ def describe(entry):
     """Kurze Beschreibung eines erkannten Eintrags für die Nachfrage."""
     start, end = _t(entry["start"]), _t(entry["end"])
     what = entry.get("category") if entry.get("rule") else entry.get("type", "Tätigkeit")
+    if entry.get("pc_block"):
+        what = f"Am PC: {entry.get('category', '')}"
     if entry.get("direction") and entry.get("direction") != "Anruf":
         what = f"{entry.get('type', '')} {entry['direction'].lower()}"
     who = entry.get("customer_name") or ""
     if who.startswith(what or "\0"):  # "TeamViewer 1 123 …" nicht als "TeamViewer TeamViewer 1 123 …"
         what = ""
+    extra = prompt_topics.parts_text(entry)  # Thema: „dazu Telefonat, VPN-Verbindung“
     return (f"{what}{' ' if what and who else ''}{who}, {start:%H:%M}–{end:%H:%M} "
-            f"({duration_text((end - start).total_seconds())})")
+            f"({duration_text((end - start).total_seconds())})" + (f" · {extra}" if extra else ""))
 
 
 def suggest_category(entry, categories):

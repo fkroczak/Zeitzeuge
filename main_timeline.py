@@ -276,6 +276,13 @@ def load_config_with_defaults():
     if cfg.get("layout_version", 1) < 2:
         cfg["timeline_rows"]["rule"] = False
         cfg["layout_version"] = 2
+    # Mehr Themen fürs Nachfragen: neue Quellen einmalig dazunehmen (abwählen bleibt möglich)
+    if cfg.get("prompt_sources_version", 1) < 2:
+        if isinstance(cfg.get("prompt_sources"), list):
+            for kind in ("pc", "meetings", "mails"):
+                if kind not in cfg["prompt_sources"]:
+                    cfg["prompt_sources"].append(kind)
+        cfg["prompt_sources_version"] = 2
     # Alte Standardpfade enthielten doppelte Backslashes (C:\Users\x\\TeamViewer)
     for key in ("teamviewer_paths", "rdm_paths", "vpn_paths"):
         cfg[key] = [clean_path(p) for p in cfg.get(key, []) if isinstance(p, str)]
@@ -464,6 +471,7 @@ class TimelineApp(MenusMixin, DayListMixin, DocsMixin, ReadersMixin, TrayMixin, 
         self._prompt_window = None
         self._prompt_queue = []
         self._prompt_asked = {}     # Schlüssel -> frühestens wieder fragen (datetime)
+        self._prompt_asked_spans = []  # [(Zeitraum + Kunde, bis)]: erkennt auch veränderte Einträge
         self._started_at = datetime.now()
         self._reminded_day = None   # Feierabend-Erinnerung nur einmal am Tag
 

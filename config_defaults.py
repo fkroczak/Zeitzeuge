@@ -177,8 +177,12 @@ def default_config():
         # Nachfragen nach erkannten Tätigkeiten ("Was hast du gemacht?")
         "prompt_mode": "window",       # "window" (kleines Fenster), "tray" (nur Meldung), "off"
         # Erst ab dieser Dauer (Minuten) nachfragen, je Art der Tätigkeit
-        "prompt_thresholds": {"connections": 1, "calls": 1, "rules": 1},
-        "prompt_sources": ["connections", "calls"],  # auch "rules" (Blöcke aus den Regeln)
+        "prompt_thresholds": {"connections": 1, "calls": 1, "pc": 15, "meetings": 5, "mails": 0,
+                              "credentials": 0, "rules": 1},
+        # Wonach gefragt wird; auch "credentials" (Zugangsdaten) und "rules" (Blöcke aus den Regeln)
+        "prompt_sources": ["connections", "calls", "pc", "meetings", "mails"],
+        "prompt_pc_skip": ["E-Mail / Kommunikation"],  # Arbeitsblöcke dieser Kategorien nicht nachfragen
+        "prompt_topic_gap_minutes": 15,  # gleicher Kunde mit kürzerem Abstand: eine Nachfrage
         "prompt_snooze_minutes": 15,   # "Später fragen"
         # Nach so vielen Minuten ohne Maus/Tastatur bei der ersten Eingabe fragen,
         # was in der Zeit war (Telefonat, Besprechung, Vor Ort …). 0 = aus. (idle_watch.py)

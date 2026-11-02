@@ -131,6 +131,7 @@ def gui_test():
     rdm2 = dict(rdm, start=t(now - timedelta(minutes=12)), end=t(now - timedelta(minutes=4)))
     window.activities.append(rdm2)
     window._prompt_asked.clear()
+    window._prompt_asked_spans.clear()
     window.check_prompts()
     prompt = window._prompt_window
     assert prompt is not None

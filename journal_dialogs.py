@@ -493,7 +493,10 @@ def default_span(date, minute=None):
     return start, start + timedelta(minutes=30)
 
 
-PROMPT_THRESHOLDS = {"connections": 1, "calls": 1, "rules": 1}
+PROMPT_THRESHOLDS = {"connections": 1, "calls": 1, "pc": 15, "meetings": 5, "mails": 0,
+                     "credentials": 0, "rules": 1}
+# Standard: wonach gefragt wird (Zugangsdaten und Regel-Blöcke nur auf Wunsch)
+PROMPT_SOURCES = ["connections", "calls", "pc", "meetings", "mails"]
 
 
 def prompt_thresholds(config):
@@ -513,7 +516,11 @@ class DocPromptDialog(QDialog):
     MODES = [("window", "Kleines Fenster unten rechts"), ("tray", "Nur Meldung im Infobereich"),
              ("off", "Aus (nur in der Zeile „Doku“ zeigen)")]
     SOURCES = [("connections", "&Verbindungen (TeamViewer, RDP, SSH, VPN …)"),
-               ("calls", "&Telefonate"),
+               ("calls", "&Telefonate (3CX, Teams)"),
+               ("pc", "Arbeitsblöcke am P&C (z. B. M365-Admin, Remotedesktop, Ticketsystem)"),
+               ("meetings", "Teams-Bespr&echungen, an denen du teilgenommen hast"),
+               ("mails", "&Mails an Kunden aus der Kundenliste"),
+               ("credentials", "Angezeigte Zugangs&daten (RDM)"),
                ("rules", "Blöcke der &Zuordnung ohne KI (z. B. Outlook, M365-Admin)")]
 
     def __init__(self, config, parent=None):
@@ -524,7 +531,8 @@ class DocPromptDialog(QDialog):
         layout = QVBoxLayout(self)
         info = QLabel("Hat Zeitzeuge eine Tätigkeit erkannt, die du noch nicht dokumentiert hast, "
                       "fragt es kurz nach: „Was hast du gemacht?“. So fehlt am Ende des Tages "
-                      "nichts im Ticket.")
+                      "nichts im Ticket. Was zur selben Arbeit gehört (gleicher Kunde, gleiche Zeit), "
+                      "fragt es nur einmal ab.")
         info.setWordWrap(True)
         prose(info)
         layout.addWidget(info)
@@ -538,7 +546,7 @@ class DocPromptDialog(QDialog):
 
         # Je Art: an/aus und ab welcher Dauer gefragt wird
         self.sources, self.thresholds = {}, {}
-        sources = config.get("prompt_sources", ["connections", "calls"])
+        sources = config.get("prompt_sources", PROMPT_SOURCES)
         limits = prompt_thresholds(config)
         for i, (key, text) in enumerate(self.SOURCES):
             box = QCheckBox(text)
