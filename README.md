@@ -46,6 +46,7 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
 - **Wochenabschluss** (Knopf mit dem Tacho in der Werkzeugleiste oder Klick auf die Quote in der Statuszeile): Montag bis Freitag der Woche, Samstag und Sonntag nur, wenn du da gestempelt oder gebucht hast. Je Tag: Personalzeit, gebucht, Quote, Zeit ohne Buchung und offene Tätigkeiten. Darunter Hinweise wie „Dienstag: 1:20 h nicht gebucht“ und der 7-Tage-Wert. Mit ◀ ▶ (oder Bild auf/ab) blätterst du die Wochen. Enter oder Doppelklick zeigt den Tag im Hauptfenster. Das Ziel stellst du dort unter „Ziel je Tag“ ein.
 - **Prüfung bei Feierabend:** Bist du ausgestempelt und ist Feierabend, prüft Zeitzeuge den Tag einmal: mehr als 6 Stunden ohne 30 Minuten Pause (über 9 Stunden: 45 Minuten, Pausen zählen ab 15 Minuten am Stück), mehr als 6 Stunden am Stück, PC aktiv aber ausgestempelt, Buchung außerhalb der Personalzeit, Buchungen überschneiden sich, Quote unter Ziel. Die Hinweise kommen mit der Erinnerung an offene Tätigkeiten oder allein, und stehen auch im Wochenabschluss. Abschalten: Einstellungen → Nachfragen und Erinnerungen → „Bei Feierabend prüfen“.
 - **In Matrix42 buchen:** Rechtsklick auf eine eingetragene Tätigkeit → **In Matrix42 buchen …**. Zeitzeuge legt eine Zeiterfassung mit Status „Neu“ am Ticket an. Freigeben machst du wie gewohnt in Matrix42.
+  - **Kulanz** und **Reise** übernimmt das Fenster aus der Tätigkeit. Bei Kulanz fragt es nach dem Grund (Standard „Kulanz“) und bucht die ganze Zeit als Kulanz.
   - Im Fenster prüfst du vorher Ticket, Von und Bis (Ende im Abrechnungstakt, änderbar), Tätigkeitsart und Beschreibung. Gebucht wird erst mit **In Matrix42 buchen**, nie von selbst.
   - **Ticket suchen:** nach Kunde, Benutzer (Melder oder Bearbeiter), Ticketnummer oder Titel. Ein Klick auf einen Treffer übernimmt das Ticket. Ohne Ticket sucht Zeitzeuge gleich nach dem Kunden der Tätigkeit.
   - Ist in Matrix42 zu der Zeit schon etwas gebucht, steht ein Hinweis im Fenster. Gebuchte Tätigkeiten merken sich die Nummer der Zeiterfassung (z. B. TE0000088403) und lassen sich nicht doppelt buchen.
@@ -79,6 +80,8 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
   - Timeline und Tagesliste haben dasselbe Rechtsklick-Menü. Es zeigt nur Befehle, die zum Eintrag passen.
   - **Offenes fällt auf:** Verbindungen und Telefonate ohne Dokumentation stehen gestrichelt mit „?“ in der Zeile „Doku“. Ein Klick darauf öffnet das Eintragen.
   - **Zeitzeuge fragt nach:** Endet eine TeamViewer-Sitzung, eine RDP-/SSH-/VPN-Verbindung oder ein Telefonat, erscheint unten rechts ein kleines Fenster: „Was hast du gemacht?“. Zeit, Kunde und Kategorie sind schon ausgefüllt, du schreibst nur noch einen Satz. **Später fragen** fragt in 15 Minuten wieder, **Nicht dokumentieren** fragt für diesen Eintrag nie mehr. Ab welcher Dauer gefragt wird (Standard: 1 Minute), stellst du unter **Nachfragen und Erinnerungen …** getrennt für Verbindungen, Telefonate und Regel-Blöcke ein.
+  - **Abwesenheit am PC:** Warst du 15 Minuten oder länger nicht an Maus und Tastatur (auch gesperrt oder im Ruhezustand), fragt Zeitzeuge bei der ersten Eingabe danach: „Was war in der Zeit?“. Knöpfe für typische Fälle füllen Kategorie und Text mit einem Klick: **Telefonat**, **Besprechung**, **Vor Ort**, **Fahrt / Reise** (setzt den Haken „Reise“) und **Pause** (speichert gleich). Die Dauer stellst du unter **Nachfragen und Erinnerungen …** ein, dort lässt sich die Abfrage auch abschalten.
+  - **Kulanz und Reise:** Beim Eintragen setzt du die Haken **Kulanz** (nicht berechnen) und **Reise / Anfahrt**. Sie stehen in der Ticketzeile und werden beim Buchen in Matrix42 übernommen.
   - **TeamViewer-ID zum Kunden:** Bei TeamViewer kennt Zeitzeuge oft nur die ID. Trägst du beim Dokumentieren den Kunden ein, merkt es sich den Namen für diese ID. Ab dann steht überall der Name.
   - **Erinnerung:** Nach Feierabend und beim Beenden sagt Zeitzeuge, wie viele Tätigkeiten heute noch offen sind.
   - Sind Tätigkeiten offen, steht rechts unten der blaue Knopf **2 offen – jetzt eintragen**. Ein Klick öffnet die erste offene Tätigkeit zum Eintragen. Die Statuszeile zeigt daneben „dokumentiert 3:10 h“.
@@ -368,6 +371,7 @@ Unter **Einstellungen → Nachfragen und Erinnerungen …** legst du fest, wann 
 | `prompt_sources` | `["connections", "calls"]` | Wonach gefragt wird: Verbindungen, Telefonate, `rules` (Blöcke aus den Regeln) |
 | `prompt_thresholds` | `{"connections": 1, "calls": 1, "rules": 1}` | Erst ab dieser Dauer (Minuten) nachfragen, je Art: Verbindungen, Telefonate, Regel-Blöcke. 0 = immer. Einstellbar unter *Nachfragen und Erinnerungen …* |
 | `prompt_snooze_minutes` | `15` | „Später fragen“ fragt nach so vielen Minuten wieder |
+| `idle_prompt_minutes` | `15` | Nach so vielen Minuten ohne Maus und Tastatur bei der ersten Eingabe fragen, was in der Zeit war. 0 = aus |
 | `prompt_end_of_day` | `true` | Nach Feierabend einmal an Offenes erinnern |
 | `prompt_on_quit` | `true` | Beim Beenden an Offenes erinnern |
 | `m42_url` | ITM-Kalenderseite (support.itm-gruppe.com) | Adresse der Matrix42-Kalenderseite |
@@ -576,6 +580,7 @@ Für Tests und Hilfsskripte gibt es zwei Umgebungsvariablen: `ZEITZEUGE_DATA` se
 | `app_menus.py` | Werkzeugleiste, Menü „Einstellungen“, Dialoge dazu |
 | `app_daylist.py` | Tagesliste, Statuszeile, Tageswechsel |
 | `app_docs.py` | Tätigkeiten dokumentieren, Nachfragen, KI-Vorschläge |
+| `idle_watch.py` | Abwesenheit am PC erkennen (für die Nachfrage) |
 | `app_readers.py` | 3CX- und ITM-Leser im Hauptfenster |
 | `app_tray.py` | Infobereich, Fensteraufzeichnung, Beenden |
 | `theme.py` | Design: Farben (hell/dunkel), Stylesheet, Qt-Stil, deutsche Dialogknöpfe |

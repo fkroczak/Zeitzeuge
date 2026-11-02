@@ -180,6 +180,9 @@ def default_config():
         "prompt_thresholds": {"connections": 1, "calls": 1, "rules": 1},
         "prompt_sources": ["connections", "calls"],  # auch "rules" (Blöcke aus den Regeln)
         "prompt_snooze_minutes": 15,   # "Später fragen"
+        # Nach so vielen Minuten ohne Maus/Tastatur bei der ersten Eingabe fragen,
+        # was in der Zeit war (Telefonat, Besprechung, Vor Ort …). 0 = aus. (idle_watch.py)
+        "idle_prompt_minutes": 15,
         "prompt_on_quit": True,        # beim Beenden an offene Tätigkeiten erinnern
         "prompt_end_of_day": True,     # nach Feierabend an offene Tätigkeiten erinnern
 

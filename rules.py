@@ -88,7 +88,8 @@ def categories(config):
         return ["Fernwartung", "Telefonsupport", "Server-/Netzwerkadministration",
                 "Cloud-/M365-Administration", "Zugangsdaten / Sicherheit",
                 "E-Mail / Kommunikation", "Dokumentation / Ticket",
-                "Beratung / Abstimmung", "Interne Tätigkeit", "Pause / Privat"]
+                "Beratung / Abstimmung", "Vor-Ort-Einsatz", "Fahrt / Reise",
+                "Interne Tätigkeit", "Pause / Privat"]
 
 
 # ---------------------------------------------------------------- Muster

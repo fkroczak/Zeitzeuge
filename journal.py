@@ -4,7 +4,8 @@ Tätigkeiten, die du selbst einträgst (nachträglich oder auf Nachfrage von Zei
 Pro Tag ein Eintrag in der Datenbank (Ablage "taetigkeiten", früher
 taetigkeiten/JJJJ-MM-TT.json):
     {"items": [{"id", "start", "end", "customer", "category", "text",
-                "source", "created", "updated", "ticket" (optional)}],
+                "source", "created", "updated", "ticket" (optional),
+                "goodwill" / "travel" (optional, True: Kulanz / Reise)}],
      "ignored": ["<Schlüssel eines Eintrags, nach dem nicht mehr gefragt wird>"]}
 
 Dazu die Logik, welche erkannten Tätigkeiten noch nicht dokumentiert sind
@@ -22,6 +23,9 @@ from tickets import format_ticket_text
 TIME_FMT = "%Y-%m-%d %H:%M:%S"
 DOC_TYPE = "Dokumentiert"
 OPEN_TYPE = "Undokumentiert"
+# Merker einer Tätigkeit wie in der Matrix42-Zeiterfassung: Kulanz, Reise
+FLAGS = ("goodwill", "travel")
+FLAG_NAMES = {"goodwill": "Kulanz", "travel": "Reise"}
 
 
 def _t(text):
@@ -111,6 +115,11 @@ class Journal:
             item["ticket"] = (item.get("ticket") or "").strip()
             if not item["ticket"]:
                 del item["ticket"]
+        for flag in FLAGS:  # Kulanz / Reise nur speichern, wenn angehakt
+            if item.get(flag):
+                item[flag] = True
+            else:
+                item.pop(flag, None)
         if not self._valid(item):
             raise ValueError("Ende muss nach dem Beginn liegen")
         date_str = item["start"][:10]
@@ -190,8 +199,8 @@ class Journal:
         """Tätigkeiten als Timeline-Einträge."""
         result = []
         for item in self.items(date_str):
-            label = " · ".join(t for t in (item.get("ticket"), item.get("category"), item.get("text"))
-                               if t)
+            label = " · ".join(t for t in (item.get("ticket"), item.get("category"),
+                                           *flag_names(item), item.get("text")) if t)
             if item.get("von_pc"):
                 label += f" (von {item['von_pc']})"
             result.append({
@@ -315,6 +324,11 @@ def suggest_customer(entry, tv_names=None, customers=None):
     return "" if re.fullmatch(r"[+\d\s/-]*", name) else name
 
 
+def flag_names(item):
+    """["Kulanz", "Reise"] für die angehakten Merker einer Tätigkeit."""
+    return [FLAG_NAMES[f] for f in FLAGS if item.get(f)]
+
+
 def ticket_line(item, text_style="", billing=None):
     """Tätigkeit als Zeile fürs Ticket. text_style "dash": Text als "- " / "-- " darunter.
     billing (billing.Billing): abgerechnete Dauer dazu, z. B. "10:05–10:17 (12 min → abgerechnet 0:15 h)"."""
@@ -323,7 +337,8 @@ def ticket_line(item, text_style="", billing=None):
     # Mit Takt: echte Zeiten und dahinter die abgerechneten (Beginn bleibt, Ende im Takt)
     note = billing.span_note(start, seconds, item.get("customer", "")) if billing else ""
     head = f"{start:%H:%M}–{end:%H:%M} ({duration_text(seconds)}){note}"
-    parts = [p for p in (item.get("customer"), item.get("category"), item.get("ticket")) if p]
+    parts = [p for p in (item.get("customer"), item.get("category"), item.get("ticket"),
+                         *flag_names(item)) if p]
     text = format_ticket_text(item.get("text", ""), text_style)
     if text_style == "dash" and text:  # Kopfzeile, darunter die gegliederte Tätigkeit
         return f"{head}  {' · '.join(parts)}{':' if parts else ''}".rstrip() + "\n" + text

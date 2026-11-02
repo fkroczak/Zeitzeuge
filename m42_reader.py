@@ -552,7 +552,10 @@ class M42Reader(BrowserReader):
                 entry = mb.time_entry((template or {}).get("Entity"), target, sla, self.user_id,
                                       request["start"], request["end"], request["minutes"],
                                       request.get("text", ""),
-                                      request.get("activity_type", mb.DEFAULT_ACTIVITY_TYPE))
+                                      request.get("activity_type", mb.DEFAULT_ACTIVITY_TYPE),
+                                      goodwill=request.get("goodwill", False),
+                                      travel=request.get("travel", False),
+                                      goodwill_reason=request.get("goodwill_reason", ""))
                 saved = self._fetch("POST", f"{mb.API}/WidgetDialog/UpdateData/{ids['dialog']}",
                                     mb.wrap(entry))
                 result.update(ok=True, entry=mb.saved_entry(saved), ticket=ticket)

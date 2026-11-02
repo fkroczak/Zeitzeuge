@@ -60,6 +60,8 @@ DEFAULT_CATEGORIES = [
     "E-Mail / Kommunikation",
     "Dokumentation / Ticket",
     "Beratung / Abstimmung",
+    "Vor-Ort-Einsatz",
+    "Fahrt / Reise",
     "Interne Tätigkeit",
     "Pause / Privat",
 ]

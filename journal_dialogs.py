@@ -26,7 +26,8 @@ class _EntryForm(QWidget):
 
     def __init__(self, start, end, customers, categories, customer="", category="", text="",
                  tv_id=None, parent=None, show_date=True, snippets=(), recent_texts=None,
-                 ticket="", ticket_suggestions=(), show_ticket=True, trace=None, rule_subject=None):
+                 ticket="", ticket_suggestions=(), show_ticket=True, trace=None, rule_subject=None,
+                 goodwill=False, travel=False):
         super().__init__(parent)
         # trace: (Art, Wert) der Spur, zu der der Kunde gemerkt werden kann (customers.py).
         # rule_subject: Name, zu dem eine geänderte Kategorie als Regel gemerkt werden kann.
@@ -107,6 +108,19 @@ class _EntryForm(QWidget):
             form.addRow("", self.learn_rule)
             self.category_edit.currentTextChanged.connect(self._update_learning)
         self._update_learning()
+
+        # Wie in der Matrix42-Zeiterfassung: Kulanz (nicht berechnen) und Reise (Anfahrt)
+        self.goodwill_box = QCheckBox("K&ulanz")
+        self.goodwill_box.setToolTip("Nicht berechnen. Wird beim Buchen in Matrix42 als Kulanz übernommen.")
+        self.goodwill_box.setChecked(bool(goodwill))
+        self.travel_box = QCheckBox("&Reise / Anfahrt")
+        self.travel_box.setToolTip("Fahrzeit. Wird beim Buchen in Matrix42 als Reise übernommen.")
+        self.travel_box.setChecked(bool(travel))
+        flags = QHBoxLayout()
+        flags.addWidget(self.goodwill_box)
+        flags.addWidget(self.travel_box)
+        flags.addStretch(1)
+        form.addRow("", flags)
 
         self.text_edit = QPlainTextEdit(text)
         self.text_edit.setPlaceholderText("Was hast du gemacht? z. B. „Drucker neu eingerichtet, "
@@ -292,6 +306,8 @@ class _EntryForm(QWidget):
             "category": self.category_edit.currentText().strip(),
             "text": self.text_edit.toPlainText().strip(),
             "ticket": self.ticket_edit.currentText().strip(),
+            "goodwill": self.goodwill_box.isChecked(),
+            "travel": self.travel_box.isChecked(),
         }
 
 
@@ -376,6 +392,9 @@ class PromptWindow(QDialog):
             trace=trace, rule_subject=rule_subject,
             **{"show_ticket": False, **form_options})
         layout.addWidget(self.form)
+        if entry.get("idle"):
+            self._add_quick_choices(layout)
+            self.setMinimumWidth(620)  # Platz für die Schnellauswahl
 
         buttons = QDialogButtonBox()
         self.save_btn = buttons.addButton("&Speichern", QDialogButtonBox.AcceptRole)
@@ -392,6 +411,38 @@ class PromptWindow(QDialog):
         self.form.validate()
         self.form.text_edit.setFocus()  # gleich losschreiben
         self._done = False
+
+    def _add_quick_choices(self, layout):
+        """Abwesenheit: typische Tätigkeiten mit einem Klick (idle_watch.QUICK_CHOICES)."""
+        from idle_watch import QUICK_CHOICES
+        row = QHBoxLayout()
+        row.addWidget(QLabel("Was war?"))
+        self.quick_buttons = []
+        for label, category, text, flags in QUICK_CHOICES:
+            button = QPushButton(label)
+            button.setAutoDefault(False)
+            button.setMinimumWidth(0)
+            button.setToolTip(f"{category}: {text}" + (" (gleich speichern)" if flags.get("save") else ""))
+            button.clicked.connect(lambda _c=False, a=(category, text, flags): self.quick_choice(*a))
+            row.addWidget(button)
+            self.quick_buttons.append(button)
+        row.addStretch(1)
+        layout.addLayout(row)
+
+    def quick_choice(self, category, text, flags=None):
+        flags = flags or {}
+        self.form.category_edit.setCurrentText(category)
+        # Eigenen Text nicht überschreiben, den einer anderen Schnellauswahl schon
+        current = self.form.text_edit.toPlainText().strip()
+        if not current or current == getattr(self, "_quick_text", None):
+            self.form.text_edit.setPlainText(text)
+            self._quick_text = text
+        self.form.travel_box.setChecked(bool(flags.get("travel")))
+        if flags.get("save"):
+            self._answer("save")
+        else:
+            self.form.text_edit.setFocus()
+            self.form.text_edit.selectAll()
 
     def set_pending(self, pending):
         self.pending_label.setText(f"Außerdem noch {pending} weitere offen." if pending else "")
@@ -505,6 +556,25 @@ class DocPromptDialog(QDialog):
             self.sources[key], self.thresholds[key] = box, spin
             form.addRow("Fragen bei:" if i == 0 else "", row)
 
+        # Abwesenheit am PC: bei der ersten Eingabe danach fragen (idle_watch.py)
+        idle_minutes = int(config.get("idle_prompt_minutes", 15) or 0)
+        self.idle_box = QCheckBox("&Abwesenheit am PC (keine Maus/Tastatur)")
+        self.idle_box.setToolTip("Bei der ersten Eingabe danach fragen, was in der Zeit war, "
+                                 "z. B. Telefonat, Besprechung, Vor Ort, Pause")
+        self.idle_box.setChecked(idle_minutes > 0)
+        self.idle_spin = QSpinBox()
+        self.idle_spin.setRange(5, 240)
+        self.idle_spin.setPrefix("ab ")
+        self.idle_spin.setSuffix(" min")
+        self.idle_spin.setValue(idle_minutes if idle_minutes > 0 else 15)
+        self.idle_spin.setAccessibleName("Mindestdauer für Abwesenheit am PC")
+        self.idle_spin.setEnabled(self.idle_box.isChecked())
+        self.idle_box.toggled.connect(self.idle_spin.setEnabled)
+        idle_row = QHBoxLayout()
+        idle_row.addWidget(self.idle_box, 1)
+        idle_row.addWidget(self.idle_spin)
+        form.addRow("", idle_row)
+
         self.snooze = QSpinBox()
         self.snooze.setRange(1, 480)
         self.snooze.setSuffix(" min")
@@ -535,6 +605,7 @@ class DocPromptDialog(QDialog):
         self.config["prompt_sources"] = [k for k, box in self.sources.items() if box.isChecked()]
         self.config["prompt_thresholds"] = {k: spin.value() for k, spin in self.thresholds.items()}
         self.config["prompt_snooze_minutes"] = self.snooze.value()
+        self.config["idle_prompt_minutes"] = self.idle_spin.value() if self.idle_box.isChecked() else 0
         self.config["prompt_end_of_day"] = self.end_of_day.isChecked()
         self.config["prompt_on_quit"] = self.on_quit.isChecked()
         self.config["day_checks_enabled"] = self.day_checks.isChecked()
