@@ -126,3 +126,22 @@ Schlüssel in `zeitzeuge_config.json` (siehe unten).
   (Platzhalter) und `billing.booking_span` (Ende auf den Takt gerundet).
 - **Outlook und Teams mit echtem Outlook und Teams von Hand testen:** Serientermine,
   deutsches Datumsformat beim Filtern, Sicherheitsabfrage von Outlook, Teams-Mikrofon.
+
+## Nachtrag 02.11.2026: Matrix42 über die Schnittstelle, Buchungs-Mitschnitt
+
+Grundlage ist der Mitschnitt vom 02.11.2026 (nur Lesen, keine Buchung angelegt).
+
+22. **Matrix42 zuerst über die Schnittstelle lesen**, wie die Kalenderseite selbst:
+    `POST /m42Services/api/WidgetList/GetData/<Widget>` mit Datumsfilter, Anmeldung über das
+    Token der Seite. Klappt das nicht (kein Token, Fehler, unvollständige Antwort), liest
+    Zeitzeuge für die Sitzung wieder aus der Seite. Grund steht in `fehler.log`.
+    Zurück: `m42_api: false` in der Config, oder `M42Reader._read_week_api` entfernen.
+23. **Widget:** Zeitzeuge nimmt das Widget, das die Seite selbst abfragt. Sonst gilt das aus dem
+    Mitschnitt (`m42_widget_id`, Standard `05d8b58d-5764-ef11-debc-0050569e2f05`).
+24. **Zusätzlich gespeichert:** Status (Neu, Freigegeben), Tätigkeitsart und gerundete
+    Minuten. Sie stehen in den Details einer Buchung. Für Quote und Abgleich ändert sich nichts.
+25. **Buchungs-Mitschnitt:** neuer Knopf „Buchung mitschneiden …“ im Matrix42-Dialog. Abfragen,
+    die etwas speichern (POST, PUT, PATCH, DELETE), stehen darin ungekürzt. Geheimnisse bleiben
+    geschwärzt, alles andere ist gekürzt wie bisher. Zurück: Knopf in
+    `app_readers.build_reader_dialog` und `full_writes` in `request_recorder.py`.
+

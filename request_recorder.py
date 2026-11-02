@@ -29,6 +29,11 @@ DATA_TYPES = {"XHR", "Fetch", "Document", "EventSource", "Other", "Preflight"}
 BODY_TYPES = {"XHR", "Fetch", "Other"}
 MAX_TEXT = 300
 MAX_ITEMS = 3
+# Buchungs-Mitschnitt: Abfragen, die etwas speichern (POST/PUT/PATCH/DELETE), ungekürzt,
+# damit die Felder einer Buchung vollständig zu sehen sind (Geheimnisse bleiben geschwärzt)
+FULL_ITEMS = 500
+FULL_TEXT = 20000
+WRITE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 MAX_PROTO_ITEMS = 200  # Protobuf-Texte sind maskiert, ganze Listen helfen beim Zuordnen der Felder
 
 
@@ -68,28 +73,30 @@ def redact_text(text):
     return JWT.sub(lambda m: f"<JWT geschwärzt, {json.dumps(_jwt_info(m.group(0)))}>", text)
 
 
-def _short(text):
+def _short(text, limit=MAX_TEXT):
     text = redact_text(text)
-    return text if len(text) <= MAX_TEXT else text[:MAX_TEXT] + f" … ({len(text)} Zeichen)"
+    return text if len(text) <= limit else text[:limit] + f" … ({len(text)} Zeichen)"
 
 
-def redact_json(value, depth=0):
-    """JSON verkleinern und Geheimnisse schwärzen. Die Struktur bleibt erkennbar."""
+def redact_json(value, depth=0, full=False):
+    """JSON verkleinern und Geheimnisse schwärzen. Die Struktur bleibt erkennbar.
+    full: (fast) ungekürzt, z. B. für die Speicher-Abfrage einer Buchung."""
+    items, text = (FULL_ITEMS, FULL_TEXT) if full else (MAX_ITEMS, MAX_TEXT)
     if isinstance(value, dict):
         out = {}
         for key, item in value.items():
             if SECRET_NAME.search(str(key)) and isinstance(item, (str, int, float)) and item != "":
                 out[key] = describe_secret(item)
             else:
-                out[key] = redact_json(item, depth + 1)
+                out[key] = redact_json(item, depth + 1, full)
         return out
     if isinstance(value, list):
-        out = [redact_json(item, depth + 1) for item in value[:MAX_ITEMS]]
-        if len(value) > MAX_ITEMS:
-            out.append(f"… {len(value) - MAX_ITEMS} weitere (insgesamt {len(value)})")
+        out = [redact_json(item, depth + 1, full) for item in value[:items]]
+        if len(value) > items:
+            out.append(f"… {len(value) - items} weitere (insgesamt {len(value)})")
         return out
     if isinstance(value, str):
-        return _short(value)
+        return _short(value, text)
     return value
 
 
@@ -141,20 +148,20 @@ def redact_headers(headers):
     return out
 
 
-def summarize_body(body, mime=""):
-    """Anfrage- oder Antwortinhalt kürzen und schwärzen."""
+def summarize_body(body, mime="", full=False):
+    """Anfrage- oder Antwortinhalt kürzen und schwärzen (full: ungekürzt, nur geschwärzt)."""
     if body is None or body == "":
         return None
     text = body.strip() if isinstance(body, str) else str(body)
     if text[:1] in "[{":
         try:
-            return {"json": redact_json(json.loads(text))}
+            return {"json": redact_json(json.loads(text), full=full)}
         except ValueError:
             pass
     if "x-www-form-urlencoded" in mime or (re.fullmatch(r"[\w.%+\-]+=[^\s]*(&[\w.%+\-]+=[^\s]*)*", text)
                                           and len(text) < 5000):
         return {"formular": redact_query(text)}
-    return {"text": _short(text)}
+    return {"text": _short(text, FULL_TEXT if full else MAX_TEXT)}
 
 
 def mask_text(text):
@@ -265,10 +272,12 @@ class Recorder:
 
     SNAPSHOT_EVERY = 5  # Sekunden: Cookies und Seitenspeicher festhalten
 
-    def __init__(self, ws_url, start_url, name):
+    def __init__(self, ws_url, start_url, name, full_writes=False):
         self.ws = websocket.create_connection(ws_url, timeout=15, suppress_origin=True)
         self.start_url = start_url
         self.name = name
+        # Buchungs-Mitschnitt: Abfragen, die etwas speichern, ungekürzt aufzeichnen
+        self.full_writes = full_writes
         self.entries = {}       # requestId -> Eintrag (laufend)
         self.done = []          # fertige Einträge in Reihenfolge
         self.extra_req = {}     # requestId -> echte Anfrage-Köpfe (mit Cookie)
@@ -356,7 +365,7 @@ class Recorder:
             elif body and ("html" in mime or "javascript" in mime):  # Seiten und Code nicht speichern
                 entry["antwort"] = {"text": f"<{mime}, {len(body)} Zeichen>"}
             else:
-                entry["antwort"] = summarize_body(body, mime)
+                entry["antwort"] = summarize_body(body, mime, self._full(entry))
             self.done.append(entry)
         elif kind == "cookies" and "cookies" in result:
             self.cookies = [{
@@ -392,8 +401,12 @@ class Recorder:
             if "octet-stream" in ctype or "protobuf" in ctype:
                 entry["anfrage_inhalt"] = summarize_binary(_post_bytes(req)) or "<nicht gelesen>"
             else:
-                entry["anfrage_inhalt"] = summarize_body(req.get("postData"), ctype) or "<nicht gelesen>"
+                entry["anfrage_inhalt"] = (summarize_body(req.get("postData"), ctype, self._full(entry))
+                                           or "<nicht gelesen>")
         return entry
+
+    def _full(self, entry):
+        return self.full_writes and (entry.get("methode") or "").upper() in WRITE_METHODS
 
     def _finish(self, rid, extra=None):
         entry = self.entries.pop(rid, None)
@@ -462,7 +475,9 @@ class Recorder:
             "dauer_sekunden": round(time.time() - self._started),
             "browser": browser,
             "start_adresse": redact_url(self.start_url),
-            "hinweis": "Passwörter, Token und Cookie-Werte sind geschwärzt. Antworten sind gekürzt.",
+            "hinweis": "Passwörter, Token und Cookie-Werte sind geschwärzt. Antworten sind gekürzt"
+                       + (", Abfragen zum Speichern (POST/PUT/PATCH/DELETE) nicht." if self.full_writes
+                          else "."),
             "aufgerufene_seiten": self.pages,
             "abfragen": self.done,
             "websockets": self.websockets,

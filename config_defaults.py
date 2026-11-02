@@ -145,6 +145,11 @@ def default_config():
         "m42_reader_enabled": False,
         "m42_weeks_back": 4,          # so viele Wochen zurück einmal pro Sitzung lesen
         "m42_gap_minutes": 5,         # kürzere Lücken ohne Buchung zählen nicht
+        # Buchungen über die Schnittstelle lesen (wie die Kalenderseite selbst); geht das
+        # nicht, liest Zeitzeuge sie wie bisher aus der Seite. Widget: aus dem Mitschnitt,
+        # die Seite verrät ihr eigenes meist selbst.
+        "m42_api": True,
+        "m42_widget_id": "05d8b58d-5764-ef11-debc-0050569e2f05",
         # Zwei PCs (z. B. Arbeits-PC und PAW): "paw" = nur RDM sammeln, kein Edge, keine Nachfragen
         "pc_role": "",
         "export_days": 31,            # Zeitraum beim Export für den anderen PC

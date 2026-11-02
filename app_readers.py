@@ -18,6 +18,19 @@ import safe_io
 import main_timeline as mt  # Pfade und save_config zur Laufzeit von dort (Tests ersetzen sie dort)
 
 
+# Anleitung für den Buchungs-Mitschnitt (Vorbereitung für „In Matrix42 buchen“)
+M42_BOOKING_RECORD_TEXT = (
+    "Ein Edge-Fenster mit dem Matrix42-Kalender öffnet sich.\n\n"
+    "1. Falls nötig anmelden.\n"
+    "2. Eine neue Zeiterfassung anlegen, z. B. mit Doppelklick auf eine freie Stelle im "
+    "Kalender: Ticket, Zeit und Text eintragen und speichern.\n"
+    "3. Die neue Buchung noch einmal öffnen, etwas ändern und speichern.\n"
+    "4. Wenn du magst: eine Test-Buchung wieder löschen.\n"
+    "5. Das Fenster schließen.\n\n"
+    "Zeitzeuge speichert die Mitschnitt-Datei (mitschnitt_m42_buchung_…) im Datenordner. "
+    "Abfragen, die etwas speichern, stehen darin vollständig, Passwörter und Token geschwärzt.")
+
+
 class ReadersMixin:
     def is_paw(self):
         """PAW-Modus: nur RDM sammeln. Dort startet Zeitzeuge nie Edge, sucht keine Prozesse
@@ -267,15 +280,18 @@ class ReadersMixin:
                 follow_status()
                 reader.show_login(dialog)
 
-        def record():
+        def record(booking=False):
             enabled.setChecked(True)
             reader = apply()
             if not reader:
                 return
             follow_status()
-            path = os.path.join(mt.DATA_DIR, f"mitschnitt_{kind}_{datetime.now():%Y-%m-%d_%H%M}.json")
-            if reader.record(path):
-                QMessageBox.information(dialog, "Abfragen mitschneiden", spec["record_text"])
+            name = f"{kind}_buchung" if booking else kind
+            path = os.path.join(mt.DATA_DIR, f"mitschnitt_{name}_{datetime.now():%Y-%m-%d_%H%M}.json")
+            if reader.record(path, full_writes=booking):
+                QMessageBox.information(dialog, "Buchung mitschneiden" if booking
+                                        else "Abfragen mitschneiden",
+                                        M42_BOOKING_RECORD_TEXT if booking else spec["record_text"])
 
         follow_status()
 
@@ -284,10 +300,16 @@ class ReadersMixin:
         record_btn = QPushButton("Abfragen &mitschneiden …")
         record_btn.setToolTip("Aufzeichnen, welche Abfragen die Seite an ihren Server schickt "
                               "(Passwörter und Token werden geschwärzt).")
-        record_btn.clicked.connect(record)
+        record_btn.clicked.connect(lambda: record())
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.addButton(login_btn, QDialogButtonBox.ActionRole)
         buttons.addButton(record_btn, QDialogButtonBox.ActionRole)
+        if kind == "m42":  # Vorbereitung für „In Matrix42 buchen“
+            booking_btn = QPushButton("&Buchung mitschneiden …")
+            booking_btn.setToolTip("Aufzeichnen, wie Matrix42 eine Zeiterfassung speichert. Du legst "
+                                   "dabei selbst eine Buchung an. Passwörter und Token werden geschwärzt.")
+            booking_btn.clicked.connect(lambda: record(booking=True))
+            buttons.addButton(booking_btn, QDialogButtonBox.ActionRole)
         if kind == "pbx":
             def check():
                 enabled.setChecked(True)
@@ -421,7 +443,9 @@ class ReadersMixin:
             return
         from m42_reader import M42Reader
         self.m42_reader = M42Reader(self.config.get("m42_url", ""), mt.M42_FILE, mt.M42_PROFILE_DIR,
-                                    self, weeks_back=self.config.get("m42_weeks_back", 4))
+                                    self, weeks_back=self.config.get("m42_weeks_back", 4),
+                                    use_api=self.config.get("m42_api", True),
+                                    widget_id=self.config.get("m42_widget_id", ""))
         self.m42_reader.status_changed.connect(lambda _t: self.update_source_indicators())
         self.m42_reader.busy_changed.connect(self.update_busy_bar)
         self.m42_reader.day_read.connect(

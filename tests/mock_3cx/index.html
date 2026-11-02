@@ -10,6 +10,12 @@ function item(ini, crm, name, nr, icon, tag, zeit, dauer, via) {
   <div class="meta"><svg class="icon call-${icon}"></svg><span>${tag} ${zeit}</span>${dauer?`${sep()}<span>${dauer}</span>`:''}${via?`${sep()}<span>via ${via}</span>`:''}</div></div>
   <button>...</button></app-call-history-item>`;
 }
+// Datum vor n Tagen wie 3CX es schreibt ("19.10.2026"). Nie ein festes Datum: ein Anruf älter
+// als der Lesezeitraum (14 Tage) beendet das Nachladen, dann fehlen die älteren Testanrufe
+function vorTagen(n) {
+  const d = new Date(); d.setDate(d.getDate() - n);
+  return `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}.${d.getFullYear()}`;
+}
 // Seitenaufrufe zählen: Erst nach einem echten Neuladen erscheint ein neuer Anruf
 const aufrufe = Number(sessionStorage.getItem("aufrufe") || 0) + 1;
 sessionStorage.setItem("aufrufe", aufrufe);
@@ -32,7 +38,7 @@ function render() {
     item("",0,"015100000001","","incoming","Gestern","15:29","0:50","Carla Test 702"),
     item("CT",0,"Carla Test","702","missed","Gestern","14:19","",""),
     item("AG",0,"ABC GmbH","0251000000004","outgoing","Mo","08:01","1:02:03",""),
-    item("",0,"Max Muster","0170 0000005","incoming","12.10.2026","11:00","5:00",""),
+    item("",0,"Max Muster","0170 0000005","incoming",vorTagen(8),"11:00","5:00",""),
   ].join("") + '</div>';
   const box = document.getElementById("scrollBox");
   box.addEventListener("scroll", nachladen);
