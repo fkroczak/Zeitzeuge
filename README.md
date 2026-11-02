@@ -53,7 +53,7 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
   - Regeln ohne KI kennen die neuen Einträge (Teams-Anruf → Telefonsupport, Termin → Beratung / Abstimmung, Mail → E-Mail / Kommunikation). Die KI bekommt Termine und Mails als eigenen Abschnitt.
 - **Buchungsquote:** Zeitzeuge rechnet aus, wie viel deiner Personalzeit in Matrix42 gebucht ist. Ziel sind 80 % pro Tag. Unter 50 % ist die Quote rot (✗), bis unter dem Ziel gelb (!), ab dem Ziel bis 100 % grün (✓), darüber dunkelgrün (✓✓). Die Statuszeile zeigt „Quote heute 72 % · 7 Tage 81 %“. Ein Klick öffnet den Wochenabschluss. Die Anzeige erscheint nur, wenn Matrix42 Daten liefert.
 - **7-Tage-Wert:** die letzten 7 gestempelten Tage bis heute. Heute zählt nur, wenn du gestempelt hast, und nur bis jetzt. Tage ohne Matrix42-Daten zählen nicht mit. Sie stehen als „Matrix42 nicht gelesen“ da, statt als 0 %.
-- **Wochenabschluss** (Knopf mit dem Tacho in der Werkzeugleiste oder Klick auf die Quote in der Statuszeile): Montag bis Freitag der Woche, Samstag und Sonntag nur, wenn du da gestempelt oder gebucht hast. Je Tag: Personalzeit, gebucht, Quote, Zeit ohne Buchung und offene Tätigkeiten. Darunter Hinweise wie „Dienstag: 1:20 h nicht gebucht“ und der 7-Tage-Wert. Mit ◀ ▶ (oder Bild auf/ab) blätterst du die Wochen. Enter oder Doppelklick zeigt den Tag im Hauptfenster. Das Ziel stellst du dort unter „Ziel je Tag“ ein.
+- **Wochenabschluss** (Menü **Ansicht → Wochenabschluss …** oder Klick auf die Quote in der Statuszeile): Montag bis Freitag der Woche, Samstag und Sonntag nur, wenn du da gestempelt oder gebucht hast. Je Tag: Personalzeit, gebucht, Quote, Zeit ohne Buchung und offene Tätigkeiten. Darunter Hinweise wie „Dienstag: 1:20 h nicht gebucht“ und der 7-Tage-Wert. Mit ◀ ▶ (oder Bild auf/ab) blätterst du die Wochen. Enter oder Doppelklick zeigt den Tag im Hauptfenster. Das Ziel stellst du dort unter „Ziel je Tag“ ein.
 - **Prüfung bei Feierabend:** Bist du ausgestempelt und ist Feierabend, prüft Zeitzeuge den Tag einmal: mehr als 6 Stunden ohne 30 Minuten Pause (über 9 Stunden: 45 Minuten, Pausen zählen ab 15 Minuten am Stück), mehr als 6 Stunden am Stück, PC aktiv aber ausgestempelt, Buchung außerhalb der Personalzeit, Buchungen überschneiden sich, Quote unter Ziel. Die Hinweise kommen mit der Erinnerung an offene Tätigkeiten oder allein, und stehen auch im Wochenabschluss. Abschalten: Einstellungen → Nachfragen und Erinnerungen → „Bei Feierabend prüfen“.
 - **In Matrix42 buchen:** Rechtsklick auf eine eingetragene Tätigkeit → **In Matrix42 buchen …**. Zeitzeuge legt eine Zeiterfassung mit Status „Neu“ am Ticket an. Freigeben machst du wie gewohnt in Matrix42.
   - **Kulanz** und **Reise** übernimmt das Fenster aus der Tätigkeit. Bei Kulanz fragt es nach dem Grund (Standard „Kulanz“) und bucht die ganze Zeit als Kulanz.
@@ -64,7 +64,7 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
   - Matrix42 muss eingeschaltet und angemeldet sein (nur im Firmennetz). Zeitzeuge bucht über das unsichtbare Edge, wie die Matrix42-Seite selbst.
 - **Aktivitätsprotokoll:** Alle 5 Sekunden merkt sich Zeitzeuge das aktive Fenster, zum Beispiel eine RDP-Sitzung, einen Browser-Tab, Outlook oder PuTTY.
   - Es erscheint als farbiges Band „PC“ oben in der Timeline, eine Farbe pro Programm.
-  - Mit **PC-Verlauf** (Bildschirm-Symbol) in der Werkzeugleiste stehen die Fenster auch in der Tagesliste.
+  - Mit **Ansicht → PC-Verlauf in der Liste** stehen die Fenster auch in der Tagesliste.
   - Nach 5 Minuten ohne Maus und Tastatur oder bei gesperrtem PC wird nichts aufgezeichnet.
   - Fenster mit bestimmten Wörtern im Titel werden nur als „(ausgeblendet)“ gespeichert, zum Beispiel Passwortmanager.
   - Mit dem **Fenster-Filter** lässt du private Programme ganz weg oder zeichnest nur erlaubte Programme auf.
@@ -145,7 +145,7 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
 | ALT + A | Menü Ansicht öffnen |
 | F1 | Was zeigen die Ansichten der Tagesliste? |
 
-F7 bis F12 belegt Zeitzeuge bewusst nicht, damit sie für andere Werkzeuge frei bleiben. Nachtragen und Wochenabschluss erreichst du über die Knöpfe in der Werkzeugleiste.
+F7 bis F12 belegt Zeitzeuge bewusst nicht, damit sie für andere Werkzeuge frei bleiben. Nachtragen erreichst du über den Stift in der Werkzeugleiste, den Wochenabschluss über das Menü **Ansicht**.
 
 ## Voraussetzungen
 
@@ -214,10 +214,10 @@ Browser-Tests (3CX, ITM, Mitschnitt) brauchen Edge oder Chrome; ohne Browser wer
 Die Werkzeugleiste ist so aufgeteilt:
 
 - **Links:** vorheriger Tag, Datum, nächster Tag und **Heute**.
-- **Daneben (Schnellzugriffe):** Aktualisieren, PC-Verlauf (Bildschirm), KI-Vorschläge (Stern), Nachtragen (Stift), Wochenabschluss (Tacho), Lupen, **Ganzer Tag** und **Arbeitszeit**.
+- **Daneben (Schnellzugriffe):** Aktualisieren, Nachtragen (Stift), KI-Vorschläge (Stern), Lupen, Ganzer Tag und Arbeitszeit. Heute, Ganzer Tag und Arbeitszeit sind nur Symbole, der Hinweis beim Darüberfahren nennt sie. PC-Verlauf und Wochenabschluss stehen im Menü **Ansicht**, der Wochenabschluss auch hinter der Quote in der Statuszeile.
 - **Rechts:** **Ansicht** (Auge) und **Einstellungen** (Zahnrad).
 
-Fährst du über einen Knopf, erklärt ein Hinweis, was er tut. Im schmalen Fenster zeigen die Knöpfe nur noch ihr Symbol, danach rutschen Werkzeuge in den Überlauf (»). Tag, Ansicht und Einstellungen bleiben immer sichtbar.
+Fährst du über einen Knopf, erklärt ein Hinweis, was er tut. Im schmalen Fenster zeigen Ansicht und Einstellungen nur noch ihr Symbol, danach rutschen Werkzeuge in den Überlauf (»). Tag, Ansicht und Einstellungen bleiben immer sichtbar.
 
 ### Menü Ansicht
 

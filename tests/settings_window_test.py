@@ -35,7 +35,12 @@ def gui_test():
     tips = [a.toolTip() for a in window.findChildren(type(window.whole_day_action))]
     for text in ("Vorheriger Tag", "Nächster Tag", "Heute zeigen", "Ganzen Tag zeigen", "Arbeitszeit des Tages"):
         assert any(t.startswith(text) for t in tips), (text, tips)
-    assert window._today_button.toolButtonStyle() == Qt.ToolButtonTextBesideIcon
+    # Heute, Ganzer Tag, Arbeitszeit nur als Symbol; PC-Verlauf und Wochenabschluss nur im Menü
+    assert window._today_button.toolButtonStyle() == Qt.ToolButtonIconOnly
+    bar = window.tools_bar.actions()
+    assert window.pc_list_action not in bar and window.week_action not in bar
+    assert bar.index(window.doc_button_action) < bar.index(window.ai_button_action)
+    assert window.tools_bar.widgetForAction(window.whole_day_action).toolButtonStyle() == Qt.ToolButtonIconOnly
 
     # Ansicht: Ansichten mit Hilfe, Zeilen mit sichtbarem Kästchen, Design
     menu = window.view_button.menu()

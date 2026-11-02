@@ -101,27 +101,27 @@ class MenusMixin:
                                            "refresh")
         tb.addAction(self.refresh_action)
         tb.addSeparator()
-        # PC-Verlauf, KI-Vorschläge (Stern), Nachtragen, Wochenabschluss
+        # Nachtragen (Stift), KI-Vorschläge (Stern)
         self.pc_list_action = QAction("PC-Verlauf", self)
         self.pc_list_action.setCheckable(True)
         self.pc_list_action.setChecked(self.config.get("show_pc_in_list", False))
         self.pc_list_action.toggled.connect(self.toggle_pc_list)
         self._icon_actions.append((self.pc_list_action, "monitor"))
-        tb.addAction(self.pc_list_action)
+        # PC-Verlauf: nur im Menü Ansicht
         self.update_pc_list_tip()
 
         self.ai_button_action = self._action(
             "KI-Vorschläge", lambda: self.classify_day(), "F6",
             "KI-Vorschläge: Tätigkeiten des Tages von Claude einordnen lassen", "spark")
-        tb.addAction(self.ai_button_action)
         self.doc_button_action = self._action(
             "Nachtragen", lambda: self.add_doc(), None,
             "Tätigkeit nachtragen (zur markierten Zeile oder zur letzten halben Stunde)", "edit")
-        tb.addAction(self.doc_button_action)
+        tb.addAction(self.doc_button_action)  # Stift vorn, gleich nach Aktualisieren
+        tb.addAction(self.ai_button_action)
         self.week_action = self._action(
             "Wochenabschluss", self.show_week, None,
             "Wochenabschluss: Buchungsquote, Lücken und Offenes der Woche", "gauge")
-        tb.addAction(self.week_action)
+        # Wochenabschluss: im Menü Ansicht und per Klick auf die Quote in der Statuszeile
         tb.addSeparator()
         # Ausschnitt der Timeline
         self.zoom_out_action = self._action("Verkleinern", self.zoom_out, "Ctrl+-", "Timeline verkleinern",
@@ -137,8 +137,7 @@ class MenusMixin:
         tb.addAction(whole_day)
         tb.addAction(work_time)
         self.whole_day_action, self.work_time_action = whole_day, work_time
-        # Mit Text, solange Platz ist; im schmalen Fenster nur das Symbol
-        self._adaptive_buttons = [tb.widgetForAction(whole_day), tb.widgetForAction(work_time)]
+        self._adaptive_buttons = []  # Heute, Ganzer Tag, Arbeitszeit: nur Symbol, Text im Hinweis
 
         # ---- rechts: Einstellungen (immer sichtbar)
         right = QToolBar("Einstellungen", header)
@@ -176,7 +175,7 @@ class MenusMixin:
                 button.setToolButtonStyle(Qt.ToolButtonIconOnly)
         # Heute, Ansicht und Einstellungen mit Text, solange das Fenster breit genug ist
         wide = self.width() >= 980
-        for button in (getattr(self, "_today_button", None), self.view_button, self.menu_button):
+        for button in (self.view_button, self.menu_button):
             if button is not None:
                 button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon if wide else Qt.ToolButtonIconOnly)
         self.place_busy_bar()
