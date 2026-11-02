@@ -341,14 +341,24 @@ if rd.ok_button.isEnabled() or not rd.match_error.isVisible() or not rd.table_er
     problem("Regeln", "ungültige Regex wird nicht neben dem Feld gemeldet oder OK bleibt frei")
 rd.close()
 
-# Fenster sehr schmal: wichtige Knöpfe bleiben erreichbar (Reflow)
-window.resize(640, 480)
-QTest.qWait(200)
+# Fenster sehr schmal: jedes Werkzeug bleibt erreichbar (Reflow). Passt nicht alles hinein,
+# muss der Knopf für ausgeblendete Befehle (») gut sichtbar sein. Wie breit die Leiste ist,
+# hängt von Schrift und System ab, deshalb mehrere Breiten.
 toolbar = getattr(window, "tools_bar", None) or window.findChild(QToolBar)
-ext = toolbar.findChild(QToolButton, "qt_toolbar_ext_button")
-if ext is None or not ext.isVisible() or ext.width() < 20:
-    problem("Reflow", "bei 640 px Breite ist der Knopf für ausgeblendete Befehle "
-                      "fehlend oder kaum sichtbar")
+overflowed = False
+for width in (640, 480, 360):
+    window.resize(width, 480)
+    QTest.qWait(200)
+    ext = toolbar.findChild(QToolButton, "qt_toolbar_ext_button")
+    ext_ok = ext is not None and ext.isVisible() and ext.width() >= 20
+    hidden = [a for a in toolbar.actions() if not a.isSeparator()
+              and (toolbar.widgetForAction(a) is None or not toolbar.widgetForAction(a).isVisible())]
+    if hidden and not ext_ok:
+        problem("Reflow", f"bei {width} px Breite sind Befehle ausgeblendet, aber der Knopf "
+                          "für ausgeblendete Befehle fehlt oder ist kaum sichtbar")
+    overflowed = overflowed or bool(hidden)
+if not overflowed:
+    problem("Reflow", "auch bei 360 px Breite läuft die Werkzeugleiste nicht über – Prüfung wirkungslos")
 # Jeder Knopf der Werkzeugleiste erklärt sich beim Darüberfahren
 for bar in window.findChildren(QToolBar):
     for action in bar.actions():

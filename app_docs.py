@@ -25,6 +25,7 @@ import rules
 import m42_data as m42
 import week_dialogs
 import day_checks
+import idle_watch
 from grouping import group_entries
 from timeline_only import (OUTLOOK_TYPES, ROW_NAMES, ActivityViewDialog, ai_copy_text, format_duration, parse_time,
                            row_kind, type_label)
@@ -401,6 +402,7 @@ class DocsMixin(CustomersMixin):
                              item.get("customer", ""), item.get("category", ""),
                              item.get("text", ""), title="Tätigkeit bearbeiten",
                              can_delete=True, parent=self,
+                             goodwill=item.get("goodwill", False), travel=item.get("travel", False),
                              **self.entry_form_options(start, end, item.get("ticket", "")))
         dialog.form.set_billing(self.billing())
         if dialog.exec() != QDialog.Accepted:
@@ -458,6 +460,8 @@ class DocsMixin(CustomersMixin):
         if dialog.exec() == QDialog.Accepted:
             dialog.apply()
             mt.save_config(self.config)
+            if getattr(self, "idle_watch", None):
+                self.idle_watch.minutes = self.config.get("idle_prompt_minutes", 15)
             self.timeline.draw_timeline(self.current_date)
 
     # ---- Eintragen: Textbausteine, zuletzt benutzte Texte, Ticket (snippets.py, tickets.py)
@@ -496,6 +500,33 @@ class DocsMixin(CustomersMixin):
 
     # ---- Nachfragen ("Was hast du gemacht?")
 
+    def idle_sample(self, now=None, idle=None):
+        """Alle 5 Sekunden: Endet gerade eine lange Abwesenheit am PC, gleich nachfragen."""
+        watch = getattr(self, "idle_watch", None)
+        if watch is None or self._quitting:
+            return
+        now = now or datetime.now()
+        span = watch.update(now, idle_watch.current_idle_seconds() if idle is None else idle)
+        if not span or self.config.get("prompt_mode", "window") == "off":
+            return
+        entry = idle_watch.idle_entry(span)
+        if self.journal.is_ignored(entry):
+            return
+        self._idle_open.append(entry)
+        self._prompt_queue.insert(0, entry)  # vor allem anderen: gerade erst zurück
+        self.show_next_prompt()
+
+    def _idle_pending(self, now):
+        """Abwesenheiten, nach denen (wieder) gefragt wird: nicht eingetragen, nicht zurückgestellt."""
+        def documented(e):
+            start, end = parse_time(e["start"]), parse_time(e["end"])
+            covered = self.journal.covered_seconds(e["start"][:10], start, end)
+            return covered >= (end - start).total_seconds() / 2
+
+        self._idle_open = [e for e in self._idle_open if not documented(e)]
+        return [e for e in self._idle_open
+                if not (self._prompt_asked.get(journal_key(e)) or now) > now]
+
     def check_prompts(self):
         """Jede Minute: neu erkannte, noch nicht dokumentierte Tätigkeiten nachfragen."""
         mode = self.config.get("prompt_mode", "window")
@@ -518,7 +549,12 @@ class DocsMixin(CustomersMixin):
                 continue
             if key not in (journal_key(q) for q in self._prompt_queue):
                 self._prompt_queue.append(e)
-        keys = {journal_key(e) for e in open_items}  # inzwischen dokumentiert: nicht mehr fragen
+        idle = self._idle_pending(now)  # Abwesenheiten am PC
+        for e in idle:
+            if journal_key(e) not in (journal_key(q) for q in self._prompt_queue):
+                self._prompt_queue.append(e)
+        # inzwischen dokumentiert: nicht mehr fragen
+        keys = {journal_key(e) for e in open_items + idle}
         self._prompt_queue = [q for q in self._prompt_queue if journal_key(q) in keys]
         if self._prompt_queue:
             self.show_next_prompt()
@@ -530,7 +566,8 @@ class DocsMixin(CustomersMixin):
                 self._prompt_window.set_pending(len(self._prompt_queue) - 1)
             return
         entry = self._prompt_queue[0]
-        if self.config.get("prompt_mode") == "tray" and not force:
+        # Abwesenheit immer als Fenster: Du bist gerade zurück und sitzt davor
+        if self.config.get("prompt_mode") == "tray" and not force and not entry.get("idle"):
             if self.tray and journal_key(entry) not in self._prompt_asked:
                 self._prompt_asked[journal_key(entry)] = datetime.max
                 self._tray_doc_hint = True
@@ -562,6 +599,8 @@ class DocsMixin(CustomersMixin):
         window, self._prompt_window = self._prompt_window, None
         key = journal_key(entry)
         self._prompt_queue = [q for q in self._prompt_queue if journal_key(q) != key]
+        if action in ("save", "ignore") and entry.get("idle"):
+            self._idle_open = [e for e in self._idle_open if journal_key(e) != key]
         if action == "save":
             item["source"] = entry.get("type", "")
             if not self._save_doc(item, entry, window.remember_tv() if window else False,

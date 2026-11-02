@@ -78,6 +78,7 @@ def plan(item, bill=None, ticket_format=""):
         "start": start, "end": end,
         "minutes": max(1, int((end - start).total_seconds() // 60)),
         "text": format_ticket_text(item.get("text", ""), ticket_format) or item.get("text", ""),
+        "goodwill": bool(item.get("goodwill")), "travel": bool(item.get("travel")),
         "customer": item.get("customer", ""),
     }
 
@@ -201,8 +202,12 @@ def _utc(value):
 
 
 def time_entry(template, target, sla, user, start, end, minutes, text,
-               activity_type=DEFAULT_ACTIVITY_TYPE, time_zone="Europe/Berlin"):
-    """Zeiterfassung zum Speichern, Felder wie im Mitschnitt. template: Entity aus GetNewData."""
+               activity_type=DEFAULT_ACTIVITY_TYPE, time_zone="Europe/Berlin",
+               goodwill=False, travel=False, goodwill_reason=""):
+    """Zeiterfassung zum Speichern, Felder wie im Mitschnitt. template: Entity aus GetNewData.
+
+    goodwill: Kulanz, die ganze Zeit wird nicht berechnet (IsGoodwill, GoodwillAmount in Minuten,
+    Grund Pflicht wie im Dialog). travel: Reise (IsTravel)."""
     if not isinstance(template, dict) or not template.get("ID"):
         raise BookingError("Matrix42 liefert keine Vorlage für eine neue Zeiterfassung.")
     if not user:
@@ -220,8 +225,12 @@ def time_entry(template, target, sla, user, start, end, minutes, text,
         "GoodwillAmountRounded": 0, "WorktimeRounded": int(minutes), "WorktimeNominal": int(minutes),
         "Description": text, "Pause": 0, "IgnoreSurchargeReason": None, "Approach": None,
         "SLA": sla, "GoodwillReason": None, "Departure": None, "Location": None,
-        "IsTravel": False, "UserTimeZone": time_zone, "GoodwillAmount": None,
+        "IsTravel": bool(travel), "UserTimeZone": time_zone, "GoodwillAmount": None,
     })
+    if goodwill:
+        base.update({"IsGoodwill": True, "GoodwillAmount": int(minutes),
+                     "GoodwillAmountRounded": int(minutes),
+                     "GoodwillReason": (goodwill_reason or "").strip() or "Kulanz"})
     entity_id = template["ID"]
     return {
         "Sys-Entity": "ITMTimeEntryType", "ID": entity_id, "Sys-IsNew": True,

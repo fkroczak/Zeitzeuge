@@ -54,7 +54,17 @@ def work_hours(config, weekday):
 
 
 # Farben für Telefonate wie im 3CX-Client (in der Config unter "call_colors" änderbar)
-DEFAULT_CALL_COLORS = {"Eingehend": "#3D8BFD", "Ausgehend": "#2E9E5B", "Verpasst": "#E5484D"}
+# Eingehend blau, ausgehend orange: unterscheiden sich auch in der Helligkeit, nicht nur im Farbton.
+# Dazu ein Pfeil im Balken (CALL_MARKS), damit es nicht nur an der Farbe hängt.
+DEFAULT_CALL_COLORS = {"Eingehend": "#1F5FD6", "Ausgehend": "#F08A24", "Verpasst": "#E5484D"}
+CALL_MARKS = {"Eingehend": "↙", "Ausgehend": "↗", "Verpasst": "✕"}
+
+
+def _blend(fill, background):
+    """Farbe, die eine halb durchsichtige Füllung auf dem Hintergrund ergibt."""
+    a = fill.alpha() / 255
+    return QColor(*(round(getattr(fill, c)() * a + getattr(background, c)() * (1 - a))
+                    for c in ("red", "green", "blue")))
 
 
 def entry_color(activity, config):
@@ -290,8 +300,9 @@ class TimelineView(QGraphicsView):
     # Logs werden gelesen (True) oder sind fertig (False) – für die Ladeanzeige
     loading_changed = Signal(bool)
 
-    APP_COLORS = ["#5B8DEF", "#E67E22", "#27AE60", "#9B59B6", "#E84393",
-                  "#16A085", "#C0392B", "#F1C40F", "#2C3E50", "#7F8C8D"]
+    # Kräftige, gut unterscheidbare Farben je Programm (Band "PC")
+    APP_COLORS = ["#2F7BFF", "#FF7A00", "#18B34B", "#9B3DF2", "#FF2E8A",
+                  "#00A8B5", "#E5242B", "#F5B700", "#4C6EF5", "#8BC34A"]
 
     LEFT = 136         # Rand links in Pixeln: Platz für die schwebende Beschriftung (Legende)
     RIGHT = 34         # Rand rechts
@@ -816,6 +827,8 @@ class TimelineView(QGraphicsView):
             self.activity_rects[rect] = a
 
             label_text = a["customer_name"] or a["type"]
+            if a.get("direction") in CALL_MARKS:  # Richtung auch als Form, nicht nur als Farbe
+                label_text = f"{CALL_MARKS[a['direction']]} {label_text}"
             if w > 28:
                 text = metrics.elidedText(label_text, Qt.ElideRight, int(w - 8))
                 item = self.scene.addText(text, label_font)
@@ -836,7 +849,7 @@ class TimelineView(QGraphicsView):
                 x2 = self._x(end.hour * 60 + end.minute + end.second / 60)
                 color = self.app_color(p["app"])
                 fill = QColor(color)
-                fill.setAlpha(200)
+                fill.setAlpha(235)
                 rect = self.scene.addRect(x1, band_y, max(1.5, x2 - x1), self.PC_BAND_H,
                                           QPen(Qt.NoPen), QBrush(fill))
                 self.activity_rects[rect] = p
@@ -909,7 +922,8 @@ class TimelineView(QGraphicsView):
         w = max(4.0, x2 - x1)
         base = entry_color(a, self.config)
         fill = QColor(base)
-        light = 110 if self.dark_mode else 70
+        # Deckkraft der halb durchsichtigen Kacheln (Regeln, KI, offene, Lücken): kräftig statt pastell
+        light = 175 if self.dark_mode else 150
         label_color = self.text_color
         if a.get("work") and not a.get("from_itm"):  # Arbeitszeit aus den Einstellungen: nur Rahmen
             fill.setAlpha(light // 2)
@@ -929,6 +943,8 @@ class TimelineView(QGraphicsView):
         else:  # KI-Vorschlag
             fill.setAlpha(light)
             pen = QPen(base, 1.5, Qt.DotLine)
+        if fill.alpha() < 255:  # Schrift passend zur gemischten Fläche (kräftige Farben)
+            label_color = readable_on(_blend(fill, self.background_color))
         rect = self.scene.addRect(x1, y, w, self.LANE_H, pen, QBrush(fill))
         rect.setCursor(Qt.PointingHandCursor)
         self.activity_rects[rect] = a

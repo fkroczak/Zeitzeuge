@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Zeitzeuge – Anrufliste übertragen
 // @namespace    zeitzeuge
-// @version      1.4
+// @version      1.5
 // @description  Liest die Anrufliste im 3CX-Webclient aus und schickt sie an Zeitzeuge (127.0.0.1:8765)
 // @include      https://voice.visaas.de:5001/*
 // @grant        GM_xmlhttpRequest
@@ -46,14 +46,22 @@
   }
 
   function richtung(item) {
-    // Richtung steckt im Icon (Klasse/Name/aria-label)
-    const icon = item.querySelector("svg, i, img, [class*='icon']");
-    const info = icon
-      ? (icon.outerHTML.slice(0, 400) + " " + (icon.getAttribute("aria-label") || "")).toLowerCase()
-      : "";
-    if (/missed|verpasst|unanswered|nicht.?angenommen/.test(info)) return "Verpasst";
-    if (/outgoing|outbound|ausgehend/.test(info)) return "Ausgehend";
-    if (/incoming|inbound|eingehend/.test(info)) return "Eingehend";
+    // Richtung steckt in einem Symbol (Klasse, Name, Verweis, aria-label). Nicht nur das erste
+    // Symbol ansehen: davor stehen oft Avatar oder CRM-Zeichen.
+    const teile = [];
+    item.querySelectorAll("svg, use, i, img, mat-icon, [class*='icon'], [class*='call'], [class*='direction']")
+      .forEach((el) => {
+        teile.push(el.getAttribute("class") || "", el.getAttribute("href") || "",
+                   el.getAttribute("xlink:href") || "", el.getAttribute("src") || "",
+                   el.getAttribute("alt") || "", el.getAttribute("title") || "",
+                   el.getAttribute("aria-label") || "", el.getAttribute("data-qa") || "",
+                   el.getAttribute("data-icon") || "", el.getAttribute("name") || "");
+        if (el.tagName.toLowerCase() === "mat-icon") teile.push(el.textContent || "");
+      });
+    const info = teile.join(" ").toLowerCase();
+    if (/missed|verpasst|unanswered|nicht.?angenommen|call_missed|phone_missed/.test(info)) return "Verpasst";
+    if (/outgoing|outbound|ausgehend|call_made|call-made|arrow-up-right|call-out\b/.test(info)) return "Ausgehend";
+    if (/incoming|inbound|eingehend|call_received|call-received|arrow-down-left|call-in\b/.test(info)) return "Eingehend";
     return "Anruf";
   }
 
@@ -63,7 +71,7 @@
     const result = [];
     while (walker.nextNode()) {
       const el = walker.currentNode.parentElement;
-      if (el && el.closest("button, [role='button'], script, style")) continue; // Knöpfe wie "…"
+      if (el && el.closest("button, [role='button'], script, style, mat-icon, .material-icons, .material-symbols-outlined")) continue; // Knöpfe wie "…", Symbolschrift
       const t = walker.currentNode.nodeValue.replace(/\s+/g, " ").trim();
       if (t) result.push(t);
     }

@@ -7,7 +7,7 @@ Die Abfragen schickt M42Reader.book aus dem angemeldeten Edge.
 from datetime import datetime
 
 from PySide6.QtCore import Qt, QTime
-from PySide6.QtWidgets import (QComboBox, QDialog, QDialogButtonBox, QFormLayout, QHBoxLayout,
+from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFormLayout, QHBoxLayout,
                                QLabel, QLineEdit, QListWidget, QListWidgetItem, QPlainTextEdit,
                                QPushButton, QTimeEdit, QVBoxLayout)
 
@@ -95,6 +95,27 @@ class BookingDialog(QDialog):
         self.set_activity_types(activity_types or mb.ACTIVITY_TYPES, activity_type)
         form.addRow("Tätigkeits&art:", self.type_edit)
 
+        # Kulanz und Reise wie im Matrix42-Dialog, vorbelegt aus der Tätigkeit
+        flags = QHBoxLayout()
+        self.goodwill_box = QCheckBox("K&ulanz")
+        self.goodwill_box.setChecked(bool(plan.get("goodwill")))
+        self.goodwill_box.setToolTip("Die Zeit wird als Kulanz gebucht (nicht berechnet).")
+        self.travel_box = QCheckBox("&Reise")
+        self.travel_box.setChecked(bool(plan.get("travel")))
+        self.travel_box.setToolTip("Die Zeit wird als Reise (Anfahrt) gebucht.")
+        flags.addWidget(self.goodwill_box)
+        flags.addWidget(self.travel_box)
+        flags.addStretch(1)
+        form.addRow("", flags)
+        self.goodwill_reason = QLineEdit("Kulanz" if plan.get("goodwill") else "")
+        self.goodwill_reason.setPlaceholderText("Grund für die Kulanz")
+        self.goodwill_reason.setAccessibleName("Kulanzgrund")
+        self.goodwill_label = QLabel("Kulanz&grund:")
+        self.goodwill_label.setBuddy(self.goodwill_reason)
+        form.addRow(self.goodwill_label, self.goodwill_reason)
+        self.goodwill_box.toggled.connect(self._goodwill_toggled)
+        self._goodwill_toggled(self.goodwill_box.isChecked())
+
         self.text_edit = QPlainTextEdit(plan.get("text", ""))
         self.text_edit.setTabChangesFocus(True)
         self.text_edit.setFixedHeight(90)
@@ -137,6 +158,12 @@ class BookingDialog(QDialog):
             self.type_edit.addItem(name, value)
         index = self.type_edit.findData(current)
         self.type_edit.setCurrentIndex(max(index, 0))
+
+    def _goodwill_toggled(self, on):
+        self.goodwill_reason.setVisible(on)
+        self.goodwill_label.setVisible(on)
+        if on and not self.goodwill_reason.text().strip():
+            self.goodwill_reason.setText("Kulanz")
 
     def on_activity_types(self, types):
         self.set_activity_types(types, self.type_edit.currentData())
@@ -215,7 +242,9 @@ class BookingDialog(QDialog):
         return {"ticket": mb.normalize_ticket(self.ticket_edit.text()), "start": start, "end": end,
                 "minutes": int((end - start).total_seconds() // 60),
                 "text": self.text_edit.toPlainText().strip(),
-                "activity_type": self.type_edit.currentData(), "ids": self.ids}
+                "activity_type": self.type_edit.currentData(), "ids": self.ids,
+                "goodwill": self.goodwill_box.isChecked(), "travel": self.travel_box.isChecked(),
+                "goodwill_reason": self.goodwill_reason.text().strip()}
 
     def book(self):
         if not self.validate():

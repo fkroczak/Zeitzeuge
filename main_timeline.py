@@ -43,6 +43,7 @@ import datastore
 import safe_io
 import storage
 from vpn_reader import vpn_sources
+from idle_watch import IdleWatch
 from journal import Journal
 from settings_dialogs import ActivityTypeSettingsDialog, ConnectionSettingsDialog, WorkHoursDialog
 from timeline_only import ActivityViewDialog, TimelineView, parse_time
@@ -140,6 +141,14 @@ OLD_TYPE_COLORS = {
     "#2980B9": "#2272AD",  # M365-Admin (Schrift auf vollem Balken sonst zu blass)
 }
 
+# Graue Standardfarben (bis Version 2) -> kräftige Farben: Typ -> (alt, neu)
+GREY_TYPE_COLORS = {
+    "FTP-Verbindung": ("#7F8C8D", "#C2185B"),
+    "Klassifizierung": ("#8395A7", "#0FB9B1"),
+    "Matrix42-Buchung": ("#6E7781", "#3B5BDB"),
+    "Mail gesendet": ("#1F7A8C", "#00A3C4"),
+}
+
 
 class StoreLocked(Exception):
     """Daten gesperrt und nicht entsperrt (Abbruch im Dialog)."""
@@ -222,15 +231,15 @@ def load_config_with_defaults():
                             for i, d in enumerate(["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"])}
     cfg["type_colors"].setdefault("Telefonat", "#2E9E5B")
     for kind, color in [("VPN-Verbindung", "#0F9D8A"), ("SSH-Verbindung", "#E06D10"),
-                        ("FTP-Verbindung", "#7F8C8D"), ("TeamViewer-Verbindung", "#3460DB"),
+                        ("FTP-Verbindung", "#C2185B"), ("TeamViewer-Verbindung", "#3460DB"),
                         ("Zugangsdaten", "#9B59B6"), ("Arbeitsblock", "#5B8DEF"),
                         (AI_TYPE, "#A55EEA"), ("Dokumentiert", "#2E9E5B"),
-                        ("Undokumentiert", "#E06D10"), ("Klassifizierung", "#8395A7"),
-                        ("Matrix42-Buchung", "#6E7781"), ("Personalzeit", "#3D8BFD"),
+                        ("Undokumentiert", "#E06D10"), ("Klassifizierung", "#0FB9B1"),
+                        ("Matrix42-Buchung", "#3B5BDB"), ("Personalzeit", "#3D8BFD"),
                         ("Arbeitszeit", "#3D8BFD"), ("Nicht gebucht", "#E5484D"),
                         # Outlook und Teams (app_outlook.py)
                         ("Termin", "#0F6CBD"), ("Teams-Besprechung", "#5B5FC7"),
-                        ("Mail gesendet", "#1F7A8C"), ("Teams-Anruf", "#464EB8")]:
+                        ("Mail gesendet", "#00A3C4"), ("Teams-Anruf", "#464EB8")]:
         cfg["type_colors"].setdefault(kind, color)
     # Design "Metro Klar": alte Standardfarben einmalig umstellen, selbst gewählte Farben bleiben.
     # Nur einmal, damit eine später bewusst gewählte alte Farbe nicht wieder ersetzt wird.
@@ -239,6 +248,12 @@ def load_config_with_defaults():
             if isinstance(color, str) and color.upper() in OLD_TYPE_COLORS:
                 cfg["type_colors"][kind] = OLD_TYPE_COLORS[color.upper()]
         cfg["type_colors_version"] = 2
+    # Kräftigere Farben statt Grau/Pastell: nur noch unveränderte alte Standardwerte umstellen
+    if cfg.get("type_colors_version", 1) < 3:
+        for kind, old in GREY_TYPE_COLORS.items():
+            if str(cfg["type_colors"].get(kind, "")).upper() == old[0]:
+                cfg["type_colors"][kind] = old[1]
+        cfg["type_colors_version"] = 3
     # Alte Standardpfade enthielten doppelte Backslashes (C:\Users\x\\TeamViewer)
     for key in ("teamviewer_paths", "rdm_paths", "vpn_paths"):
         cfg[key] = [clean_path(p) for p in cfg.get(key, []) if isinstance(p, str)]
@@ -551,6 +566,12 @@ class TimelineApp(MenusMixin, DayListMixin, DocsMixin, ReadersMixin, TrayMixin, 
         self.prompt_timer = QTimer(self)
         self.prompt_timer.timeout.connect(self.check_prompts)
         self.prompt_timer.start(60 * 1000)
+        # Abwesenheit am PC: alle 5 Sekunden prüfen, bei der ersten Eingabe danach nachfragen
+        self.idle_watch = IdleWatch(self.config.get("idle_prompt_minutes", 15))
+        self._idle_open = []        # Abwesenheiten, nach denen noch gefragt wird
+        self.idle_timer = QTimer(self)
+        self.idle_timer.timeout.connect(self.idle_sample)
+        self.idle_timer.start(5000)
 
         self._build_tray()
 

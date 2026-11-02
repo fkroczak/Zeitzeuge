@@ -1,3 +1,13 @@
+Im Fenster **Einstellungen → Datenquellen** schaltest du jede Quelle in ihrer Kachel ein oder aus und siehst ihren Zustand. Schneller geht es über den Pfeil am Knopf **Einstellungen → Datenquellen**:
+
+| Gruppe | Quellen |
+|---|---|
+| Fernwartung | TeamViewer, RDM |
+| VPN | Sophos Connect, FortiClient, weitere VPN-Logs (OpenVPN …) |
+| Telefon und Zeiten | 3CX-Anrufe, ITM-Personalzeiten, Matrix42, Outlook, Teams-Anrufe |
+
+Pfade, Zeitzonen und Anmeldungen stellst du über **Einrichten …** in der Kachel ein. Das Aufzeichnen der aktiven Fenster schaltest du in der Kachel „Aktive Fenster“, über den Pfeil am Knopf **Einstellungen** oder unten rechts in der Statuszeile.
+
 # Zeitzeuge
 
 **Zeitzeuge zeigt dir auf einer Tages-Timeline, woran du gearbeitet hast.** Das Programm liest die Spuren, die deine Werkzeuge ohnehin hinterlassen: TeamViewer-Verbindungen, Sitzungen aus dem Remote Desktop Manager, VPN-Verbindungen aus Sophos Connect und FortiClient und Telefonate aus 3CX. Dazu merkt es sich, welches Fenster gerade aktiv war. So kannst du Tickets lückenlos schreiben und musst nicht mehr raten, wann du bei welchem Kunden warst.
@@ -43,9 +53,10 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
   - Regeln ohne KI kennen die neuen Einträge (Teams-Anruf → Telefonsupport, Termin → Beratung / Abstimmung, Mail → E-Mail / Kommunikation). Die KI bekommt Termine und Mails als eigenen Abschnitt.
 - **Buchungsquote:** Zeitzeuge rechnet aus, wie viel deiner Personalzeit in Matrix42 gebucht ist. Ziel sind 80 % pro Tag. Unter 50 % ist die Quote rot (✗), bis unter dem Ziel gelb (!), ab dem Ziel bis 100 % grün (✓), darüber dunkelgrün (✓✓). Die Statuszeile zeigt „Quote heute 72 % · 7 Tage 81 %“. Ein Klick öffnet den Wochenabschluss. Die Anzeige erscheint nur, wenn Matrix42 Daten liefert.
 - **7-Tage-Wert:** die letzten 7 gestempelten Tage bis heute. Heute zählt nur, wenn du gestempelt hast, und nur bis jetzt. Tage ohne Matrix42-Daten zählen nicht mit. Sie stehen als „Matrix42 nicht gelesen“ da, statt als 0 %.
-- **Wochenabschluss** (Knopf mit dem Tacho in der Werkzeugleiste oder Klick auf die Quote in der Statuszeile): Montag bis Freitag der Woche, Samstag und Sonntag nur, wenn du da gestempelt oder gebucht hast. Je Tag: Personalzeit, gebucht, Quote, Zeit ohne Buchung und offene Tätigkeiten. Darunter Hinweise wie „Dienstag: 1:20 h nicht gebucht“ und der 7-Tage-Wert. Mit ◀ ▶ (oder Bild auf/ab) blätterst du die Wochen. Enter oder Doppelklick zeigt den Tag im Hauptfenster. Das Ziel stellst du dort unter „Ziel je Tag“ ein.
+- **Wochenabschluss** (Menü **Ansicht → Wochenabschluss …** oder Klick auf die Quote in der Statuszeile): Montag bis Freitag der Woche, Samstag und Sonntag nur, wenn du da gestempelt oder gebucht hast. Je Tag: Personalzeit, gebucht, Quote, Zeit ohne Buchung und offene Tätigkeiten. Darunter Hinweise wie „Dienstag: 1:20 h nicht gebucht“ und der 7-Tage-Wert. Mit ◀ ▶ (oder Bild auf/ab) blätterst du die Wochen. Enter oder Doppelklick zeigt den Tag im Hauptfenster. Das Ziel stellst du dort unter „Ziel je Tag“ ein.
 - **Prüfung bei Feierabend:** Bist du ausgestempelt und ist Feierabend, prüft Zeitzeuge den Tag einmal: mehr als 6 Stunden ohne 30 Minuten Pause (über 9 Stunden: 45 Minuten, Pausen zählen ab 15 Minuten am Stück), mehr als 6 Stunden am Stück, PC aktiv aber ausgestempelt, Buchung außerhalb der Personalzeit, Buchungen überschneiden sich, Quote unter Ziel. Die Hinweise kommen mit der Erinnerung an offene Tätigkeiten oder allein, und stehen auch im Wochenabschluss. Abschalten: Einstellungen → Nachfragen und Erinnerungen → „Bei Feierabend prüfen“.
 - **In Matrix42 buchen:** Rechtsklick auf eine eingetragene Tätigkeit → **In Matrix42 buchen …**. Zeitzeuge legt eine Zeiterfassung mit Status „Neu“ am Ticket an. Freigeben machst du wie gewohnt in Matrix42.
+  - **Kulanz** und **Reise** übernimmt das Fenster aus der Tätigkeit. Bei Kulanz fragt es nach dem Grund (Standard „Kulanz“) und bucht die ganze Zeit als Kulanz.
   - Im Fenster prüfst du vorher Ticket, Von und Bis (Ende im Abrechnungstakt, änderbar), Tätigkeitsart und Beschreibung. Gebucht wird erst mit **In Matrix42 buchen**, nie von selbst.
   - **Ticket suchen:** nach Kunde, Benutzer (Melder oder Bearbeiter), Ticketnummer oder Titel. Ein Klick auf einen Treffer übernimmt das Ticket. Ohne Ticket sucht Zeitzeuge gleich nach dem Kunden der Tätigkeit.
   - Ist in Matrix42 zu der Zeit schon etwas gebucht, steht ein Hinweis im Fenster. Gebuchte Tätigkeiten merken sich die Nummer der Zeiterfassung (z. B. TE0000088403) und lassen sich nicht doppelt buchen.
@@ -53,7 +64,7 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
   - Matrix42 muss eingeschaltet und angemeldet sein (nur im Firmennetz). Zeitzeuge bucht über das unsichtbare Edge, wie die Matrix42-Seite selbst.
 - **Aktivitätsprotokoll:** Alle 5 Sekunden merkt sich Zeitzeuge das aktive Fenster, zum Beispiel eine RDP-Sitzung, einen Browser-Tab, Outlook oder PuTTY.
   - Es erscheint als farbiges Band „PC“ oben in der Timeline, eine Farbe pro Programm.
-  - Mit **PC-Verlauf** (Bildschirm-Symbol) in der Werkzeugleiste stehen die Fenster auch in der Tagesliste.
+  - Mit **Ansicht → PC-Verlauf in der Liste** stehen die Fenster auch in der Tagesliste.
   - Nach 5 Minuten ohne Maus und Tastatur oder bei gesperrtem PC wird nichts aufgezeichnet.
   - Fenster mit bestimmten Wörtern im Titel werden nur als „(ausgeblendet)“ gespeichert, zum Beispiel Passwortmanager.
   - Mit dem **Fenster-Filter** lässt du private Programme ganz weg oder zeichnest nur erlaubte Programme auf.
@@ -62,7 +73,7 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
 - **Tagesliste** unter der Timeline mit Von, Bis, Dauer, Typ, Kunde und Details.
   - Die Statuszeile zeigt die belegte Zeit des Tages. Überschneidungen werden nicht doppelt gezählt.
   - Markierte Zeilen kopierst du mit STRG + C, zum Beispiel für die Ticket-Dokumentation.
-  - Das Auge in der Werkzeugleiste legt fest, wie die Liste aussieht:
+  - Das Menü **Ansicht** (Auge) legt fest, wie die Liste aussieht (Erklärung mit Beispielen: **Was zeigen die Ansichten? …**, F1):
     - **Zusammengefasst** (Standard): Verbindungen zum selben Eintrag mit weniger als 5 Minuten Pause werden eine Zeile. Passwort-, Benutzernamen- und OTP-Anzeigen aus RDM stehen als Zähler bei der Verbindung, zum Beispiel „3 Verbindungen · 2× OTP, 1× Passwort“. Ohne passende Verbindung erscheinen sie als „Zugangsdaten“.
     - **Einzeln:** jede Zeile aus den Logs, wie bisher.
     - **Arbeitsblöcke:** alles mit weniger als 10 Minuten Pause wird ein Block, zum Beispiel „01:18–02:05 · SSL VPN, EPM, OPNsense“. Praktisch fürs Ticket.
@@ -79,6 +90,8 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
   - Timeline und Tagesliste haben dasselbe Rechtsklick-Menü. Es zeigt nur Befehle, die zum Eintrag passen.
   - **Offenes fällt auf:** Verbindungen und Telefonate ohne Dokumentation stehen gestrichelt mit „?“ in der Zeile „Doku“. Ein Klick darauf öffnet das Eintragen.
   - **Zeitzeuge fragt nach:** Endet eine TeamViewer-Sitzung, eine RDP-/SSH-/VPN-Verbindung oder ein Telefonat, erscheint unten rechts ein kleines Fenster: „Was hast du gemacht?“. Zeit, Kunde und Kategorie sind schon ausgefüllt, du schreibst nur noch einen Satz. **Später fragen** fragt in 15 Minuten wieder, **Nicht dokumentieren** fragt für diesen Eintrag nie mehr. Ab welcher Dauer gefragt wird (Standard: 1 Minute), stellst du unter **Nachfragen und Erinnerungen …** getrennt für Verbindungen, Telefonate und Regel-Blöcke ein.
+  - **Abwesenheit am PC:** Warst du 15 Minuten oder länger nicht an Maus und Tastatur (auch gesperrt oder im Ruhezustand), fragt Zeitzeuge bei der ersten Eingabe danach: „Was war in der Zeit?“. Knöpfe für typische Fälle füllen Kategorie und Text mit einem Klick: **Telefonat**, **Besprechung**, **Vor Ort**, **Fahrt / Reise** (setzt den Haken „Reise“) und **Pause** (speichert gleich). Die Dauer stellst du unter **Nachfragen und Erinnerungen …** ein, dort lässt sich die Abfrage auch abschalten.
+  - **Kulanz und Reise:** Beim Eintragen setzt du die Haken **Kulanz** (nicht berechnen) und **Reise / Anfahrt**. Sie stehen in der Ticketzeile und werden beim Buchen in Matrix42 übernommen.
   - **TeamViewer-ID zum Kunden:** Bei TeamViewer kennt Zeitzeuge oft nur die ID. Trägst du beim Dokumentieren den Kunden ein, merkt es sich den Namen für diese ID. Ab dann steht überall der Name.
   - **Erinnerung:** Nach Feierabend und beim Beenden sagt Zeitzeuge, wie viele Tätigkeiten heute noch offen sind.
   - Sind Tätigkeiten offen, steht rechts unten der blaue Knopf **2 offen – jetzt eintragen**. Ein Klick öffnet die erste offene Tätigkeit zum Eintragen. Die Statuszeile zeigt daneben „dokumentiert 3:10 h“.
@@ -128,10 +141,11 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
 | STRG + 9 | Arbeitszeit zeigen |
 | STRG + C | Markierte Zeilen der Tagesliste kopieren |
 | Enter | Details zur markierten Zeile der Tagesliste |
-| ALT + E | Menü Einstellungen öffnen |
-| ALT + E, Q | Untermenü Datenquellen |
+| STRG + , | Fenster Einstellungen öffnen |
+| ALT + A | Menü Ansicht öffnen |
+| F1 | Was zeigen die Ansichten der Tagesliste? |
 
-F7 bis F12 belegt Zeitzeuge bewusst nicht, damit sie für andere Werkzeuge frei bleiben. Nachtragen und Wochenabschluss erreichst du über die Knöpfe in der Werkzeugleiste.
+F7 bis F12 belegt Zeitzeuge bewusst nicht, damit sie für andere Werkzeuge frei bleiben. Nachtragen erreichst du über den Stift in der Werkzeugleiste, den Wochenabschluss über das Menü **Ansicht**.
 
 ## Voraussetzungen
 
@@ -199,21 +213,42 @@ Browser-Tests (3CX, ITM, Mitschnitt) brauchen Edge oder Chrome; ohne Browser wer
 
 Die Werkzeugleiste ist so aufgeteilt:
 
-- **Links:** vorheriger Tag, Datum, nächster Tag und Heute.
-- **Daneben:** Aktualisieren, Ansicht der Tagesliste (Auge), PC-Verlauf (Bildschirm), KI-Vorschläge (Stern), Lupen, Ganzer Tag und Arbeitszeit.
-- **Rechts:** **Einstellungen** (☰).
+- **Links:** vorheriger Tag, Datum, nächster Tag und **Heute**.
+- **Daneben (Schnellzugriffe):** Aktualisieren, Nachtragen (Stift), KI-Vorschläge (Stern), Lupen, Ganzer Tag und Arbeitszeit. Heute, Ganzer Tag und Arbeitszeit sind nur Symbole, der Hinweis beim Darüberfahren nennt sie. PC-Verlauf und Wochenabschluss stehen im Menü **Ansicht**, der Wochenabschluss auch hinter der Quote in der Statuszeile.
+- **Rechts:** **Ansicht** (Auge) und **Einstellungen** (Zahnrad).
 
-Fährst du über einen Knopf, erklärt ein Hinweis, was er tut. Im schmalen Fenster zeigen „Ganzer Tag“ und „Arbeitszeit“ nur noch ihr Symbol, danach rutschen Werkzeuge in den Überlauf (»). Tag und Einstellungen bleiben immer sichtbar.
+Fährst du über einen Knopf, erklärt ein Hinweis, was er tut. Im schmalen Fenster zeigen Ansicht und Einstellungen nur noch ihr Symbol, danach rutschen Werkzeuge in den Überlauf (»). Tag, Ansicht und Einstellungen bleiben immer sichtbar.
+
+### Menü Ansicht
+
+Alles, was nur die Anzeige ändert, nie die Daten:
+
+- **Tagesliste:** Zusammengefasst, Einzeln, Arbeitsblöcke, Dokumentation, Zuordnung ohne KI, KI-Vorschläge, Matrix42-Abgleich. Die aktuelle Ansicht ist fett und blau. Fährst du über eine Ansicht, steht dort, was sie zeigt. **Was zeigen die Ansichten? …** (F1) erklärt alle mit Beispielen. Darunter **PC-Verlauf in der Liste**.
+- **Zeilen der Timeline:** jede Zeile mit einem Kästchen in ihrer Farbe zum Ein- und Ausblenden, dazu **Alle Zeilen einblenden**.
+- **Zeitraum:** Ganzer Tag, Arbeitszeit.
+- **Übersichten:** Wochenabschluss, Offene Tätigkeiten.
+- **Design:** Dunkles Design.
+
+### Fenster Einstellungen
+
+Ein Klick auf **Einstellungen** (oder STRG + ,) öffnet ein eigenes Fenster. Es bleibt offen, während du weiterarbeitest, und alles gilt sofort.
+
+- **Links die Bereiche:** Allgemein, Datenquellen, Nachfragen & Grenzwerte, Zuordnung & KI, Matrix42 & Abrechnung, Kunden & Texte, Daten & Schutz, Über Zeitzeuge.
+- **Oben die Suche:** z. B. „Minuten“ zeigt alle Grenzwerte aus allen Bereichen, und du änderst sie direkt dort.
+- **Datenquellen als Kacheln:** je Quelle ihr Zeichen in der Farbe des Herstellers, ein Schalter An/Aus, der Zustand („läuft“, „Logdatei nicht gefunden“, „Anmeldung nötig“) und **Einrichten …**.
+- **Grenzwerte als Zahlen:** Abwesenheit am PC, „Später fragen“, Zusammenfassen und Arbeitsblock (Pausen), Leerlauf, Ziel der Buchungsquote und mehr.
+
+Der kleine Pfeil am Knopf **Einstellungen** zeigt Schnellzugriffe: Aufzeichnung an/aus, Datenquellen, Nachfragen, Kundenliste, Textbausteine, Über und Beenden.
 
 ### Einrichtungsassistent
 
 Beim allerersten Start öffnet sich der Assistent **Zeitzeuge einrichten**. Er geht alle Datenquellen mit dir durch:
 
 1. **Auswahl:** Eine Liste aller Quellen (TeamViewer, RDM, Sophos Connect, FortiClient, weitere VPN-Logs, 3CX, ITM-Zeiterfassung, Matrix42, Outlook, Teams-Anrufe, aktive Fenster) und dazu Arbeitszeiten, KI-Vorschläge und der Wiederherstellungsschlüssel. Vorausgewählt ist, was Zeitzeuge auf dem PC gefunden hat, z. B. „TeamViewer (gefunden)“. Was du hier abwählst, schaltet Zeitzeuge aus.
-2. **Ein Schritt je gewählter Quelle:** was die Quelle liest, was auf dem PC gefunden wurde (Pfad, Browser) und ein Knopf zur Einrichtung, z. B. **3CX einrichten und anmelden …**. Das sind dieselben Dialoge wie unter **Einstellungen → Datenquellen → Einrichten**. Mit **Weiter** gilt das Häkchen „… verwenden“.
+2. **Ein Schritt je gewählter Quelle:** was die Quelle liest, was auf dem PC gefunden wurde (Pfad, Browser) und ein Knopf zur Einrichtung, z. B. **3CX einrichten und anmelden …**. Das sind dieselben Dialoge wie unter **Einrichten …** in den Kacheln der Datenquellen. Mit **Weiter** gilt das Häkchen „… verwenden“.
 3. **Übersicht:** welche Quelle jetzt an oder aus ist.
 
-Mit **Zurück** wählst du neu. **Abbrechen** lässt alles, was du bis dahin eingestellt hast. Danach öffnet sich der Assistent nicht mehr von selbst. Wieder aufrufen: **Einstellungen → Datenquellen → Einrichtungsassistent …**. Bestehende Installationen sehen ihn nach dem Update nicht von selbst, auf einer PAW auch nicht.
+Mit **Zurück** wählst du neu. **Abbrechen** lässt alles, was du bis dahin eingestellt hast. Danach öffnet sich der Assistent nicht mehr von selbst. Wieder aufrufen: Fenster **Einstellungen → Datenquellen → Einrichtungsassistent**. Bestehende Installationen sehen ihn nach dem Update nicht von selbst, auf einer PAW auch nicht.
 
 ### Datenquellen ein- und ausschalten
 
@@ -274,7 +309,7 @@ Die Einstellungen für Telefonate stehen in `zeitzeuge_config.json`:
 |---|---|---|
 | `calls_ignore_missed` | `true` | Verpasste Anrufe ausblenden |
 | `calls_min_duration` | `0` | Kürzere Anrufe ausblenden (in Sekunden) |
-| `call_colors` | blau / grün / rot | Farben für eingehende, ausgehende und verpasste Anrufe, z. B. `{"Eingehend": "#3D8BFD"}` |
+| `call_colors` | blau / orange / rot | Farben für eingehende, ausgehende und verpasste Anrufe, z. B. `{"Eingehend": "#2F7BFF"}`. Im Balken steht dazu ein Pfeil: ↙ eingehend, ↗ ausgehend |
 | `calls_3cx_url` | `https://voice.visaas.de:5001` | Adresse des 3CX-Webclients |
 | `pbx_reader_enabled` | `false` | Zeitzeuge liest 3CX selbst |
 | `calls_days_back` | `14` | So viele Tage liest Zeitzeuge zurück |
@@ -368,6 +403,7 @@ Unter **Einstellungen → Nachfragen und Erinnerungen …** legst du fest, wann 
 | `prompt_sources` | `["connections", "calls"]` | Wonach gefragt wird: Verbindungen, Telefonate, `rules` (Blöcke aus den Regeln) |
 | `prompt_thresholds` | `{"connections": 1, "calls": 1, "rules": 1}` | Erst ab dieser Dauer (Minuten) nachfragen, je Art: Verbindungen, Telefonate, Regel-Blöcke. 0 = immer. Einstellbar unter *Nachfragen und Erinnerungen …* |
 | `prompt_snooze_minutes` | `15` | „Später fragen“ fragt nach so vielen Minuten wieder |
+| `idle_prompt_minutes` | `15` | Nach so vielen Minuten ohne Maus und Tastatur bei der ersten Eingabe fragen, was in der Zeit war. 0 = aus |
 | `prompt_end_of_day` | `true` | Nach Feierabend einmal an Offenes erinnern |
 | `prompt_on_quit` | `true` | Beim Beenden an Offenes erinnern |
 | `m42_url` | ITM-Kalenderseite (support.itm-gruppe.com) | Adresse der Matrix42-Kalenderseite |
@@ -576,6 +612,9 @@ Für Tests und Hilfsskripte gibt es zwei Umgebungsvariablen: `ZEITZEUGE_DATA` se
 | `app_menus.py` | Werkzeugleiste, Menü „Einstellungen“, Dialoge dazu |
 | `app_daylist.py` | Tagesliste, Statuszeile, Tageswechsel |
 | `app_docs.py` | Tätigkeiten dokumentieren, Nachfragen, KI-Vorschläge |
+| `idle_watch.py` | Abwesenheit am PC erkennen (für die Nachfrage) |
+| `settings_window.py` | Fenster Einstellungen: Bereiche, Suche, Kacheln der Datenquellen |
+| `view_help.py` | Hilfe zu den Ansichten der Tagesliste |
 | `app_readers.py` | 3CX- und ITM-Leser im Hauptfenster |
 | `app_tray.py` | Infobereich, Fensteraufzeichnung, Beenden |
 | `theme.py` | Design: Farben (hell/dunkel), Stylesheet, Qt-Stil, deutsche Dialogknöpfe |
