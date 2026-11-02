@@ -5,7 +5,7 @@ Teil von TimelineApp (main_timeline.py), nur über main_timeline laden.
 import os
 import sys
 
-from PySide6.QtCore import QPoint, QProcess, QSize, Qt, QTimer, QUrl
+from PySide6.QtCore import QEvent, QObject, QPoint, QProcess, QSize, Qt, QTimer, QUrl
 from PySide6.QtGui import (QAction, QActionGroup, QColor, QDesktopServices, QIcon, QKeySequence,
                            QPalette)
 from PySide6.QtWidgets import (QApplication, QDateEdit, QDialog, QFileDialog, QMenu, QMessageBox,
@@ -21,6 +21,26 @@ from theme import GERMAN, STYLESHEET, THEMES
 from timeline_only import TIMELINE_ROWS
 from version import build_details, full_version
 import main_timeline as mt  # Pfade und save_config zur Laufzeit von dort (Tests ersetzen sie dort)
+
+
+class _RelayoutWatch(QObject):
+    """Ruft callback nach jeder Neuanordnung oder Größenänderung des beobachteten Widgets
+    (einmal gebündelt, wenn die neuen Maße feststehen)."""
+
+    def __init__(self, callback, parent=None):
+        super().__init__(parent)
+        self.callback = callback
+        self._pending = False
+
+    def eventFilter(self, obj, event):
+        if event.type() in (QEvent.LayoutRequest, QEvent.Resize, QEvent.Show) and not self._pending:
+            self._pending = True
+            QTimer.singleShot(0, self._run)
+        return False
+
+    def _run(self):
+        self._pending = False
+        self.callback()
 
 
 class MenusMixin:
@@ -92,6 +112,11 @@ class MenusMixin:
         tb.setIconSize(QSize(18, 18))
         tb.setToolButtonStyle(Qt.ToolButtonIconOnly)
         self.tools_bar = tb
+        # Ordnet sich die Leiste neu an (z. B. Text neben den Symbolen), rückt die
+        # Ladeanzeige nach; sonst läge sie über „Arbeitszeit“
+        self._toolbar_watch = _RelayoutWatch(lambda: getattr(self, "place_busy_bar", None)
+                                             and self.place_busy_bar(), tb)
+        tb.installEventFilter(self._toolbar_watch)
         row.addWidget(tb, 1)
 
         self.refresh_action = self._action("Aktualisieren", self.refresh, "F5", "Logs neu einlesen",

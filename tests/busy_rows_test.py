@@ -72,6 +72,22 @@ assert bar.isHidden(), "kurzes Hintergrund-Lesen darf nicht sofort aufblitzen"
 settle(1700)
 assert bar.isVisible() and "ITM" in bar.text(), bar.text()
 
+# Lage: rechts neben den Werkzeugen, auch wenn die Leiste sich danach neu anordnet
+# (z. B. Text neben den Symbolen bei breitem Fenster). Früher lag sie dann über „Arbeitszeit“.
+from PySide6.QtCore import QPoint  # noqa: E402
+
+
+def tools_right():
+    tb = window.tools_bar
+    return max(tb.mapTo(window._band_row, QPoint(w.geometry().right(), 0)).x()
+               for w in (tb.widgetForAction(a) for a in tb.actions()) if w is not None and w.isVisible())
+
+
+for width in (1400, 900, 1300):
+    window.resize(width, 720)
+    settle(200)
+    assert bar.geometry().left() > tools_right(), (width, bar.geometry().left(), tools_right())
+
 # KI: sofort, mit Tag
 window.itm_reader = None
 window._ai_busy.add("2026-10-19")
