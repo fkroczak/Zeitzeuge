@@ -5,7 +5,7 @@ Teil von TimelineApp (main_timeline.py), nur über main_timeline laden.
 import os
 import sys
 
-from PySide6.QtCore import QProcess, QSize, Qt, QTimer, QUrl
+from PySide6.QtCore import QPoint, QProcess, QSize, Qt, QTimer, QUrl
 from PySide6.QtGui import (QAction, QActionGroup, QColor, QDesktopServices, QIcon, QKeySequence,
                            QPalette)
 from PySide6.QtWidgets import (QApplication, QDateEdit, QDialog, QFileDialog, QMenu, QMessageBox,
@@ -19,7 +19,7 @@ from vpn_reader import vpn_sources
 from settings_dialogs import ActivityTypeSettingsDialog, ConnectionSettingsDialog, WorkHoursDialog
 from theme import GERMAN, STYLESHEET, THEMES
 from timeline_only import TIMELINE_ROWS
-from version import VERSION
+from version import VERSION, build_details
 import main_timeline as mt  # Pfade und save_config zur Laufzeit von dort (Tests ersetzen sie dort)
 
 
@@ -62,6 +62,7 @@ class MenusMixin:
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(4)
         outer.addWidget(header)
+        self._band_row = header
 
         # ---- links: Tag wählen (immer sichtbar)
         days = QToolBar("Tag", header)
@@ -184,6 +185,32 @@ class MenusMixin:
         if tb.sizeHint().width() > tb.width():
             for button in self._adaptive_buttons:
                 button.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        self.place_busy_bar()
+
+    def place_busy_bar(self):
+        """Ladeanzeige in den freien Platz zwischen Werkzeugen und Menü legen, Streifen oben.
+
+        Sie schwebt über der Leiste, statt im Layout Platz zu belegen: Ein- und
+        Ausblenden verschiebt so weder Knöpfe noch die Timeline."""
+        bar, tb = getattr(self, "busy_bar", None), getattr(self, "tools_bar", None)
+        if bar is None or tb is None:
+            return
+        header = self._band_row
+        tools_right = 0
+        for action in tb.actions():
+            widget = tb.widgetForAction(action)
+            if widget is not None and widget.isVisible():
+                tools_right = max(tools_right, widget.geometry().right())
+        ext = tb.findChild(QToolButton, "qt_toolbar_ext_button")
+        if ext is not None and ext.isVisible():
+            tools_right = max(tools_right, ext.geometry().right())
+        left = tb.mapTo(header, QPoint(tools_right, 0)).x() + 16
+        right = tb.geometry().right() - 4
+        height = min(header.height(), 30)
+        bar.setGeometry(left, (header.height() - height) // 2, max(right - left, 0), height)
+        stripe = bar.stripe
+        if stripe.parentWidget() is not bar:
+            stripe.setGeometry(0, 0, stripe.parentWidget().width(), stripe.height())
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -392,8 +419,10 @@ class MenusMixin:
         msg.setWindowTitle("Über Zeitzeuge")
         msg.setTextFormat(Qt.RichText)
         msg.setText(
-            f"<b>Zeitzeuge</b><br>Version {VERSION}<br><br>"
-            "<a href='https://github.com/fkroczak/Zeitzeuge'>github.com/fkroczak/Zeitzeuge</a>"
+            f"<b>Zeitzeuge</b><br>Version {VERSION}<br>"
+            f"{' · '.join(build_details())}<br><br>"
+            "<a href='https://github.com/fkroczak/Zeitzeuge/blob/main/CHANGELOG.md'>Was ist neu?</a>"
+            "<br><a href='https://github.com/fkroczak/Zeitzeuge'>github.com/fkroczak/Zeitzeuge</a>"
         )
         msg.setStandardButtons(QMessageBox.Ok)
         if os.path.exists(icon_path):

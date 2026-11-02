@@ -58,7 +58,7 @@ assert bar.isHidden(), "ohne Laden keine Anzeige"
 window.pbx_reader = FakeReader(True, first=True)
 window.update_busy_bar()
 settle()
-assert bar.isVisible() and "3CX" in bar.label.text(), bar.label.text()
+assert bar.isVisible() and "3CX" in bar.text(), bar.text()
 
 # Kurzes Lesen im Hintergrund: erst nach Verzögerung (kein Flackern)
 window.pbx_reader = None
@@ -70,17 +70,17 @@ window.update_busy_bar()
 settle(100)
 assert bar.isHidden(), "kurzes Hintergrund-Lesen darf nicht sofort aufblitzen"
 settle(1700)
-assert bar.isVisible() and "ITM" in bar.label.text(), bar.label.text()
+assert bar.isVisible() and "ITM" in bar.text(), bar.text()
 
 # KI: sofort, mit Tag
 window.itm_reader = None
 window._ai_busy.add("2026-10-19")
 window.update_busy_bar()
 settle()
-assert bar.isVisible() and "KI-Vorschläge" in bar.label.text() and "19.10." in bar.label.text()
+assert bar.isVisible() and "KI-Vorschläge" in bar.text() and "19.10." in bar.text()
 window.on_ai_finished("2026-10-19", 0, 0.0)  # fertig: Anzeige weg
 settle()
-assert bar.isHidden() and not window._ai_busy
+assert bar.isHidden() and bar.stripe.isHidden() and not window._ai_busy
 
 # ---- Zeilen der Timeline
 assert set(window.row_actions) == {k for k, _t in TIMELINE_ROWS}, window.row_actions.keys()

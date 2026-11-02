@@ -91,7 +91,7 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
 - **Abrechnungstakt:** Zeitzeuge zeigt zu jeder Tätigkeit auch die abgerechnete Zeit. Standard ist der 15-Minuten-Takt: Jede angefangene Viertelstunde wird abgerechnet. Beim Kopieren stehen echte und abgerechnete Zeiten mit Beginn und Ende in der Zeile, z. B. `10:05–10:17 (12 min) → abgerechnet 10:05–10:20 (0:15 h)  Müller GmbH · Fernwartung: Drucker eingerichtet`. Der Beginn bleibt, das Ende rückt auf den Takt. Du siehst sie auch in der Ansicht „Dokumentation“, in der Statuszeile („dokumentiert 3:10 h, abgerechnet 3:30 h“) und im Eintragen-Fenster neben der Dauer. Jede Tätigkeit wird für sich gerundet. Unter **Einstellungen → Abrechnung …** stellst du den Takt (Minuten) und die Rundung ein: „Angefangener Takt zählt“, „Auf den nächsten Takt runden“ oder „Ohne Takt“ (dann ist alles wie früher). Für einzelne Kunden kannst du einen anderen Takt oder eine andere Rundung festlegen.
 - **Jede Zeile der Timeline ein- und ausblenden:** PC-Aktivität, Dokumentation, Zuordnung ohne KI, KI-Vorschläge, Telefon, Outlook, VPN, TeamViewer und Remote / Weitere schaltest du einzeln unter **Einstellungen → Zeilen der Timeline**. **Alle einblenden** holt alles zurück. Die Tagesliste zeigt weiter alle Einträge.
 - **Verschlüsselte Datenbank:** Alle Daten (Anrufe, Fenster, Tätigkeiten, KI-Vorschläge, Personalzeit, Matrix42, VPN, Kundennamen) liegen in einer Datei `zeitzeuge.db`, verschlüsselt mit AES-256. Auf deinem PC öffnet sie deine Windows-Anmeldung ohne Abfrage. Für einen neuen PC gibt es einen Wiederherstellungsschlüssel, den du in RDM ablegst. Siehe [Schutz der Daten](#schutz-der-daten).
-- **Ladeanzeige:** Solange Zeitzeuge etwas lädt (Logs, 3CX, ITM, Matrix42 oder KI-Vorschläge), läuft oben über der Timeline ein blauer Balken mit Text, z. B. „Lädt: 3CX-Anrufe · KI-Vorschläge (Claude ordnet 25.10. ein) …“. Kurze Lesevorgänge im Hintergrund erscheinen erst nach 1,5 Sekunden, damit nichts flackert.
+- **Ladeanzeige:** Solange Zeitzeuge etwas lädt (Logs, 3CX, ITM, Matrix42 oder KI-Vorschläge), läuft in der Werkzeugleiste rechts neben „Arbeitszeit“ ein drehender Kreis mit Text, dazu ein dünner Streifen über die ganze Fensterbreite oben über der Timeline (beides schwebt, nichts verschiebt sich), z. B. „Lädt: 3CX-Anrufe · KI-Vorschläge (Claude ordnet 25.10. ein) …“. Kurze Lesevorgänge im Hintergrund erscheinen erst nach 1,5 Sekunden, damit nichts flackert.
 - **Zustand der Datenquellen in der Statusleiste:** Rechts unten stehen 3CX und ITM nebeneinander, jeweils mit Symbol:
   - grüner Haken und Uhrzeit: zuletzt erfolgreich gelesen, z. B. „3CX 17:53“
   - gelbes Dreieck mit Ausrufezeichen und Grund: es kommen keine Daten, z. B. „3CX: Anmeldung nötig“, „ITM: offline“ oder „Fehler“
@@ -160,7 +160,16 @@ pip install -r requirements.txt
 pyinstaller --noconfirm --clean ZeitZeuge.spec
 ```
 
-Die fertige `ZeitZeuge.exe` liegt danach in `dist/`. Die Versionsnummer steht nur in `version.py`; sie erscheint unter **Info** und in den Dateieigenschaften der EXE. Ein Tag `v…` muss dazu passen, sonst bricht der Build ab.
+Die fertige `ZeitZeuge.exe` liegt danach in `dist/`. Die Versionsnummer (**MAJOR.MINOR.PATCH**, Regeln in `CHANGELOG.md`) steht nur in `version.py`. Beim Bauen schreibt `ZeitZeuge.spec` die Herkunft dazu (Buildnummer der GitHub Actions, Commit, Datum). Zu sehen ist sie im Fenstertitel, unter **Info**, in `fehler.log` und in den Dateieigenschaften der EXE (`5.0.0.<Build>`):
+
+| Build | Fenstertitel | Info |
+|---|---|---|
+| Release (Tag `v5.0.0`) | Zeitzeuge 5.0.0 | Build 140 · a8d4d3e · 02.11.2026 |
+| Testversion (jeder andere Push) | Zeitzeuge 5.0.0 (Build 141) | Testversion · Build 141 · Branch · Commit · Datum |
+| `build.bat` | Zeitzeuge 5.0.0-local | lokal gebaut · Commit · Datum |
+| aus dem Quelltext | Zeitzeuge 5.0.0-dev | aus dem Quelltext · Commit · Datum |
+
+Neue Version veröffentlichen: Nummer in `version.py` erhöhen, in `CHANGELOG.md` einen Abschnitt `## <Nummer> – <Datum>` anlegen (ein Test prüft das), dann Tag `v<Nummer>` pushen. Der Tag muss zur Nummer passen, sonst bricht der Build ab; GitHub legt dann ein Release mit EXE an.
 
 **Signieren:** Unsignierte EXE-Dateien melden Virenscanner und Windows SmartScreen öfter als verdächtig. Hinterlegst du im Repository unter **Settings → Secrets and variables → Actions** ein Code-Signing-Zertifikat als `SIGN_PFX_BASE64` (PFX-Datei Base64-kodiert) und `SIGN_PFX_PASSWORD`, signiert GitHub die EXE automatisch. Ohne Zertifikat bleibt sie unsigniert.
 
@@ -559,7 +568,8 @@ Für Tests und Hilfsskripte gibt es zwei Umgebungsvariablen: `ZEITZEUGE_DATA` se
 | `app_tray.py` | Infobereich, Fensteraufzeichnung, Beenden |
 | `theme.py` | Design: Farben (hell/dunkel), Stylesheet, Qt-Stil, deutsche Dialogknöpfe |
 | `config_defaults.py` | Standardwerte der Einstellungen |
-| `version.py` | Versionsnummer |
+| `version.py` | Versionsnummer und Herkunft des Builds (Anzeige im Fenstertitel, unter Info, in fehler.log) |
+| `CHANGELOG.md` | Änderungen je Version, Regeln für die Nummer |
 | `timeline_only.py` | Zeichnen der Timeline, Tooltips, Zoom, Logs im Hintergrund lesen |
 | `icons.py` | Linien-Icons (Lucide, ISC-Lizenz) und Zustandspunkt der Aufzeichnung |
 | `log_parsers.py` | Einlesen der TeamViewer- und RDM-Logs |
@@ -574,7 +584,7 @@ Für Tests und Hilfsskripte gibt es zwei Umgebungsvariablen: `ZEITZEUGE_DATA` se
 | `journal_dialogs.py` | Dialoge zum Nachtragen, Nachfrage-Fenster, Einstellungen dazu |
 | `m42_reader.py` | Matrix42: Kalender im unsichtbaren Edge lesen (Wochenansicht, Blättern, Anmeldung) |
 | `m42_data.py` | Matrix42: Einträge umwandeln, Abgleich gebucht / nicht gebucht (ohne Qt) |
-| `busy_bar.py` | Ladeanzeige oben im Fenster |
+| `busy_bar.py` | Ladeanzeige: drehender Kreis mit Text in der Werkzeugleiste, Streifen über die ganze Breite |
 | `transfer.py` | Export/Import zwischen zwei PCs (Arbeits-PC → PAW), übernommene Daten (ohne Qt) |
 | `app_transfer.py` | Hauptfenster: Export- und Import-Dialog, PAW-Modus |
 | `rules.py` | Klassifizierung ohne KI: Regeln, Blöcke bilden, Vorrang (ohne Qt) |

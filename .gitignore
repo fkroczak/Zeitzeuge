@@ -1,6 +1,7 @@
 __pycache__/
 build/
 dist/
+build_info.py
 anrufe.json
 anrufe.json.tmp
 zeitzeuge_config.json
