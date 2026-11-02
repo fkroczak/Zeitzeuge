@@ -326,7 +326,23 @@ class MenusMixin:
         setup.addAction("&ITM-Personalzeiten …", self.open_itm_settings)
         setup.addAction("&Matrix42 …", self.open_m42_settings)
         setup.addAction("&Outlook und Teams …", self.open_outlook_settings)
+        menu.addAction("Einrichtungs&assistent …", self.show_setup_wizard)
         return menu
+
+    def show_setup_wizard(self):
+        """Alle Datenquellen Schritt für Schritt einrichten (setup_wizard.py)."""
+        from setup_wizard import SetupWizard
+        self._wizard_open = True
+        try:
+            wizard = SetupWizard(self)
+            wizard.exec()
+            wizard.deleteLater()
+        finally:
+            self._wizard_open = False
+        if not self.config.get("setup_done"):
+            self.config["setup_done"] = True  # auch nach Abbrechen nicht noch einmal von selbst
+            mt.save_config(self.config)
+        self.timeline.refresh()
 
     def sync_source_actions(self):
         """Schalter im Menü an die Einstellungen angleichen (z. B. nach einem Dialog)."""

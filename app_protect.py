@@ -52,6 +52,8 @@ class ProtectMixin:
         self.recovery_button.setVisible(not self.data_store.has_recovery())
 
     def _offer_recovery(self):
+        if getattr(self, "_wizard_pending", False) or getattr(self, "_wizard_open", False):
+            return  # der Einrichtungsassistent fragt selbst danach
         if self.data_store.has_recovery() or not self.isVisible():
             return
         # Nicht blockierend: Zeitzeuge zeichnet weiter auf, während die Frage offen ist
