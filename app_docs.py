@@ -13,7 +13,7 @@ from PySide6.QtWidgets import QApplication, QDialog, QMessageBox, QSystemTrayIco
 from ai_classifier import to_entries
 from billing import Billing
 from journal import (describe, entry_key as journal_key, open_entry, suggest_category,
-                     suggest_customer, ticket_line)
+                     suggest_customer, sub_entries, ticket_line)
 from journal_dialogs import (DocPromptDialog, prompt_thresholds, EntryDialog, PromptWindow, default_span,
                              PROMPT_SOURCES)
 import snippets
@@ -616,7 +616,7 @@ class DocsMixin(CustomersMixin):
 
     def _mark_asked(self, entry, until):
         """Nicht vor until wieder fragen: alle Teile des Themas und Zeitraum + Kunde."""
-        for e in [entry] + list(entry.get("parts") or []):
+        for e in [entry] + sub_entries(entry):
             self._prompt_asked[journal_key(e)] = until
         self._prompt_asked_spans.append((prompt_topics.answer_span(entry, self.customer_index()), until))
 
@@ -624,7 +624,7 @@ class DocsMixin(CustomersMixin):
         """Schon gefragt und zurückgestellt (oder als Meldung gezeigt)? Auch wenn sich der Eintrag
         seitdem verändert hat (andere Startzeit, Name nachgeladen, Thema um einen Teil gewachsen)."""
         if any(self._prompt_asked.get(journal_key(e), now) > now
-               for e in [entry] + list(entry.get("parts") or [])):
+               for e in [entry] + sub_entries(entry)):
             return True
         index = self.customer_index()
         return any(until > now and prompt_topics.matches_span(entry, span, index)

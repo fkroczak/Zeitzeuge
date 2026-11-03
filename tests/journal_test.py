@@ -67,6 +67,18 @@ def test_ablage(tmp_path):
     assert entry_key(tv) == f"TeamViewer|123456789|{day} 10:00"
 
 
+def test_pc_block_mit_programmanteilen(tmp_path):
+    """PC-Arbeitsblöcke führen unter "parts" (Programm, Sekunden)-Paare: kein Absturz,
+    sonst bleibt die Ansicht Dokumentation leer (Nachgetragenes unsichtbar)."""
+    j = Journal(str(tmp_path))
+    block = {"start": f"{DAY} 14:00:00", "end": f"{DAY} 14:30:00", "type": "PC: Programmierung",
+             "customer_name": "Kunde X", "app": "code.exe", "pc_block": True,
+             "parts": [("VS Code", 1500), ("Edge", 300)]}
+    assert j.open_items([block], DAY, min_minutes=5, now=NOW) == [block]
+    j.ignore(block)
+    assert j.is_ignored(block)
+
+
 def test_kaputte_tagesdatei(tmp_path):
     """Kaputte Tagesdatei: beiseitelegen, nicht überschreiben."""
     folder = str(tmp_path)

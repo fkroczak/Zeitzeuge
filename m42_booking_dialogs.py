@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, 
                                QLabel, QLineEdit, QListWidget, QListWidgetItem, QPlainTextEdit,
                                QPushButton, QTimeEdit, QVBoxLayout)
 
-from theme import prose
+from theme import fit_bold, prose
 import m42_booking as mb
 
 
@@ -137,6 +137,7 @@ class BookingDialog(QDialog):
         self.buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         self.book_button = self.buttons.button(QDialogButtonBox.Ok)
         self.book_button.setText("In Matrix42 &buchen")
+        fit_bold(self.book_button)
         self.buttons.button(QDialogButtonBox.Cancel).setText("Abbrechen")
         self.buttons.accepted.connect(self.book)
         self.buttons.rejected.connect(self.reject)

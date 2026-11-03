@@ -14,7 +14,7 @@ Zeitzeuge bucht nie von selbst: erst der Klick auf einen der Knöpfe speichert o
 from datetime import datetime, timedelta
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QFont, QFontMetrics, QKeySequence, QShortcut
+from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (QAbstractItemView, QDialog, QDialogButtonBox, QHBoxLayout, QHeaderView,
                                QLabel, QMessageBox, QPushButton, QTableWidget, QTableWidgetItem,
                                QToolButton, QVBoxLayout)
@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QDialog, QDialogButtonBox, QHB
 import day_close as dc
 import m42_booking as mb
 import prompt_topics
-from theme import GERMAN, prose
+from theme import GERMAN, fit_bold, prose
 
 DAY_NAMES = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]
 COL_CHECK, COL_TIME, COL_DURATION, COL_CUSTOMER, COL_TICKET, COL_TEXT, COL_NOTE = range(7)
@@ -144,12 +144,7 @@ class DayCloseDialog(QDialog):
         self.book_button.setDefault(True)
         self.book_button.setToolTip("Angehakte Zeilen speichern und alle mit Ticket in Matrix42 buchen")
         self.book_button.clicked.connect(lambda: self.run(book=True))
-        # Standardknopf ist fett: etwas Luft, damit der Text nie abgeschnitten wird
-        bold = QFont(self.book_button.font())
-        bold.setBold(True)
-        # (min-width im Stylesheet, setMinimumWidth überschriebe das Design beim Polieren)
-        width = QFontMetrics(bold).horizontalAdvance(self.book_button.text().replace("&", "")) + 36
-        self.book_button.setStyleSheet(f"QPushButton {{ min-width: {width}px; }}")
+        fit_bold(self.book_button)
         self.buttons.addButton(self.doc_button, QDialogButtonBox.ActionRole)
         self.buttons.addButton(self.book_button, QDialogButtonBox.ActionRole)
         self.buttons.rejected.connect(self.reject)
