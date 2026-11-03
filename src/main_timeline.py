@@ -477,6 +477,7 @@ class TimelineApp(MenusMixin, DayListMixin, DayCloseMixin, DocsMixin, ReadersMix
         self.timeline.doc_request.connect(self.on_doc_request)
         self.timeline.entry_action.connect(self.on_entry_action)
         self.timeline.rows_menu_requested.connect(self.show_rows_menu)
+        self.timeline.row_order_changed.connect(self.set_row_order)
         self._rule_cache = {}
         self._prompt_window = None
         self._prompt_queue = []

@@ -29,6 +29,7 @@ Testversionen aus Branches tragen die Version ihres main-Stands plus Buildnummer
   - **Browser-Verlauf** von Edge und Chrome: nur Domain und Ticketnummer, keine Adressen und keine Seitentitel. Suchmaschinen und Anmeldeseiten fallen weg.
   - **WLAN:** mit welchem Netz der PC verbunden war, eigene Zeile „WLAN“.
   - Diese Spuren lösen keine Nachfrage „Was hast du gemacht?“ aus und zählen nicht im Tagesabschluss (SSH-Sitzungen schon, wie Verbindungen).
+- **Zeilen der Timeline verschieben:** Namen links in der Legende anfassen und an die gewünschte Stelle ziehen; eine blaue Linie zeigt, wo die Zeile landet. Die Reihenfolge bleibt gespeichert, **Zeilen der Timeline → Reihenfolge zurücksetzen** stellt den Standard wieder her. PC-Aktivität bleibt oben, Remote / Weitere unten.
 - **Pausen bei den Arbeitszeiten:** je Wochentag eine Pause (von – bis). Sie ist in der Timeline abgedunkelt und zählt nicht als Arbeitszeit. Das Fenster ist breiter und nicht mehr gestaucht.
 - Einstellungen: „Aktive Fenster aufzeichnen“, Fenster-Filter und Leerlauf stehen jetzt unter **Datenquellen**. Knöpfe heißen nach dem, was sie tun („Beenden …“, „Exportieren …“, „Im Explorer zeigen“ statt immer „Öffnen …“). **Zeitzeuge beenden** fragt vorher nach.
 - **Maus in der Timeline:** Mit links ziehen markiert einen Zeitraum und öffnet „Tätigkeit nachtragen“ mit genau diesen Zeiten. Mit rechts ziehen zoomt auf den Zeitraum (bisher die linke Taste). Einfacher Rechtsklick öffnet weiter das Menü, ESC bricht das Ziehen ab.

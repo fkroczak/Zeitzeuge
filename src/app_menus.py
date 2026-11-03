@@ -357,10 +357,22 @@ class MenusMixin:
             self._add_check(menu, action, "#4682B4")
         menu.addSeparator()
         self._icon_actions.append((menu.addAction("A&lle Zeilen einblenden", self.show_all_rows), "rows"))
+        menu.addAction("&Reihenfolge zurücksetzen", lambda: self.set_row_order(None))
         hint = menu.addAction("Leere Zeilen blendet Zeitzeuge von selbst aus")
+        hint.setEnabled(False)
+        hint = menu.addAction("Verschieben: Zeilenname links anfassen und ziehen")
         hint.setEnabled(False)
         self.update_row_icons()
         return menu
+
+    def set_row_order(self, order):
+        """Zeilen der Timeline in dieser Reihenfolge (aus der Legende gezogen); None = Standard."""
+        if order:
+            self.config["timeline_row_order"] = list(order)
+        else:
+            self.config.pop("timeline_row_order", None)
+        mt.save_config(self.config)
+        self.timeline.draw_timeline(self.current_date)
 
     def show_rows_menu(self, pos):
         """Rechtsklick auf die Legende der Timeline."""

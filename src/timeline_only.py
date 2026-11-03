@@ -150,6 +150,30 @@ ROW_NAMES = {"pc": "PC-Aktivität", "work": "Personalzeit", "doc": "Dokumentatio
              "pcstate": "PC-Zustand", "wlan": "WLAN", "files": "Dateien & Web", "other": "Remote / Weitere"}
 
 
+# Zeilen, die sich in der Legende verschieben lassen (PC-Aktivität bleibt oben, Remote / Weitere unten)
+MOVABLE_ROWS = ["work", "doc", "m42", "rule", "ai"] + [k for k, _l in FIXED_ROWS]
+
+
+def row_order(config):
+    """Reihenfolge der verschiebbaren Zeilen: gespeicherte zuerst, neue Zeilen an ihrem Standardplatz."""
+    saved = [k for k in config.get("timeline_row_order") or [] if k in MOVABLE_ROWS]
+    order = list(dict.fromkeys(saved))
+    for i, key in enumerate(MOVABLE_ROWS):
+        if key not in order:  # hinter ihren Vorgänger aus der Standardreihenfolge
+            after = next((k for k in reversed(MOVABLE_ROWS[:i]) if k in order), None)
+            order.insert(order.index(after) + 1 if after else 0, key)
+    return order
+
+
+def moved(order, key, target, below):
+    """Reihenfolge, nachdem key vor (below=False) oder hinter target gezogen wurde."""
+    order = [k for k in order if k != key]
+    if target not in order:
+        return order + [key]
+    i = order.index(target) + (1 if below else 0)
+    return order[:i] + [key] + order[i:]
+
+
 def row_kind(activity):
     """Feste Zeile eines Eintrags ("call", "outlook", "vpn", "tv") oder None für die freien Spuren."""
     kind = activity.get("type", "")
@@ -401,6 +425,8 @@ class TimelineView(QGraphicsView):
     entry_action = Signal(str, dict)
     # Rechtsklick auf die Legende links: Menü „Zeilen der Timeline“ an dieser Stelle (global)
     rows_menu_requested = Signal(QPoint)
+    # Zeilen in der Legende verschoben: neue Reihenfolge (Liste der Kennungen)
+    row_order_changed = Signal(list)
     # Hintergrund-Thread hat TeamViewer- und RDM-Logs gelesen
     logs_loaded = Signal(object, object, object)
     # Logs werden gelesen (True) oder sind fertig (False) – für die Ladeanzeige
@@ -492,6 +518,8 @@ class TimelineView(QGraphicsView):
         # (reicht das nicht, blättert UMSCHALT + Mausrad nach oben und unten)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self._legend = []          # [(y, Höhe, Name, Farbe oder None)] für die Legende links
+        self._legend_keys = []     # Kennung je Legendenzeile (gleiche Reihenfolge)
+        self._row_drag = None      # Zeile, die gerade in der Legende verschoben wird: [Kennung, y]
         self.setAlignment(Qt.AlignLeft | Qt.AlignTop)
         self.setMouseTracking(True)
 
@@ -896,17 +924,18 @@ class TimelineView(QGraphicsView):
             lane_h = max(self.MIN_LANE_H, int(fit - gap))
         self.LANE_H, self.LANE_GAP = lane_h, gap
         row_h = self.LANE_H + self.LANE_GAP
-        band_tops = []
-        for _kind, _placed, n in band_layout:  # eigene Zeilen für Doku, Regeln und KI über den Einträgen
-            band_tops.append(top)
-            top += max(1, n) * row_h
-        if bands:
-            top += 4
-        fixed_tops = []
+        # Zeilen in der Reihenfolge aus den Einstellungen (in der Legende verschiebbar)
+        heights = {k: max(1, n) for k, _p, n in band_layout + fixed_layout}
+        tops = {}
         y = top
-        for _kind, _placed, n in fixed_layout:
-            fixed_tops.append(y)
-            y += max(1, n) * row_h
+        for key in row_order(self.config):
+            if key in heights:
+                tops[key] = y
+                y += heights[key] * row_h
+        if bands:
+            y += 4
+        band_tops = [tops[k] for k, _p, _n in band_layout]
+        fixed_tops = [tops[k] for k, _p, _n in fixed_layout]
         free_top = y + 6  # kleiner Abstand vor den freien Spuren
         content_h = free_top + n_lanes * row_h + 8
         height = max(content_h, free_h)
@@ -951,24 +980,31 @@ class TimelineView(QGraphicsView):
 
         # Legende links (schwebt über den Zeilen, siehe drawForeground) und Trennlinie
         colors = self.config.get("type_colors", {})
-        legend = []
+        legend, legend_keys = [], []
         if show_band:
             legend.append((band_y, pc_h, "PC-Aktivität", None))
+            legend_keys.append("pc")
         # Name mittig über alle Unterzeilen einer Zeile
         for (kind, _text, band), y, (_k, _p, n) in zip(bands, band_tops, band_layout):
             name, key = LEGEND_BANDS[kind]
             if kind == "work" and band and not band[0].get("from_itm"):
                 name = "Arbeitszeit"  # ohne ITM: Arbeitszeit aus den Einstellungen
             legend.append((y, max(1, n) * row_h - self.LANE_GAP, name, colors.get(key)))
+            legend_keys.append(kind)
         for (kind, _placed, n), y in zip(fixed_layout, fixed_tops):
             name, key = LEGEND_FIXED[kind]
             legend.append((y, max(1, n) * row_h - self.LANE_GAP, name, colors.get(key)))
+            legend_keys.append(kind)
         if show_other:
             legend.append((free_top, self.LANE_H, "Remote / Weitere", colors.get("RDP-Verbindung")))
+            legend_keys.append("other")
             sep_y = free_top - (6 + self.LANE_GAP) / 2
             if fixed_layout:
                 self.scene.addLine(0, sep_y, width, sep_y, QPen(self.hour_line, 1))
-        self._legend = legend
+        # Von oben nach unten sortiert (die Reihenfolge ist einstellbar)
+        ordered = sorted(zip(legend, legend_keys), key=lambda pair: pair[0][0])
+        self._legend = [entry for entry, _k in ordered]
+        self._legend_keys = [k for _e, k in ordered]
 
         # Einträge
         label_font = ui_font(8)
@@ -1257,6 +1293,16 @@ class TimelineView(QGraphicsView):
             painter.setPen(self.text_color)
             painter.drawText(22, center + (fm.ascent() - fm.descent()) // 2,
                              fm.elidedText(name, Qt.ElideRight, width - 26))
+        if self._row_drag is not None:  # Zeile wird verschoben: Linie, wo sie landet
+            target, below = self._row_drop(self._row_drag[1])
+            entry = next(((y, h) for (y, h, _n, _c), k in zip(self._legend, self._legend_keys)
+                          if k == target), None)
+            if entry:
+                line_y = self.mapFromScene(0, entry[0] + (entry[1] + self.LANE_GAP / 2 if below
+                                                          else -self.LANE_GAP / 2)).y()
+                accent = QColor(THEMES["dark" if self.dark_mode else "light"]["accent"])
+                painter.setPen(QPen(accent, 3))
+                painter.drawLine(4, line_y, self.viewport().width(), line_y)
         painter.restore()
 
     def scrollContentsBy(self, dx, dy):
@@ -1290,8 +1336,35 @@ class TimelineView(QGraphicsView):
     def _minute_at(self, viewport_x):
         return (self.mapToScene(int(viewport_x), 0).x() - self.LEFT) / self._ppm
 
+    def _legend_key_at(self, viewport_y):
+        """Kennung der Legendenzeile unter der Maus (oder None)."""
+        y = self.mapToScene(0, int(viewport_y)).y()
+        for (top, h, _name, _color), key in zip(self._legend, self._legend_keys):
+            if top - self.LANE_GAP <= y <= top + h + self.LANE_GAP:
+                return key
+        return None
+
+    def _row_drop(self, viewport_y):
+        """(Ziel, darunter?) für die gezogene Zeile an dieser Höhe."""
+        y = self.mapToScene(0, int(viewport_y)).y()
+        rows = [(top, h, key) for (top, h, _n, _c), key in zip(self._legend, self._legend_keys)
+                if key in MOVABLE_ROWS]
+        if not rows:
+            return None, False
+        for top, h, key in rows:
+            if y < top + h / 2:
+                return key, False
+        return rows[-1][2], True
+
     def mouseMoveEvent(self, event):
         pos = event.position().toPoint()
+        if self._row_drag is not None:
+            self._row_drag[1] = pos.y()
+            self.viewport().update()  # Linie reicht über die ganze Breite
+            return
+        if self._legend and pos.x() < self.LEFT - 6 and self._drag_start is None:
+            movable = self._legend_key_at(pos.y()) in MOVABLE_ROWS
+            self.viewport().setCursor(Qt.OpenHandCursor if movable else Qt.ArrowCursor)
         # Klicken und ziehen: Bereich markieren (links: Tätigkeit, rechts: Zoom)
         if self._drag_start is not None and abs(pos.x() - self._drag_start.x()) > 5:
             self._hide_hover()
@@ -1473,6 +1546,12 @@ class TimelineView(QGraphicsView):
             pos = event.position().toPoint()
             if event.button() == Qt.RightButton and self._legend and pos.x() < self.LEFT - 6:
                 return  # Legende: Menü beim Loslassen, kein Bereich
+            if event.button() == Qt.LeftButton and self._legend and pos.x() < self.LEFT - 6:
+                key = self._legend_key_at(pos.y())  # Legende: Zeile verschieben
+                if key in MOVABLE_ROWS:
+                    self._row_drag = [key, pos.y()]
+                    self.viewport().setCursor(Qt.ClosedHandCursor)
+                return
             self._drag_start, self._drag_button = pos, event.button()
             return
         super().mousePressEvent(event)
@@ -1480,6 +1559,15 @@ class TimelineView(QGraphicsView):
     def mouseReleaseEvent(self, event):
         button = event.button()
         pos = event.position().toPoint()
+        if self._row_drag is not None and button == Qt.LeftButton:
+            key = self._row_drag[0]
+            self._row_drag = None
+            self.viewport().setCursor(Qt.OpenHandCursor)
+            target, below = self._row_drop(pos.y())
+            if target and target != key:
+                self.row_order_changed.emit(moved(row_order(self.config), key, target, below))
+            self.viewport().update()
+            return
         if button == Qt.RightButton and self._drag_start is None:  # Legende oder abgebrochen
             if self._legend and pos.x() < self.LEFT - 6:
                 self._show_menu(pos, event.globalPosition().toPoint())
@@ -1512,6 +1600,10 @@ class TimelineView(QGraphicsView):
                 ActivityViewDialog(a, self).exec()
 
     def keyPressEvent(self, event):
+        if event.key() == Qt.Key_Escape and self._row_drag is not None:
+            self._row_drag = None
+            self.viewport().update()
+            return
         if event.key() == Qt.Key_Escape and self._drag_start is not None:
             self._cancel_drag()
             return
