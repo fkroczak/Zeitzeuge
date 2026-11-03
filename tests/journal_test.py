@@ -96,7 +96,11 @@ def test_vorschlaege():
     cats = ["Fernwartung", "Telefonsupport", "Zugangsdaten / Sicherheit"]
     assert journal.suggest_category(tv, cats) == "Fernwartung"
     assert journal.suggest_category(call, cats) == "Telefonsupport"
-    assert journal.suggest_customer(call) == "Max"
+    # Anrufer ist eine Person (Ansprechpartner oder Kollege), kein Kunde: nur aus der Kundenliste
+    assert journal.suggest_customer(call) == ""
+    known = [{"name": "Müller GmbH", "traces": [{"kind": "phone", "value": "0711 1234"}]}]
+    assert journal.suggest_customer(call, customers=known) == "Müller GmbH"
+    assert journal.suggest_customer(VPN) == "Kunde X"
     assert journal.suggest_customer({"customer_name": "+49 711 1234"}) == ""
     assert journal.suggest_customer(tv, {"123456789": "Müller GmbH"}) == "Müller GmbH"
 

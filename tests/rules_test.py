@@ -74,7 +74,7 @@ def test_standardregeln_ordnen_ein(check):
     expected = [
         ("09:00", "09:50", "Fernwartung", "Müller GmbH"),
         ("10:00", "10:30", "E-Mail / Kommunikation", ""),
-        ("11:00", "11:05", "Telefonsupport", "Max Muster (0123)"),
+        ("11:00", "11:05", "Telefonsupport", ""),  # Anrufer ist eine Person, kein Kunde
         ("12:00", "12:30", "Fernwartung", "Kunde - SSL VPN"),
         ("13:00", "13:20", "Fernwartung", "srv-dc01"),
         ("13:20", "13:30", "Cloud-/M365-Administration", ""),

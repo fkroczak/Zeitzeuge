@@ -52,7 +52,7 @@ class TrayMixin:
             self.timeline.draw_timeline(self.current_date)
 
     def edit_rules(self):
-        dialog = RulesDialog(self.config, self)
+        dialog = RulesDialog(self.config, self, sample=self.rule_sample)
         if dialog.exec() == QDialog.Accepted:
             dialog.apply()
             mt.save_config(self.config)

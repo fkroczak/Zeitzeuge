@@ -35,6 +35,8 @@ def customer_key(entry, index=None):
     Erst die Kundenliste (index), sonst der Name: „Kanzlei Schmidt - DC01“ (RDM: Kunde - Gerät)
     und „Kanzlei Schmidt (0251 123456)“ (3CX) werden beide zu „kanzlei schmidt“.
     """
+    if entry.get("colleague"):
+        return ""  # Kollege ist nie der Kunde
     if entry.get("pc_block"):
         name = entry.get("customer_name") or ""  # Kunde aus der Regel, sonst leer
     else:

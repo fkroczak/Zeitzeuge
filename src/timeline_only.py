@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (QDialog, QDialogButtonBox, QFormLayout, QGraphics
                                QTextEdit, QVBoxLayout)
 
 from activity_tracker import app_label, merge_segments, read_segments
+import call_import
 from call_import import load_call_suggestions
 import focus
 import travel
@@ -683,6 +684,9 @@ class TimelineView(QGraphicsView):
                 self.calls_file, date_str,
                 ignore_missed=self.config.get("calls_ignore_missed", True),
                 min_seconds=self.config.get("calls_min_duration", 0),
+                colleague=call_import.colleagues_for(
+                    self.calls_file, self.config.get("colleague_numbers") or (),
+                    self.config.get("colleagues_auto", True)),
             )
         if self.outlook_entries:
             try:
@@ -796,15 +800,17 @@ class TimelineView(QGraphicsView):
         if not raw or not self.config.get("pc_blocks", True):
             return raw
         rule_list = self.config.get("rules") or []
+        index = customers.index(self.config)  # Stichwörter der Kundenliste (gleicher Index = gleiche Liste)
         key = (date.toString("yyyy-MM-dd"), len(raw), raw[-1]["end"], id(rule_list), len(rule_list),
-               self.config.get("pc_jump_seconds", focus.JUMP_SECONDS))
+               self.config.get("pc_jump_seconds", focus.JUMP_SECONDS), id(index))
         cached = getattr(self, "_block_cache", None)
         if cached and cached[0] == key:
             return cached[1]
         segments = [{"start": e["start"], "end": e["end"], "app": e["app"], "title": e["customer_name"]}
                     for e in raw]
         blocks = focus.focus_blocks(segments, rule_list,
-                                    jump_seconds=self.config.get("pc_jump_seconds", focus.JUMP_SECONDS))
+                                    jump_seconds=self.config.get("pc_jump_seconds", focus.JUMP_SECONDS),
+                                    keywords=index)
         self._block_cache = (key, blocks)
         return blocks
 

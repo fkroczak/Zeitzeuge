@@ -38,15 +38,17 @@ def _seconds(a, b):
     return (_t(b) - _t(a)).total_seconds()
 
 
-def activity_of(segment, compiled):
-    """(Tätigkeit, Kunde) eines Fensters: Regel aus der Zuordnung ohne KI, sonst das Programm."""
+def activity_of(segment, compiled, keywords=None):
+    """(Tätigkeit, Kunde) eines Fensters: Regel aus der Zuordnung ohne KI, sonst das Programm.
+    Der Kunde kommt aus der Regel, sonst aus einem Stichwort der Kundenliste im Titel."""
     entry = {"app": segment.get("app", ""), "customer_name": segment.get("title", ""),
              "type": "PC", "details": ""}
-    hit = rule_engine.match_entry(entry, compiled, is_pc=True) if compiled else None
+    hit = rule_engine.match_entry(entry, compiled, is_pc=True, keywords=keywords) if compiled else None
     if hit:
         _index, rule, customer = hit
         return rule["category"].strip(), (customer or "").strip()
-    return app_label(segment.get("app", "") or "Unbekannt"), ""
+    return (app_label(segment.get("app", "") or "Unbekannt"),
+            rule_engine.keyword_customer(entry, keywords, is_pc=True))
 
 
 def block_label(key):
@@ -55,7 +57,7 @@ def block_label(key):
 
 
 def focus_blocks(segments, rules=None, jump_seconds=JUMP_SECONDS, max_gap_seconds=MAX_GAP_SECONDS,
-                 min_block_seconds=MIN_BLOCK_SECONDS):
+                 min_block_seconds=MIN_BLOCK_SECONDS, keywords=None):
     """Fensterstücke [{start, end, app, title}] -> Arbeitsblöcke (Timeline-Format, nach Zeit)."""
     compiled = rule_engine._compile_rules(rules) if rules else []
     pieces = []
@@ -63,7 +65,7 @@ def focus_blocks(segments, rules=None, jump_seconds=JUMP_SECONDS, max_gap_second
         if s["end"] <= s["start"]:
             continue
         pieces.append({"start": s["start"], "end": s["end"], "app": s.get("app", ""),
-                       "title": s.get("title", ""), "key": activity_of(s, compiled),
+                       "title": s.get("title", ""), "key": activity_of(s, compiled, keywords),
                        "seconds": _seconds(s["start"], s["end"])})
     if not pieces:
         return []

@@ -352,6 +352,10 @@ def suggest_customer(entry, tv_names=None, customers=None):
             return found
     if entry.get("tv_id"):
         return (tv_names or {}).get(entry["tv_id"], "")
+    if entry.get("type") == "Telefonat":
+        # Anrufer ist eine Person, kein Kunde (Kollege oder unbekannte Nummer): Kunde nur aus
+        # der Kundenliste, sonst leer statt eines falschen Namens im Tagesabschluss
+        return ""
     name = entry.get("customer_name") or ""
     name = re.sub(r"\s*\([+\d\s/-]+\)$", "", name)  # "Müller (0711 123)" -> "Müller"
     return "" if re.fullmatch(r"[+\d\s/-]*", name) else name

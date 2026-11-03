@@ -214,7 +214,8 @@ def backup_store(force=False):
 CUSTOMERS_DOC = "kunden"  # Kundenliste (customers.py) in der Datenbank
 RULES_DOC = "regeln"      # Regeln samt gelernten (learning.py); in der Datei nur ohne gelernte
 # Config-Schlüssel, die nur in der Datenbank stehen: Schlüssel -> (Ablage, Typ)
-DB_KEYS = {"customers": (CUSTOMERS_DOC, list), "billing_customers": ("abrechnung_kunden", dict)}
+DB_KEYS = {"customers": (CUSTOMERS_DOC, list), "billing_customers": ("abrechnung_kunden", dict),
+           "customers_auto": ("kunden_automatisch", list)}  # customer_discovery.py
 UNREAD_KEYS = set()  # beim Laden gesperrt: beim Speichern nicht überschreiben
 
 
@@ -655,6 +656,7 @@ class TimelineApp(MenusMixin, DayListMixin, DayCloseMixin, DocsMixin, ReadersMix
         self._init_robustness()
         # PC-Verlauf nach N Tagen löschen (Standard aus), beim Start verzögert und täglich
         self.retention = RetentionRunner(self, ACTIVITY_DIR, save_config)
+        self.init_customer_discovery()  # Kundenliste aus Matrix42 lernen (customers_dialogs.py)
         if self._wizard_pending:
             QTimer.singleShot(800, self._start_setup_wizard)
 
