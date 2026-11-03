@@ -34,6 +34,8 @@ Testversionen aus Branches tragen die Version ihres main-Stands plus Buildnummer
 - Abrechnungstakt je Kunde (z. B. 15 Minuten), PC-Verlauf automatisch löschen.
 - Zwei PCs: Export/Import (z. B. für die PAW), PAW-Modus ohne Edge, Ordner-Variante der EXE für Rechner mit EDR.
 - Personalzeit als eigene Zeile mit Beginn und Ende.
+- Tagesliste: neue Ansicht **Telefonate** (Menü Ansicht): nur Anrufe aus 3CX und Teams, jeder einzeln.
+- Einstellungen: Einrichtungsassistent oben auf „Datenquellen“; Vorschau unter „Ansicht“ kleiner und schemenhaft, beim Darüberfahren kräftig.
 - Einstellungen → **Fehlersuche & Analyse**: Mitschnitte (3CX, Matrix42, ITM, Matrix42-Buchung) und die 3CX-Direkt-Abfrage stehen jetzt dort statt in den Einrichtungsdialogen.
 - Jede Zeile der Timeline ausblendbar; „Regeln“ heißt jetzt „Zuordnung ohne KI“.
 - Design „Metro Klar“ (hell und dunkel), Werkzeugleiste in Klar-Farben, Timeline ohne senkrechte Scrollleiste.

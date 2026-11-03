@@ -51,8 +51,9 @@ def gui_test():
         assert text in texts, (text, texts)
     for text in ("Dunkles Design", "Ganzer Tag", "Arbeitszeit"):
         assert text not in texts, (text, texts)
-    # Einträge ohne Überschriften. 15 seit dem Tagesabschluss (Gruppe „Übersichten“ hat 3 von 5)
-    assert len([t for t in texts if t]) <= 15, texts
+    # Einträge ohne Überschriften. 15 seit dem Tagesabschluss (Gruppe „Übersichten“ hat 3 von 5),
+    # 16 seit der Ansicht „Telefonate“
+    assert len([t for t in texts if t]) <= 16, texts
     assert "Tagesabschluss …" in texts, texts
     settings_texts = [a.text().replace("&", "") for a in window.menu_button.menu().actions()]
     assert "Dunkles Design" in settings_texts and "Datenquellen …" in settings_texts, settings_texts
@@ -95,11 +96,17 @@ def gui_test():
     assert not any(p.get("pc_block") for p in preview.timeline._pc_band)
     settings.preview_hover(None)
     assert preview.variant is None and any(p.get("pc_block") for p in preview.timeline._pc_band)
-    # Vorschau einklappen: Platz für die Einstellungen, wird gemerkt
-    preview.toggle.click()
-    assert not preview.timeline.isVisible() and window.config["settings_preview_open"] is False
-    preview.toggle.click()
-    assert preview.timeline.isVisible() and window.config["settings_preview_open"] is True
+    # Vorschau bleibt sichtbar, im Ruhezustand schemenhaft, beim Darüberfahren kräftig
+    assert preview.timeline.isVisible() and preview._fades[0].opacity() < 1
+    settings.preview_hover(row.spec)
+    assert preview._fades[0].opacity() == 1
+    settings.preview_hover(None)
+    # Ansicht „Telefonate“: nur Anrufe
+    preview.show_variant({"list_view": "calls"}, "Telefonate")
+    kinds = [preview.table.item(r, 2).text() for r in range(preview.table.rowCount())]
+    assert kinds and all(k.startswith("Telefonat") or k == "Teams-Anruf" for k in kinds), kinds
+    preview.show_variant(None)
+    assert "calls" in window.view_actions and "calls" in dict(window.VIEWS)
     # Auswahl: schon beim Durchgehen der Liste, gespeichert erst beim Wählen
     combo = next(r for r in settings.rows if r.spec[5] == "list_view").control
     single = combo.findData("single")

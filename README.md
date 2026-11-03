@@ -244,7 +244,7 @@ Fährst du über einen Knopf, erklärt ein Hinweis, was er tut. Im schmalen Fens
 
 Alles, was nur die Anzeige ändert, nie die Daten:
 
-- **Tagesliste:** Zusammengefasst, Einzeln, Arbeitsblöcke, Dokumentation, Zuordnung ohne KI, KI-Vorschläge, Matrix42-Abgleich. Die aktuelle Ansicht ist fett und blau. Fährst du über eine Ansicht, steht dort, was sie zeigt. **Was zeigen die Ansichten? …** (F1) erklärt alle mit Beispielen. Darunter **PC-Verlauf in der Liste**.
+- **Tagesliste:** Zusammengefasst, Einzeln, Arbeitsblöcke, Telefonate (nur 3CX- und Teams-Anrufe, jeder einzeln), Dokumentation, Zuordnung ohne KI, KI-Vorschläge, Matrix42-Abgleich. Die aktuelle Ansicht ist fett und blau. Fährst du über eine Ansicht, steht dort, was sie zeigt. **Was zeigen die Ansichten? …** (F1) erklärt alle mit Beispielen. Darunter **PC-Verlauf in der Liste**.
 - **Zeilen der Timeline** (Untermenü, auch per Rechtsklick auf die Legende links): jede Zeile mit einem Kästchen in ihrer Farbe zum Ein- und Ausblenden, dazu **Alle Zeilen einblenden**. Leere Zeilen blendet Zeitzeuge von selbst aus.
 - **PC-Aktivität als Arbeitsblöcke:** an = Blöcke je Tätigkeit, aus = jedes Fenster einzeln.
 - **Übersichten:** Wochenabschluss, Offene Tätigkeiten.

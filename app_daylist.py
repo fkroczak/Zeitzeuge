@@ -44,6 +44,17 @@ def new_details(details, type_text, customer_text):
             kept.append(part.strip())
     return " · ".join(p for p in kept if p)
 
+def is_call(entry):
+    """Telefonat aus 3CX (eingehend, ausgehend, verpasst) oder Teams-Anruf?"""
+    kind = entry.get("type") or ""
+    return kind.startswith("Telefonat") or kind == "Teams-Anruf"
+
+
+def call_entries(entries):
+    """Ansicht „Telefonate“: nur Anrufe, jeder einzeln (nicht zusammengefasst)."""
+    return [e for e in entries if is_call(e)]
+
+
 class DayListMixin:
     # ---------------------- Tagesliste ----------------------------------------
 
@@ -60,6 +71,8 @@ class DayListMixin:
             entries = self.rule_band(date_str)
         elif self.config.get("list_view") == "m42":
             entries = self.m42_band(date_str) + self.m42_unbooked(date_str)
+        elif self.config.get("list_view") == "calls":
+            entries = call_entries(entries)
         elif self.config.get("list_view") == "blocks":
             entries = work_blocks(entries, self.config.get("block_gap_minutes", 10))
         elif self.config.get("show_pc_in_list", False):
@@ -110,7 +123,7 @@ class DayListMixin:
         self.update_status_text()
 
     VIEWS = [("grouped", "Zusammengefasst"), ("single", "Einzeln"), ("blocks", "Arbeitsblöcke"),
-             ("doc", "Dokumentation"), ("rules", "Zuordnung ohne KI"), ("ai", "KI-Vorschläge"),
+             ("calls", "Telefonate"), ("doc", "Dokumentation"), ("rules", "Zuordnung ohne KI"), ("ai", "KI-Vorschläge"),
              ("m42", "Matrix42-Abgleich")]
 
     def change_view(self, key):
