@@ -379,6 +379,10 @@ class DocsMixin(CustomersMixin):
             self.add_doc(entry.get("source_entry", entry))
         elif key == "add_at":
             self.add_doc(minute=entry["minute"])
+        elif key == "add_range":  # in der Timeline mit links gezogener Zeitraum
+            day = datetime.combine(self.current_date.toPython(), datetime.min.time())
+            end_min = min(entry["end_min"], 24 * 60 - 1)  # 24:00 gibt es im Zeitfeld nicht
+            self.add_doc(span=(day + timedelta(minutes=entry["start_min"]), day + timedelta(minutes=end_min)))
         elif key == "edit":
             self.edit_doc(entry["doc_item"])
         elif key == "delete":
@@ -416,9 +420,9 @@ class DocsMixin(CustomersMixin):
         if open_items:
             self.add_doc(open_items[0])
 
-    def add_doc(self, entry=None, minute=None):
-        """Tätigkeit nachtragen, auf Wunsch vorbelegt aus einem erkannten Eintrag."""
-        if entry is None and minute is None and self.table.hasFocus():
+    def add_doc(self, entry=None, minute=None, span=None):
+        """Tätigkeit nachtragen, auf Wunsch vorbelegt aus einem erkannten Eintrag oder Zeitraum."""
+        if entry is None and minute is None and span is None and self.table.hasFocus():
             row = self.table.currentRow()
             if 0 <= row < len(self.list_entries):
                 return self.doc_for_row()
@@ -430,7 +434,7 @@ class DocsMixin(CustomersMixin):
             customer, category = hints["customer"], hints["category"]
             text = entry.get("description", "") if entry.get("ai") or entry.get("rule") else ""
         else:
-            start, end = default_span(self.current_date.toPython(), minute)
+            start, end = span or default_span(self.current_date.toPython(), minute)
             info, customer, category, text = "", "", "", ""
             hints = {}
         dialog = EntryDialog(start, end, self.known_customers(), categories, customer, category,

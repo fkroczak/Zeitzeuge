@@ -144,7 +144,9 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
 - **Bedienung:**
   - Die rote Linie zeigt die aktuelle Uhrzeit, die Arbeitszeit aus den Einstellungen ist hervorgehoben.
   - Die Timeline zeigt zuerst den ganzen Tag (0–24 Uhr) ohne Scrollen.
-  - Mit **Klicken und Ziehen** markierst du einen Zeitraum. Beim Loslassen wird genau dieser Zeitraum angezeigt.
+  - **Mit links ziehen** markierst du einen Zeitraum für eine Tätigkeit: Beim Loslassen öffnet sich „Tätigkeit nachtragen“ mit genau diesen Zeiten (grüne Markierung).
+  - **Mit rechts ziehen** zoomst du: Beim Loslassen wird genau dieser Zeitraum angezeigt (blaue Markierung). Ein einfacher Rechtsklick öffnet wie gewohnt das Menü.
+  - Der Hinweis an der Maus zeigt beim Ziehen Beginn, Ende und Dauer. **ESC** bricht das Ziehen ab.
   - Ein Doppelklick auf eine freie Stelle oder **Ganzer Tag** führt zurück zur Tagesansicht. **Arbeitszeit** zeigt die Arbeitszeit des Tages.
   - STRG + Mausrad zoomt an der Mausposition, das Mausrad allein blättert durch den Tag.
   - Design „Metro Klar“: eckige Formen, ruhige Werkzeugleiste ohne Rahmen, Verbindungen als volle Farbbalken, hellblaue Auswahl. Gestaltet nach 16 UI-Design-Regeln (Kontrast, eine Schrift, keine Großbuchstaben, siehe `docs/quality-guardrails.md`). Hell und dunkel (Pfeil am Knopf **Einstellungen → Dunkles Design**), eigene Aktivitätstypen mit frei wählbaren Farben.
