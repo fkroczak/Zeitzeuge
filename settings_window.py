@@ -576,7 +576,13 @@ class SettingsWindow(QDialog):
             from settings_preview import PreviewPane
             self.preview = PreviewPane(self.main)
             head.addWidget(self.preview)
-        if key == "sources":
+        if key == "sources":  # Einrichtungsassistent ganz oben, darunter die Kacheln
+            for spec in ROWS:
+                if spec[0] == key:
+                    row = _Row(self, spec)
+                    self.rows.append(row)
+                    layout.addWidget(row)
+            layout.addSpacing(8)
             grid = QGridLayout()
             grid.setSpacing(12)
             for i, spec in enumerate(SOURCE_TILES):
@@ -588,7 +594,7 @@ class SettingsWindow(QDialog):
             layout.addLayout(grid)
             layout.addSpacing(12)
         for spec in ROWS:
-            if spec[0] == key:
+            if spec[0] == key and key != "sources":
                 row = _Row(self, spec)
                 self.rows.append(row)
                 layout.addWidget(row)
