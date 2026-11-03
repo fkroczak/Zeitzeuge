@@ -125,6 +125,7 @@ dialog.open_day(1)
 assert window.current_date.toString("yyyy-MM-dd") == TUE
 
 # Statuszeile: heute und 7 Tage (mit echten heutigen Daten)
+window.current_date = QDate.currentDate()
 today = datetime.now()
 t = today.strftime("%Y-%m-%d")
 y = (today - timedelta(days=1)).strftime("%Y-%m-%d")
@@ -141,6 +142,13 @@ personal[t] = stamp(t, ("00:00", None))  # heute eingestempelt, noch nichts gebu
 m42[t] = []
 window.update_status_text()
 assert button.text().startswith("Quote heute 0 % · 7 Tage"), button.text()
+# anderer Tag gewählt: Quote und 7 Tage gelten für diesen Tag
+window.current_date = QDate.fromString(y, "yyyy-MM-dd")
+window.update_status_text()
+label = (today - timedelta(days=1)).strftime("%d.%m.")
+assert button.text().startswith(f"Quote {label} 25 % · 7 Tage 25 %"), button.text()
+assert f"bis {label}" in button.toolTip(), button.toolTip()
+window.current_date = QDate.currentDate()
 personal.clear()
 m42.clear()
 personal.update(saved[0])

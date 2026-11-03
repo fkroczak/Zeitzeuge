@@ -249,6 +249,18 @@ FETCH_JS = r"""
 """
 
 
+# Anmeldefenster: angemeldet? (auf dem Matrix42-Server, keine Anmeldeseite, Token oder Kalender da)
+LOGIN_DONE_JS = r"""
+(function (host) {
+  if (host && location.hostname !== host) return false;
+  if (document.querySelector("input[type=password]") || /\/(wm\/)?login\b/i.test(location.pathname)) return false;
+  let token = null;
+  try { token = localStorage.getItem("mx.auth.session.token"); } catch (e) {}
+  return !!token || !!document.querySelector(".fc-view");
+})(%s)
+"""
+
+
 class M42Reader(BrowserReader):
     day_read = Signal(str)  # Tag (YYYY-MM-DD), dessen Buchungen neu sind
     booking_done = Signal(object)  # Ergebnis von book(): {ok, entry | error, request}
@@ -588,11 +600,11 @@ class M42Reader(BrowserReader):
             self.day_read.emit(d)
 
     def _login_done(self):
-        """Angemeldet, sobald der Kalender (oder eine andere Seite als /wm/login) da ist."""
+        """Angemeldet, sobald die Matrix42-Seite ihr Anmelde-Token hat oder den Kalender zeigt.
+        Nur "keine Anmeldeseite" reicht nicht: Während die Seite lädt oder zur Firmen-Anmeldung
+        weiterleitet, sieht sie kurz so aus, und das Fenster ging zu, bevor man sich anmelden konnte."""
         try:
-            return bool(self._evaluate(
-                "!!document.querySelector('.fc-view') || (!/login/i.test(location.pathname)"
-                " && !document.querySelector('input[type=password]') && location.pathname.length > 4)",
-                timeout=5))
+            return bool(self._evaluate(LOGIN_DONE_JS % json.dumps(urlsplit(self.page_url).hostname or ""),
+                                       timeout=5))
         except Exception:
             return False

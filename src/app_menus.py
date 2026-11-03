@@ -256,6 +256,7 @@ class MenusMixin:
 
     # Ansichten im Menü mit Alt-Buchstaben (VIEWS bleibt ohne, für Hinweise und Hilfe)
     VIEW_MNEMONICS = {"grouped": "Zus&ammengefasst", "single": "E&inzeln", "blocks": "Arbeits&blöcke",
+                      "calls": "Tele&fonate",
                       "doc": "Dok&umentation", "rules": "Zuordnung o&hne KI", "ai": "K&I-Vorschläge",
                       "m42": "Matri&x42-Abgleich"}
 

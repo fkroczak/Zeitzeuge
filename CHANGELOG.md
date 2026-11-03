@@ -21,6 +21,7 @@ Testversionen aus Branches tragen die Version ihres main-Stands plus Buildnummer
 - **Maus in der Timeline:** Mit links ziehen markiert einen Zeitraum und öffnet „Tätigkeit nachtragen“ mit genau diesen Zeiten. Mit rechts ziehen zoomt auf den Zeitraum (bisher die linke Taste). Einfacher Rechtsklick öffnet weiter das Menü, ESC bricht das Ziehen ab.
 - **Tagesabschluss** (Menü Ansicht, Wochenabschluss, Meldung bei Feierabend): Zeitzeuge stellt den Tag aus eigenen Tätigkeiten, Verbindungen, Telefonaten, KI-Vorschlägen, Regeln und PC-Aktivität zu Blöcken je Kunde zusammen, mit Ticket (aus Fenstertiteln oder zuletzt für den Kunden benutzt) und kurzem Tickettext. Ein Klick dokumentiert alles und bucht die Zeilen mit Ticket nacheinander in Matrix42. Oben steht, wie viel Prozent der Personalzeit danach erfasst sind. Ohne Rückfrage werden nur sichere Tickets gebucht. **Erkennung messen …** vergleicht die Vorschläge der letzten 20 Tage mit deinen echten Buchungen.
 - Zwei Menüs: **Ansicht** (Tagesliste, Zeilen der Timeline, Zeitraum, Übersichten, Design) und **Einstellungen** als eigenes Fenster mit Bereichen, Suche und Datenquellen als Kacheln mit Zustand. Schnellzugriffe (Tag, Heute, Ganzer Tag, Arbeitszeit …) bleiben in der Werkzeugleiste.
+- **Buchungsquote in der Statuszeile** gilt für den gewählten Tag: Am 02.11. steht dort „Quote 02.11. … · 7 Tage …“ mit den 7 gestempelten Tagen bis zu diesem Tag. Für heute bleibt es „Quote heute“.
 - Hilfe zu den Ansichten der Tagesliste (Zusammengefasst, Einzeln …) mit Beispielen, F1.
 - Symbole überall, Datenquellen mit Zeichen in der Farbe des Herstellers.
 - Anrufe: eingehend blau ↙, ausgehend orange ↗. Die Richtung aus 3CX wird zuverlässiger erkannt.
@@ -35,6 +36,9 @@ Testversionen aus Branches tragen die Version ihres main-Stands plus Buildnummer
 - Abrechnungstakt je Kunde (z. B. 15 Minuten), PC-Verlauf automatisch löschen.
 - Zwei PCs: Export/Import (z. B. für die PAW), PAW-Modus ohne Edge, Ordner-Variante der EXE für Rechner mit EDR.
 - Personalzeit als eigene Zeile mit Beginn und Ende.
+- Tagesliste: neue Ansicht **Telefonate** (Menü Ansicht): nur Anrufe aus 3CX und Teams, jeder einzeln.
+- Einstellungen: Einrichtungsassistent oben auf „Datenquellen“; Vorschau unter „Ansicht“ kleiner und schemenhaft, beim Darüberfahren kräftig.
+- Einstellungen → **Fehlersuche & Analyse**: Mitschnitte (3CX, Matrix42, ITM, Matrix42-Buchung) und die 3CX-Direkt-Abfrage stehen jetzt dort statt in den Einrichtungsdialogen.
 - Jede Zeile der Timeline ausblendbar; „Regeln“ heißt jetzt „Zuordnung ohne KI“.
 - Design „Metro Klar“ (hell und dunkel), Werkzeugleiste in Klar-Farben, Timeline ohne senkrechte Scrollleiste.
 - Nachfragen zu mehr Themen: Arbeitsblöcke am PC (z. B. M365-Admin, Remotedesktop), Teams-Besprechungen mit erkennbarer Teilnahme, Mails an Kunden aus der Kundenliste; auf Wunsch angezeigte Zugangsdaten.
@@ -50,6 +54,7 @@ Testversionen aus Branches tragen die Version ihres main-Stands plus Buildnummer
 - Versionsnummer zählt von selbst (4.1.0, 4.1.1, …); steht im Fenstertitel, unter **Info**, in fehler.log, in der EXE und im Namen der Downloads.
 
 ### Behoben
+- Matrix42: „Bei Matrix42 anmelden“ öffnete das Fenster nur kurz und schloss es gleich wieder. Es bleibt jetzt offen, bis die Anmeldung wirklich geklappt hat.
 - Absturz beim Start, wenn „3CX direkt auslesen“ eingeschaltet ist.
 - Anrufe: ein Gespräch wurde von einem Versuch in derselben Minute überschrieben.
 - Eintragen: Beschriftung des Merken-Hakens landete im Textfeld.

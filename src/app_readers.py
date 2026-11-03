@@ -282,49 +282,12 @@ class ReadersMixin:
                 follow_status()
                 reader.show_login(dialog)
 
-        def record(booking=False):
-            enabled.setChecked(True)
-            reader = apply()
-            if not reader:
-                return
-            follow_status()
-            name = f"{kind}_buchung" if booking else kind
-            path = os.path.join(mt.DATA_DIR, f"mitschnitt_{name}_{datetime.now():%Y-%m-%d_%H%M}.json")
-            if reader.record(path, full_writes=booking):
-                QMessageBox.information(dialog, "Buchung mitschneiden" if booking
-                                        else "Abfragen mitschneiden",
-                                        M42_BOOKING_RECORD_TEXT if booking else spec["record_text"])
-
         follow_status()
 
         login_btn = QPushButton(spec["login_text"])
         login_btn.clicked.connect(login)
-        record_btn = QPushButton("Abfragen &mitschneiden …")
-        record_btn.setToolTip("Aufzeichnen, welche Abfragen die Seite an ihren Server schickt "
-                              "(Passwörter und Token werden geschwärzt).")
-        record_btn.clicked.connect(lambda: record())
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.addButton(login_btn, QDialogButtonBox.ActionRole)
-        buttons.addButton(record_btn, QDialogButtonBox.ActionRole)
-        if kind == "m42":  # Vorbereitung für „In Matrix42 buchen“
-            booking_btn = QPushButton("&Buchung mitschneiden …")
-            booking_btn.setToolTip("Aufzeichnen, wie Matrix42 eine Zeiterfassung speichert. Du legst "
-                                   "dabei selbst eine Buchung an. Passwörter und Token werden geschwärzt.")
-            booking_btn.clicked.connect(lambda: record(booking=True))
-            buttons.addButton(booking_btn, QDialogButtonBox.ActionRole)
-        if kind == "pbx":
-            def check():
-                enabled.setChecked(True)
-                reader = apply()
-                if reader:
-                    follow_status()
-                    path = os.path.join(mt.DATA_DIR, f"3cx_pruefung_{datetime.now():%Y-%m-%d_%H%M}.json")
-                    reader.check_direct(path)
-            check_btn = QPushButton("Direkt-Abfrage &prüfen")
-            check_btn.setToolTip("Anrufe ohne Webseite direkt vom 3CX-Server holen und mit "
-                                 "der gespeicherten Anrufliste vergleichen")
-            check_btn.clicked.connect(check)
-            buttons.addButton(check_btn, QDialogButtonBox.ActionRole)
         if kind == "itm":
             def forget():
                 reader = getattr(self, attr)
@@ -342,6 +305,51 @@ class ReadersMixin:
         buttons.rejected.connect(dialog.reject)
         layout.addWidget(buttons)
         return dialog
+
+    # ---- Fehlersuche & Analyse (Einstellungen): Mitschnitte und 3CX-Direkt-Abfrage
+
+    def _debug_reader(self, kind):
+        """Laufenden Leser für einen Mitschnitt holen; startet ihn, falls die Quelle eingerichtet ist."""
+        from pbx_reader import find_browser
+        spec = self.READER_DIALOGS[kind]
+        if kind in ("pbx", "m42") and not find_browser():
+            QMessageBox.warning(self, spec["title"], "Microsoft Edge oder Google Chrome wurde nicht gefunden.")
+            return None
+        if not self.config.get(spec["url_key"]):
+            QMessageBox.information(self, spec["title"], "Bitte die Quelle zuerst einrichten "
+                                    "(Einstellungen → Datenquellen → Einrichten …).")
+            return None
+        if not getattr(self, spec["attr"]):
+            action = self.source_actions.get(spec["enabled_key"])
+            if action and not action.isChecked():
+                action.setChecked(True)  # schaltet die Quelle ein und startet den Leser
+            if not getattr(self, spec["attr"]):
+                {"pbx": self.start_pbx_reader, "itm": self.start_itm_reader,
+                 "m42": self.start_m42_reader}[kind]()
+        return getattr(self, spec["attr"])
+
+    def record_source(self, kind, booking=False):
+        """Mitschnitt: aufzeichnen, welche Abfragen die Seite an ihren Server schickt.
+        booking: Buchung in Matrix42 mitschneiden (speichernde Abfragen ungekürzt)."""
+        reader = self._debug_reader(kind)
+        if not reader:
+            return
+        name = f"{kind}_buchung" if booking else kind
+        path = os.path.join(mt.DATA_DIR, f"mitschnitt_{name}_{datetime.now():%Y-%m-%d_%H%M}.json")
+        if reader.record(path, full_writes=booking):
+            QMessageBox.information(self, "Buchung mitschneiden" if booking else "Abfragen mitschneiden",
+                                    M42_BOOKING_RECORD_TEXT if booking
+                                    else self.READER_DIALOGS[kind]["record_text"])
+        else:
+            QMessageBox.information(self, "Abfragen mitschneiden",
+                                    "Es ist schon ein Anmelde- oder Mitschnitt-Fenster offen.")
+
+    def check_pbx_direct(self):
+        """Anrufe ohne Webseite direkt vom 3CX-Server holen und vergleichen (Bericht im Datenordner)."""
+        reader = self._debug_reader("pbx")
+        if reader:
+            reader.check_direct(os.path.join(mt.DATA_DIR, f"3cx_pruefung_{datetime.now():%Y-%m-%d_%H%M}.json"))
+            self.statusBar().showMessage("3CX: Direkt-Abfrage läuft …", 5000)
 
     def on_pbx_check_done(self, path, text):
         if not path:
