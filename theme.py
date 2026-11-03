@@ -8,7 +8,7 @@ import html
 import re
 
 from PySide6.QtCore import QLibraryInfo, QLocale, QSize, Qt, QTranslator
-from PySide6.QtGui import QColor, QFont
+from PySide6.QtGui import QColor, QFont, QFontMetrics
 from PySide6.QtWidgets import QDialogButtonBox, QHeaderView, QProxyStyle, QStyle, QStyleFactory
 
 
@@ -108,6 +108,16 @@ def ui_font(point_size, bold=False):
 
 # Fließtext: Zeilenhöhe 1,5
 PROSE_LINE_HEIGHT = 150
+
+
+def fit_bold(button):
+    """Standardknopf ist fett (Stylesheet), Qt misst die Breite aber mit normaler Schrift:
+    Platz für den fetten Text, damit er nie abgeschnitten wird. Nach setText aufrufen.
+    (min-width im Stylesheet, setMinimumWidth überschriebe das Design beim Polieren)"""
+    bold = QFont(button.font())
+    bold.setBold(True)
+    width = QFontMetrics(bold).horizontalAdvance(button.text().replace("&", "")) + 36
+    button.setStyleSheet(f"QPushButton {{ min-width: {width}px; }}")
 
 
 def prose(label):
