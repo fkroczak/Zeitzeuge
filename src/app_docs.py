@@ -312,6 +312,8 @@ class DocsMixin(CustomersMixin):
     def prompt_kind(entry):
         """Art eines erkannten Eintrags für Quellen und Mindestdauer der Nachfragen."""
         kind = entry.get("type", "")
+        if entry.get("local") or row_kind(entry) in ("pcstate", "wlan", "files"):
+            return "local"  # Spuren vom PC: keine Nachfrage, kein Tagesabschluss
         if entry.get("rule"):
             return "rules"
         if entry.get("pc_block"):

@@ -8,6 +8,7 @@ Ein Kunde hat einen Namen und beliebig viele Spuren. Eine Spur ist eine Art und 
     vpn    VPN-Verbindung         Name der Verbindung in Sophos Connect usw. (Groß/Klein egal)
     phone  Telefonnummer          "+49 711 123" = "0711 123" = "0711123"
     mail   E-Mail-Domain          "@kunde.de" oder "kunde.de", gilt auch für mail.kunde.de
+    net    Netzwerk / WLAN        Name des Netzwerks beim Kunden, z. B. "Mueller-Gast"
 
 Ablage: config["customers"] = [{"name": "Müller GmbH", "traces": [{"kind", "value"}]}].
 Wie teamviewer_names sind das Nutzdaten: main_timeline.save_config legt sie verschlüsselt in
@@ -29,8 +30,9 @@ KINDS = {
     "vpn": "VPN-Verbindung",
     "phone": "Telefonnummer",
     "mail": "E-Mail-Domain",
+    "net": "Netzwerk",
 }
-KIND_ORDER = ("tv", "phone", "rdm", "vpn", "mail")
+KIND_ORDER = ("tv", "phone", "rdm", "vpn", "mail", "net")
 
 # RDM schreibt "<Protokoll>-Verbindung"/"-Sitzung" und Anzeigen von Zugangsdaten
 _RDM_TYPE = re.compile(r"^(RDP|SSH|FTP|Website|TeamViewer|VPN)-(Verbindung|Sitzung)$")
@@ -71,7 +73,7 @@ def normalize(kind, value):
         return normalize_phone(value)
     if kind == "mail":
         return normalize_domain(value)
-    if kind in ("rdm", "vpn"):
+    if kind in ("rdm", "vpn", "net"):
         return " ".join(str(value or "").split()).casefold()
     return ""
 
@@ -130,6 +132,8 @@ def traces_of(entry):
                 found.append(("rdm", name))
         elif _RDM_TYPE.match(kind) or kind in _RDM_CREDS:
             found.append(("rdm", name))
+        elif kind in ("Netzwerk", "WLAN"):
+            found.append(("net", name))
     domains = entry.get("email_domains") or []
     if isinstance(domains, str):
         domains = [domains]

@@ -32,7 +32,11 @@ STORE_NAME = "outlook"
 TYPE_APPOINTMENT = "Termin"
 TYPE_MEETING = "Teams-Besprechung"
 TYPE_MAIL = "Mail gesendet"
-TYPES = (TYPE_APPOINTMENT, TYPE_MEETING, TYPE_MAIL)
+TYPE_REPLIED = "Mail beantwortet"   # eingegangene Mail, auf die du geantwortet hast
+TYPE_CHAT = "Teams-Chat"
+TYPES = (TYPE_APPOINTMENT, TYPE_MEETING, TYPE_MAIL, TYPE_REPLIED, TYPE_CHAT)
+CHAT_GAP_MINUTES = 10   # Nachrichten mit derselben Firma und kürzerer Pause sind ein Block
+VERBS = {102: "beantwortet", 103: "allen geantwortet", 104: "weitergeleitet"}
 
 MAX_ITEMS = 3000          # mehr Einträge je Ordner und Lauf liest das Skript nicht
 PS_TIMEOUT = 90           # Sekunden, danach wird PowerShell beendet
@@ -57,7 +61,9 @@ $inv = [Globalization.CultureInfo]::InvariantCulture
 $out = [ordered]@{ ok = $false; fehler = ''; text = ''; eigene_domain = ''
                    termine = [System.Collections.ArrayList]::new()
                    mails = [System.Collections.ArrayList]::new()
-                   kalender_fehler = ''; mails_fehler = '' }
+                   eingang = [System.Collections.ArrayList]::new()
+                   chats = [System.Collections.ArrayList]::new()
+                   kalender_fehler = ''; mails_fehler = ''; eingang_fehler = ''; chats_fehler = '' }
 function Dom($a) {
   if ($a -and ([string]$a) -match '@([A-Za-z0-9.-]+)\s*>?\s*$') { return $Matches[1].ToLower() }
   return ''
@@ -144,6 +150,68 @@ try {
         }
       } catch { $out.mails_fehler = $_.Exception.Message }
     }
+    if (__INBOX__) {
+      # Eingegangene Mails, auf die du geantwortet hast (PR_LAST_VERB_EXECUTED 102–104)
+      try {
+        $inb = Folder $ns '' 6
+        $items = $inb.Items
+        $items.Sort('[ReceivedTime]', $true)
+        $sel = $items.Restrict("[ReceivedTime] >= '" + $von.ToString('g') + "'")
+        $it = $sel.GetFirst(); $n = 0
+        while ($it -ne $null -and $n -lt __MAX__) {
+          $n++
+          try {
+            if ([int]$it.Class -eq 43 -and $it.ReceivedTime -lt $bis) {
+              $verb = 0
+              try { $verb = [int]$it.PropertyAccessor.GetProperty('http://schemas.microsoft.com/mapi/proptag/0x10810003') } catch {}
+              if ($verb -ge 102 -and $verb -le 104) {
+                $vt = ''
+                try { $vt = T ($it.PropertyAccessor.UTCToLocalTime($it.PropertyAccessor.GetProperty('http://schemas.microsoft.com/mapi/proptag/0x10820040'))) } catch {}
+                $from = ''
+                try { if ($it.SenderEmailType -eq 'EX') { $u = $it.Sender.GetExchangeUser(); if ($u) { $from = Dom $u.PrimarySmtpAddress } } else { $from = Dom $it.SenderEmailAddress } } catch {}
+                [void]$out.eingang.Add([ordered]@{
+                  zeit = T $it.ReceivedTime; betreff = [string]$it.Subject; antwort = $vt; art = $verb
+                  domains = ([string[]]@($from)) })
+              }
+            }
+          } catch {}
+          $it = $sel.GetNext()
+        }
+      } catch { $out.eingang_fehler = $_.Exception.Message }
+    }
+    if (__CHATS__) {
+      # Teams-Chats: Exchange legt jede Nachricht im versteckten Ordner TeamsMessagesData ab
+      # (früher Konversationsverlauf\Teamchat). Nur Zeit, eigene Nachricht ja/nein, Domains.
+      try {
+        $root = $ns.GetDefaultFolder(6).Parent
+        $tf = $null
+        foreach ($p in @('TeamsMessagesData', 'Konversationsverlauf\Teamchat', 'Conversation History\Team Chat')) {
+          if ($tf) { break }
+          try { $f = $root; foreach ($part in $p.Split('\')) { $f = $f.Folders.Item($part) }; $tf = $f } catch {}
+        }
+        if (-not $tf) { $out.chats_fehler = 'kein_ordner' } else {
+          $meName = ''; try { $meName = [string]$ns.CurrentUser.Name } catch {}
+          $items = $tf.Items
+          $items.Sort('[SentOn]', $true)
+          $sel = $items.Restrict("[SentOn] >= '" + $von.ToString('g') + "'")
+          $it = $sel.GetFirst(); $n = 0
+          while ($it -ne $null -and $n -lt __MAX__) {
+            $n++
+            try {
+              if ($it.SentOn -lt $bis) {
+                $d = [ordered]@{}
+                foreach ($x in (Domains $it.Recipients)) { $d[$x] = 1 }
+                try { $sx = Dom $it.SenderEmailAddress; if (-not $sx -and $it.Sender) { $u = $it.Sender.GetExchangeUser(); if ($u) { $sx = Dom $u.PrimarySmtpAddress } }; if ($sx) { $d[$sx] = 1 } } catch {}
+                [void]$out.chats.Add([ordered]@{
+                  zeit = T $it.SentOn; eigen = ([string]$it.SenderName -eq $meName)
+                  domains = ([string[]]@($d.Keys)) })
+              }
+            } catch {}
+            $it = $sel.GetNext()
+          }
+        }
+      } catch { $out.chats_fehler = $_.Exception.Message }
+    }
     $out.ok = $true
   }
 } catch { $out.fehler = 'fehler'; $out.text = $_.Exception.Message }
@@ -157,7 +225,7 @@ def _ps_text(text):
 
 
 def build_script(start, end, calendar=True, mails=True, calendar_path="", sent_path="",
-                 start_outlook=False, check_body=True, max_items=MAX_ITEMS):
+                 start_outlook=False, check_body=True, max_items=MAX_ITEMS, inbox=False, chats=False):
     """PowerShell-Skript, das Termine und gesendete Mails in [start, end) als JSON ausgibt."""
     values = {
         "__VON__": start.strftime("%Y-%m-%d %H:%M"), "__BIS__": end.strftime("%Y-%m-%d %H:%M"),
@@ -166,6 +234,7 @@ def build_script(start, end, calendar=True, mails=True, calendar_path="", sent_p
         "__BODY__": "$true" if check_body else "$false",
         "__CALPATH__": _ps_text(calendar_path), "__SENTPATH__": _ps_text(sent_path),
         "__MAX__": str(int(max_items)),
+        "__INBOX__": "$true" if inbox else "$false", "__CHATS__": "$true" if chats else "$false",
     }
     script = _SCRIPT
     for key, value in values.items():
@@ -209,14 +278,17 @@ def read_outlook(start, end, config, runner=None):
         if not outlook_installed():
             return {"ok": False, "fehler": "kein_outlook"}
         runner = run_powershell
+    outlook = bool(config.get("outlook_enabled", True))  # aus: nur Teams-Chats lesen
     script = build_script(
         start, end,
-        calendar=config.get("outlook_calendar_enabled", True),
-        mails=config.get("outlook_mails_enabled", True),
+        calendar=outlook and config.get("outlook_calendar_enabled", True),
+        mails=outlook and config.get("outlook_mails_enabled", True),
         calendar_path=config.get("outlook_calendar_folder", ""),
         sent_path=config.get("outlook_sent_folder", ""),
         start_outlook=config.get("outlook_start_if_closed", False),
-        check_body=config.get("outlook_check_body", True))
+        check_body=config.get("outlook_check_body", True),
+        inbox=outlook and config.get("outlook_replies_enabled", True),
+        chats=bool(config.get("teams_chats_enabled", False)))
     try:
         text = runner(script)
     except subprocess.TimeoutExpired:
@@ -276,7 +348,9 @@ def parse_output(text):
         "eigene_domain": _domains(data.get("eigene_domain"))[:1],
         "kalender_fehler": _text(data.get("kalender_fehler"), 300),
         "mails_fehler": _text(data.get("mails_fehler"), 300),
-        "termine": [], "mails": [],
+        "eingang_fehler": _text(data.get("eingang_fehler"), 300),
+        "chats_fehler": _text(data.get("chats_fehler"), 300),
+        "termine": [], "mails": [], "eingang": [], "chats": [],
     }
     for t in _list(data.get("termine")):
         if not isinstance(t, dict):
@@ -304,6 +378,21 @@ def parse_output(text):
             "recipients": max(0, _int(m.get("empfaenger"))),
             "domains": _domains(m.get("domains")),
         })
+    for m in _list(data.get("eingang")):
+        if not isinstance(m, dict) or not _time(m.get("zeit")):
+            continue
+        replied = _time(m.get("antwort"))
+        result["eingang"].append({
+            "start": _time(m.get("zeit")).strftime(TIME_FMT), "subject": _text(m.get("betreff")),
+            "replied": replied.strftime(TIME_FMT) if replied else "",
+            "verb": VERBS.get(_int(m.get("art")), "beantwortet"),
+            "domains": _domains(m.get("domains")),
+        })
+    for c in _list(data.get("chats")):
+        if not isinstance(c, dict) or not _time(c.get("zeit")):
+            continue
+        result["chats"].append({"start": _time(c.get("zeit")).strftime(TIME_FMT),
+                                "mine": bool(c.get("eigen")), "domains": _domains(c.get("domains"))})
     return result
 
 
@@ -387,13 +476,63 @@ def mail_entry(item, own, minutes=3, external_only=True):
     }
 
 
+def replied_entry(item, own, minutes=3, external_only=True):
+    """Eingegangene Mail, auf die du geantwortet hast -> kurzer Block beim Eingang (oder None)."""
+    domains = external(item.get("domains") or [], own)
+    if external_only and not domains:
+        return None
+    start = datetime.strptime(item["start"], TIME_FMT)
+    details = f"von {', '.join(domains) if domains else 'intern'}"
+    if item.get("replied"):
+        details += f", {item.get('verb') or 'beantwortet'} {item['replied'][11:16]}"
+    return {
+        "start": item["start"], "end": (start + timedelta(minutes=max(1, int(minutes or 1)))).strftime(TIME_FMT),
+        "type": TYPE_REPLIED, "customer_name": item.get("subject") or "(ohne Betreff)",
+        "details": details, "email_domains": domains, "outlook": "mail_in", "is_suggestion": True,
+    }
+
+
+def chat_entries(chats, own, external_only=True, gap_minutes=CHAT_GAP_MINUTES):
+    """Teams-Nachrichten -> Blöcke je Gegenüber (Firma). Nur Zeiten und Domains."""
+    blocks, last = [], {}
+    for c in sorted(chats, key=lambda c: c.get("start", "")):
+        try:
+            when = datetime.strptime(c["start"], TIME_FMT)
+        except (KeyError, TypeError, ValueError):
+            continue
+        domains = tuple(sorted(external(c.get("domains") or [], own)))
+        if external_only and not domains:
+            continue
+        block = last.get(domains)
+        if block and (when - block["end"]).total_seconds() <= gap_minutes * 60:
+            block["end"] = when
+        else:
+            block = {"start": when, "end": when, "count": 0, "mine": 0, "domains": list(domains)}
+            blocks.append(block)
+            last[domains] = block
+        block["count"] += 1
+        block["mine"] += 1 if c.get("mine") else 0
+    result = []
+    for b in blocks:
+        who = ", ".join(b["domains"]) if b["domains"] else "intern"
+        result.append({
+            "start": b["start"].strftime(TIME_FMT),
+            "end": (b["end"] + timedelta(minutes=2)).strftime(TIME_FMT),
+            "type": TYPE_CHAT, "customer_name": f"Chat mit {who}",
+            "details": f"{b['count']} Nachrichten, {b['mine']} von dir",
+            "email_domains": b["domains"], "outlook": "chat", "is_suggestion": True,
+        })
+    return result
+
+
 def day_entries(doc, config):
     """Gespeicherter Tag -> Einträge für die Timeline (Termine und Mails)."""
     if not isinstance(doc, dict):
         return []
     own = own_domains(config, doc.get("eigene_domain"))
     result = []
-    if config.get("outlook_calendar_enabled", True):
+    outlook = bool(config.get("outlook_enabled", True))
+    if outlook and config.get("outlook_calendar_enabled", True):
         for item in doc.get("termine") or []:
             try:
                 e = appointment_entry(item, own)
@@ -401,7 +540,7 @@ def day_entries(doc, config):
                 continue
             if e:
                 result.append(e)
-    if config.get("outlook_mails_enabled", True):
+    if outlook and config.get("outlook_mails_enabled", True):
         for item in doc.get("mails") or []:
             try:
                 e = mail_entry(item, own, config.get("outlook_mail_minutes", 3),
@@ -410,10 +549,21 @@ def day_entries(doc, config):
                 continue
             if e:
                 result.append(e)
+    if outlook and config.get("outlook_replies_enabled", True):
+        for item in doc.get("eingang") or []:
+            try:
+                e = replied_entry(item, own, config.get("outlook_mail_minutes", 3),
+                                  config.get("outlook_mails_external_only", True))
+            except (KeyError, TypeError, ValueError):
+                continue
+            if e:
+                result.append(e)
+    if config.get("teams_chats_enabled", False):
+        result += chat_entries(doc.get("chats") or [], own, config.get("teams_chats_external_only", True))
     return sorted(result, key=lambda e: e["start"])
 
 
-def split_days(result, start, end, now=None, calendar=True, mails=True):
+def split_days(result, start, end, now=None, calendar=True, mails=True, inbox=True, chats=True):
     """Ergebnis eines Laufs -> {Tag: Dokument} für alle Tage in [start, end).
 
     Ein Termin über Mitternacht zählt zum Tag seines Beginns (wie bei VPN und Anrufen).
@@ -423,14 +573,15 @@ def split_days(result, start, end, now=None, calendar=True, mails=True):
     days = {}
     d = start.date()
     while datetime.combine(d, datetime.min.time()) < end:
-        days[d.isoformat()] = {"termine": [], "mails": []}
+        days[d.isoformat()] = {"termine": [], "mails": [], "eingang": [], "chats": []}
         d += timedelta(days=1)
     for t in result.get("termine", []):
         if t["start"][:10] in days:
             days[t["start"][:10]]["termine"].append(t)
-    for m in result.get("mails", []):
-        if m["start"][:10] in days:
-            days[m["start"][:10]]["mails"].append(m)
+    for part in ("mails", "eingang", "chats"):
+        for m in result.get(part, []):
+            if m["start"][:10] in days:
+                days[m["start"][:10]][part].append(m)
     stamp = now.strftime(TIME_FMT)
     for doc in days.values():
         doc["gelesen"] = stamp
@@ -439,6 +590,10 @@ def split_days(result, start, end, now=None, calendar=True, mails=True):
             doc["termine"] = None
         if result.get("mails_fehler") or not mails:
             doc["mails"] = None
+        if result.get("eingang_fehler") or not inbox:
+            doc["eingang"] = None
+        if result.get("chats_fehler") or not chats:
+            doc["chats"] = None
     return days
 
 
@@ -456,7 +611,7 @@ def save_days(path, days):
         for day, doc in days.items():
             old = store.get(name, day) or {}
             new = dict(doc)
-            for part in ("termine", "mails"):
+            for part in ("termine", "mails", "eingang", "chats"):
                 if new.get(part) is None:
                     new[part] = old.get(part) if isinstance(old, dict) else []
                     new[part] = new[part] if isinstance(new[part], list) else []
@@ -488,6 +643,10 @@ def status_text(result, now=None):
         return f"Outlook: {text}" if not text.startswith("Outlook") else text
     parts = [f"Outlook gelesen {now:%H:%M}"]
     parts.append(f"{len(result.get('termine', []))} Termine, {len(result.get('mails', []))} Mails")
+    if result.get("chats"):
+        parts.append(f"{len(result['chats'])} Teams-Nachrichten")
+    if result.get("chats_fehler") == "kein_ordner":
+        parts.append("Teams-Chats nicht im Postfach gefunden")
     if result.get("kalender_fehler"):
         parts.append("Kalender nicht lesbar")
     if result.get("mails_fehler"):

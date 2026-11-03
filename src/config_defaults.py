@@ -90,6 +90,29 @@ def default_config():
         "rdm_enabled": True,
         "sophos_enabled": True,
         "forti_enabled": True,
+        # FortiClient: eigene Trace-Logs (sonst Adapter-Meldungen aus charon.log von Sophos)
+        "forti_paths": [r"C:\Program Files\Fortinet\FortiClient\logs\trace\FortiVPN_*.log"],
+        # RDM Better: Starts aus launcher.log (UTC), das Ende kommt aus der mstsc-Aufzeichnung
+        "rdmbetter_enabled": True,
+        "rdmbetter_paths": [r"%LOCALAPPDATA%\RDM Better\launcher.log"],
+        # Remotedesktop (mstsc): offene Verbindungen alle 30 Sekunden selbst aufzeichnen
+        "mstsc_enabled": True,
+        # Spuren vom PC (local_sources.py)
+        "pcstate_enabled": True,        # gesperrt, Ruhezustand, aus, abgemeldet
+        "shell_enabled": True,          # SSH (ssh, PuTTY, KiTTY, plink, WinSCP) und PowerShell-Fernsitzungen
+        "wlan_enabled": True,           # verbundenes WLAN (SSID)
+        "recent_files_enabled": True,   # zuletzt geöffnete Dateien (Recent-Ordner von Windows)
+        "recent_files_dirs": [r"%APPDATA%\Microsoft\Windows\Recent"],
+        "travel_enabled": True,         # vermutete Fahrten zu Terminen mit Ort und zu Kundennetzen
+        "travel_ignore_locations": [],  # Orte, die keine Fahrt sind (z. B. Besprechungsraum, Büro)
+        "travel_max_minutes": 90,       # längste Fahrt vor oder nach einem Termin
+        "browser_enabled": True,        # Browser-Verlauf: nur Domain und Ticketnummer
+        "browser_paths": [
+            r"%LOCALAPPDATA%\Microsoft\Edge\User Data\Default\History",
+            r"%LOCALAPPDATA%\Google\Chrome\User Data\Default\History",
+        ],
+        "browser_ignore_domains": ["google.com", "google.de", "bing.com", "duckduckgo.com",
+                                   "login.microsoftonline.com", "login.live.com", "localhost"],
         # Weitere VPN-Clients (OpenVPN usw.) über ihre Logdateien
         "vpn_enabled": True,
         "vpn_paths": VpnParser().default_paths,  # OpenVPN GUI, OpenVPN Connect, Sophos SSL VPN
@@ -173,7 +196,8 @@ def default_config():
 
         # Zeilen der Timeline, jede einzeln aus- und einblendbar (timeline_only.TIMELINE_ROWS)
         "timeline_rows": {"pc": True, "work": True, "doc": True, "m42": True, "rule": False, "ai": True,
-                          "call": True, "outlook": True, "vpn": True, "tv": True, "other": True},
+                          "call": True, "outlook": True, "vpn": True, "tv": True, "pcstate": True,
+                          "wlan": True, "files": True, "other": True},
         # Nachfragen nach erkannten Tätigkeiten ("Was hast du gemacht?")
         "prompt_mode": "window",       # "window" (kleines Fenster), "tray" (nur Meldung), "off"
         # Erst ab dieser Dauer (Minuten) nachfragen, je Art der Tätigkeit
@@ -249,4 +273,7 @@ def default_config():
         "teams_calls_enabled": False,       # Teams-Anrufe (Mikrofon-Nutzung von Teams, Teams-Logs)
         "teams_logs_enabled": True,         # zusätzlich die Logs des neuen Teams auswerten
         "teams_min_seconds": 30,            # kürzere Mikrofon-Nutzung zählt nicht als Anruf
+        "outlook_replies_enabled": True,    # eingegangene Mails, auf die du geantwortet hast
+        "teams_chats_enabled": False,       # Teams-Chats aus dem Postfach (über Outlook), nur Zeit und Domains
+        "teams_chats_external_only": True,  # nur Chats mit anderen Firmen
     }

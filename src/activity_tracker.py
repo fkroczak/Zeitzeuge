@@ -306,4 +306,7 @@ def app_label(app):
     return {"mstsc": "Remotedesktop", "chrome": "Chrome", "msedge": "Edge",
             "outlook": "Outlook", "winword": "Word", "excel": "Excel",
             "teams": "Teams", "ms-teams": "Teams", "putty": "PuTTY",
-            "explorer": "Explorer", "teamviewer": "TeamViewer"}.get(name.lower(), name)
+            "explorer": "Explorer", "teamviewer": "TeamViewer",
+            # Devolutions Password Manager heißt als Programm nur "devolutions.exe"
+            "devolutions": "Password Manager",
+            "remotedesktopmanager": "RDM"}.get(name.lower(), name)

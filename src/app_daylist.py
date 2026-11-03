@@ -89,7 +89,7 @@ class DayListMixin:
         for col in range(4):
             header.setSectionResizeMode(col, QHeaderView.Fixed)
         self.table.setRowCount(len(entries))
-        # Ansicht "Dokumentation": abgerechnete Zeit neben der Dauer (Abrechnungstakt)
+        # Ansicht "Dokumentation": abgerechnete Zeit im Hinweis der Dauer (Abrechnungstakt)
         billing = self.billing() if self.config.get("list_view") == "doc" else None
         index = self.customer_index()  # Kundenliste: Kunde zur Spur (customers.py)
         for row, a in enumerate(entries):
@@ -103,12 +103,14 @@ class DayListMixin:
             customer_text = customers.with_customer(a, index)
             details = a.get("details", "")
             details_item = QTableWidgetItem(new_details(details, type_label(a), customer_text))
+            # Spalte Dauer: nur die echte Dauer; die abgerechnete Zeit steht im Hinweis
+            duration_item = QTableWidgetItem(format_duration((end - start).total_seconds()))
+            note = (billing.note((end - start).total_seconds(), a.get("customer_name", ""))
+                    if billing and a.get("doc") else "")
             values = [
                 QTableWidgetItem(f"{start:%H:%M}"),
                 QTableWidgetItem(f"{end:%H:%M}"),
-                QTableWidgetItem(format_duration((end - start).total_seconds())
-                                 + (billing.note((end - start).total_seconds(), a.get("customer_name", ""))
-                                    if billing and a.get("doc") else "")),
+                duration_item,
                 type_item,
                 QTableWidgetItem(customer_text),
                 details_item,
@@ -117,6 +119,8 @@ class DayListMixin:
                 item.setToolTip(item.text())
                 self.table.setItem(row, col, item)
             details_item.setToolTip(details)  # im Hinweis alles, in der Zelle nur Neues
+            if note:
+                duration_item.setToolTip(duration_item.text() + note.replace(" →", ",", 1))
         for col in range(4):
             header.setSectionResizeMode(col, QHeaderView.ResizeToContents)  # einmal messen
         self.table.setUpdatesEnabled(True)
@@ -358,6 +362,46 @@ class DayListMixin:
                 QTimer.singleShot(0, self.vpn_sample)
         else:
             self.vpn_timer.stop()
+
+    def apply_mstsc_monitor(self):
+        """mstsc aufzeichnen, wenn „Remotedesktop (mstsc)“ oder RDM Better an ist (RDM Better braucht das Ende)."""
+        if self.config.get("mstsc_enabled", True) or self.config.get("rdmbetter_enabled", True):
+            if not self.mstsc_timer.isActive():
+                self.mstsc_timer.start(30 * 1000)
+                QTimer.singleShot(0, self.mstsc_sample)
+        else:
+            self.mstsc_timer.stop()
+
+    LOCAL_KEYS = ("pcstate_enabled", "shell_enabled", "wlan_enabled", "recent_files_enabled", "browser_enabled",
+                  "travel_enabled")
+
+    def apply_local_monitor(self):
+        """Spuren vom PC aufzeichnen, solange eine dieser Quellen an ist."""
+        self.timeline._local_index = None
+        if any(self.config.get(k, True) for k in self.LOCAL_KEYS):
+            if not self.local_timer.isActive():
+                self.local_timer.start(30 * 1000)
+                QTimer.singleShot(0, self.local_sample)
+        else:
+            self.local_timer.stop()
+
+    def local_sample(self):
+        try:
+            changed = self.timeline.local_reader.sample()
+        except Exception as e:  # Aufzeichnung darf das Programm nie stören
+            print(f"Fehler bei den Spuren vom PC: {e}")
+            return
+        if changed and self.isVisible():
+            self.timeline.refresh()
+
+    def mstsc_sample(self):
+        try:
+            changed = self.timeline.rdp_reader.sample()
+        except Exception as e:  # Aufzeichnung darf das Programm nie stören
+            print(f"Fehler bei der mstsc-Aufzeichnung: {e}")
+            return
+        if changed and self.current_date == QDate.currentDate() and self.isVisible():
+            self.timeline.refresh()
 
     def vpn_sample(self):
         if self.timeline.vpn_reader.sample() and self.current_date == QDate.currentDate() and self.isVisible():

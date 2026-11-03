@@ -2,11 +2,12 @@ Im Fenster **Einstellungen → Datenquellen** schaltest du jede Quelle in ihrer 
 
 | Gruppe | Quellen |
 |---|---|
-| Fernwartung | TeamViewer, RDM |
+| Fernwartung | TeamViewer, RDM, RDM Better, Remotedesktop (mstsc) |
 | VPN | Sophos Connect, FortiClient, weitere VPN-Logs (OpenVPN …) |
 | Telefon und Zeiten | 3CX-Anrufe, ITM-Personalzeiten, Matrix42, Outlook, Teams-Anrufe |
+| Dieser PC | PC gesperrt / Ruhezustand, WLAN, zuletzt geöffnete Dateien, Browser-Verlauf, SSH und PowerShell |
 
-Pfade, Zeitzonen und Anmeldungen stellst du über **Einrichten …** in der Kachel ein. Das Aufzeichnen der aktiven Fenster schaltest du in der Kachel „Aktive Fenster“, über den Pfeil am Knopf **Einstellungen** oder unten rechts in der Statuszeile.
+Jede Quelle hat ihr eigenes Fenster **Einrichten …** mit eigenem Schalter; dort stellst du Pfade, Zeitzonen und Anmeldungen ein. Das Aufzeichnen der aktiven Fenster schaltest du in der Kachel „Aktive Fenster“, über den Pfeil am Knopf **Einstellungen** oder unten rechts in der Statuszeile.
 
 # Zeitzeuge
 
@@ -18,12 +19,22 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
 
 ## Funktionen
 
-- **Tages-Timeline** von 00:00 bis 24:00 mit markierter Arbeitszeit. Telefonate, VPN und TeamViewer haben je eine feste Zeile („Tel“, „VPN“, „TV“). So siehst du sofort, wann du telefoniert hast oder verbunden warst. Darunter folgen RDM und weitere Verbindungen; überlappen sie sich, rücken sie in die nächste Zeile. Zeilen ohne Einträge an diesem Tag blendet Zeitzeuge aus, damit die Timeline ruhig bleibt. Beim Start und beim Blättern zeigt sie die Arbeitszeit des Tages (± 30 Minuten); wählst du **Ganzer Tag**, merkt sie sich das. Dicht aufeinanderfolgende offene Einträge stehen in der Zeile Dokumentation als ein Block („? 3 offen“), der Hinweis listet sie einzeln. Passt ein Name nicht in einen Balken, steht dort eine kürzere Form oder nichts, statt eines abgeschnittenen „Chro…“. Links steht eine Legende mit Name und Farbe jeder Zeile; sie bleibt beim Blättern stehen. Alle Zeilen passen ohne senkrechte Scrollleiste ins Fenster, bei vielen Zeilen werden sie niedriger (UMSCHALT + Mausrad blättert, falls es trotzdem eng wird).
+- **Tages-Timeline** von 00:00 bis 24:00 mit markierter Arbeitszeit. Telefonate, VPN und TeamViewer haben je eine feste Zeile („Tel“, „VPN“, „TV“). So siehst du sofort, wann du telefoniert hast oder verbunden warst. Darunter folgen RDM und weitere Verbindungen; überlappen sie sich, rücken sie in die nächste Zeile. Zeilen ohne Einträge an diesem Tag blendet Zeitzeuge aus, damit die Timeline ruhig bleibt. Beim Start und beim Blättern zeigt sie die Arbeitszeit des Tages (± 30 Minuten); wählst du **Ganzer Tag**, merkt sie sich das. Dicht aufeinanderfolgende offene Einträge stehen in der Zeile Dokumentation als ein Block („? 3 offen“), der Hinweis listet sie einzeln. Passt ein Name nicht in einen Balken, steht dort eine kürzere Form oder nichts, statt eines abgeschnittenen „Chro…“. Links steht eine Legende mit Name und Farbe jeder Zeile; sie bleibt beim Blättern stehen. Zeilen verschiebst du, indem du ihren Namen in der Legende anfasst und an eine andere Stelle ziehst (PC-Aktivität bleibt oben, Remote / Weitere unten); **Zeilen der Timeline → Reihenfolge zurücksetzen** stellt den Standard wieder her. Alle Zeilen passen ohne senkrechte Scrollleiste ins Fenster, bei vielen Zeilen werden sie niedriger (UMSCHALT + Mausrad blättert, falls es trotzdem eng wird).
 - **TeamViewer:** liest `Connections.txt` mit Sitzungs-ID, Beginn und Ende. Verbindungen unter 1 Minute werden ausgeblendet.
   - Statt der ID kannst du einen Namen vergeben: Rechtsklick auf die Verbindung (Tagesliste oder Timeline), dann **TeamViewer-ID benennen …**.
 - **Remote Desktop Manager (Devolutions):** liest `Connections.log`.
   - RDP-, SSH-, VPN-, FTP- und Website-Verbindungen mit Beginn und Ende.
   - Angezeigte Passwörter, Benutzernamen und Einmal-Passwörter (OTP).
+- **RDM Better:** liest die Starts aus `%LOCALAPPDATA%\RDM Better\launcher.log` (Ziel und Benutzer, Zeit in UTC, Zeitzeuge rechnet in Ortszeit um). RDM Better schreibt kein Ende; das kommt aus der mstsc-Aufzeichnung. Ohne passendes mstsc-Fenster steht ein Start 1 Minute in der Timeline.
+- **Remotedesktop (mstsc):** Zeitzeuge prüft alle 30 Sekunden, welche Remotedesktopverbindungen (`mstsc.exe`) offen sind, und speichert Beginn, Ende und Ziel in der Datenbank. Das Ziel kommt aus der Befehlszeile (`/v:` oder `.rdp`-Datei), sonst aus dem Fenstertitel. Sie stehen in der Timeline wie die RDP-Verbindungen aus RDM.
+- **Spuren vom eigenen PC** (jede einzeln schaltbar, alles verschlüsselt in der Datenbank):
+  - **PC gesperrt / Ruhezustand:** Zeitzeuge prüft alle 30 Sekunden, ob der Bildschirm gesperrt ist. Ruhezustand, ausgeschaltet und abgemeldet liest es aus dem Windows-Ereignisprotokoll „System“ (14 Tage zurück), auch für Zeiten, in denen Zeitzeuge nicht lief. Zeile „PC-Zustand“.
+  - **SSH und PowerShell:** offene Sitzungen von `ssh.exe`, PuTTY, KiTTY, plink, WinSCP und PowerShell mit `Enter-PSSession`/`-ComputerName`, alle 30 Sekunden, mit Ziel aus Befehlszeile oder Fenstertitel. Sie stehen bei den Verbindungen wie RDM, Zeitzeuge fragt danach.
+  - **Zuletzt geöffnete Dateien:** Dateiname und Uhrzeit aus `%APPDATA%\Microsoft\Windows\Recent`, alle 2 Minuten, ohne Inhalte. Zeile „Dateien & Web“.
+  - **Browser-Verlauf:** aus dem Verlauf von Edge und Chrome nur die Domain (z. B. „kunde.de“) und Ticketnummern, keine Adressen und keine Seitentitel. Aufrufe mit weniger als 5 Minuten Pause sind ein Block. Suchmaschinen und Anmeldeseiten fallen weg (`browser_ignore_domains`).
+  - **Netzwerk (WLAN und Kabel):** Name des Netzwerkprofils von Windows, alle 2 Minuten, auch über Kabel und Dockingstation; VPN-Adapter zählen nicht. Zeile „Netzwerk“. Rechtsklick → Kunde merken ordnet ein Kundennetz dem Kunden zu (Spur „Netzwerk“).
+  - **Fahrten (vermutet):** Hat ein Outlook-Termin einen Ort (kein Teams, kein Link), ist die Lücke ohne PC-Arbeit davor die Hinfahrt und danach die Rückfahrt (10–90 Minuten). Auch der Wechsel in oder aus einem Kundennetz mit Lücke zählt. Fahrten stehen in der Zeile Outlook; Zeitzeuge fragt danach und schlägt „Fahrt / Reise“ vor. Eigene Räume schließt `travel_ignore_locations` aus.
+  - Außer SSH/PowerShell lösen diese Spuren keine Nachfrage aus und zählen nicht im Tagesabschluss.
 - **VPN aus Sophos Connect:** liest `scvpn.log` und `scgui.log` aus `C:\Program Files (x86)\Sophos\Connect`. Jede Verbindung erscheint mit Beginn, Ende und dem Namen, den du ihr in Sophos Connect gegeben hast (z. B. „Kunde Müller“).
   - Ist der PC eingeschlafen, endet die Verbindung beim Einschlafen.
   - Sophos überschreibt seine Logs bei Neustarts und neuen Verbindungen. Zeitzeuge liest sie deshalb alle 2 Minuten und hebt alles in der Datenbank auf, egal welcher Tag gerade angezeigt wird.
@@ -32,7 +43,7 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
   - Steht dieselbe Verbindung auch in den Logs, zeigt Zeitzeuge nur den Eintrag aus den Logs, weil er den Namen kennt.
   - Ruhezustand, Absturz oder ein Neustart von Zeitzeuge beenden den laufenden Eintrag beim letzten Blick auf den Adapter.
   - Weitere Adapter (z. B. WireGuard) trägst du in der `zeitzeuge_config.json` unter `vpn_adapters` ein: Teil der Adapterbeschreibung und Name der Quelle. Mit `vpn_monitor_enabled: false` schaltest du die Aufzeichnung ab.
-- **VPN aus FortiClient:** steht ebenfalls in Sophos' `charon.log`, weil dort jede Änderung an Netzwerkadaptern landet. Zeitzeuge zeigt die Zeiten als „FortiClient“, aber ohne Namen der Verbindung. Ohne installiertes Sophos Connect gibt es diese Quelle nicht.
+- **VPN aus FortiClient:** Zeitzeuge liest `C:\Program Files\Fortinet\FortiClient\logs\trace\FortiVPN_1.log` (änderbar unter **Einrichten …**): jede Verbindung mit dem Namen aus FortiClient (z. B. „Tenbrink“), Beginn und Ende. Geht der PC in den Ruhezustand, endet die Verbindung dort. Fehlt die Datei, nimmt es die Adapter-Meldungen aus Sophos' `charon.log` (Zeiten ohne Namen).
   - Andere Ordner trägst du in der `zeitzeuge_config.json` unter `sophos_connect_dirs` ein.
 - **Telefonate aus 3CX:** Zeitzeuge liest die Anrufliste selbst aus dem 3CX-Webclient, ohne dass du die Webseite offen haben musst.
   - Alle gelesenen Anrufe landen in der Datenbank. So entsteht eine eigene Anrufliste, die auch offline bleibt.
@@ -49,6 +60,8 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
   - **Tagesliste → Matrix42-Abgleich:** Buchungen mit Ticketnummer, Lücken ohne Buchung und Verbindungen/Telefonate, die höchstens zur Hälfte gebucht sind („Nicht gebucht: TeamViewer“).
   - Die Statuszeile zeigt z. B. „Matrix42 gebucht 7:05 h, nicht gebucht 1:55 h, 1 Verbindung ohne Buchung“.
 - **Outlook und Teams** (standardmäßig aus): Zeitzeuge liest aus dem klassischen Outlook deine Termine, Teams-Besprechungen und gesendeten Mails. Sie stehen in der eigenen Zeile „Outlook“, in der Tagesliste als „Termin“, „Teams-Besprechung“ oder „Mail gesendet“. Eine gesendete Mail ist ein kurzer Block (3 Minuten, einstellbar). Standardmäßig zählen nur Mails an andere Firmen. Teams-Anrufe stehen in der Zeile „Tel“ wie 3CX. Danach fragt Zeitzeuge genauso „Was hast du gemacht?“. Liegt ein Anruf in einer Teams-Besprechung aus dem Kalender, trägt er deren Betreff.
+  - Eingegangene Mails, auf die du geantwortet oder die du weitergeleitet hast, stehen beim Eingang als „Mail beantwortet“.
+  - **Teams-Chats** (eigene Datenquelle, standardmäßig aus): Exchange legt Teams-Nachrichten auch im Postfach ab. Zeitzeuge liest daraus über Outlook nur Uhrzeit und die Domains der Gesprächspartner, keine Texte und keine Namen, und zeigt Blöcke „Chat mit kunde.de“.
   - Gespeichert werden nur Betreff, Zeit, Ort und die **Domains** der Teilnehmer oder Empfänger (z. B. „kunde.de“). Keine Adressen, keine Mailtexte. Alles liegt verschlüsselt in der Datenbank und bleibt auch ohne Outlook sichtbar.
   - Regeln ohne KI kennen die neuen Einträge (Teams-Anruf → Telefonsupport, Termin → Beratung / Abstimmung, Mail → E-Mail / Kommunikation). Die KI bekommt Termine und Mails als eigenen Abschnitt.
 - **Buchungsquote:** Zeitzeuge rechnet aus, wie viel deiner Personalzeit in Matrix42 gebucht ist. Ziel sind 80 % pro Tag. Unter 50 % ist die Quote rot (✗), bis unter dem Ziel gelb (!), ab dem Ziel bis 100 % grün (✓), darüber dunkelgrün (✓✓). Die Statuszeile zeigt „Quote heute 72 % · 7 Tage 81 %“. Ein Klick öffnet den Wochenabschluss. Die Anzeige erscheint nur, wenn Matrix42 Daten liefert.
@@ -138,7 +151,7 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
   - Fehlt eine TeamViewer- oder RDM-Logdatei, erscheint „Logs: TeamViewer fehlt“ mit gelbem Dreieck.
   - Ein Klick führt direkt zur Lösung: zur Anmeldung oder zu den Einstellungen. Fährst du mit der Maus darüber, steht dort der genaue Stand.
 - **Zeitlinie unter der Maus:** Eine gestrichelte senkrechte Linie folgt der Maus, oben steht die genaue Uhrzeit. Der Hinweis daneben zeigt, welche Einträge gerade liefen.
-- **Zeile „Personalzeit“:** Jeder gestempelte Abschnitt ist ein Block mit Beginn und Ende, z. B. „08:10 – 12:39“, Pausen sind Lücken. Bist du noch eingestempelt, steht dort „08:02 – jetzt“. Ohne ITM heißt die Zeile „Arbeitszeit“ und zeigt gestrichelt die Arbeitszeit aus den Einstellungen. Der helle Hintergrund markiert dieselben Zeiten. Blendest du die Zeile aus, steht die Personalzeit wieder im Hinweis unter der Maus.
+- **Zeile „Personalzeit“:** Jeder gestempelte Abschnitt ist ein Block mit Beginn und Ende, z. B. „08:10 – 12:39“, Pausen sind Lücken. Bist du noch eingestempelt, steht dort „08:02 – jetzt“. Ohne ITM heißt die Zeile „Arbeitszeit“ und zeigt gestrichelt die Arbeitszeit aus den Einstellungen; eine dort eingetragene Pause (Einstellungen → Allgemein → Arbeitszeiten) ist eine Lücke. Der helle Hintergrund markiert dieselben Zeiten. Blendest du die Zeile aus, steht die Personalzeit wieder im Hinweis unter der Maus.
 - **Details:** Fährst du über einen Eintrag, siehst du Kunde, Zeitraum und Dauer. Ein Klick in der Timeline, ein Doppelklick oder **Enter** in der Liste öffnet die Details.
 - **Immer aktuell:** Die Logs werden alle 2 Minuten geprüft. Mit F5 (Aktualisieren) liest du sie sofort neu ein, Matrix42 gleich mit (die Woche des angezeigten Tags). Gelesen werden nur Dateien, die sich geändert haben.
 - **Bedienung:**
@@ -282,7 +295,7 @@ Unter **Einstellungen → Datenquellen** schaltest du jede Quelle mit einem Klic
 
 | Gruppe | Quellen |
 |---|---|
-| Fernwartung | TeamViewer, RDM |
+| Fernwartung | TeamViewer, RDM, RDM Better, Remotedesktop (mstsc) |
 | VPN | Sophos Connect, FortiClient, weitere VPN-Logs (OpenVPN …) |
 | Telefon und Zeiten | 3CX-Anrufe, ITM-Personalzeiten |
 

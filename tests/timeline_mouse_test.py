@@ -71,6 +71,46 @@ QTest.keyClick(view, Qt.Key_Escape)
 QTest.mouseRelease(vp, Qt.LeftButton, Qt.NoModifier, at(660))
 assert len(requests) == 1 and view._drag_item is None, requests
 
+# Zeilen in der Legende verschieben: VPN nach ganz oben ziehen
+from PySide6.QtCore import QDate  # noqa: E402
+today = QDate.currentDate().toString("yyyy-MM-dd")
+view.activities = [
+    {"start": f"{today} 09:00:00", "end": f"{today} 10:00:00", "type": "VPN-Verbindung", "customer_name": "Kunde"},
+    {"start": f"{today} 11:00:00", "end": f"{today} 11:10:00", "type": "Telefonat", "customer_name": "Anruf"},
+]
+view._remote_cache.clear()
+view.draw_timeline(QDate.currentDate())
+QApplication.processEvents()
+keys = list(view._legend_keys)
+assert "vpn" in keys and "call" in keys and "work" in keys, keys
+orders = []
+view.row_order_changed.connect(orders.append)
+
+
+def legend_point(key):
+    y, h, _n, _c = view._legend[view._legend_keys.index(key)]
+    return QPoint(20, int(view.mapFromScene(0, y + h / 2).y()))
+
+
+first = next(k for k in view._legend_keys if k in timeline_only.MOVABLE_ROWS)
+top = legend_point(first)
+QTest.mousePress(vp, Qt.LeftButton, Qt.NoModifier, legend_point("vpn"))
+QTest.mouseMove(vp, top - QPoint(0, 4))
+QTest.mouseRelease(vp, Qt.LeftButton, Qt.NoModifier, top - QPoint(0, 4))
+assert orders and orders[-1].index("vpn") < orders[-1].index(first), orders
+assert not requests[1:], "Ziehen in der Legende ist kein Zeiteintrag"
+view.config["timeline_row_order"] = orders[-1]
+view.draw_timeline(QDate.currentDate())
+movable = [k for k in view._legend_keys if k in timeline_only.MOVABLE_ROWS]
+assert movable[0] == "vpn", movable
+# Neue Zeilen kommen an ihren Standardplatz, unbekannte fallen weg
+order = timeline_only.row_order({"timeline_row_order": ["vpn", "gibtsnicht", "work"]})
+assert order[0] == "vpn" and order.index("work") < order.index("doc") and "gibtsnicht" not in order, order
+assert order.index("tv") == 1, order  # fehlende Zeile hinter ihren Vorgänger
+assert sorted(timeline_only.row_order({})) == sorted(timeline_only.MOVABLE_ROWS)
+assert timeline_only.moved(["a", "b", "c"], "c", "a", False) == ["c", "a", "b"]
+assert timeline_only.moved(["a", "b", "c"], "a", "c", True) == ["b", "c", "a"]
+
 print("Timeline-Maus OK")
 view.shutdown()
 os._exit(0)

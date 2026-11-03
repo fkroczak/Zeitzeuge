@@ -18,6 +18,25 @@ Testversionen aus Branches tragen die Version ihres main-Stands plus Buildnummer
 26.10.2026 können sie nicht mehr lesen.
 
 ### Neu
+- **Jede Datenquelle hat ihr eigenes Einrichtungsfenster** mit eigenem Schalter: Sophos Connect, FortiClient, weitere VPN-Logs (OpenVPN …), Outlook und Teams-Anrufe sind jetzt getrennt (bisher teilten sich je mehrere ein Fenster). Auch TeamViewer und RDM lassen sich im Fenster ein- und ausschalten.
+- **RDM Better** als Datenquelle: Zeitzeuge liest die Starts aus `%LOCALAPPDATA%\RDM Better\launcher.log` (Ziel, Benutzer; Zeit in UTC, wird in Ortszeit umgerechnet). Das Ende kommt aus der mstsc-Aufzeichnung.
+- **Remotedesktop (mstsc)** als Datenquelle: Zeitzeuge prüft alle 30 Sekunden, welche Remotedesktopverbindungen offen sind, und zeigt sie mit Ziel, Beginn und Ende wie die Verbindungen aus RDM.
+- **FortiClient** liest `logs\trace\FortiVPN_1.log`: jede Verbindung mit ihrem Namen aus FortiClient (z. B. „Tenbrink“), Beginn und Ende; Ruhezustand beendet sie. Bisher kamen aus Sophos' `charon.log` nur Zeiten ohne Namen; das bleibt als Ersatz, wenn die Datei fehlt.
+- **Spuren vom eigenen PC** als neue Datenquellen, jede einzeln schaltbar und mit eigenem Fenster:
+  - **PC gesperrt / Ruhezustand:** Sperren prüft Zeitzeuge alle 30 Sekunden selbst. Ruhezustand, ausgeschaltet und abgemeldet liest es aus dem Windows-Ereignisprotokoll, auch für Zeiten, in denen Zeitzeuge nicht lief. Eigene Zeile „PC-Zustand“.
+  - **SSH und PowerShell:** offene Sitzungen von ssh.exe, PuTTY, KiTTY, plink, WinSCP und PowerShell-Fernsitzungen (Enter-PSSession) mit Ziel, Beginn und Ende, bei den Verbindungen wie RDM.
+  - **Zuletzt geöffnete Dateien:** Dateiname und Uhrzeit aus „Zuletzt verwendet“ von Windows, Zeile „Dateien & Web“.
+  - **Browser-Verlauf** von Edge und Chrome: nur Domain und Ticketnummer, keine Adressen und keine Seitentitel. Suchmaschinen und Anmeldeseiten fallen weg.
+  - **WLAN:** mit welchem Netz der PC verbunden war, eigene Zeile „WLAN“.
+  - Diese Spuren lösen keine Nachfrage „Was hast du gemacht?“ aus und zählen nicht im Tagesabschluss (SSH-Sitzungen schon, wie Verbindungen).
+- **Netzwerk statt nur WLAN:** Zeitzeuge merkt sich das Netzwerkprofil von Windows, auch über Kabel und Dockingstation (Büro, Homeoffice, Kundennetz). VPN-Adapter zählen nicht. Ein Netz lässt sich einem Kunden zuordnen (neue Spur „Netzwerk“ in der Kundenliste).
+- **Beantwortete Mails:** Eingegangene Mails, auf die du geantwortet oder die du weitergeleitet hast, stehen beim Eingang als „Mail beantwortet“ in der Zeile Outlook (Einstellung im Outlook-Fenster).
+- **Teams-Chats** als eigene Datenquelle (standardmäßig aus): aus dem Postfach über das klassische Outlook, nur Uhrzeit, eigene Nachricht ja/nein und die Domains der Gesprächspartner. Blöcke „Chat mit kunde.de“ in der Zeile Outlook.
+- **Fahrten (vermutet):** Vor und nach einem Outlook-Termin mit Ort schlägt Zeitzeuge die Lücke ohne PC-Arbeit als Hin- und Rückfahrt vor (10–90 Minuten), ebenso beim Wechsel in ein Kundennetz. Zeitzeuge fragt danach und schlägt „Fahrt / Reise“ vor.
+- **Devolutions Password Manager:** In der PC-Aktivität heißt `devolutions.exe` jetzt „Password Manager“, die Zuordnung ohne KI ordnet die Zeit als „Zugangsdaten / Sicherheit“ ein.
+- **Zeilen der Timeline verschieben:** Namen links in der Legende anfassen und an die gewünschte Stelle ziehen; eine blaue Linie zeigt, wo die Zeile landet. Die Reihenfolge bleibt gespeichert, **Zeilen der Timeline → Reihenfolge zurücksetzen** stellt den Standard wieder her. PC-Aktivität bleibt oben, Remote / Weitere unten.
+- **Pausen bei den Arbeitszeiten:** je Wochentag eine Pause (von – bis). Sie ist in der Timeline abgedunkelt und zählt nicht als Arbeitszeit. Das Fenster ist breiter und nicht mehr gestaucht.
+- Einstellungen: „Aktive Fenster aufzeichnen“, Fenster-Filter und Leerlauf stehen jetzt unter **Datenquellen**. Knöpfe heißen nach dem, was sie tun („Beenden …“, „Exportieren …“, „Im Explorer zeigen“ statt immer „Öffnen …“). **Zeitzeuge beenden** fragt vorher nach.
 - **Maus in der Timeline:** Mit links ziehen markiert einen Zeitraum und öffnet „Tätigkeit nachtragen“ mit genau diesen Zeiten. Mit rechts ziehen zoomt auf den Zeitraum (bisher die linke Taste). Einfacher Rechtsklick öffnet weiter das Menü, ESC bricht das Ziehen ab.
 - **Tagesabschluss** (Menü Ansicht, Wochenabschluss, Meldung bei Feierabend): Zeitzeuge stellt den Tag aus eigenen Tätigkeiten, Verbindungen, Telefonaten, KI-Vorschlägen, Regeln und PC-Aktivität zu Blöcken je Kunde zusammen, mit Ticket (aus Fenstertiteln oder zuletzt für den Kunden benutzt) und kurzem Tickettext. Ein Klick dokumentiert alles und bucht die Zeilen mit Ticket nacheinander in Matrix42. Oben steht, wie viel Prozent der Personalzeit danach erfasst sind. Ohne Rückfrage werden nur sichere Tickets gebucht. **Erkennung messen …** vergleicht die Vorschläge der letzten 20 Tage mit deinen echten Buchungen.
 - Zwei Menüs: **Ansicht** (Tagesliste, Zeilen der Timeline, Zeitraum, Übersichten, Design) und **Einstellungen** als eigenes Fenster mit Bereichen, Suche und Datenquellen als Kacheln mit Zustand. Schnellzugriffe (Tag, Heute, Ganzer Tag, Arbeitszeit …) bleiben in der Werkzeugleiste.
@@ -56,6 +75,8 @@ Testversionen aus Branches tragen die Version ihres main-Stands plus Buildnummer
 - Versionsnummer zählt von selbst (4.1.0, 4.1.1, …); steht im Fenstertitel, unter **Info**, in fehler.log, in der EXE und im Namen der Downloads.
 
 ### Behoben
+- Tagesliste: Die Spalte „Dauer“ zeigt nur noch die echte Dauer („35 min“) statt „35 min → abgerechnet 0:45 h“. Die abgerechnete Zeit steht im Hinweis beim Darüberfahren und weiter in der Statuszeile.
+- Einstellungen: kein Fokusrahmen mehr um den gewählten Bereich links. Der Datenordner steht mit `\` statt gemischten Schrägstrichen da, lange Pfade werden in der Mitte gekürzt (ganzer Pfad im Tooltip).
 - **Zeile Dokumentation leer** und wiederholt „Interner Fehler (AttributeError)“, sobald ein PC-Arbeitsblock noch offen war: der Text der Nachfrage las die Programmliste des Blocks als Einträge. Auch die Nachfrage selbst stürzte deshalb ab.
 - Matrix42: „Bei Matrix42 anmelden“ öffnete das Fenster nur kurz und schloss es gleich wieder. Es bleibt jetzt offen, bis die Anmeldung wirklich geklappt hat.
 - Absturz beim Start, wenn „3CX direkt auslesen“ eingeschaltet ist.

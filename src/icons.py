@@ -195,6 +195,43 @@ BRANDS = {
                    '<path d="M5 12h14M8.5 8.5 5 12l3.5 3.5M15.5 8.5 19 12l-3.5 3.5" stroke="#FFFFFF" '
                    'stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>'),
     "rdm": ('#E8412C', 'square', _BRAND_TEXT.format(y=15.5, size=8, text="RDM")),  # Devolutions RDM
+    "rdmbetter": ('#B2331F', 'square', _BRAND_TEXT.format(y=15.5, size=8, text="RDM+")),  # RDM Better
+    # Remotedesktop (mstsc): Bildschirm mit Pfeil
+    "mstsc": ('#0067B8', 'square',
+              '<rect x="5" y="6" width="14" height="9.5" rx="1.2" fill="none" stroke="#FFFFFF" '
+              'stroke-width="1.8"/><path d="M9.5 19h5M12 15.5V19M9.5 11h5M12.5 9l2 2-2 2" stroke="#FFFFFF" '
+              'stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>'),
+    # SSH / PowerShell: Eingabeaufforderung
+    "shell": ('#2B2F36', 'square',
+              '<path d="M6 8l4 4-4 4M12 16.5h6" stroke="#FFFFFF" stroke-width="2" fill="none" '
+              'stroke-linecap="round" stroke-linejoin="round"/>'),
+    # PC gesperrt: Schloss
+    "pcstate": ('#4B5563', 'square',
+                '<rect x="7" y="11" width="10" height="7.5" rx="1.2" fill="#FFFFFF"/>'
+                '<path d="M9 11V9a3 3 0 0 1 6 0v2" stroke="#FFFFFF" stroke-width="1.8" fill="none"/>'),
+    # WLAN: Bögen
+    "wlan": ('#0EA5A4', 'square',
+             '<path d="M5 10.5a10 10 0 0 1 14 0M7.5 13a6.5 6.5 0 0 1 9 0M10 15.5a3 3 0 0 1 4 0" '
+             'stroke="#FFFFFF" stroke-width="1.8" fill="none" stroke-linecap="round"/>'
+             '<circle cx="12" cy="18" r="1.3" fill="#FFFFFF"/>'),
+    # Dateien: Blatt mit Ecke
+    "files": ('#D97706', 'square',
+              '<path d="M8 5h6l3 3v11H8z" fill="none" stroke="#FFFFFF" stroke-width="1.8" '
+              'stroke-linejoin="round"/><path d="M14 5v3h3" fill="none" stroke="#FFFFFF" stroke-width="1.6"/>'),
+    # Browser: Globus
+    "browser": ('#2563EB', 'circle',
+                '<circle cx="12" cy="12" r="6.5" fill="none" stroke="#FFFFFF" stroke-width="1.6"/>'
+                '<path d="M5.5 12h13M12 5.5c-2.2 2.2-2.2 10.8 0 13M12 5.5c2.2 2.2 2.2 10.8 0 13" '
+                'fill="none" stroke="#FFFFFF" stroke-width="1.4"/>'),
+    # Teams-Chat: Sprechblase
+    "teamschat": ('#6264A7', 'square',
+                  '<path d="M5.5 6.5h13v8.5h-7l-3.5 3v-3h-2.5z" fill="none" stroke="#FFFFFF" '
+                  'stroke-width="1.8" stroke-linejoin="round"/>'),
+    # Fahrten: Auto
+    "travel": ('#B45309', 'square',
+               '<path d="M5 15.5v-3l2-4.5h10l2 4.5v3zM5 12.5h14" fill="none" stroke="#FFFFFF" '
+               'stroke-width="1.7" stroke-linejoin="round"/><circle cx="8.5" cy="16.5" r="1.5" '
+               'fill="#FFFFFF"/><circle cx="15.5" cy="16.5" r="1.5" fill="#FFFFFF"/>'),
     "sophos": ('#005BC8', 'square', _BRAND_TEXT.format(y=17, size=14, text="S")),
     # Fortinet: rotes Feld mit weißem Raster
     "forti": ('#DA291C', 'square',

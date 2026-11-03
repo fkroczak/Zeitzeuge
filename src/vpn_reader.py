@@ -1,5 +1,5 @@
 """
-VPN-Verbindungen aus Sophos Connect (und FortiClient) lesen.
+VPN-Verbindungen aus Sophos Connect und FortiClient lesen.
 
 Sophos Connect schreibt in seinen Programmordner:
 - scvpn.log:  "<ID> VPN state changed to connected/disconnected" (Beginn/Ende).
@@ -9,12 +9,16 @@ Sophos Connect schreibt in seinen Programmordner:
 - charon.log: strongSwan merkt jede Änderung an Netzwerkadaptern, auch an den
               Adaptern von FortiClient ("Fortinet ... changed state from Down to Up").
 
+FortiClient selbst schreibt Trace-Logs (logs\\trace\\FortiVPN_1.log) mit dem Namen jeder
+Verbindung. Stehen dort Verbindungen, haben sie Vorrang vor charon.log.
+
 Die Logs werden bei Neustarts und neuen Verbindungen überschrieben. Darum hält
 Zeitzeuge alles in vpn_verbindungen.json fest und zeichnet zusätzlich selbst auf:
 Alle 30 Sekunden prüft es, ob ein VPN-Adapter (Sophos, Fortinet, ...) verbunden
 ist. So bleiben die Zeiten erhalten, auch wenn die Logs fehlen oder gelöscht sind.
 """
 
+import glob
 import os
 import re
 import sys
@@ -172,6 +176,119 @@ def parse_fortinet(charon_lines, now=None):
     return result
 
 
+# FortiClient-Trace-Logs: FortiVPN_1.log hat ein festes Format (parse_fortivpn). Für andere
+# Dateien (z. B. sslvpndaemon_1.log, ältere Versionen) gibt es eine allgemeine Erkennung.
+FORTI_TRACE_PATHS = [
+    r"C:\Program Files\Fortinet\FortiClient\logs\trace\FortiVPN_*.log",  # auch _2, _3 … nach dem Rotieren
+]
+
+# FortiVPN_1.log (FortiClient 7):
+# [2026-10-12 17:21:19.3224544 UTC+02:00] [11544:11532] [FortiVPN  2204    info]
+#     fortivpn::StateMachine::HandleTunnelConnected "av" is connected.
+# Die Zeit ist Ortszeit; der Zusatz "UTC+02:00" stimmt im Winter nicht und zählt nicht.
+_FVPN_LINE = re.compile(r"^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})[^\]]*\] \[[\d:]+\] \[FortiVPN[^\]]*\] (.*)$")
+_FVPN_UP = re.compile(r'HandleTunnelConnected "(.+)" is connected\.')
+_FVPN_DOWN = re.compile(r'HandleTunnelDisconnected "(.+)" is disconnected\.')
+# Danach läuft kein Tunnel mehr: Ruhezustand, Dienst beendet oder neu gestartet
+_FVPN_ALL_DOWN = ("Sleep while machine is running", "Cleaning up process resources and exiting",
+                  "Starting FortiVPN")
+
+
+def parse_fortivpn(lines, now=None):
+    """Tunnel aus FortiVPN_1.log mit dem Namen der Verbindung aus FortiClient."""
+    now = now or datetime.now()
+    result, open_ = [], {}
+    last = None
+
+    def close(name, end, running=False):
+        start = open_.pop(name)
+        if (end - start).total_seconds() >= MIN_SECONDS:
+            result.append(_conn(start, end, "FortiClient", name, name,
+                                f"FortiClient: {name}", running))
+
+    for line in lines:
+        m = _FVPN_LINE.match(line.strip())
+        if not m:
+            continue
+        try:
+            when = datetime.strptime(m.group(1), TIME_FMT)
+        except ValueError:
+            continue
+        msg = m.group(2)
+        up = _FVPN_UP.search(msg)
+        down = None if up else _FVPN_DOWN.search(msg)
+        if up:
+            open_.setdefault(up.group(1), when)
+        elif down:
+            if down.group(1) in open_:
+                close(down.group(1), when)
+        elif any(text in msg for text in _FVPN_ALL_DOWN):
+            # Beim Neustart des Dienstes endet ein offener Tunnel beim letzten Eintrag davor
+            end = last if msg.startswith("Starting") and last else when
+            for name in list(open_):
+                close(name, max(end, open_[name]))
+        last = when
+    for name in list(open_):
+        close(name, max(now, open_[name]), running=True)
+    return result
+
+
+def is_fortivpn_log(lines):
+    return any(_FVPN_LINE.match(line.strip()) for line in lines[:50])
+_FORTI_DOWN = re.compile(r"\bdisconnect(ed|ing)?\b|tunnel (is )?down|connection (closed|terminated|lost)"
+                         r"|\bvpn (is )?down\b|status[=: ]+(down|disconnected)|getrennt", re.I)
+_FORTI_UP = re.compile(r"\bconnected\b|tunnel (is )?up\b|tunnel (established|connected)"
+                       r"|connection (established|succeeded|successful)|\bvpn (is )?up\b"
+                       r"|status[=: ]+(up|connected)|verbunden", re.I)
+_FORTI_NOT = re.compile(r"\bnot connected\b|\bfailed\b|\berror\b|\bconnecting\b", re.I)
+_FORTI_NAME = re.compile(r"(?:connection|tunnel|profile|vpn)[ _]?(?:name)?\s*[:=]\s*[\"']?([^\"',;\]\[]+)",
+                         re.I)
+
+
+def parse_forti_trace(lines, now=None, label="FortiClient"):
+    """FortiClient-Verbindungen aus einem Trace-Log (Beginn/Ende, Name wenn er dasteht)."""
+    if is_fortivpn_log(lines):
+        return parse_fortivpn(lines, now)
+    from log_parsers import VpnParser
+    parse_time = VpnParser().parse_time
+    now = now or datetime.now()
+    result = []
+    start = last = None
+    name = None
+
+    def close(end, running=False):
+        if (end - start).total_seconds() >= MIN_SECONDS:
+            shown = name or "FortiClient"
+            result.append(_conn(start, end, "FortiClient", f"{label}:{shown}", shown,
+                                f"FortiClient: {shown} ({label})", running))
+
+    for line in lines:
+        try:
+            when = parse_time(line, 0)
+        except Exception:
+            continue
+        if not when:
+            continue
+        if start and when.date() != start.date():
+            close(last)  # über Nacht ohne Ende: am letzten Eintrag abschließen
+            start = None
+        n = _FORTI_NAME.search(line)
+        if n and n.group(1).strip() and not start:
+            name = n.group(1).strip()[:60]
+        if _FORTI_DOWN.search(line):
+            if start:
+                close(when)
+                start = None
+        elif _FORTI_UP.search(line) and not _FORTI_NOT.search(line):
+            if not start:
+                start = when
+        last = when
+    if start:
+        close(max(now, start) if (now - last).total_seconds() < 120 else last,
+              running=(now - last).total_seconds() < 120)
+    return result
+
+
 def adapters_up():
     """Beschreibungen und Namen aller verbundenen Netzwerkadapter."""
     if sys.platform == "win32":
@@ -252,6 +369,8 @@ class VpnReader:
         self.adapters = adapters or DEFAULT_ADAPTERS
         self.adapter_func = adapter_func or adapters_up
         self.sources = None  # eingeschaltete Quellen ("Sophos", "FortiClient"); None = alle
+        self.forti_paths = FORTI_TRACE_PATHS  # Trace-Logs von FortiClient
+        self.forti_files_read = None
         self.files_read = None
         self._sig = None
         self._data = None
@@ -344,9 +463,16 @@ class VpnReader:
     def update_from_logs(self):
         """Sophos-/charon-Logs lesen und Neues ins Archiv übernehmen (nur wenn sich Dateien geändert haben)."""
         folders = [os.path.expandvars(d) for d in self.dirs if os.path.isdir(os.path.expandvars(d))]
+        traces = []
+        for p in self.forti_paths:
+            p = os.path.expandvars(p)
+            for path in (sorted(glob.glob(p)) if any(c in p for c in "*?[") else [p]):
+                if os.path.isfile(path) and path not in traces:
+                    traces.append(path)
         self.files_read = len(folders)
+        self.forti_files_read = len(traces)
         files = [os.path.join(d, n + s) for d in folders
-                 for n in ("scvpn.log", "scgui.log", "charon.log") for s in ("", ".old")]
+                 for n in ("scvpn.log", "scgui.log", "charon.log") for s in ("", ".old")] + traces
         sig = tuple(os.path.getmtime(f) if os.path.exists(f) else 0 for f in files)
         if sig == self._sig and not self._running_logs:
             return
@@ -355,9 +481,15 @@ class VpnReader:
         data = self._archive()
         names = data["names"]
         found = []
+        forti = []
+        for p in traces:
+            forti += parse_forti_trace(_read(p), label=os.path.splitext(os.path.basename(p))[0])
         for d in folders:
             found += parse_sophos(_lines(d, "scvpn.log"), _lines(d, "scgui.log"), names)
-            found += parse_fortinet(_lines(d, "charon.log"))
+            # FortiClient aus charon.log nur, wo die eigenen Logs von FortiClient nichts haben
+            found += [c for c in parse_fortinet(_lines(d, "charon.log"))
+                      if not any(_overlaps(c, f) for f in forti)]
+        found += forti
 
         def key(c):
             return (c.get("vpn_source"), c.get("vpn_id"), c.get("start"))

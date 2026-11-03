@@ -60,13 +60,20 @@ DEFAULT_RULES = [
      "category": "E-Mail / Kommunikation", "customer": "", "enabled": True},
     {"name": "Teams", "field": "app", "match": r"re:^(ms-)?teams(\.exe)?$",
      "category": "Beratung / Abstimmung", "customer": "", "enabled": True},
+    {"name": "Devolutions Password Manager", "field": "app",
+     "match": r"re:^devolutions(\.exe)?$",
+     "category": "Zugangsdaten / Sicherheit", "customer": "", "enabled": True},
     # Outlook und Teams (nur, wenn die Datenquelle eingeschaltet ist, gibt es solche Einträge)
     {"name": "Teams-Anruf", "field": "type", "match": "re:^Teams-Anruf",
      "category": "Telefonsupport", "customer": "", "enabled": True},
     {"name": "Termin / Teams-Besprechung (Outlook)", "field": "type",
      "match": "re:^(Termin|Teams-Besprechung)$",
      "category": "Beratung / Abstimmung", "customer": "", "enabled": True},
-    {"name": "Gesendete Mail (Outlook)", "field": "type", "match": "re:^Mail gesendet$",
+    {"name": "Gesendete Mail (Outlook)", "field": "type", "match": "re:^Mail (gesendet|beantwortet)$",
+     "category": "E-Mail / Kommunikation", "customer": "", "enabled": True},
+    {"name": "Fahrt (vermutet)", "field": "type", "match": "re:^Fahrt",
+     "category": "Fahrt / Reise", "customer": "", "enabled": True},
+    {"name": "Teams-Chat", "field": "type", "match": "re:^Teams-Chat$",
      "category": "E-Mail / Kommunikation", "customer": "", "enabled": True},
 ]
 

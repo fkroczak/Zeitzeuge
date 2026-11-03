@@ -138,7 +138,7 @@ def _hm(text):
     return text[11:16]
 
 
-OUTLOOK_TYPES = ("Termin", "Teams-Besprechung", "Mail gesendet")  # wie timeline_only.OUTLOOK_TYPES
+OUTLOOK_TYPES = ("Termin", "Teams-Besprechung", "Mail gesendet", "Mail beantwortet", "Teams-Chat")  # wie timeline_only.OUTLOOK_TYPES
 
 
 def build_day_text(entries, pc_entries=None):

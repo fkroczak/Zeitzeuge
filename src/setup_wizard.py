@@ -68,6 +68,23 @@ GROUPS = [
              missing="Connections.log nicht gefunden. Liegt sie woanders, trag den Pfad unter "
                      "„Einrichten …“ ein.",
              setup="edit_rdm_settings", button="Pfad einrichten …", file=True),
+        dict(id="rdmbetter", key="rdmbetter_enabled", title="RDM Better",
+             text="Liest aus launcher.log, wann du eine Remotedesktop-Verbindung gestartet hast. "
+                  "Das Ende kommt aus der Aufzeichnung „Remotedesktop (mstsc)“.",
+             detect=lambda c: _found(_exists(c.get("rdmbetter_paths"))),
+             missing="launcher.log nicht gefunden. Liegt sie woanders, trag den Pfad unter "
+                     "„Einrichten …“ ein.",
+             setup="edit_rdmbetter_settings", button="Pfad einrichten …", file=True),
+        dict(id="mstsc", key="mstsc_enabled", title="Remotedesktop (mstsc)",
+             text="Zeitzeuge prüft alle 30 Sekunden, welche Remotedesktopverbindungen offen sind, "
+                  "und zeigt sie mit Ziel, Beginn und Ende wie die Verbindungen aus RDM.",
+             detect=lambda c: "Läuft auf jedem Windows-PC.", missing="",
+             setup="edit_mstsc_settings", button="Einrichten …"),
+        dict(id="shell", key="shell_enabled", title="SSH und PowerShell",
+             text="Offene SSH-Sitzungen (ssh, PuTTY, KiTTY, plink, WinSCP) und PowerShell-"
+                  "Fernsitzungen, alle 30 Sekunden, mit Ziel, Beginn und Ende.",
+             detect=lambda c: "", missing="",
+             setup="edit_shell_settings", button="Einrichten …"),
     ]),
     ("VPN", [
         dict(id="sophos", key="sophos_enabled", title="Sophos Connect",
@@ -76,14 +93,16 @@ GROUPS = [
                   "ob ein VPN-Adapter verbunden ist.",
              detect=lambda c: _found(_sophos_log(c, "scvpn.log") or _exists(c.get("sophos_connect_dirs"))),
              missing="Sophos Connect ist auf diesem PC nicht installiert.",
-             file=True),
+             setup="edit_sophos_settings", button="Ordner einrichten …", file=True),
         dict(id="forti", key="forti_enabled", title="FortiClient",
-             text="FortiClient-Verbindungen stehen in Sophos' charon.log. Zeitzeuge zeigt die "
-                  "Zeiten, aber ohne Namen der Verbindung. Ohne Sophos Connect gibt es nur die "
-                  "eigene Adapter-Aufzeichnung.",
-             detect=lambda c: _found(_sophos_log(c, "charon.log")),
-             missing="charon.log nicht gefunden (kommt mit Sophos Connect).",
-             file=True),
+             text="Liest jede Verbindung mit ihrem Namen, Beginn und Ende aus FortiVPN_1.log "
+                  "von FortiClient. Fehlt die Datei, nimmt Zeitzeuge die "
+                  "Adapter-Meldungen aus Sophos' charon.log und prüft alle 30 Sekunden selbst, "
+                  "ob der Fortinet-Adapter verbunden ist.",
+             detect=lambda c: _found(_exists(c.get("forti_paths")) or _sophos_log(c, "charon.log")),
+             missing="Keine Logs von FortiClient gefunden. Eigene Pfade trägst du unter "
+                     "„Einrichten …“ ein.",
+             setup="edit_forti_settings", button="Pfade einrichten …", file=True),
         dict(id="vpn", key="vpn_enabled", title="Weitere VPN-Logs (OpenVPN …)",
              text="Logdateien oder Ordner weiterer VPN-Clients, z. B. OpenVPN GUI, OpenVPN Connect "
                   "oder Sophos SSL VPN.",
@@ -124,7 +143,12 @@ GROUPS = [
              text="Erkennt Teams-Anrufe an der Mikrofon-Nutzung von Teams und an den Teams-Logs. "
                   "Sie stehen in der Zeile „Tel“ wie 3CX-Anrufe.",
              detect=lambda c: "", missing="",
-             setup="open_outlook_settings", button="Teams einrichten …"),
+             setup="open_teams_settings", button="Teams einrichten …"),
+        dict(id="teamschat", key="teams_chats_enabled", title="Teams-Chats",
+             text="Wann du mit welcher Firma in Teams geschrieben hast, aus dem Postfach über Outlook. "
+                  "Nur Uhrzeit und Domain, keine Texte.",
+             detect=lambda c: "", missing="",
+             setup="edit_teams_chats_settings", button="Einrichten …"),
     ]),
     ("Dieser PC", [
         dict(id="tracking", key="tracking_enabled", title="Aktive Fenster aufzeichnen",
@@ -133,6 +157,31 @@ GROUPS = [
                   "aufgezeichnet. Mit dem Fenster-Filter lässt du private Programme weg.",
              detect=lambda c: "", missing="",
              setup="edit_tracking_filters", button="Fenster-Filter …"),
+        dict(id="pcstate", key="pcstate_enabled", title="PC gesperrt / Ruhezustand",
+             text="Wann der PC gesperrt, im Ruhezustand, aus oder abgemeldet war. Sperren prüft "
+                  "Zeitzeuge selbst, den Rest liest es aus dem Windows-Ereignisprotokoll.",
+             detect=lambda c: "", missing="",
+             setup="edit_pcstate_settings", button="Einrichten …"),
+        dict(id="wlan", key="wlan_enabled", title="Netzwerk (WLAN, Kabel)",
+             text="Mit welchem Netzwerk der PC verbunden war: Büro, Homeoffice oder beim Kunden vor Ort.",
+             detect=lambda c: "", missing="",
+             setup="edit_wlan_settings", button="Einrichten …"),
+        dict(id="files", key="recent_files_enabled", title="Zuletzt geöffnete Dateien",
+             text="Dateiname und Uhrzeit aus der Liste „Zuletzt verwendet“ von Windows. "
+                  "Inhalte liest Zeitzeuge nicht.",
+             detect=lambda c: _found(_exists(c.get("recent_files_dirs"))), missing="",
+             setup="edit_recent_files_settings", button="Ordner einrichten …", file=True),
+        dict(id="browser", key="browser_enabled", title="Browser-Verlauf",
+             text="Aus dem Verlauf von Edge und Chrome nur Domains und Ticketnummern, "
+                  "keine Adressen und keine Seitentitel.",
+             detect=lambda c: _found(_exists(c.get("browser_paths"))),
+             missing="Kein Verlauf von Edge oder Chrome gefunden.",
+             setup="edit_browser_settings", button="Pfade einrichten …", file=True),
+        dict(id="travel", key="travel_enabled", title="Fahrten (vermutet)",
+             text="Hin- und Rückfahrt zu Terminen mit Ort und zu Kundennetzen als Vorschlag "
+                  "„Fahrt / Reise“.",
+             detect=lambda c: "", missing="",
+             setup="edit_travel_settings", button="Einrichten …"),
         dict(id="work", key=None, title="Arbeitszeiten",
              text="Arbeitszeit je Wochentag. Sie gilt, solange keine Personalzeiten aus der "
                   "ITM-Zeiterfassung kommen.",

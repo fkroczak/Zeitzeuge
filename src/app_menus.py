@@ -15,7 +15,9 @@ import datastore
 import icons
 import storage
 from log_parsers import VpnParser
-from vpn_reader import vpn_sources
+from local_sources import DEFAULT_BROWSER_HISTORY, DEFAULT_RECENT_DIR
+from rdp_reader import DEFAULT_LAUNCHER_LOG
+from vpn_reader import DEFAULT_DIRS as VPN_DEFAULT_DIRS, FORTI_TRACE_PATHS, vpn_sources
 from settings_dialogs import ActivityTypeSettingsDialog, ConnectionSettingsDialog, WorkHoursDialog
 from theme import GERMAN, STYLESHEET, THEMES
 from timeline_only import DEFAULT_CALL_COLORS, LEGEND_BANDS, LEGEND_FIXED, TIMELINE_ROWS
@@ -345,7 +347,7 @@ class MenusMixin:
         menu.addSeparator()
         self.row_actions = {}
         for key, text in TIMELINE_ROWS:
-            if key in ("doc", "call"):  # Gruppen: Zeit | Auswertung | Verbindungen
+            if key in ("doc", "call", "pcstate"):  # Gruppen: Zeit | Auswertung | Verbindungen | PC
                 menu.addSeparator()
             action = QAction(text, self)
             action.setCheckable(True)
@@ -355,10 +357,22 @@ class MenusMixin:
             self._add_check(menu, action, "#4682B4")
         menu.addSeparator()
         self._icon_actions.append((menu.addAction("A&lle Zeilen einblenden", self.show_all_rows), "rows"))
+        menu.addAction("&Reihenfolge zurücksetzen", lambda: self.set_row_order(None))
         hint = menu.addAction("Leere Zeilen blendet Zeitzeuge von selbst aus")
+        hint.setEnabled(False)
+        hint = menu.addAction("Verschieben: Zeilenname links anfassen und ziehen")
         hint.setEnabled(False)
         self.update_row_icons()
         return menu
+
+    def set_row_order(self, order):
+        """Zeilen der Timeline in dieser Reihenfolge (aus der Legende gezogen); None = Standard."""
+        if order:
+            self.config["timeline_row_order"] = list(order)
+        else:
+            self.config.pop("timeline_row_order", None)
+        mt.save_config(self.config)
+        self.timeline.draw_timeline(self.current_date)
 
     def show_rows_menu(self, pos):
         """Rechtsklick auf die Legende der Timeline."""
@@ -464,18 +478,28 @@ class MenusMixin:
 
     # Datenquellen: Schlüssel in der Config, Text im Menü (Gruppen mit Trennlinie)
     SOURCES = [
-        [("teamviewer_enabled", "&TeamViewer"), ("rdm_enabled", "&RDM (Remote Desktop Manager)")],
+        [("teamviewer_enabled", "&TeamViewer"), ("rdm_enabled", "&RDM (Remote Desktop Manager)"),
+         ("rdmbetter_enabled", "RDM &Better"), ("mstsc_enabled", "Remote&desktop (mstsc)"),
+         ("shell_enabled", "SS&H und PowerShell")],
         [("sophos_enabled", "&Sophos Connect"), ("forti_enabled", "&FortiClient"),
          ("vpn_enabled", "&Weitere VPN-Logs (OpenVPN …)")],
         [("pbx_reader_enabled", "&3CX-Anrufe"), ("itm_reader_enabled", "&ITM-Personalzeiten"),
-         ("m42_reader_enabled", "&Matrix42-Buchungen (Firmennetz)"),
-         ("outlook_enabled", "&Outlook (Termine, Mails)"), ("teams_calls_enabled", "Tea&ms-Anrufe")],
+         ("m42_reader_enabled", "&Matrix42-Buchungen (Firmennetz)")],
+        [("outlook_enabled", "&Outlook (Termine, Mails)"), ("teams_calls_enabled", "Tea&ms-Anrufe"),
+         ("teams_chats_enabled", "Teams-&Chats")],
+        [("pcstate_enabled", "&PC gesperrt / Ruhezustand"), ("wlan_enabled", "&Netzwerk (WLAN, Kabel)"),
+         ("recent_files_enabled", "&Zuletzt geöffnete Dateien"), ("browser_enabled", "Bro&wser-Verlauf"),
+         ("travel_enabled", "&Fahrten (vermutet)")],
     ]
 
-    SOURCE_BRANDS = {"teamviewer_enabled": "teamviewer", "rdm_enabled": "rdm", "sophos_enabled": "sophos",
+    SOURCE_BRANDS = {"teamviewer_enabled": "teamviewer", "rdm_enabled": "rdm",
+                     "rdmbetter_enabled": "rdmbetter", "mstsc_enabled": "mstsc", "shell_enabled": "shell",
+                     "pcstate_enabled": "pcstate", "wlan_enabled": "wlan", "recent_files_enabled": "files",
+                     "browser_enabled": "browser", "sophos_enabled": "sophos",
                      "forti_enabled": "forti", "vpn_enabled": "vpn", "pbx_reader_enabled": "pbx",
                      "itm_reader_enabled": "itm", "m42_reader_enabled": "m42", "outlook_enabled": "outlook",
-                     "teams_calls_enabled": "teams"}
+                     "teams_calls_enabled": "teams", "teams_chats_enabled": "teamschat",
+                     "travel_enabled": "travel"}
 
     def _build_sources_menu(self):
         """Jede Datenquelle als Schalter, die Einrichtung (Pfade, Anmeldung) im Untermenü."""
@@ -491,19 +515,32 @@ class MenusMixin:
                                                                           "itm_reader_enabled",
                                                                           "m42_reader_enabled",
                                                                           "outlook_enabled",
-                                                                          "teams_calls_enabled"))))
+                                                                          "teams_calls_enabled",
+                                                                          "teams_chats_enabled"))))
                 action.toggled.connect(lambda on, k=key: self.toggle_source(k, on))
                 action.setIcon(icons.brand_icon(self.SOURCE_BRANDS[key]))
                 self.source_actions[key] = action
         menu.addSeparator()
         setup = menu.addMenu("&Einrichten")
         for entry in (("Team&Viewer-Logs …", self.edit_teamviewer_settings, "teamviewer"),
-                                  ("&RDM-Logs …", self.edit_rdm_settings, "rdm"),
-                                  ("&VPN-Logs …", self.edit_vpn_settings, "vpn"), None,
-                                  ("&3CX …", self.open_pbx_settings, "pbx"),
-                                  ("&ITM-Personalzeiten …", self.open_itm_settings, "itm"),
-                                  ("&Matrix42 …", self.open_m42_settings, "m42"),
-                                  ("&Outlook und Teams …", self.open_outlook_settings, "outlook")):
+                      ("&RDM-Logs …", self.edit_rdm_settings, "rdm"),
+                      ("RDM &Better …", self.edit_rdmbetter_settings, "rdmbetter"),
+                      ("Remote&desktop (mstsc) …", self.edit_mstsc_settings, "mstsc"),
+                      ("SS&H und PowerShell …", self.edit_shell_settings, "shell"), None,
+                      ("&Sophos Connect …", self.edit_sophos_settings, "sophos"),
+                      ("&FortiClient …", self.edit_forti_settings, "forti"),
+                      ("Weitere &VPN-Logs …", self.edit_vpn_settings, "vpn"), None,
+                      ("&3CX …", self.open_pbx_settings, "pbx"),
+                      ("&ITM-Personalzeiten …", self.open_itm_settings, "itm"),
+                      ("&Matrix42 …", self.open_m42_settings, "m42"), None,
+                      ("&Outlook …", self.open_outlook_settings, "outlook"),
+                      ("Tea&ms-Anrufe …", self.open_teams_settings, "teams"),
+                      ("Teams-&Chats …", self.edit_teams_chats_settings, "teamschat"), None,
+                      ("&PC gesperrt / Ruhezustand …", self.edit_pcstate_settings, "pcstate"),
+                      ("&Netzwerk …", self.edit_wlan_settings, "wlan"),
+                      ("&Zuletzt geöffnete Dateien …", self.edit_recent_files_settings, "files"),
+                      ("Bro&wser-Verlauf …", self.edit_browser_settings, "browser"),
+                      ("&Fahrten (vermutet) …", self.edit_travel_settings, "travel")):
             if entry is None:
                 setup.addSeparator()  # Webseiten im Hintergrund
                 continue
@@ -559,7 +596,7 @@ class MenusMixin:
                 self.start_m42_reader()
             else:
                 self.stop_m42_reader()
-        elif key in ("outlook_enabled", "teams_calls_enabled"):
+        elif key in ("outlook_enabled", "teams_calls_enabled", "teams_chats_enabled"):
             if on and self.is_paw():
                 self.statusBar().showMessage("Outlook und Teams: auf der PAW aus. Daten kommen über "
                                              "„Daten übernehmen“.", 8000)
@@ -571,6 +608,10 @@ class MenusMixin:
         elif key in ("sophos_enabled", "forti_enabled"):
             self.timeline.vpn_reader.sources = vpn_sources(self.config)
             self.apply_vpn_monitor()
+        elif key in ("mstsc_enabled", "rdmbetter_enabled"):
+            self.apply_mstsc_monitor()
+        elif key in self.LOCAL_KEYS:
+            self.apply_local_monitor()
         self.timeline.refresh()  # neu einlesen und zeichnen
 
     def show_about(self):
@@ -670,49 +711,204 @@ class MenusMixin:
 
     # ---------------------- Einstellungen / Dialoge ---------------------------
 
-    def _edit_log_settings(self, key, default_path, title, **options):
+    def _edit_log_settings(self, key, default_path, title, after=None, **options):
+        """Einrichtungsfenster einer Datenquelle: eigener Schalter, Pfade, Zeitzone."""
         defaults = default_path if isinstance(default_path, list) else [default_path]
+        options.setdefault("enabled_text", "Diese Datenquelle auslesen und anzeigen")
         dialog = ConnectionSettingsDialog(
             self.config, key, [os.path.expandvars(p) for p in defaults], title, self, **options
         )
         if dialog.exec() == QDialog.Accepted:
-            self.config[f"{key}_paths"] = dialog.get_paths()
-            if dialog.enabled_box:
-                self.config[f"{key}_enabled"] = dialog.enabled_box.isChecked()
-            self.config[f"{key}_timezone_correction"] = dialog.get_timezone_correction()
+            self.config.update(dialog.values())
             mt.save_config(self.config)
             self.sync_source_actions()
+            if after:
+                after()
             self.timeline.refresh()
 
     def edit_teamviewer_settings(self):
         self._edit_log_settings(
             "teamviewer", r"%APPDATA%\TeamViewer\Connections.txt",
             "TeamViewer-Logeinstellungen",
+            enabled_text="TeamViewer-Verbindungen auslesen und anzeigen",
         )
 
     def edit_rdm_settings(self):
         self._edit_log_settings(
             "rdm", r"%LOCALAPPDATA%\Devolutions\RemoteDesktopManager\Connections.log",
             "RDM-Logeinstellungen",
+            enabled_text="RDM-Sitzungen auslesen und anzeigen",
+        )
+
+    def edit_rdmbetter_settings(self):
+        self._edit_log_settings(
+            "rdmbetter", DEFAULT_LAUNCHER_LOG, "RDM Better",
+            enabled_text="Starts aus RDM Better auslesen und anzeigen",
+            timezone=False,
+            hint="RDM Better schreibt in launcher.log nur, wann du eine Verbindung startest "
+                 "(Zeit in UTC, Zeitzeuge rechnet sie in Ortszeit um). Das Ende erkennt Zeitzeuge "
+                 "am Fenster der Remotedesktopverbindung (mstsc), das es dafür alle 30 Sekunden "
+                 "prüft. Findet es keins, steht ein Start 1 Minute in der Timeline.",
+            after=self.apply_mstsc_monitor,
+        )
+
+    def edit_mstsc_settings(self):
+        self._edit_log_settings(
+            "mstsc", [], "Remotedesktop (mstsc)",
+            enabled_text="Remotedesktop-Verbindungen (mstsc) aufzeichnen",
+            paths=False, timezone=False,
+            hint="Zeitzeuge prüft alle 30 Sekunden, welche Remotedesktopverbindungen (mstsc.exe) "
+                 "offen sind, und speichert Beginn, Ende und Ziel (z. B. DC01 oder 10.10.80.35). "
+                 "Sie stehen in der Timeline wie die Verbindungen aus RDM. Auch Starts aus "
+                 "RDM Better bekommen so ihr Ende.",
+            after=self.apply_mstsc_monitor,
+        )
+
+    def edit_shell_settings(self):
+        self._edit_log_settings(
+            "shell", [], "SSH und PowerShell",
+            enabled_text="SSH- und PowerShell-Fernsitzungen aufzeichnen",
+            paths=False, timezone=False,
+            hint="Zeitzeuge prüft alle 30 Sekunden, welche Sitzungen offen sind: ssh.exe, PuTTY, "
+                 "KiTTY, plink, WinSCP und PowerShell mit Enter-PSSession oder -ComputerName in "
+                 "der Befehlszeile. Gespeichert werden Ziel, Beginn und Ende. Sie stehen in der "
+                 "Timeline bei den Verbindungen wie RDM.",
+            after=self.apply_local_monitor,
+        )
+
+    def edit_pcstate_settings(self):
+        self._edit_log_settings(
+            "pcstate", [], "PC gesperrt / Ruhezustand",
+            enabled_text="Sperren, Ruhezustand, Ausschalten und Abmelden anzeigen",
+            paths=False, timezone=False,
+            hint="Gesperrt: Zeitzeuge prüft alle 30 Sekunden selbst, ob der Bildschirm gesperrt ist. "
+                 "Ruhezustand, ausgeschaltet und abgemeldet liest es aus dem Windows-"
+                 "Ereignisprotokoll „System“, auch für Zeiten, in denen Zeitzeuge nicht lief "
+                 "(14 Tage zurück). Alles steht in der Zeile „PC-Zustand“.",
+            after=self.apply_local_monitor,
+        )
+
+    def edit_wlan_settings(self):
+        self._edit_log_settings(
+            "wlan", [], "Netzwerk",
+            enabled_text="Verbundene Netzwerke aufzeichnen (WLAN und Kabel)",
+            paths=False, timezone=False,
+            hint="Zeitzeuge merkt sich alle 2 Minuten, mit welchem Netzwerk der PC verbunden ist: den "
+                 "Namen, den Windows dem Netz gibt (beim WLAN der WLAN-Name, im Firmennetz meist die "
+                 "Domäne), auch über Kabel und Dockingstation. VPN-Adapter zählen nicht. So siehst du "
+                 "in der Zeile „Netzwerk“, ob du im Büro, im Homeoffice oder beim Kunden warst. "
+                 "Rechtsklick auf ein Netz → „Kunde merken“ ordnet es einem Kunden zu.",
+            after=self.apply_local_monitor,
+        )
+
+    def edit_recent_files_settings(self):
+        self._edit_log_settings(
+            "recent_files", [DEFAULT_RECENT_DIR], "Zuletzt geöffnete Dateien",
+            enabled_text="Zuletzt geöffnete Dateien anzeigen",
+            paths_key="recent_files_dirs", path_title="Ordner mit Verknüpfungen",
+            files=False, folders=True, timezone=False,
+            hint="Windows legt für jede geöffnete Datei eine Verknüpfung im Ordner „Recent“ an. "
+                 "Zeitzeuge liest daraus Dateiname und Uhrzeit (alle 2 Minuten) und hebt sie auf, "
+                 "auch wenn Windows die Liste kürzt. Inhalte liest es nicht.",
+            after=self.apply_local_monitor,
+        )
+
+    def edit_browser_settings(self):
+        self._edit_log_settings(
+            "browser", list(DEFAULT_BROWSER_HISTORY), "Browser-Verlauf",
+            enabled_text="Browser-Verlauf auswerten (nur Domains und Ticketnummern)",
+            path_title="Verlauf-Dateien (Edge, Chrome)", timezone=False,
+            hint="Zeitzeuge liest alle 2 Minuten den Verlauf von Edge und Chrome (14 Tage zurück) und "
+                 "behält davon nur die Domain (z. B. „kunde.de“) und Ticketnummern aus Adresse oder "
+                 "Titel. Adressen und Seitentitel speichert es nicht. Aufrufe derselben Domain mit "
+                 "weniger als 5 Minuten Pause sind ein Block. Suchmaschinen und Anmeldeseiten "
+                 "fallen weg (browser_ignore_domains in der zeitzeuge_config.json).",
+            after=self.apply_local_monitor,
+        )
+
+    def edit_teams_chats_settings(self):
+        if self.is_paw():
+            self.statusBar().showMessage("Teams-Chats: auf der PAW aus.", 8000)
+            return
+        self._edit_log_settings(
+            "teams_chats", [], "Teams-Chats",
+            enabled_text="Teams-Chats aus dem Postfach lesen (über Outlook)",
+            paths=False, timezone=False,
+            hint="Exchange legt jede Teams-Nachricht auch in deinem Postfach ab. Zeitzeuge liest sie "
+                 "über das klassische Outlook (wie Termine und Mails, Outlook muss dafür nicht als "
+                 "Datenquelle an sein) und behält nur Uhrzeit, ob die Nachricht von dir war, und die "
+                 "Domains der Gesprächspartner (z. B. „kunde.de“). Keine Texte, keine Namen. "
+                 "Nachrichten mit derselben Firma und weniger als 10 Minuten Pause sind ein Block "
+                 "„Chat mit kunde.de“ in der Zeile Outlook. Standardmäßig nur Chats mit anderen Firmen "
+                 "(teams_chats_external_only).",
+            after=self.apply_outlook_reader,
+        )
+
+    def edit_travel_settings(self):
+        self._edit_log_settings(
+            "travel", [], "Fahrten (vermutet)",
+            enabled_text="Fahrten vermuten und vorschlagen",
+            paths=False, timezone=False,
+            hint="Hat ein Outlook-Termin einen Ort (kein Teams, kein Link), ist die Zeit davor ohne "
+                 "Arbeit am PC vermutlich die Hinfahrt, die Zeit danach die Rückfahrt (höchstens "
+                 "90 Minuten, ab 10 Minuten). Ebenso eine Lücke beim Wechsel in ein Kundennetz "
+                 "(Netzwerk mit Kunde in der Kundenliste). Fahrten stehen neben dem Termin in der "
+                 "Zeile Outlook, Zeitzeuge fragt danach wie bei Verbindungen und schlägt "
+                 "„Fahrt / Reise“ vor. Orte, die keine Fahrt sind (z. B. Besprechungsraum), trägst "
+                 "du unter travel_ignore_locations in der zeitzeuge_config.json ein.",
+        )
+
+    def edit_sophos_settings(self):
+        self._edit_log_settings(
+            "sophos", list(VPN_DEFAULT_DIRS), "Sophos Connect",
+            enabled_text="Sophos-Connect-Verbindungen auslesen und anzeigen",
+            paths_key="sophos_connect_dirs", path_title="Ordner von Sophos Connect",
+            files=False, folders=True, timezone=False,
+            hint="Zeitzeuge liest scvpn.log und scgui.log aus dem Programmordner von Sophos "
+                 "Connect, mit dem Namen, den du der Verbindung gegeben hast. Zusätzlich prüft "
+                 "es alle 30 Sekunden, ob der Sophos-Adapter verbunden ist.",
+            after=self.apply_vpn_settings,
+        )
+
+    def edit_forti_settings(self):
+        self._edit_log_settings(
+            "forti", list(FORTI_TRACE_PATHS), "FortiClient",
+            enabled_text="FortiClient-Verbindungen auslesen und anzeigen",
+            path_title="Logdateien von FortiClient", timezone=False,
+            hint="Zeitzeuge liest FortiVPN_1.log aus logs\\trace von FortiClient: jede Verbindung "
+                 "mit ihrem Namen aus FortiClient (z. B. „Tenbrink“), Beginn und Ende. Ruhezustand "
+                 "beendet eine Verbindung. Fehlt die Datei, nimmt es die Adapter-Meldungen aus "
+                 "charon.log von Sophos Connect. Zusätzlich prüft es alle 30 Sekunden, ob der "
+                 "Fortinet-Adapter verbunden ist. * im Pfad steht für beliebige Zeichen.",
+            after=self.apply_vpn_settings,
         )
 
     def edit_vpn_settings(self):
         self._edit_log_settings(
-            "vpn", VpnParser().default_paths, "VPN-Verbindungen",
+            "vpn", VpnParser().default_paths, "Weitere VPN-Logs (OpenVPN …)",
             enabled_text="Diese VPN-Logs auslesen und anzeigen",
             folders=True,
             hint="Logdateien oder Ordner deiner VPN-Clients, z. B. OpenVPN GUI "
                  "(%USERPROFILE%\\OpenVPN\\log), OpenVPN Connect oder Sophos SSL VPN. "
                  "Bei einem Ordner zählen alle .log- und .txt-Dateien darin, "
                  "der Dateiname wird zum Verbindungsnamen. Sophos Connect und FortiClient "
-                 "erkennt Zeitzeuge von selbst.",
+                 "haben eigene Fenster.",
         )
+
+    def apply_vpn_settings(self):
+        """Sophos-/FortiClient-Einstellungen an den VPN-Leser geben."""
+        vpn = self.timeline.vpn_reader
+        vpn.dirs = self.config.get("sophos_connect_dirs") or VPN_DEFAULT_DIRS
+        vpn.forti_paths = self.config.get("forti_paths") or FORTI_TRACE_PATHS
+        vpn.sources = vpn_sources(self.config)
+        vpn._sig = None  # neu lesen
         self.apply_vpn_monitor()
 
     def edit_work_hours(self):
         dialog = WorkHoursDialog(self.config, self)
         if dialog.exec() == QDialog.Accepted:
             self.config["work_days"] = dialog.get_work_days()
+            self.config["work_breaks"] = dialog.get_work_breaks()
             mt.save_config(self.config)
             self.timeline._first_draw = True  # auf die neue Arbeitszeit springen
             self.timeline.draw_timeline(self.current_date)
@@ -739,6 +935,7 @@ class MenusMixin:
         new_dir = QFileDialog.getExistingDirectory(
             self, f"Speicherort wählen (bisher: {mt.DATA_DIR})", mt.DATA_DIR
         )
+        new_dir = os.path.normpath(new_dir) if new_dir else new_dir  # Qt liefert / statt Backslash
         if not new_dir or os.path.abspath(new_dir) == os.path.abspath(mt.DATA_DIR):
             return
         answer = QMessageBox.question(
