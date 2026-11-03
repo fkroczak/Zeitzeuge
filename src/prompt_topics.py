@@ -148,8 +148,10 @@ def matches_span(entry, span, index=None, share=0.5):
 
 
 def parts_text(entry):
-    """„dazu Telefonat, VPN-Verbindung“ für Themen mit mehreren Teilen ('' sonst)."""
-    parts = entry.get("parts") or []
+    """„dazu Telefonat, VPN-Verbindung“ für Themen mit mehreren Teilen ('' sonst).
+
+    PC-Arbeitsblöcke führen unter "parts" nur (Programm, Sekunden)-Paare, die zählen nicht."""
+    parts = [p for p in entry.get("parts") or [] if isinstance(p, dict)]
     if len(parts) < 2:
         return ""
     main = entry.get("type")

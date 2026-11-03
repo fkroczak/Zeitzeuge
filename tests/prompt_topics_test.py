@@ -98,3 +98,12 @@ def test_journal_ignore_topic_covers_parts_and_changed_entries():
     assert j.is_ignored(VPN) and j.is_ignored(RDP) and j.is_ignored(topic)
     assert j.is_ignored(e("08:59", "10:04", "VPN-Verbindung", "Kanzlei Schmidt - SSL VPN"))
     assert not j.is_ignored(OTHER)
+
+
+def test_pc_block_parts_do_not_break_describe():
+    """PC-Arbeitsblöcke haben unter "parts" (Programm, Sekunden)-Paare – darf die Doku-Zeile nicht leeren."""
+    from journal import describe, open_entry
+    block = e("09:00", "09:40", "PC-Arbeit", "", pc_block=True, category="Chrome",
+              parts=[("Chrome", 1800), ("Outlook", 600)])
+    assert "Am PC: Chrome" in describe(block)
+    assert open_entry(block)["open"]

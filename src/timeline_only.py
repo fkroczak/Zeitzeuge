@@ -318,9 +318,10 @@ class ActivityViewDialog(QDialog):
         layout.addLayout(form)
 
         text = activity.get("details", "")
-        if activity.get("parts"):
+        parts = [p for p in activity.get("parts") or [] if isinstance(p, dict)]  # ohne (Programm, Sek.)-Paare
+        if parts:
             lines = [f"{p['start'][11:16]}–{p['end'][11:16]}  {type_label(p)}  "
-                     f"{p.get('customer_name', '')}" for p in activity["parts"]]
+                     f"{p.get('customer_name', '')}" for p in parts]
             text = (text + "\n\n" if text else "") + \
                 f"Enthält {len(lines)} Einträge:\n" + "\n".join(lines)
         if activity.get("ai"):
@@ -329,7 +330,7 @@ class ActivityViewDialog(QDialog):
         if text:
             details = QTextEdit(text)
             details.setReadOnly(True)
-            details.setMaximumHeight(240 if activity.get("parts") else 90)
+            details.setMaximumHeight(240 if parts else 90)
             label = QLabel("Details:")
             label.setBuddy(details)
             layout.addWidget(label)

@@ -56,6 +56,7 @@ Testversionen aus Branches tragen die Version ihres main-Stands plus Buildnummer
 - Versionsnummer zählt von selbst (4.1.0, 4.1.1, …); steht im Fenstertitel, unter **Info**, in fehler.log, in der EXE und im Namen der Downloads.
 
 ### Behoben
+- **Zeile Dokumentation leer** und wiederholt „Interner Fehler (AttributeError)“, sobald ein PC-Arbeitsblock noch offen war: der Text der Nachfrage las die Programmliste des Blocks als Einträge. Auch die Nachfrage selbst stürzte deshalb ab.
 - Matrix42: „Bei Matrix42 anmelden“ öffnete das Fenster nur kurz und schloss es gleich wieder. Es bleibt jetzt offen, bis die Anmeldung wirklich geklappt hat.
 - Absturz beim Start, wenn „3CX direkt auslesen“ eingeschaltet ist.
 - Anrufe: ein Gespräch wurde von einem Versuch in derselben Minute überschrieben.
