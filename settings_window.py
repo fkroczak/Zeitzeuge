@@ -19,8 +19,7 @@ import main_timeline as mt  # Pfade und save_config zur Laufzeit von dort (Tests
 # Bereiche: Schlüssel, Name, Symbol, Satz darunter
 PAGES = [
     ("general", "Allgemein", "settings", "Arbeitszeiten und Aufzeichnung der aktiven Fenster."),
-    ("view", "Ansicht", "eye", "Timeline, Tagesliste und Aussehen. Die Vorschau zeigt einen Beispieltag; "
-     "fährst du über eine Einstellung, siehst du die Änderung schon vorher."),
+    ("view", "Ansicht", "eye", "Timeline, Tagesliste und Aussehen."),
     ("sources", "Datenquellen", "plug", "Woher Zeitzeuge deine Spuren liest. Schalter und Zustand je Quelle."),
     ("prompts", "Nachfragen & Grenzwerte", "bell", "Wann Zeitzeuge nachfragt und ab welchen Minuten."),
     ("rules", "Zuordnung & KI", "rules", "Regeln ohne KI und KI-Vorschläge."),

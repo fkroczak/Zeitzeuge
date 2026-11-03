@@ -95,6 +95,11 @@ def gui_test():
     assert not any(p.get("pc_block") for p in preview.timeline._pc_band)
     settings.preview_hover(None)
     assert preview.variant is None and any(p.get("pc_block") for p in preview.timeline._pc_band)
+    # Vorschau einklappen: Platz für die Einstellungen, wird gemerkt
+    preview.toggle.click()
+    assert not preview.timeline.isVisible() and window.config["settings_preview_open"] is False
+    preview.toggle.click()
+    assert preview.timeline.isVisible() and window.config["settings_preview_open"] is True
     # Auswahl: schon beim Durchgehen der Liste, gespeichert erst beim Wählen
     combo = next(r for r in settings.rows if r.spec[5] == "list_view").control
     single = combo.findData("single")

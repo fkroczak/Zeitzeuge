@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 
 from PySide6.QtCore import QDate, Qt
 from PySide6.QtWidgets import (QAbstractItemView, QFrame, QHBoxLayout, QHeaderView, QLabel,
-                               QTableWidget, QTableWidgetItem, QVBoxLayout)
+                               QTableWidget, QTableWidgetItem, QToolButton, QVBoxLayout)
 
 import rules as rule_engine
 from activity_tracker import app_label
@@ -104,6 +104,8 @@ class PreviewTimeline(TimelineView):
     def __init__(self, config, parent=None):
         super().__init__([], config, parent)
         self.setMinimumHeight(0)
+        # Die Vorschau ist niedriger als die Timeline: untere Zeilen über die Scrollleiste erreichbar
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.setAccessibleName("Vorschau der Timeline mit Beispieldaten")
         self.current_date = DEMO_DATE
         self.tracker = _DemoTracker(demo_segments())
@@ -154,7 +156,8 @@ def list_entries(timeline, config):
 class PreviewPane(QFrame):
     """Kasten „Vorschau“: Satz, was gezeigt wird, darunter Timeline und Tagesliste."""
 
-    LIST_ROWS = 5
+    LIST_ROWS = 3
+    TIMELINE_HEIGHT = 170
 
     def __init__(self, main, parent=None):
         super().__init__(parent)
@@ -170,10 +173,16 @@ class PreviewPane(QFrame):
         head.addWidget(title)
         self.caption = QLabel()
         self.caption.setObjectName("hint")
+        self.caption.setWordWrap(True)
         head.addWidget(self.caption, 1)
+        # Ein- und ausklappen, damit die Einstellungen darunter Platz haben (wird gemerkt)
+        self.toggle = QToolButton()
+        self.toggle.setAutoRaise(True)
+        self.toggle.clicked.connect(lambda: self.set_open(not self.timeline.isVisible()))
+        head.addWidget(self.toggle, 0, Qt.AlignTop)
         layout.addLayout(head)
         self.timeline = PreviewTimeline(dict(main.config), self)
-        self.timeline.setFixedHeight(230)
+        self.timeline.setFixedHeight(self.TIMELINE_HEIGHT)
         layout.addWidget(self.timeline)
         self.table = QTableWidget(0, 5, self)
         self.table.setAccessibleName("Vorschau der Tagesliste mit Beispieldaten")
@@ -188,7 +197,21 @@ class PreviewPane(QFrame):
         self.table.horizontalHeader().setStretchLastSection(True)
         self.table.setFixedHeight(26 + self.LIST_ROWS * 24 + 4)
         layout.addWidget(self.table)
+        open_ = bool(main.config.get("settings_preview_open", True))
+        self.set_open(open_)
         self.refresh()
+
+    def set_open(self, on):
+        """Vorschau zeigen oder auf die Kopfzeile einklappen."""
+        self.timeline.setVisible(on)
+        self.table.setVisible(on)
+        self.toggle.setText("Ausblenden" if on else "Einblenden")
+        self.toggle.setToolTip("Vorschau ausblenden, um mehr Einstellungen zu sehen" if on
+                               else "Vorschau mit Beispieltag zeigen")
+        if bool(self.main.config.get("settings_preview_open", True)) != on:
+            import main_timeline as mt
+            self.main.config["settings_preview_open"] = on
+            mt.save_config(self.main.config)
 
     def config(self):
         """Aktuelle Einstellungen, bei einer Variante mit den geänderten Werten."""
@@ -215,8 +238,7 @@ class PreviewPane(QFrame):
         else:
             tl.show_whole_day()
         self.caption.setText(self.variant[1] if self.variant
-                             else "Beispieltag mit deinen Einstellungen. Fahr über eine Einstellung, "
-                                  "um die Änderung vorab zu sehen.")
+                             else "Beispieltag. Fahr über eine Einstellung, um die Änderung vorab zu sehen.")
         self._fill_list(cfg)
 
     def _fill_list(self, cfg):
