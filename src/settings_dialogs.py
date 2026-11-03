@@ -622,13 +622,20 @@ class TrackingFilterDialog(QDialog):
 class RulesDialog(QDialog):
     """Regeln für die Klassifizierung ohne KI. Reihenfolge = Priorität."""
 
-    COLUMNS = ["An", "Name", "Feld", "Muster", "Kategorie", "Kunde"]
+    COLUMNS = ["An", "Name", "Feld", "Muster", "Kategorie", "Kunde", "7 Tage"]
+    EXTRA = 2  # so viele „und“-Bedingungen je Regel
 
-    def __init__(self, config, parent=None):
+    def __init__(self, config, parent=None, sample=None):
         super().__init__(parent)
         import rules
         self.rules_mod = rules
         self.config = config
+        # sample(): (Einträge, Fenster) der letzten 7 Tage für Treffer und Vorschau
+        try:
+            self.sample = sample() if sample else None
+        except Exception:  # Vorschau ist Beiwerk, der Dialog muss trotzdem aufgehen
+            self.sample = None
+        self.counts = []
         self.rules = [dict(r) for r in (config.get("rules") or []) if isinstance(r, dict)]
         self._loading = True
         self.setWindowTitle("Zuordnung ohne KI (Regeln)")
@@ -691,6 +698,23 @@ class RulesDialog(QDialog):
         self.match_edit = QLineEdit()
         self.match_edit.setPlaceholderText("z. B. outlook  oder  re:^Ticket (\\d+)")
         form.addRow("&Muster:", self.match_edit)
+        self.extra_fields, self.extra_matches = [], []
+        for n in range(self.EXTRA):
+            line = QHBoxLayout()
+            combo = QComboBox()
+            for key, label in rules.FIELDS.items():
+                combo.addItem(label, key)
+            combo.setAccessibleName(f"Feld der Bedingung {n + 2}")
+            edit = QLineEdit()
+            edit.setPlaceholderText("leer = keine weitere Bedingung")
+            edit.setAccessibleName(f"Muster der Bedingung {n + 2}")
+            line.addWidget(combo)
+            line.addWidget(edit, 1)
+            label = QLabel("&und:" if n == 0 else "und:")
+            label.setBuddy(combo)
+            form.addRow(label, line)
+            self.extra_fields.append(combo)
+            self.extra_matches.append(edit)
         self.match_error = QLabel()
         self.match_error.setWordWrap(True)
         self.match_error.setVisible(False)
@@ -703,12 +727,17 @@ class RulesDialog(QDialog):
         self.customer_edit = QLineEdit()
         self.customer_edit.setPlaceholderText("leer = Kunde vom Eintrag")
         form.addRow("Kun&de:", self.customer_edit)
-        customer_hint = QLabel("Leer: Kunde vom Eintrag (bei Telefonaten der Anrufer). "
-                               "{1} setzt die erste Klammer aus dem regulären Ausdruck ein, "
+        customer_hint = QLabel("Leer: Kunde vom Eintrag oder aus einem Stichwort der Kundenliste "
+                               "(bei Telefonaten nur aus der Kundenliste). {1} setzt die erste "
+                               "Klammer aus dem regulären Ausdruck der ersten Bedingung ein, "
                                "z. B. den Kunden aus dem Fenstertitel.")
         customer_hint.setObjectName("hint")
         customer_hint.setWordWrap(True)
         form.addRow("", customer_hint)
+        self.preview_label = QLabel()
+        self.preview_label.setWordWrap(True)
+        self.preview_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        form.addRow("", self.preview_label)
         layout.addWidget(self.form_box)
 
         self.enabled_check.toggled.connect(self.store_form)
@@ -717,6 +746,9 @@ class RulesDialog(QDialog):
         self.match_edit.textEdited.connect(self.store_form)
         self.category_combo.currentTextChanged.connect(self.store_form)
         self.customer_edit.textEdited.connect(self.store_form)
+        for combo, edit in zip(self.extra_fields, self.extra_matches):
+            combo.currentIndexChanged.connect(self.store_form)
+            edit.textEdited.connect(self.store_form)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self.accept)
@@ -729,12 +761,23 @@ class RulesDialog(QDialog):
 
     # ----------------------------------------------------------- Tabelle
 
-    def _row_texts(self, rule):
+    def _row_texts(self, rule, count=None):
+        match = rule.get("match", "")
+        for c in rule.get("and") or []:
+            match += f" · und {self.rules_mod.FIELDS.get(c.get('field', 'any'), '?')}: {c.get('match', '')}"
+        hits = "" if count is None else (f"{count}×" if rule.get("enabled", True) else "aus")
         return ["", rule.get("name", ""), self.rules_mod.FIELDS.get(rule.get("field", "any"), "?"),
-                rule.get("match", ""), rule.get("category", ""),
-                rule.get("customer", "") or "(vom Eintrag)"]
+                match, rule.get("category", ""), rule.get("customer", "") or "(vom Eintrag)", hits]
+
+    def _count(self):
+        """Treffer je Regel in den letzten 7 Tagen (erste passende Regel zählt)."""
+        if self.sample is None:
+            self.counts = []
+            return
+        self.counts = self.rules_mod.hit_counts(self.rules, *self.sample)
 
     def fill_table(self, select=-1):
+        self._count()
         self._loading = True
         self.table.setRowCount(len(self.rules))
         for r, rule in enumerate(self.rules):
@@ -746,7 +789,8 @@ class RulesDialog(QDialog):
 
     def _set_row(self, r, rule):
         was, self._loading = self._loading, True
-        for c, text in enumerate(self._row_texts(rule)):
+        count = self.counts[r] if r < len(self.counts) else None
+        for c, text in enumerate(self._row_texts(rule, count)):
             item = self.table.item(r, c)
             if item is None:
                 item = QTableWidgetItem()
@@ -762,6 +806,9 @@ class RulesDialog(QDialog):
         if self._loading or item.column() != 0 or item.row() >= len(self.rules):
             return
         self.rules[item.row()]["enabled"] = item.checkState() == Qt.Checked
+        self._count()
+        for r, rule in enumerate(self.rules):
+            self._set_row(r, rule)
         if item.row() == self.table.currentRow():
             self.load_form(item.row())
         self.validate()
@@ -779,7 +826,13 @@ class RulesDialog(QDialog):
         self.match_edit.setText(rule.get("match", ""))
         self.category_combo.setCurrentText(rule.get("category", ""))
         self.customer_edit.setText(rule.get("customer", ""))
+        extra = [c for c in rule.get("and") or [] if isinstance(c, dict)]
+        for n, (combo, edit) in enumerate(zip(self.extra_fields, self.extra_matches)):
+            c = extra[n] if n < len(extra) else {"field": "title", "match": ""}
+            combo.setCurrentIndex(max(0, combo.findData(c.get("field", "any"))))
+            edit.setText(c.get("match", ""))
         self._loading = False
+        self.update_preview()
         self.remove_btn.setEnabled(has)
         self.up_btn.setEnabled(has and row > 0)
         self.down_btn.setEnabled(has and row < len(self.rules) - 1)
@@ -797,8 +850,39 @@ class RulesDialog(QDialog):
             "category": self.category_combo.currentText().strip(),
             "customer": self.customer_edit.text().strip(),
         })
-        self._set_row(row, self.rules[row])
+        extra = [{"field": combo.currentData(), "match": edit.text().strip()}
+                 for combo, edit in zip(self.extra_fields, self.extra_matches) if edit.text().strip()]
+        if extra:
+            self.rules[row]["and"] = extra
+        else:
+            self.rules[row].pop("and", None)
+        self._count()
+        for r, rule in enumerate(self.rules):  # eine Regel ändert auch die Treffer der anderen
+            self._set_row(r, rule)
         self.validate()
+        self.update_preview()
+
+    def update_preview(self):
+        """„Passt auf 14 Einträge der letzten 7 Tage, z. B. …“ für die gewählte Regel."""
+        row = self.table.currentRow()
+        if self.sample is None or not 0 <= row < len(self.rules):
+            self.preview_label.setText("")
+            return
+        rule = self.rules[row]
+        if self.rules_mod.rule_errors([rule]):
+            self.preview_label.setText("")
+            return
+        count, examples = self.rules_mod.preview(rule, *self.sample)
+        if not count:
+            self.preview_label.setText("Passt auf keinen Eintrag der letzten 7 Tage.")
+            return
+        text = f"✓ Passt auf {count} Eintr{'äge' if count != 1 else 'ag'} der letzten 7 Tage"
+        if examples:
+            text += ", z. B. " + "; ".join(f"„{e[:60]}“" for e in examples)
+        used = self.counts[row] if row < len(self.counts) else count
+        if used < count:
+            text += f". Davon greift sie bei {used}, sonst gewinnt eine Regel weiter oben."
+        self.preview_label.setText(text)
 
     def validate(self):
         """Fehler neben dem Feld und unter der Tabelle als Text zeigen, OK sperren."""

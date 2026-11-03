@@ -173,21 +173,35 @@ class DocsMixin(CustomersMixin):
         names += sorted({c["name"] for c in self.customer_index_list()} - set(names), key=str.lower)
         return names
 
+    def rule_sample(self, days=7):
+        """Einträge und Fenster der letzten Tage für Trefferzahl und Vorschau im Regel-Dialog
+        -> (Einträge, Fenster)."""
+        entries, pc = [], []
+        today = QDate.currentDate()
+        for back in range(days):
+            date = today.addDays(-back)
+            entries += self.timeline.activities_for(date)
+            pc += self.timeline.pc_entries_for(date, min_seconds=30)
+        self.timeline.activities_for(self.current_date)  # Zwischenstand des angezeigten Tags zurück
+        return entries, pc
+
     def rule_band(self, date_str):
         """Blöcke aus den Regeln (ohne KI), zwischengespeichert bis sich etwas ändert."""
         date = QDate.fromString(date_str, "yyyy-MM-dd")
         entries = self.timeline.activities_for(date)
         pc = self.timeline.pc_entries_for(date, min_seconds=30)
         rule_list = self.config.get("rules") or []
+        index = self.customer_index()  # Stichwörter der Kundenliste
         key = (len(entries), entries[-1]["end"] if entries else "", len(pc),
-               pc[-1]["end"] if pc else "", json.dumps(rule_list, sort_keys=True),
+               pc[-1]["end"] if pc else "", json.dumps(rule_list, sort_keys=True), id(index),
                self.config.get("rules_gap_minutes", 5), self.config.get("rules_min_minutes", 5))
         cached = self._rule_cache.get(date_str)
         if cached and cached[0] == key:
             return cached[1]
         blocks = rules.classify(entries, pc, rule_list,
                                 gap_minutes=self.config.get("rules_gap_minutes", 5),
-                                min_minutes=self.config.get("rules_min_minutes", 5))
+                                min_minutes=self.config.get("rules_min_minutes", 5),
+                                keywords=index)
         self._rule_cache[date_str] = (key, blocks)
         return blocks
 
@@ -338,7 +352,8 @@ class DocsMixin(CustomersMixin):
         segments = [{"start": e["start"], "end": e["end"], "app": e["app"], "title": e["customer_name"]}
                     for e in raw]
         return focus.focus_blocks(segments, self.config.get("rules") or [],
-                                  jump_seconds=self.config.get("pc_jump_seconds", focus.JUMP_SECONDS))
+                                  jump_seconds=self.config.get("pc_jump_seconds", focus.JUMP_SECONDS),
+                                  keywords=self.customer_index())
 
     def _attended_meetings(self, date, activities):
         """Teams-Besprechungen und Termine, an denen du erkennbar teilgenommen hast:

@@ -9,6 +9,9 @@ Ein Kunde hat einen Namen und beliebig viele Spuren. Eine Spur ist eine Art und 
     phone  Telefonnummer          "+49 711 123" = "0711 123" = "0711123"
     mail   E-Mail-Domain          "@kunde.de" oder "kunde.de", gilt auch für mail.kunde.de
     net    Netzwerk / WLAN        Name des Netzwerks beim Kunden, z. B. "Mueller-Gast"
+    word   Stichwort              Text in Fenstertitel, Betreff oder Name, z. B. "Nordhafen"
+                                  oder "SWN-" (Groß/Klein und Umlaute egal). Greift nur, wenn
+                                  keine genauere Spur passt; längere Stichwörter gehen vor.
 
 Ablage: config["customers"] = [{"name": "Müller GmbH", "traces": [{"kind", "value"}]}].
 Wie teamviewer_names sind das Nutzdaten: main_timeline.save_config legt sie verschlüsselt in
@@ -31,8 +34,10 @@ KINDS = {
     "phone": "Telefonnummer",
     "mail": "E-Mail-Domain",
     "net": "Netzwerk",
+    "word": "Stichwort",
 }
-KIND_ORDER = ("tv", "phone", "rdm", "vpn", "mail", "net")
+KIND_ORDER = ("tv", "phone", "rdm", "vpn", "mail", "net", "word")
+WORD_MIN = 3  # kürzere Stichwörter träfen zu viel
 
 # RDM schreibt "<Protokoll>-Verbindung"/"-Sitzung" und Anzeigen von Zugangsdaten
 _RDM_TYPE = re.compile(r"^(RDP|SSH|FTP|Website|TeamViewer|VPN)-(Verbindung|Sitzung)$")
@@ -75,7 +80,18 @@ def normalize(kind, value):
         return normalize_domain(value)
     if kind in ("rdm", "vpn", "net"):
         return " ".join(str(value or "").split()).casefold()
+    if kind == "word":
+        text = fold(value)
+        return text if len(text) >= WORD_MIN else ""
     return ""
+
+
+_UMLAUT = str.maketrans({"ä": "ae", "ö": "oe", "ü": "ue", "ß": "ss"})
+
+
+def fold(text):
+    """Text zum Stichwort-Vergleich: klein, Umlaute ausgeschrieben, Leerzeichen einfach."""
+    return " ".join(str(text or "").casefold().translate(_UMLAUT).split())
 
 
 def clean_value(kind, value):
@@ -94,6 +110,8 @@ def display(kind, value):
         return f"{KINDS['tv']} {format_tv_id(value)}"
     if kind == "mail":
         return f"{KINDS['mail']} „@{value}“"
+    if kind == "word":
+        return f"{KINDS['word']} „{value}“ (Fenstertitel, Betreff)"
     return f"{KINDS.get(kind, kind)} „{value}“"
 
 
@@ -268,6 +286,7 @@ class Index:
     def __init__(self, customers, tv_names=None):
         self.exact = {}
         self.domains = {}
+        words = {}
         for c in customers or []:
             for t in c.get("traces") or []:
                 key = normalize(t.get("kind"), t.get("value"))
@@ -275,8 +294,14 @@ class Index:
                     continue
                 if t["kind"] == "mail":
                     self.domains.setdefault(key, c["name"])
+                elif t["kind"] == "word":
+                    words.setdefault(key, c["name"])
                 else:
                     self.exact.setdefault((t["kind"], key), c["name"])
+        # Stichwörter: längere zuerst; beginnt es mit Buchstabe/Ziffer, nur am Wortanfang
+        # („Huber“ passt auf „Huber-Server“, nicht auf „Schuber“)
+        self.words = [(re.compile((r"(?<![0-9a-z])" if w[0].isalnum() else "") + re.escape(w)), name)
+                      for w, name in sorted(words.items(), key=lambda x: -len(x[0]))]
         for tv_id, name in (tv_names or {}).items():  # z. B. von einem anderen PC übernommen
             key = normalize("tv", tv_id)
             if key and isinstance(name, str) and name.strip():
@@ -299,6 +324,19 @@ class Index:
         for kind, value in traces_of(entry):
             name = self.lookup(kind, value)
             if name:
+                return name
+        if (isinstance(entry, dict) and not entry.get("colleague")
+                and not any(entry.get(k) for k in ("doc", "ai", "rule", "m42", "m42_gap", "work"))):
+            return self.keyword(entry.get("customer_name") or "")
+        return ""
+
+    def keyword(self, text):
+        """Kunde, dessen Stichwort im Text steht ('' = keiner)."""
+        if not self.words or not text:
+            return ""
+        text = fold(text)
+        for rx, name in self.words:
+            if rx.search(text):
                 return name
         return ""
 

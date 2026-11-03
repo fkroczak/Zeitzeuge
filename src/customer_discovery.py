@@ -5,9 +5,13 @@ Was du in Matrix42 gebucht hast, zeigt, zu welchem Kunden eine Spur gehört: Ruf
 Nummer immer wieder an, während (oder kurz bevor) du auf „Creacam“ buchst, gehört die Nummer
 zu Creacam. Dasselbe gilt für TeamViewer-IDs, RDM-Einträge und VPN-Verbindungen.
 
-discover() liefert zwei Arten von Vorschlägen:
+discover() liefert drei Arten von Vorschlägen:
 - learn:  Spur ohne Kunden in der Kundenliste -> Kunde (Schreibweise wie in Matrix42).
           Sichere Vorschläge übernimmt Zeitzeuge von selbst (Einstellung customers_auto_learn).
+          Dazu Stichwörter: ein Wort aus dem Matrix42-Namen („Tuxhorn“), das in Fenstertiteln
+          und Betreffs steht, während du auf diesen Kunden buchst (WORD_* unten).
+- suggest: Stichwörter, die passen, aber noch nicht sicher genug sind: Vorschlag in der
+          Kundenliste („Neu entdeckt“), übernommen nur auf Klick.
 - rename: Kunde der Liste, dessen Spuren fast immer auf einen anders geschriebenen
           Matrix42-Kunden fallen („Holger Tenbrink“ -> „H.Tenbrink Montage GmbH“).
           Das bleibt ein Vorschlag in der Kundenliste, umbenannt wird nur auf Klick.
@@ -25,6 +29,22 @@ SLACK_MINUTES = 20   # Buchung darf so viel vor oder nach der Spur liegen
 MIN_HITS = 3
 MIN_SHARE = 0.6
 MIN_SECONDS = 30     # kürzere Anrufe/Verbindungen sagen nichts
+
+# Stichwörter (Minuten Fenster/Betreff mit dem Wort, die in Buchungen des Kunden liegen)
+WORD_MIN_LEN = 5
+WORD_SUGGEST_MINUTES = 10   # ab hier Vorschlag
+WORD_AUTO_MINUTES = 30      # ab hier von selbst, wenn auch an WORD_AUTO_DAYS Tagen
+WORD_AUTO_DAYS = 2
+WORD_AUTO_SHARE = 0.8
+# Wörter, die in vielen Firmennamen und Fenstertiteln vorkommen
+WORD_STOP = {"systems", "system", "solutions", "service", "services", "gruppe", "group",
+             "technik", "technologie", "montage", "beratung", "verwaltung", "stiftung", "partner",
+             "international", "deutschland", "germany", "energy", "networks", "network", "design",
+             "cloud", "software", "consulting", "management", "holding", "handel", "planung",
+             "projekt", "projektplan", "bauunternehmung", "elektro", "elektroanlagen",
+             "wirtschaftsberatung", "pflege", "jugendhilfe", "steuerberatung", "kanzlei", "praxis",
+             "autohaus", "logistik", "spedition", "immobilien", "stadtwerke", "zahntechnik"}
+OUTLOOK_TYPES = ("Termin", "Teams-Besprechung", "Mail gesendet", "Mail beantwortet")
 
 
 def _t(text):
@@ -90,6 +110,68 @@ def _winner(counts, min_hits=MIN_HITS, min_share=MIN_SHARE):
     return name, round(hits, 1), round(total, 1)
 
 
+def _name_words(name):
+    """Kennzeichnende Wörter eines Matrix42-Kundennamens (ohne Ort nach dem Komma)."""
+    from day_close import customer_key
+    head = (name or "").split(",")[0]
+    return {w for w in customer_key(head).split() if len(w) >= WORD_MIN_LEN and w not in WORD_STOP}
+
+
+def _word_votes(entries, bookings, index):
+    """Stichwort -> {Kunde: [Minuten, Tage]} aus Fenstertiteln und Betreffs."""
+    import re
+    names = {(b.get("customer") or "").strip() for b in bookings or []} - {""}
+    words = {}
+    for name in names:
+        for w in _name_words(name):
+            words.setdefault(w, set()).add(name)
+    if not words:
+        return {}
+    known = {rx.pattern for rx, _n in index.words}
+    patterns = {w: re.compile(r"(?<![0-9a-z])" + re.escape(w)) for w in words}
+    by_day = {}
+    for b in bookings or []:
+        start, end, customer = _t(b.get("start")), _t(b.get("end")), (b.get("customer") or "").strip()
+        if start and end and customer:
+            by_day.setdefault(start.date(), []).append((start, end, customer))
+    votes = {}
+    for e in entries or []:
+        if "app" not in e and e.get("type") not in OUTLOOK_TYPES:
+            continue
+        start, end = _t(e.get("start")), _t(e.get("end"))
+        if not start or not end or end <= start:
+            continue
+        text = cl.fold(e.get("customer_name") or "")
+        for w, rx in patterns.items():
+            if rx.pattern in known or not rx.search(text):
+                continue
+            for s, en, c in by_day.get(start.date(), []):
+                minutes = (min(en, end) - max(s, start)).total_seconds() / 60
+                if minutes > 0:
+                    v = votes.setdefault(w, {}).setdefault(c, [0.0, set()])
+                    v[0] += minutes
+                    v[1].add(start.date())
+    return {w: v for w, v in votes.items() if any(c in words[w] for c in v)}
+
+
+def _keyword_items(entries, bookings, customers, index, ignored):
+    """(sicher, Vorschläge) für Stichwörter."""
+    sure, maybe = [], []
+    for word, counts in _word_votes(entries, bookings, index).items():
+        total = sum(v[0] for v in counts.values())
+        name, (minutes, days) = max(counts.items(), key=lambda x: x[1][0])
+        if minutes < WORD_SUGGEST_MINUTES or minutes / total < MIN_SHARE or word not in _name_words(name):
+            continue
+        owner = next((c["name"] for c in customers if same_customer(c["name"], name)), name)
+        item = {"kind": "word", "value": word, "customer": owner,
+                "hits": round(minutes), "total": round(total), "unit": "min"}
+        if key(item) in ignored:
+            continue
+        auto = minutes >= WORD_AUTO_MINUTES and len(days) >= WORD_AUTO_DAYS and minutes / total >= WORD_AUTO_SHARE
+        (sure if auto else maybe).append(item)
+    return sure, maybe
+
+
 def discover(entries, bookings, customers, colleague=None, ignored=()):
     """Vorschläge {"learn": [...], "rename": [...]} (siehe oben).
 
@@ -116,6 +198,8 @@ def discover(entries, bookings, customers, colleague=None, ignored=()):
                 "hits": found[1], "total": found[2]}
         if key(item) not in ignored:
             learn.append(item)
+    words_sure, words_maybe = _keyword_items(entries, bookings, customers, index, ignored)
+    learn += words_sure
     rename = []
     for owner, counts in per_customer.items():
         found = _winner(counts)
@@ -125,7 +209,8 @@ def discover(entries, bookings, customers, colleague=None, ignored=()):
                 rename.append(item)
     learn.sort(key=lambda x: -x["hits"])
     rename.sort(key=lambda x: -x["hits"])
-    return {"learn": learn, "rename": rename}
+    words_maybe.sort(key=lambda x: -x["hits"])
+    return {"learn": learn, "rename": rename, "suggest": words_maybe}
 
 
 def key(item):
@@ -138,6 +223,8 @@ def key(item):
 def describe(item):
     """Kurztext, z. B. 'Telefonnummer „0251 123“ → Creacam GmbH (5 von 6 Buchungen)'."""
     share = f"{item['hits']:g} von {item['total']:g} Buchungen"
+    if item.get("unit") == "min":
+        share = f"{item['hits']:g} von {item['total']:g} min in Buchungen des Kunden"
     if "kind" in item:
         return f"{cl.display(item['kind'], item['value'])} → {item['customer']} ({share})"
     return f"„{item['name']}“ heißt in Matrix42 „{item['to']}“ ({share})"

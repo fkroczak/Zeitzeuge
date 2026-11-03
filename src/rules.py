@@ -2,7 +2,9 @@
 Klassifizierung ohne KI: feste Regeln ordnen die Einträge eines Tages ein.
 
 Jede Regel prüft ein Feld eines Eintrags (Programm, Fenstertitel, Kunde, Typ,
-Details oder alles) auf einen Text oder einen regulären Ausdruck ("re:…").
+Details oder alles) auf einen Text oder einen regulären Ausdruck ("re:…"). Weitere
+Bedingungen stehen unter "and" ([{"field", "match"}]); dann müssen alle passen, z. B.
+Programm „Code“ und Fenstertitel „zeiterfassung“.
 Die erste passende Regel gewinnt. Treffer mit gleicher Kategorie und gleichem
 Kunden werden zu Blöcken zusammengefasst. Blöcke überschneiden sich nie:
 Verbindungen und Telefonate gehen vor PC-Fenstern, danach zählt die
@@ -130,13 +132,27 @@ def pattern_error(text):
         return str(e)
 
 
+def conditions(rule):
+    """Alle Bedingungen einer Regel: [(Feld, Muster)], die erste zuerst."""
+    found = [(rule.get("field", "any"), rule.get("match", ""))]
+    for c in rule.get("and") or []:
+        if isinstance(c, dict):
+            found.append((c.get("field", "any"), c.get("match", "")))
+    return found
+
+
 def rule_errors(rules):
     """[(Index, Meldung)] für Regeln mit ungültigem Muster oder Feld."""
     result = []
     for i, rule in enumerate(rules or []):
-        err = pattern_error(rule.get("match", ""))
-        if err is None and rule.get("field", "any") not in FIELDS:
-            err = f"Unbekanntes Feld „{rule.get('field')}“"
+        err = None
+        for n, (field, match) in enumerate(conditions(rule)):
+            err = pattern_error(match)
+            if err is None and field not in FIELDS:
+                err = f"Unbekanntes Feld „{field}“"
+            if err:
+                err = f"Bedingung {n + 1}: {err}" if n else err
+                break
         if err is None and not (rule.get("category") or "").strip():
             err = "Kategorie fehlt"
         if err:
@@ -160,20 +176,22 @@ def fill_customer(template, match):
 
 # ---------------------------------------------------------------- Einordnen
 
-def _compile_rules(rules):
+def _compile_rules(rules, only_enabled=True):
+    """[(Index, Regel, Regex, Felder, weitere Bedingungen [(Regex, Felder)])]."""
     compiled = []
     for i, rule in enumerate(rules or []):
-        if not rule.get("enabled", True) or not (rule.get("category") or "").strip():
+        if only_enabled and (not rule.get("enabled", True) or not (rule.get("category") or "").strip()):
             continue
-        field = rule.get("field", "any")
-        if field not in FIELDS:
-            continue
+        parts = []
         try:
-            regex = compile_pattern(rule.get("match", ""))
+            for field, match in conditions(rule):
+                if field not in FIELDS:
+                    raise ValueError(field)
+                parts.append((compile_pattern(match), FIELD_ORDER if field == "any" else (field,)))
         except ValueError:
             continue  # ungültige Regel: der Dialog zeigt den Fehler, hier überspringen
-        fields = FIELD_ORDER if field == "any" else (field,)
-        compiled.append((i, rule, regex, fields))
+        (regex, fields), extra = parts[0], parts[1:]
+        compiled.append((i, rule, regex, fields, extra))
     return compiled
 
 
@@ -188,23 +206,80 @@ def _fields(entry, is_pc):
     }
 
 
-def match_entry(entry, compiled, is_pc=False):
-    """(Regelindex, Regel, Kunde) der ersten passenden Regel oder None."""
-    values = _fields(entry, is_pc)
-    for index, rule, regex, fields in compiled:
-        for f in fields:
-            m = regex.search(values[f])
-            if m:
-                template = rule.get("customer") or ""
-                if template:
-                    customer = fill_customer(template, m)
-                elif entry.get("type") == "Telefonat":
-                    # Anrufer ist eine Person (Kollege oder Ansprechpartner), kein Kunde
-                    customer = ""
-                else:
-                    customer = values["customer"]
-                return index, rule, customer
+def keyword_customer(entry, keywords, is_pc=False):
+    """Kunde über ein Stichwort der Kundenliste (customers.Index.keyword) oder ''."""
+    if keywords is None or entry.get("colleague"):
+        return ""
+    text = entry.get("customer_name") or ""
+    if is_pc and entry.get("app"):
+        text = f"{text} {entry.get('app')}"
+    return keywords.keyword(text)
+
+
+def _first_match(values, regex, fields):
+    for f in fields:
+        m = regex.search(values[f])
+        if m:
+            return m
     return None
+
+
+def match_entry(entry, compiled, is_pc=False, keywords=None):
+    """(Regelindex, Regel, Kunde) der ersten passenden Regel oder None.
+
+    keywords: customers.Index; setzt die Regel keinen Kunden, kommt er aus einem Stichwort
+    der Kundenliste im Fenstertitel oder Namen („Tuxhorn“ im Titel -> Tuxhorn GmbH)."""
+    values = _fields(entry, is_pc)
+    for index, rule, regex, fields, *rest in compiled:
+        m = _first_match(values, regex, fields)
+        if not m or not all(_first_match(values, rx, fs) for rx, fs in (rest[0] if rest else ())):
+            continue
+        template = rule.get("customer") or ""
+        if template:
+            customer = fill_customer(template, m)
+        elif entry.get("type") == "Telefonat":
+            # Anrufer ist eine Person (Kollege oder Ansprechpartner), kein Kunde
+            customer = ""
+        else:
+            customer = values["customer"]
+        if not customer:
+            customer = keyword_customer(entry, keywords, is_pc)
+        return index, rule, customer
+    return None
+
+
+def hit_counts(rules, entries, pc_entries, keywords=None):
+    """Treffer je Regel (Liste wie rules): wie oft war sie die erste passende Regel?
+    Für die Spalte „7 Tage“ im Regel-Dialog. Ausgeschaltete Regeln zählen mit 0."""
+    counts = [0] * len(rules or [])
+    compiled = _compile_rules(rules)
+    for tier, source in ((0, entries or []), (1, pc_entries or [])):
+        for e in source:
+            if isinstance(e, dict) and e.get("type") not in SKIP_TYPES:
+                hit = match_entry(e, compiled, is_pc=tier == 1)
+                if hit:
+                    counts[hit[0]] += 1
+    return counts
+
+
+def preview(rule, entries, pc_entries, limit=3):
+    """Worauf passt eine Regel für sich allein (ohne Vorrang)? -> (Anzahl, Beispiele)."""
+    compiled = _compile_rules([dict(rule, enabled=True, category=rule.get("category") or "?")])
+    if not compiled:
+        return 0, []
+    count, examples = 0, []
+    for tier, source in ((0, entries or []), (1, pc_entries or [])):
+        for e in source:
+            if not isinstance(e, dict) or e.get("type") in SKIP_TYPES:
+                continue
+            if match_entry(e, compiled, is_pc=tier == 1):
+                count += 1
+                label = e.get("customer_name") or e.get("type") or ""
+                if tier == 1 and e.get("app"):
+                    label = f"{e['app']}: {label}"
+                if label and label not in examples and len(examples) < limit:
+                    examples.append(label)
+    return count, examples
 
 
 def _parse(text):
@@ -316,7 +391,7 @@ def _details(items):
     return text
 
 
-def classify(entries, pc_entries, rules, gap_minutes=5, min_minutes=2):
+def classify(entries, pc_entries, rules, gap_minutes=5, min_minutes=2, keywords=None):
     """Einträge eines Tages per Regel zu Tätigkeitsblöcken einordnen.
 
     entries:    Verbindungen, Telefonate, Zugangsdaten … (Timeline-Format,
@@ -325,6 +400,7 @@ def classify(entries, pc_entries, rules, gap_minutes=5, min_minutes=2):
     rules:      Liste von Regeln (siehe DEFAULT_RULES), Reihenfolge = Priorität
     gap_minutes: Lücken bis zu dieser Länge werden innerhalb eines Blocks überbrückt
     min_minutes: kürzere Blöcke fallen weg
+    keywords:   customers.Index für Stichwörter der Kundenliste (siehe match_entry)
 
     Ergebnis: Blöcke im Timeline-Format, nach Start sortiert, ohne Überschneidungen.
     """
@@ -344,7 +420,7 @@ def classify(entries, pc_entries, rules, gap_minutes=5, min_minutes=2):
             ck = (tier, e.get("app"), e.get("customer_name"), e.get("type"), e.get("details"))
             hit = cache.get(ck, False)
             if hit is False:
-                hit = cache[ck] = match_entry(e, compiled, is_pc=tier == 1)
+                hit = cache[ck] = match_entry(e, compiled, is_pc=tier == 1, keywords=keywords)
             if hit is None:
                 continue
             index, rule, customer = hit

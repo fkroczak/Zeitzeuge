@@ -41,12 +41,14 @@ class CustomersDialog(QDialog):
 
         layout = QVBoxLayout(self)
         info = QLabel("Ordne jedem Kunden seine Spuren zu: TeamViewer-ID, RDM-Eintrag, VPN, "
-                      "Telefonnummer oder E-Mail-Domain. Zeitzeuge schlägt den Kunden dann "
-                      "beim Eintragen vor und zeigt ihn in der Tagesliste.")
+                      "Telefonnummer, E-Mail-Domain oder Stichwort (Text im Fenstertitel oder "
+                      "Betreff). Zeitzeuge schlägt den Kunden dann beim Eintragen vor, zeigt ihn "
+                      "in der Tagesliste und nimmt ihn im Tagesabschluss.")
         info.setWordWrap(True)
         prose(info)
         layout.addWidget(info)
-        self._add_suggestions(layout, (suggestions or {}).get("rename") or [])
+        found = suggestions or {}
+        self._add_suggestions(layout, (found.get("rename") or []) + (found.get("suggest") or []))
 
         columns = QHBoxLayout()
         # Links: Kunden
@@ -112,17 +114,18 @@ class CustomersDialog(QDialog):
         self._fill(0)
 
     def _add_suggestions(self, layout, renames):
-        """Kasten „Neu entdeckt“: Umbenennen in den Matrix42-Namen oder ignorieren."""
+        """Kasten „Neu entdeckt“: Umbenennen in den Matrix42-Namen, Stichwort übernehmen
+        oder ignorieren."""
         self.suggestion_rows = []
         if not renames:
             return
-        title = QLabel("<b>Neu entdeckt</b> – so heißen deine Kunden in Matrix42:")
+        title = QLabel("<b>Neu entdeckt</b> – aus deinen Matrix42-Buchungen:")
         layout.addWidget(title)
-        for item in renames[:5]:
+        for item in renames[:6]:
             row = QHBoxLayout()
             text = QLabel(cdisc.describe(item))
             text.setWordWrap(True)
-            take = QPushButton("Umbenennen")
+            take = QPushButton("Übernehmen" if "kind" in item else "Umbenennen")
             skip = QPushButton("Ignorieren")
             for b in (take, skip):
                 b.setAutoDefault(False)
@@ -141,7 +144,17 @@ class CustomersDialog(QDialog):
             b.hide()
 
     def take_suggestion(self, item, widgets=None):
-        """„Holger Tenbrink“ -> „H.Tenbrink Montage GmbH“ (gibt es den schon: Spuren dorthin)."""
+        """„Holger Tenbrink“ -> „H.Tenbrink Montage GmbH“ (gibt es den schon: Spuren dorthin).
+        Bei einer Spur (Stichwort): dem Kunden geben, den es dafür noch nicht gibt, anlegen."""
+        if "kind" in item:
+            cl._assign(self.customers, item["kind"], item["value"], item["customer"])
+            self.customers.sort(key=lambda c: c["name"].lower())
+            self._fill(next(i for i, c in enumerate(self.customers) if c["name"] == item["customer"]))
+            self.decisions.append((item, "übernommen"))
+            if widgets:
+                self._close_suggestion(widgets, f"✓ {cl.display(item['kind'], item['value'])} gehört "
+                                                f"jetzt zu „{item['customer']}“.")
+            return True
         source = next((c for c in self.customers if c["name"] == item["name"]), None)
         if source is None:
             return False
@@ -162,11 +175,14 @@ class CustomersDialog(QDialog):
     def skip_suggestion(self, item, widgets=None):
         self.decisions.append((item, "ignoriert"))
         if widgets:
-            self._close_suggestion(widgets, f"„{item['name']}“ bleibt so (kommt nicht wieder).")
+            what = cl.display(item["kind"], item["value"]) if "kind" in item else f"„{item['name']}“"
+            self._close_suggestion(widgets, f"{what}: ignoriert (kommt nicht wieder).")
 
     PLACEHOLDERS = {"tv": "z. B. 1 076 789 144", "rdm": "Name des Eintrags in RDM",
                     "vpn": "Name der Verbindung, z. B. in Sophos Connect",
-                    "phone": "z. B. +49 711 123456", "mail": "z. B. @kunde.de"}
+                    "phone": "z. B. +49 711 123456", "mail": "z. B. @kunde.de",
+                    "net": "Name des Netzwerks, z. B. Mueller-Gast",
+                    "word": "Text im Fenstertitel oder Betreff, z. B. Nordhafen oder SWN-"}
 
     # ------------------------------------------------------------ Anzeige
 
@@ -347,7 +363,9 @@ class CustomersMixin:
             if not found:
                 continue
             bookings += found
-            entries += self.timeline.activities_for(QDate(day.year, day.month, day.day))
+            date = QDate(day.year, day.month, day.day)
+            entries += self.timeline.activities_for(date)
+            entries += self.timeline.pc_entries_for(date, min_seconds=30)  # Stichwörter in Titeln
         self.timeline.activities_for(self.current_date)  # Zwischenstand des angezeigten Tags zurück
         return cdisc.discover(entries, bookings, cl.customer_list(self.config),
                               ignored=cdisc.decided(self.config))
@@ -370,8 +388,9 @@ class CustomersMixin:
             self.timeline.draw_timeline(self.current_date)
             text = (f"Kundenliste: {len(applied)} Spur{'en' if len(applied) != 1 else ''} aus "
                     f"Matrix42 gelernt, z. B. {cdisc.describe(applied[0])}")
-            if found["rename"]:
-                text += f" · {len(found['rename'])} Vorschlag in der Kundenliste"
+            open_ = len(found["rename"]) + len(found.get("suggest") or [])
+            if open_:
+                text += f" · {open_} Vorschl{'äge' if open_ != 1 else 'ag'} in der Kundenliste"
             self.statusBar().showMessage(text, 8000)
         return found
 
