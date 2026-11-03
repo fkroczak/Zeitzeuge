@@ -20,7 +20,7 @@ def gui_test():
     import main_timeline
     from PySide6.QtCore import Qt
     from PySide6.QtTest import QTest
-    from PySide6.QtWidgets import QApplication, QSystemTrayIcon, QToolButton
+    from PySide6.QtWidgets import QApplication, QPushButton, QSystemTrayIcon, QToolButton
 
     QSystemTrayIcon.isSystemTrayAvailable = staticmethod(lambda: True)
     app = QApplication(sys.argv)
@@ -129,6 +129,18 @@ def gui_test():
     assert tile.state == "off" and tile.switch.text() == "Aus"
     window.source_actions["rdm_enabled"].setChecked(True)  # von außen: Kachel zieht mit
     assert tile.switch.isChecked() and tile.state != "off"
+
+    # Fehlersuche & Analyse: Mitschnitte stehen hier, nicht mehr in den Einrichtungsdialogen
+    settings.show_page("debug")
+    debug_rows = [r.spec[3] for r in settings.rows if r.spec[0] == "debug"]
+    assert "Matrix42: Buchung mitschneiden" in debug_rows and "3CX: Direkt-Abfrage prüfen" in debug_rows
+    m42_dialog = window.build_reader_dialog("m42")
+    assert not [b for b in m42_dialog.findChildren(QPushButton) if "mitschneiden" in b.text()]
+    m42_dialog.deleteLater()
+    calls = []
+    window.record_source = lambda kind, booking=False: calls.append((kind, booking))
+    next(r for r in settings.rows if r.spec[3] == "Matrix42: Buchung mitschneiden").control.click()
+    assert calls == [("m42", True)], calls
 
     # Grenzwert ändern wirkt sofort
     row = next(r for r in settings.rows if r.spec[5] == "idle_prompt_minutes")

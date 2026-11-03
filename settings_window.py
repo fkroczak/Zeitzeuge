@@ -27,6 +27,9 @@ PAGES = [
     ("booking", "Matrix42 & Abrechnung", "gauge", "Buchen, Abrechnungstakt und Buchungsquote."),
     ("customers", "Kunden & Texte", "users", "Kundenliste mit Spuren und Textbausteine."),
     ("data", "Daten & Schutz", "shield", "Speicherort, PIN, Löschen, Übernehmen von einem anderen PC."),
+    ("debug", "Fehlersuche & Analyse", "search", "Für tiefergehende Analysen, im Alltag nicht nötig: "
+     "aufzeichnen, wie 3CX, Matrix42 und ITM mit ihrem Server reden, z. B. wenn nach einem Update "
+     "etwas nicht mehr gelesen wird. Passwörter und Token werden geschwärzt, die Dateien landen im Datenordner."),
     ("about", "Über Zeitzeuge", "info", "Version und Beenden."),
 ]
 
@@ -135,6 +138,24 @@ ROWS = [
     ("data", "button", "upload", "Daten exportieren", "Für einen anderen PC, z. B. die PAW.", "export_data", None),
     ("data", "button", "download", "Daten übernehmen", "Von einem anderen PC einlesen.", "import_data", None),
     ("data", "toggle", "server", "Dieser PC ist eine PAW", "Nur RDM sammeln, alles andere aus.", "paw_action", None),
+
+    ("debug", "button", "record", "3CX: Abfragen mitschneiden",
+     "Edge-Fenster mit dem 3CX-Webclient öffnen und aufzeichnen, was die Seite abfragt.",
+     lambda main: main.record_source("pbx"), None),
+    ("debug", "button", "phone", "3CX: Direkt-Abfrage prüfen",
+     "Anrufe ohne Webseite direkt vom 3CX-Server holen und mit der gespeicherten Anrufliste vergleichen.",
+     "check_pbx_direct", None),
+    ("debug", "button", "record", "Matrix42: Abfragen mitschneiden",
+     "Edge-Fenster mit dem Matrix42-Kalender öffnen und aufzeichnen, was die Seite abfragt.",
+     lambda main: main.record_source("m42"), None),
+    ("debug", "button", "record", "Matrix42: Buchung mitschneiden",
+     "Aufzeichnen, wie Matrix42 eine Zeiterfassung speichert. Du legst dabei selbst eine Buchung an.",
+     lambda main: main.record_source("m42", booking=True), None),
+    ("debug", "button", "record", "ITM: Abfragen mitschneiden",
+     "Edge-Fenster mit der ITM-Zeiterfassung öffnen und aufzeichnen, was die Seite abfragt.",
+     lambda main: main.record_source("itm"), None),
+    ("debug", "button", "folder", "Datenordner öffnen", "Dort liegen die Mitschnitte (mitschnitt_…json).",
+     lambda main: QDesktopServices.openUrl(QUrl.fromLocalFile(mt.DATA_DIR)), None),
 
     ("about", "button", "info", "Über Zeitzeuge", "Version, Neuigkeiten und Projektseite.", "show_about", None),
     ("about", "button", "power", "Zeitzeuge beenden", "Aufzeichnung und Datenquellen stoppen.", "request_quit", None),
