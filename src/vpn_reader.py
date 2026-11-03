@@ -234,7 +234,7 @@ def parse_fortivpn(lines, now=None):
 
 
 def is_fortivpn_log(lines):
-    return any(_FVPN_LINE.match(line.strip()) for line in lines[:50])
+    return any(_FVPN_LINE.match(line.strip()) for line in lines[:500])
 _FORTI_DOWN = re.compile(r"\bdisconnect(ed|ing)?\b|tunnel (is )?down|connection (closed|terminated|lost)"
                          r"|\bvpn (is )?down\b|status[=: ]+(down|disconnected)|getrennt", re.I)
 _FORTI_UP = re.compile(r"\bconnected\b|tunnel (is )?up\b|tunnel (established|connected)"
@@ -353,6 +353,23 @@ def vpn_sources(config):
 
 def _overlaps(a, b):
     return a["start"] < b["end"] and b["start"] < a["end"]
+
+
+def _unnamed(c):
+    """Verbindung ohne eigenen Namen (nur „FortiClient“ / „Sophos Connect“)?"""
+    source = c.get("vpn_source")
+    return c.get("customer_name") in (source, LABELS.get(source, source))
+
+
+def drop_unnamed_twins(conns):
+    """Namenlose Verbindung weglassen, wenn zur selben Zeit eine derselben Quelle mit Namen läuft.
+
+    So steht ein Tunnel nur einmal da, auch wenn ihn zwei Logs kennen (z. B. ältere Einträge im
+    Archiv aus dem allgemeinen Trace-Leser und neue aus FortiVPN_1.log mit dem Verbindungsnamen).
+    """
+    named = [c for c in conns if not _unnamed(c)]
+    return [c for c in conns if not _unnamed(c)
+            or not any(n.get("vpn_source") == c.get("vpn_source") and _overlaps(n, c) for n in named)]
 
 
 class VpnReader:
@@ -501,6 +518,9 @@ class VpnReader:
                 merged[key(c)] = c
                 changed = True
         stored = sorted(merged.values(), key=lambda c: c["start"])
+        cleaned = drop_unnamed_twins(stored)  # alte namenlose Doppel auch aus dem Archiv
+        if len(cleaned) != len(stored):
+            stored, changed = cleaned, True
         # Neu gelernte Namen auch für ältere Einträge übernehmen
         for c in stored:
             if c.get("vpn_source") == "Sophos" and names.get(c.get("vpn_id")) not in (None, c.get("customer_name")):
@@ -528,7 +548,7 @@ class VpnReader:
             result.append(dict(c))
         if self.sources is not None:
             result = [c for c in result if c.get("vpn_source") in self.sources]
-        return sorted(result, key=lambda c: c["start"])
+        return sorted(drop_unnamed_twins(result), key=lambda c: c["start"])
 
 
 def _t(text):

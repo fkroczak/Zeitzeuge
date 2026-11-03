@@ -214,6 +214,7 @@ class PreviewPane(QFrame):
         tl = self.timeline
         tl.config = cfg
         tl._block_cache = None
+        tl._day_data = None  # mit der Variante neu sammeln, nicht nur neu anordnen
         if tl.dark_mode != bool(cfg.get("dark_mode")):
             tl.dark_mode = bool(cfg.get("dark_mode"))
             tl.init_timeline_colors()

@@ -57,10 +57,7 @@ def _billing_summary(main):
 ROWS = [
     ("general", "button", "clock", "Arbeitszeiten", "Arbeitstage und Zeiten, wenn keine ITM-Personalzeit da ist.",
      "edit_work_hours", None),
-    ("sources", "toggle", "monitor", "Aktive Fenster aufzeichnen",
-     "Alle 5 Sekunden das aktive Fenster merken (Band „PC“).", "tracking_action", None),
-    ("sources", "button", "filter", "Fenster-Filter", "Private Programme ausblenden oder nur erlaubte aufzeichnen.",
-     "edit_tracking_filters", None),
+    # Ein/Aus und Fenster-Filter stehen auf der Kachel „Aktive Fenster“ (SOURCE_TILES), hier nur der Rest
     ("sources", "spin", "pause", "Leerlauf nach", "Ohne Maus und Tastatur zeichnet Zeitzeuge nichts auf.",
      "tracking_idle_minutes", (1, 60, "min", "", "idle_limit")),
 
@@ -224,7 +221,8 @@ SOURCE_TILES = [
      "edit_recent_files_settings", None),
     ("browser_enabled", "browser", "Browser-Verlauf", "Nur Domains und Tickets", "edit_browser_settings", None),
     ("travel_enabled", "travel", "Fahrten (vermutet)", "Termine mit Ort, Kundennetze", "edit_travel_settings", None),
-    ("tracking", "tracking", "Aktive Fenster", "Band „PC“, alle 5 Sekunden", "edit_tracking_filters", None),
+    ("tracking", "tracking", "Aktive Fenster", "Band „PC“, alle 5 s · Fenster-Filter", "edit_tracking_filters",
+     None),
 ]
 
 STATE_TEXT = {"ok": "läuft", "warn": "Problem", "busy": "liest gerade", "off": "aus"}

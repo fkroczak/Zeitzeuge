@@ -111,6 +111,30 @@ assert sorted(timeline_only.row_order({})) == sorted(timeline_only.MOVABLE_ROWS)
 assert timeline_only.moved(["a", "b", "c"], "c", "a", False) == ["c", "a", "b"]
 assert timeline_only.moved(["a", "b", "c"], "a", "c", True) == ["b", "c", "a"]
 
+# Zeiger: Hand nur über verschiebbaren Zeilen der Legende, danach wieder der Pfeil
+QTest.mouseMove(vp, legend_point("vpn"))
+assert vp.cursor().shape() == Qt.OpenHandCursor, vp.cursor().shape()
+QTest.mouseMove(vp, QPoint(view.LEFT + 300, view.viewport().height() - 5))
+assert vp.cursor().shape() == Qt.ArrowCursor, vp.cursor().shape()
+
+# Zoomen liest die Daten nicht neu und baut die Tagesliste nicht neu auf
+loads = []
+view.day_loaded.connect(lambda *a: loads.append(1))
+view.activities_for = lambda date: (_ for _ in ()).throw(AssertionError("Zoom liest Daten neu"))
+view.set_zoom(view.zoom_level * 3, 400)
+view.show_range(9 * 60, 10 * 60)
+view.show_whole_day()
+assert not loads, loads
+del view.activities_for
+
+# Eigene Farbe je Zeile: Balken und Legende
+view.config["row_colors"] = {"vpn": "#123456"}
+view.draw_timeline(QDate.currentDate())
+vpn_entry = next(a for a in view._day_entries if a["type"] == "VPN-Verbindung")
+assert timeline_only.entry_color(vpn_entry, view.config).name() == "#123456"
+assert view._legend[view._legend_keys.index("vpn")][3] == "#123456"
+assert timeline_only.row_of({"doc": True}) == "doc" and timeline_only.row_of({"type": "RDP-Sitzung"}) == "other"
+
 print("Timeline-Maus OK")
 view.shutdown()
 os._exit(0)

@@ -149,3 +149,18 @@ def test_echte_adapterabfrage():
 
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-q"]))
+
+
+def test_namenloses_doppel_faellt_weg():
+    """Derselbe FortiClient-Tunnel aus zwei Logs: nur der mit Verbindungsnamen bleibt."""
+    from vpn_reader import drop_unnamed_twins
+
+    def conn(start, end, name, source="FortiClient"):
+        return {"start": f"2026-11-03 {start}", "end": f"2026-11-03 {end}", "customer_name": name,
+                "vpn_source": source}
+
+    conns = [conn("09:00:00", "10:00:00", "kreimer"), conn("09:00:05", "09:58:00", "FortiClient"),
+             conn("11:00:00", "11:30:00", "FortiClient"),  # ohne Namen, aber allein: bleibt
+             conn("09:10:00", "09:20:00", "Sophos Connect", "Sophos")]  # andere Quelle: bleibt
+    names = [(c["start"][11:], c["customer_name"]) for c in drop_unnamed_twins(conns)]
+    assert names == [("09:00:00", "kreimer"), ("11:00:00", "FortiClient"), ("09:10:00", "Sophos Connect")], names
