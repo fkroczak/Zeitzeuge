@@ -7,11 +7,19 @@ Das Ende kennt nur Windows. Darum prüft Zeitzeuge alle 30 Sekunden, welche
 mstsc.exe laufen (Remotedesktopverbindung), und hält Beginn und Ende in der
 Datenbank fest. Ein Start aus RDM Better bekommt so sein Ende von der passenden
 mstsc-Sitzung. Ohne passende Sitzung steht er 1 Minute in der Timeline.
+
+Zusätzlich liest Zeitzeuge das Windows-Ereignisprotokoll des RDP-Clients
+(Microsoft-Windows-TerminalServices-RDPClient/Operational): Verbindungsaufbau (1024)
+und Trennung (1026) je Sitzung. Das füllt Zeiten, in denen Zeitzeuge nicht lief,
+und macht Beginn und Ende sekundengenau.
 """
 
 import os
 import re
+import subprocess
 import sys
+import time
+import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 
 import datastore
@@ -190,6 +198,96 @@ def window_titles():
     return titles
 
 
+# ------------------------------------------------------------------ Ereignisprotokoll
+
+RDP_EVENT_LOG = "Microsoft-Windows-TerminalServices-RDPClient/Operational"
+RDP_EVENT_QUERY = "*[System[(EventID=1024 or EventID=1026 or EventID=1027 or EventID=1102)]]"
+EVENT_CACHE_SECONDS = 60
+_NS = "{http://schemas.microsoft.com/win/2004/08/events/event}"
+
+
+def read_rdp_events():
+    """XML-Text der RDP-Client-Ereignisse, neueste zuerst (nur Windows, sonst "")."""
+    if sys.platform != "win32":
+        return ""
+    try:
+        out = subprocess.run(["wevtutil", "qe", RDP_EVENT_LOG, f"/q:{RDP_EVENT_QUERY}", "/f:xml",
+                              "/c:5000", "/rd:true"], capture_output=True, timeout=20,
+                             creationflags=0x08000000).stdout  # CREATE_NO_WINDOW
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return out.decode("utf-8", errors="replace")
+
+
+def _event_time(text):
+    """SystemTime (UTC) -> Ortszeit ohne Zeitzone."""
+    m = re.match(r"(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2})", text or "")
+    if not m:
+        return None
+    when = datetime.strptime(f"{m.group(1)} {m.group(2)}", TIME_FMT).replace(tzinfo=timezone.utc)
+    return when.astimezone().replace(tzinfo=None)
+
+
+def parse_rdp_events(xml_text):
+    """Ereignisse des RDP-Clients -> [{"start", "end" (None = keine Trennung), "host"}].
+
+    1024 „versucht, eine Verbindung herzustellen (Ziel)“ beginnt eine Sitzung, 1026 „getrennt“
+    beendet sie. Zusammengehörige Ereignisse tragen dieselbe ActivityID, sonst dieselbe Prozess-ID.
+    1102 liefert die IP, falls 1024 kein Ziel hat.
+    """
+    try:
+        root = ET.fromstring(f"<Events>{xml_text}</Events>")
+    except ET.ParseError:
+        return []
+    events = []
+    for event in root.iter(f"{_NS}Event"):
+        system = event.find(f"{_NS}System")
+        if system is None:
+            continue
+        try:
+            number = int(system.findtext(f"{_NS}EventID", ""))
+        except ValueError:
+            continue
+        created = system.find(f"{_NS}TimeCreated")
+        when = _event_time(created.get("SystemTime", "") if created is not None else "")
+        if when is None:
+            continue
+        corr = system.find(f"{_NS}Correlation")
+        execution = system.find(f"{_NS}Execution")
+        activity = corr.get("ActivityID", "") if corr is not None else ""
+        pid = execution.get("ProcessID", "") if execution is not None else ""
+        data = event.find(f"{_NS}EventData")
+        value = ""
+        if data is not None:
+            items = list(data)
+            named = [d for d in items if d.get("Name") == "Value"]
+            value = ((named or items)[0].text or "").strip() if (named or items) else ""
+        events.append((when, number, activity, pid, value))
+    events.sort(key=lambda e: e[0])
+
+    sessions, open_ = [], {}  # Schlüssel (ActivityID oder pid) -> Sitzung
+    for when, number, activity, pid, value in events:
+        key = activity or f"pid:{pid}"
+        if number == 1024:
+            if key not in open_:
+                s = {"start": when, "end": None, "host": short_host(value), "pid": pid}
+                open_[key] = s
+                sessions.append(s)
+            continue
+        s = open_.get(key) or next((o for o in reversed(list(open_.values())) if pid and o["pid"] == pid),
+                                   None)
+        if s is None:
+            continue
+        if number == 1102 and not s["host"]:
+            s["host"] = short_host(value)
+        elif number == 1026:
+            s["end"] = when
+            open_ = {k: o for k, o in open_.items() if o is not s}
+    for s in sessions:
+        s.pop("pid", None)
+    return sessions
+
+
 def _t(text):
     return datetime.strptime(text, TIME_FMT)
 
@@ -200,11 +298,13 @@ class RdpReader:
     die Timeline mit den Starts aus RDM Better.
     """
 
-    def __init__(self, config=None, archive_file=None, proc_func=None, title_func=None):
+    def __init__(self, config=None, archive_file=None, proc_func=None, title_func=None, event_func=None):
         self.config = config if config is not None else {}
         self.archive_file = archive_file
         self.proc_func = proc_func or mstsc_processes
         self.title_func = title_func or window_titles
+        self.event_func = event_func or read_rdp_events
+        self._events = None       # (Zeitpunkt des Lesens, Sitzungen aus dem Ereignisprotokoll)
         self.launcher = LauncherLog(self.config)
         self._data = None
         self._last_sample = None
@@ -303,6 +403,48 @@ class RdpReader:
             self._save()
         return changed
 
+    # ------------------------------------------------------------ Ereignisprotokoll
+
+    def event_sessions(self):
+        """Sitzungen aus dem Ereignisprotokoll (höchstens einmal pro Minute gelesen)."""
+        if not self.config.get("mstsc_events_enabled", True):
+            return []
+        if self._events is None or time.monotonic() - self._events[0] > EVENT_CACHE_SECONDS:
+            try:
+                found = parse_rdp_events(self.event_func() or "")
+            except Exception as e:  # Ereignisprotokoll darf die Timeline nie leeren
+                print(f"RDP-Ereignisprotokoll nicht lesbar: {e}")
+                found = []
+            self._events = (time.monotonic(), found)
+        return self._events[1]
+
+    def _merge_events(self, sessions):
+        """Sitzungen aus dem Ereignisprotokoll mit den aufgezeichneten zusammenführen.
+
+        Überlappt eine aufgezeichnete Sitzung (gleiches oder unbekanntes Ziel), bekommt sie die
+        genaueren Zeiten aus dem Protokoll; sonst kommt die Sitzung neu dazu. Ohne Trennung im
+        Protokoll und ohne Aufzeichnung ist das Ende unbekannt: 1 Minute, wie bei RDM Better.
+        """
+        for e in self.event_sessions():
+            start, end = e["start"], e["end"]
+            if end is not None and (end - start).total_seconds() < MIN_SECONDS:
+                continue  # Fehlversuch
+            probe_end = end or start + timedelta(seconds=MATCH_SECONDS)
+            match = next((s for s in sessions if s["start"] < probe_end and start < s["end"]
+                          and (not s["host"] or not e["host"] or s["host"].lower() == e["host"].lower())),
+                         None)
+            if match:
+                match["start"] = min(match["start"], start)
+                if end is not None and not match.get("running"):
+                    match["end"] = max(match["end"], end)
+                match["host"] = match["host"] or e["host"]
+                match["events"] = True
+            else:
+                sessions.append({"start": start, "end": end or start + timedelta(minutes=1),
+                                 "host": e["host"], "launch": None, "events": True,
+                                 "open_end": end is None})
+        sessions.sort(key=lambda s: s["start"])
+
     # ------------------------------------------------------------ Anzeige
 
     def connections(self):
@@ -315,7 +457,9 @@ class RdpReader:
                 start, end = _t(s["start"]), _t(s["end"])
                 if not s.get("running") and (end - start).total_seconds() < MIN_SECONDS:
                     continue
-                sessions.append({"start": start, "end": end, "host": s.get("host") or "", "launch": None})
+                sessions.append({"start": start, "end": end, "host": s.get("host") or "", "launch": None,
+                                 "running": bool(s.get("running"))})
+            self._merge_events(sessions)
         sessions.sort(key=lambda s: s["start"])
 
         launches = sorted(self.launcher.launches(), key=lambda l: l["time"]) if use_launcher else []
@@ -346,6 +490,10 @@ class RdpReader:
                 details = f"RDP-Verbindung {name} über RDM Better"
                 if launch["user"]:
                     details += f" (Benutzer {launch['user']})"
+            elif s.get("open_end"):
+                details = f"RDP-Verbindung {name} (mstsc, Windows-Ereignisprotokoll, Ende unbekannt)"
+            elif s.get("events"):
+                details = f"RDP-Verbindung {name} (mstsc, Windows-Ereignisprotokoll)"
             else:
                 details = f"RDP-Verbindung {name} (mstsc, von Zeitzeuge aufgezeichnet)"
             result.append(self._conn(s["start"], s["end"], name, details,

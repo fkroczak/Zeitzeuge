@@ -197,7 +197,7 @@ SOURCE_TILES = [
      "edit_rdm_settings", ("log", "RDM")),
     ("rdmbetter_enabled", "rdmbetter", "RDM Better", "Starts aus launcher.log",
      "edit_rdmbetter_settings", ("log", "RDM Better")),
-    ("mstsc_enabled", "mstsc", "Remotedesktop (mstsc)", "Offene RDP-Fenster, alle 30 Sekunden",
+    ("mstsc_enabled", "mstsc", "Remotedesktop (mstsc)", "RDP-Fenster und Ereignisprotokoll",
      "edit_mstsc_settings", None),
     ("shell_enabled", "shell", "SSH und PowerShell", "ssh, PuTTY, WinSCP, PSSession",
      "edit_shell_settings", None),

@@ -75,6 +75,7 @@ Testversionen aus Branches tragen die Version ihres main-Stands plus Buildnummer
 - Versionsnummer zählt von selbst (4.1.0, 4.1.1, …); steht im Fenstertitel, unter **Info**, in fehler.log, in der EXE und im Namen der Downloads.
 
 - **Eigene Farben je Zeile der Timeline:** Rechtsklick auf den Zeilennamen links → „Farbe für … ändern“, oder Ansicht → Zeilen der Timeline → Farben der Zeilen. Gilt für Balken, Legende und Tagesliste; „Standardfarbe“ setzt zurück.
+- **Remotedesktop (mstsc) aus dem Windows-Ereignisprotokoll:** Zeitzeuge liest zusätzlich `Microsoft-Windows-TerminalServices-RDPClient/Operational` (Aufbau 1024, Trennung 1026). Das füllt Zeiten, in denen Zeitzeuge nicht lief, und macht Beginn und Ende sekundengenau; mit der eigenen Aufzeichnung wird es zu einer Sitzung zusammengeführt. Abschaltbar unter Datenquellen → Remotedesktop (mstsc).
 
 ### Behoben
 - **Zoomen geht sofort:** Reinzoomen (STRG + Mausrad, rechts ziehen, Ganzer Tag/Arbeitszeit) las bisher jedes Mal alle Daten neu und baute die Tagesliste neu auf (rund 3 Sekunden). Jetzt wird nur neu angeordnet; schnelles Drehen am Mausrad zeichnet nur einmal.

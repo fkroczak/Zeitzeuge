@@ -811,11 +811,15 @@ class MenusMixin:
         self._edit_log_settings(
             "mstsc", [], "Remotedesktop (mstsc)",
             enabled_text="Remotedesktop-Verbindungen (mstsc) aufzeichnen",
+            checks=[("mstsc_events_enabled", "Auch aus dem Windows-Ereignisprotokoll lesen", True)],
             paths=False, timezone=False,
             hint="Zeitzeuge prüft alle 30 Sekunden, welche Remotedesktopverbindungen (mstsc.exe) "
                  "offen sind, und speichert Beginn, Ende und Ziel (z. B. DC01 oder 10.10.80.35). "
                  "Sie stehen in der Timeline wie die Verbindungen aus RDM. Auch Starts aus "
-                 "RDM Better bekommen so ihr Ende.",
+                 "RDM Better bekommen so ihr Ende.\n\n"
+                 "Das Ereignisprotokoll des RDP-Clients (TerminalServices-RDPClient/Operational) "
+                 "kennt Aufbau und Trennung jeder Verbindung sekundengenau, auch aus Zeiten, in "
+                 "denen Zeitzeuge nicht lief. Windows hält es nur einige Wochen.",
             after=self.apply_mstsc_monitor,
         )
 

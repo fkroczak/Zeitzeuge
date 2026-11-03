@@ -168,3 +168,60 @@ def test_pause_in_arbeitszeit(same):
     same("Pause außerhalb", work_spans(config, 1), [(480, 720)])
     same("frei", work_spans(config, 5), [])
     same("ohne Pausen", work_spans({"work_days": {"Mo": "08:00-17:00"}}, 0), [(480, 1020)])
+
+
+def _rdp_event(when, number, activity, pid, value=""):
+    """Ein Ereignis wie von wevtutil /f:xml (SystemTime in UTC)."""
+    utc = when.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.1234567Z")
+    return ('<Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event"><System>'
+            '<Provider Name="Microsoft-Windows-TerminalServices-ClientActiveXCore"/>'
+            f'<EventID>{number}</EventID><TimeCreated SystemTime="{utc}"/>'
+            f'<Correlation ActivityID="{activity}"/><Execution ProcessID="{pid}" ThreadID="1"/>'
+            f'</System><EventData><Data Name="Name">x</Data><Data Name="Value">{value}</Data>'
+            '</EventData></Event>')
+
+
+def test_mstsc_aus_ereignisprotokoll(same):
+    from rdp_reader import parse_rdp_events
+    fmt = "%Y-%m-%d %H:%M:%S"
+    a, b, c = "{AAAA}", "{BBBB}", "{CCCC}"
+    xml = "".join([  # neueste zuerst, wie wevtutil /rd:true
+        _rdp_event(datetime(2026, 11, 3, 15, 0, 0), 1024, c, 300, "SRV-OFFEN"),
+        _rdp_event(datetime(2026, 11, 3, 13, 0, 10), 1026, b, 200, "2"),
+        _rdp_event(datetime(2026, 11, 3, 13, 0, 5), 1024, b, 200, "FEHLVERSUCH"),
+        _rdp_event(datetime(2026, 11, 3, 11, 45, 0), 1026, a, 100, "1"),
+        _rdp_event(datetime(2026, 11, 3, 10, 0, 3), 1102, a, 100, "10.0.0.5"),
+        _rdp_event(datetime(2026, 11, 3, 10, 0, 2), 1027, a, 100, "DOMAIN"),
+        _rdp_event(datetime(2026, 11, 3, 10, 0, 0), 1024, a, 100, "DC01.kunde.local:3389"),
+    ])
+    rows = [(s["start"].strftime(fmt)[11:], s["end"].strftime(fmt)[11:] if s["end"] else None, s["host"])
+            for s in parse_rdp_events(xml)]
+    same("Ereignisse", rows, [("10:00:00", "11:45:00", "DC01.kunde.local"),
+                              ("13:00:05", "13:00:10", "FEHLVERSUCH"), ("15:00:00", None, "SRV-OFFEN")])
+    same("kaputtes XML", parse_rdp_events("<Event"), [])
+
+    with temp_dir() as tmp:
+        reader = RdpReader({}, os.path.join(tmp, "rdp.json"), proc_func=lambda: [], event_func=lambda: xml)
+        rows = [(c["start"][11:], c["end"][11:], c["customer_name"], c["rdp_source"])
+                for c in reader.connections()]
+        same("Timeline", rows, [("10:00:00", "11:45:00", "DC01.kunde.local", "mstsc"),
+                                ("15:00:00", "15:01:00", "SRV-OFFEN", "mstsc")])
+        assert "Ereignisprotokoll" in reader.connections()[0]["details"]
+
+        # Selbst aufgezeichnet (Zeitzeuge kam erst 10:30 dazu): eine Sitzung, Beginn aus dem Protokoll
+        procs = [(7, datetime(2026, 11, 3, 10, 30, 0).timestamp(), ["mstsc.exe", "/v:DC01.kunde.local"])]
+        reader2 = RdpReader({}, os.path.join(tmp, "rdp2.json"), proc_func=lambda: list(procs),
+                            title_func=lambda: {}, event_func=lambda: xml)
+        t = datetime(2026, 11, 3, 10, 30, 0)
+        while t < datetime(2026, 11, 3, 11, 44, 0):
+            reader2.sample(now=t)
+            t += timedelta(seconds=30)
+        procs.clear()
+        reader2.sample(now=t)
+        rows = [(c["start"][11:], c["end"][11:], c["customer_name"]) for c in reader2.connections()]
+        same("zusammengeführt", rows, [("10:00:00", "11:45:00", "DC01.kunde.local"),
+                                       ("15:00:00", "15:01:00", "SRV-OFFEN")])
+
+        off = RdpReader({"mstsc_events_enabled": False}, os.path.join(tmp, "rdp3.json"),
+                        proc_func=lambda: [], event_func=lambda: xml)
+        same("Ereignisprotokoll aus", off.connections(), [])

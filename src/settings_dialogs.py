@@ -16,8 +16,10 @@ class ConnectionSettingsDialog(QDialog):
     def __init__(self, config, config_key, default_paths, title, parent=None,
                  enabled_text=None, folders=False, hint=None, paths_key=None,
                  timezone=True, files=True, paths=True, path_title="Logdatei-Pfade",
-                 enabled_key=None):
+                 enabled_key=None, checks=()):
         super().__init__(parent)
+        self.checks = list(checks)        # weitere Schalter: [(Config-Schlüssel, Text, Standard)]
+        self.check_boxes = {}
         self.config = config
         self.config_key = config_key
         self.default_paths = default_paths
@@ -44,6 +46,11 @@ class ConnectionSettingsDialog(QDialog):
             self.enabled_box = QCheckBox(self.enabled_text)
             self.enabled_box.setChecked(bool(self.config.get(self.enabled_key, True)))
             layout.addWidget(self.enabled_box)
+        for key, text, default in self.checks:
+            box = QCheckBox(text)
+            box.setChecked(bool(self.config.get(key, default)))
+            self.check_boxes[key] = box
+            layout.addWidget(box)
         if self.hint:
             hint = QLabel(self.hint)
             hint.setWordWrap(True)
@@ -128,6 +135,8 @@ class ConnectionSettingsDialog(QDialog):
             result[self.paths_key] = self.get_paths()
         if self.enabled_box:
             result[self.enabled_key] = self.enabled_box.isChecked()
+        for key, box in self.check_boxes.items():
+            result[key] = box.isChecked()
         if self.tz_spinbox:
             result[f"{self.config_key}_timezone_correction"] = self.get_timezone_correction()
         return result
