@@ -15,7 +15,9 @@ Branch: `claude/zeitzeuge-auto-ticket-booking-4gc5t4` (noch nicht in main, kein 
 | `day_close.py` (neu) | Reine Logik ohne Qt: Minutenraster, Vorrang der Spuren, Blöcke, Lücken, Ticket, Text, Kennzahlen |
 | `app_day_close.py` (neu) | Mixin am Hauptfenster: Spuren einsammeln, Fenster öffnen, Text für die Feierabend-Meldung |
 | `day_close_dialog.py` (neu) | Fenster „Tagesabschluss“: Tabelle, Haken, Bearbeiten, Sammelbuchung, Einzeln buchen |
-| `tests/day_close_test.py` (neu) | 13 Logik-Tests |
+| `tests/day_close_test.py` (neu) | 20 Logik-Tests |
+| `day_close_eval.py` (neu) | Erkennung an echten Matrix42-Buchungen messen |
+| `tests/day_close_benchmark_test.py` (neu) | Prüfstand: 40 nachgebaute Tage, Mindestwerte |
 | `tests/day_close_gui_test.py` (neu) | Oberflächentest mit nachgebautem Matrix42 (Sammelbuchung, Wiederholung, nur dokumentieren, Meldung) |
 | `main_timeline.py` | Mixin `DayCloseMixin` eingehängt (1 Import, 1 Klassenname) |
 | `app_menus.py` | Eintrag **Ansicht → Übersichten → Tagesabschluss …** |
@@ -111,10 +113,43 @@ Standardknopf fett; Qt rechnet die Breite mit normaler Schrift, der Text wurde a
 neuen Fenster per eigenem Stylesheet am Knopf behoben (das Problem kann es bei anderen langen
 Standardknöpfen auch geben; dort nicht angefasst).
 
+## Nachtrag 03.11.2026: Erkennung messen und absichern
+
+Auftrag: Erkennungsgrad von 70–90 % sicherstellen, teilautomatisches Buchen muss sicher sein.
+Ausführlich in `docs/ERKENNUNGSLEISTUNG-tagesabschluss.md`.
+
+**E15 – Vermutete Tickets nur nach Bestätigung.** Der Prüfstand zeigte 22 % falsche Tickets, fast
+alle aus „zuletzt für den Kunden benutzt“ (der Kunde hat inzwischen ein neues Anliegen). Solche
+Tickets stehen jetzt als „vermutet“ in der Zeile; die Rückfrage vor dem Buchen bucht standardmäßig
+nur die sicheren. Ein von Hand geändertes Ticket gilt als bestätigt.
+*Rückweg:* in `day_close_dialog.run` `include_guessed = True` setzen (dann ohne Rückfrage).
+
+**E16 – Kundenvergleich unscharf, aber streng.** „Müller GmbH“ = „Mueller“, „Kanzlei Schmidt“ =
+„Kanzlei Schmidt & Partner“; nie „Auto Huber“ = „Bäckerei Huber“ (alle Wörter des kürzeren
+Namens müssen im längeren stehen). Mehrdeutige Treffer ergeben kein Ticket.
+*Anpassen:* `day_close.same_customer`.
+
+**E17 – Gegenprobe Ticket ↔ Kunde.** Gehört ein Ticket aus dem Fenstertitel laut Verlauf zu einem
+anderen Kunden als der Block, wird es nicht vorgeschlagen.
+
+**E18 – Ticketarbeit am PC je Ticket getrennt, Kunde aus dem Ticket.** Blöcke ohne Kunde werden
+nach Ticket aus dem Fenstertitel getrennt; der Kunde kommt aus dem Verlauf (Matrix42-Buchungen und
+Tätigkeiten der letzten 14 Tage) oder, im Fenster, über die Ticketsuche in Matrix42.
+
+**E19 – Ticketvorschlag im Tagesabschluss nur aus Fenstertiteln**, nicht aus angrenzenden
+Matrix42-Buchungen (die würden über den 5-Minuten-Rand ein fremdes Ticket vererben). Das Fenster
+„Tätigkeit eintragen“ ist davon nicht betroffen.
+
+**E20 – Internes Ticket je Kategorie** (`categories` in `day_close_internal`), damit z. B.
+Ticketarbeit ohne Ticketnummer nicht auf das interne Ticket fällt.
+
+**E21 – Messung und Prüfstand.** `day_close_eval.py` misst an echten Buchungen (Knopf „Erkennung
+messen …“), `tests/day_close_benchmark_test.py` sichert Mindestwerte bei jedem Build.
+
 ## Geprüft
 
-- `pytest -m "not browser"`: 266 bestanden, 1 übersprungen (vorher 252 + 1; neu 13 Logik-Tests und
-  1 Oberflächentest). Browser-Tests (Edge) liefen hier nicht.
+- `pytest -m "not browser"`: 277 bestanden, 1 übersprungen (vorher 252 + 1; neu 20 Logik-Tests,
+  4 Prüfstand-Tests, 1 Oberflächentest). Browser-Tests (Edge) liefen hier nicht.
 - `tests/readability_check.py`: README 65, UI-Texte 63 (Grenzen 55 / 50).
 - Bildschirmfoto mit Beispieldaten: `docs/screenshots/2026-11-03/tagesabschluss.png`.
 - **Nicht** geprüft: echte Buchung gegen Matrix42 (nur im Firmennetz möglich). Die Sammelbuchung
