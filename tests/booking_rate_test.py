@@ -40,7 +40,7 @@ def test_level_text_has_symbol_and_words():
     assert br.percent_text(72.4) == "72 %"
 
 
-def test_day_rate_merges_overlapping_bookings():
+def test_day_rate_counts_every_booking_like_matrix42():
     day = "2026-10-19"
     now = dt("2026-10-26 12:00")
     spans = [(dt(f"{day} 08:00"), dt(f"{day} 12:00")), (dt(f"{day} 12:30"), dt(f"{day} 16:30"))]
@@ -48,12 +48,30 @@ def test_day_rate_merges_overlapping_bookings():
                 b(day, "12:30", "16:00")]
     rate = br.day_rate(day, spans, bookings, now, from_itm=True)
     assert rate.personal_seconds == 8 * 3600
-    assert rate.booked_seconds == 6.5 * 3600
-    assert round(rate.percent, 2) == 81.25
+    # wie Matrix42: jede Buchung zählt voll, die Stunde doppelt also zweimal
+    assert rate.booked_seconds == 7.5 * 3600
+    assert round(rate.percent, 2) == 93.75
     # Lücken: 11:00–12:00 und 16:00–16:30
     assert [(a.strftime("%H:%M"), e.strftime("%H:%M")) for a, e in rate.gaps] == \
         [("11:00", "12:00"), ("16:00", "16:30")]
     assert rate.gap_seconds == 1.5 * 3600
+
+
+def test_rounded_worktime_from_matrix42_counts():
+    """Beispiel 19.10.: 08:08–16:42 gestempelt (8:34 h), 7 Buchungen, zwei überschneiden sich.
+    Zusammengeführt wären es 7:30 h (88 %), Matrix42 rechnet mit den gerundeten Zeiten: 96 %."""
+    day = "2026-10-19"
+    now = dt("2026-11-03 13:48")
+    spans = [(dt(f"{day} 08:08"), dt(f"{day} 16:42"))]
+    raw = [("08:10", "08:55", 45), ("08:38", "08:53", 15), ("09:10", "09:54", 45),
+           ("09:54", "10:08", 15), ("10:49", "11:19", 30), ("11:00", "14:15", 195),
+           ("14:19", "16:39", 150)]
+    bookings = [{**b(day, s, e), "minutes_rounded": m} for s, e, m in raw]
+    rate = br.day_rate(day, spans, bookings, now, from_itm=True, day={"gewertet": 514})
+    assert rate.booked_seconds == 495 * 60
+    assert br.percent_text(rate.percent) == "96 %"
+    # Lücken (nicht gebucht) bleiben zeitlich: ohne doppelte Zählung
+    assert rate.gap_seconds < 3600
 
 
 def test_itm_gewertet_wins_when_stamped_out():

@@ -25,6 +25,7 @@ import learning
 import rules
 import m42_data as m42
 import week_dialogs
+import booking_rate as br
 import day_checks
 import idle_watch
 from grouping import CREDENTIAL_TYPES, group_entries
@@ -254,7 +255,9 @@ class DocsMixin(CustomersMixin):
         if bookings is None:
             return ""
         band = self.m42_band(date_str)
-        booked = mt.merged_seconds([e for e in band if e.get("m42")])
+        # wie Matrix42 und die Quote: gerundete Zeiten, jede Buchung voll (booking_rate.py)
+        until = datetime.now() if date_str == datetime.now().strftime("%Y-%m-%d") else None
+        booked = br.booked_seconds(bookings, until)
         missing = sum((parse_time(e["end"]) - parse_time(e["start"])).total_seconds()
                       for e in band if e.get("m42_gap"))
         text = f"Matrix42 gebucht {format_duration(booked)}"
