@@ -9,7 +9,7 @@ Keine echten Daten, keine Logs, kein Netz: alles kommt aus DEMO_* unten.
 from datetime import datetime, timedelta
 
 from PySide6.QtCore import QDate, Qt
-from PySide6.QtWidgets import (QAbstractItemView, QFrame, QGraphicsOpacityEffect, QHBoxLayout,
+from PySide6.QtWidgets import (QAbstractItemView, QFrame, QHBoxLayout,
                                QHeaderView, QLabel, QTableWidget, QTableWidgetItem, QVBoxLayout)
 
 import rules as rule_engine
@@ -195,32 +195,7 @@ class PreviewPane(QFrame):
         self.table.horizontalHeader().setStretchLastSection(True)
         self.table.setFixedHeight(26 + self.LIST_ROWS * 24 + 4)
         layout.addWidget(self.table)
-        # Im Ruhezustand schemenhaft, damit die Einstellungen darunter im Vordergrund stehen.
-        # Kräftig, sobald du über eine Einstellung oder die Vorschau selbst fährst.
-        self._fades = []
-        for widget in (self.timeline, self.table):
-            effect = QGraphicsOpacityEffect(widget)
-            widget.setGraphicsEffect(effect)
-            self._fades.append(effect)
-        self._hover = False
         self.refresh()
-
-    FADED = 0.35
-
-    def _update_fade(self):
-        level = 1.0 if (self.variant or self._hover) else self.FADED
-        for effect in self._fades:
-            effect.setOpacity(level)
-
-    def enterEvent(self, event):
-        self._hover = True
-        self._update_fade()
-        super().enterEvent(event)
-
-    def leaveEvent(self, event):
-        self._hover = False
-        self._update_fade()
-        super().leaveEvent(event)
 
     def config(self):
         """Aktuelle Einstellungen, bei einer Variante mit den geänderten Werten."""
@@ -249,7 +224,6 @@ class PreviewPane(QFrame):
         self.caption.setText(self.variant[1] if self.variant
                              else "Beispieltag. Fahr über eine Einstellung, um die Änderung vorab zu sehen.")
         self._fill_list(cfg)
-        self._update_fade()
 
     def _fill_list(self, cfg):
         from app_daylist import new_details  # erst hier: app_daylist lädt das Hauptfenster
