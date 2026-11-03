@@ -80,6 +80,11 @@ GROUPS = [
                   "und zeigt sie mit Ziel, Beginn und Ende wie die Verbindungen aus RDM.",
              detect=lambda c: "Läuft auf jedem Windows-PC.", missing="",
              setup="edit_mstsc_settings", button="Einrichten …"),
+        dict(id="shell", key="shell_enabled", title="SSH und PowerShell",
+             text="Offene SSH-Sitzungen (ssh, PuTTY, KiTTY, plink, WinSCP) und PowerShell-"
+                  "Fernsitzungen, alle 30 Sekunden, mit Ziel, Beginn und Ende.",
+             detect=lambda c: "", missing="",
+             setup="edit_shell_settings", button="Einrichten …"),
     ]),
     ("VPN", [
         dict(id="sophos", key="sophos_enabled", title="Sophos Connect",
@@ -147,6 +152,26 @@ GROUPS = [
                   "aufgezeichnet. Mit dem Fenster-Filter lässt du private Programme weg.",
              detect=lambda c: "", missing="",
              setup="edit_tracking_filters", button="Fenster-Filter …"),
+        dict(id="pcstate", key="pcstate_enabled", title="PC gesperrt / Ruhezustand",
+             text="Wann der PC gesperrt, im Ruhezustand, aus oder abgemeldet war. Sperren prüft "
+                  "Zeitzeuge selbst, den Rest liest es aus dem Windows-Ereignisprotokoll.",
+             detect=lambda c: "", missing="",
+             setup="edit_pcstate_settings", button="Einrichten …"),
+        dict(id="wlan", key="wlan_enabled", title="WLAN",
+             text="Mit welchem WLAN der PC verbunden war, z. B. beim Kunden vor Ort.",
+             detect=lambda c: "", missing="",
+             setup="edit_wlan_settings", button="Einrichten …"),
+        dict(id="files", key="recent_files_enabled", title="Zuletzt geöffnete Dateien",
+             text="Dateiname und Uhrzeit aus der Liste „Zuletzt verwendet“ von Windows. "
+                  "Inhalte liest Zeitzeuge nicht.",
+             detect=lambda c: _found(_exists(c.get("recent_files_dirs"))), missing="",
+             setup="edit_recent_files_settings", button="Ordner einrichten …", file=True),
+        dict(id="browser", key="browser_enabled", title="Browser-Verlauf",
+             text="Aus dem Verlauf von Edge und Chrome nur Domains und Ticketnummern, "
+                  "keine Adressen und keine Seitentitel.",
+             detect=lambda c: _found(_exists(c.get("browser_paths"))),
+             missing="Kein Verlauf von Edge oder Chrome gefunden.",
+             setup="edit_browser_settings", button="Pfade einrichten …", file=True),
         dict(id="work", key=None, title="Arbeitszeiten",
              text="Arbeitszeit je Wochentag. Sie gilt, solange keine Personalzeiten aus der "
                   "ITM-Zeiterfassung kommen.",

@@ -5,6 +5,7 @@ Im Fenster **Einstellungen → Datenquellen** schaltest du jede Quelle in ihrer 
 | Fernwartung | TeamViewer, RDM, RDM Better, Remotedesktop (mstsc) |
 | VPN | Sophos Connect, FortiClient, weitere VPN-Logs (OpenVPN …) |
 | Telefon und Zeiten | 3CX-Anrufe, ITM-Personalzeiten, Matrix42, Outlook, Teams-Anrufe |
+| Dieser PC | PC gesperrt / Ruhezustand, WLAN, zuletzt geöffnete Dateien, Browser-Verlauf, SSH und PowerShell |
 
 Jede Quelle hat ihr eigenes Fenster **Einrichten …** mit eigenem Schalter; dort stellst du Pfade, Zeitzonen und Anmeldungen ein. Das Aufzeichnen der aktiven Fenster schaltest du in der Kachel „Aktive Fenster“, über den Pfeil am Knopf **Einstellungen** oder unten rechts in der Statuszeile.
 
@@ -26,6 +27,13 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
   - Angezeigte Passwörter, Benutzernamen und Einmal-Passwörter (OTP).
 - **RDM Better:** liest die Starts aus `%LOCALAPPDATA%\RDM Better\launcher.log` (Ziel und Benutzer, Zeit in UTC, Zeitzeuge rechnet in Ortszeit um). RDM Better schreibt kein Ende; das kommt aus der mstsc-Aufzeichnung. Ohne passendes mstsc-Fenster steht ein Start 1 Minute in der Timeline.
 - **Remotedesktop (mstsc):** Zeitzeuge prüft alle 30 Sekunden, welche Remotedesktopverbindungen (`mstsc.exe`) offen sind, und speichert Beginn, Ende und Ziel in der Datenbank. Das Ziel kommt aus der Befehlszeile (`/v:` oder `.rdp`-Datei), sonst aus dem Fenstertitel. Sie stehen in der Timeline wie die RDP-Verbindungen aus RDM.
+- **Spuren vom eigenen PC** (jede einzeln schaltbar, alles verschlüsselt in der Datenbank):
+  - **PC gesperrt / Ruhezustand:** Zeitzeuge prüft alle 30 Sekunden, ob der Bildschirm gesperrt ist. Ruhezustand, ausgeschaltet und abgemeldet liest es aus dem Windows-Ereignisprotokoll „System“ (14 Tage zurück), auch für Zeiten, in denen Zeitzeuge nicht lief. Zeile „PC-Zustand“.
+  - **SSH und PowerShell:** offene Sitzungen von `ssh.exe`, PuTTY, KiTTY, plink, WinSCP und PowerShell mit `Enter-PSSession`/`-ComputerName`, alle 30 Sekunden, mit Ziel aus Befehlszeile oder Fenstertitel. Sie stehen bei den Verbindungen wie RDM, Zeitzeuge fragt danach.
+  - **Zuletzt geöffnete Dateien:** Dateiname und Uhrzeit aus `%APPDATA%\Microsoft\Windows\Recent`, alle 2 Minuten, ohne Inhalte. Zeile „Dateien & Web“.
+  - **Browser-Verlauf:** aus dem Verlauf von Edge und Chrome nur die Domain (z. B. „kunde.de“) und Ticketnummern, keine Adressen und keine Seitentitel. Aufrufe mit weniger als 5 Minuten Pause sind ein Block. Suchmaschinen und Anmeldeseiten fallen weg (`browser_ignore_domains`).
+  - **WLAN:** Name des verbundenen WLANs, alle 2 Minuten. Zeile „WLAN“, z. B. um Vor-Ort-Termine zu erkennen.
+  - Außer SSH/PowerShell lösen diese Spuren keine Nachfrage aus und zählen nicht im Tagesabschluss.
 - **VPN aus Sophos Connect:** liest `scvpn.log` und `scgui.log` aus `C:\Program Files (x86)\Sophos\Connect`. Jede Verbindung erscheint mit Beginn, Ende und dem Namen, den du ihr in Sophos Connect gegeben hast (z. B. „Kunde Müller“).
   - Ist der PC eingeschlafen, endet die Verbindung beim Einschlafen.
   - Sophos überschreibt seine Logs bei Neustarts und neuen Verbindungen. Zeitzeuge liest sie deshalb alle 2 Minuten und hebt alles in der Datenbank auf, egal welcher Tag gerade angezeigt wird.

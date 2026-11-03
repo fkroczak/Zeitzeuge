@@ -368,6 +368,27 @@ class DayListMixin:
         else:
             self.mstsc_timer.stop()
 
+    LOCAL_KEYS = ("pcstate_enabled", "shell_enabled", "wlan_enabled", "recent_files_enabled", "browser_enabled")
+
+    def apply_local_monitor(self):
+        """Spuren vom PC aufzeichnen, solange eine dieser Quellen an ist."""
+        self.timeline._local_index = None
+        if any(self.config.get(k, True) for k in self.LOCAL_KEYS):
+            if not self.local_timer.isActive():
+                self.local_timer.start(30 * 1000)
+                QTimer.singleShot(0, self.local_sample)
+        else:
+            self.local_timer.stop()
+
+    def local_sample(self):
+        try:
+            changed = self.timeline.local_reader.sample()
+        except Exception as e:  # Aufzeichnung darf das Programm nie stören
+            print(f"Fehler bei den Spuren vom PC: {e}")
+            return
+        if changed and self.isVisible():
+            self.timeline.refresh()
+
     def mstsc_sample(self):
         try:
             changed = self.timeline.rdp_reader.sample()

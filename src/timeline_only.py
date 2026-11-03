@@ -17,6 +17,7 @@ import customers
 from grouping import format_tv_id, group_entries
 from log_parsers import ConnectionIndex, RdmParser, TeamViewerParser, VpnParser
 from rdp_reader import RdpReader
+from local_sources import BROWSER_TYPE, FILE_TYPE, PC_STATE_TYPES, WLAN_TYPE, LocalReader
 from theme import THEMES, readable_on, ui_font
 from vpn_reader import VpnReader, vpn_sources
 
@@ -114,12 +115,15 @@ def entry_color(activity, config):
 
 # Eigene Zeile je Quelle (Kennung, Beschriftung links); nur RDM und der Rest teilen sich mehrere Spuren
 # Outlook (Termine, Mails) nur, wenn die Datenquelle an ist (sonst bliebe die Zeile leer)
-FIXED_ROWS = [("call", "Tel"), ("outlook", "Outlook"), ("vpn", "VPN"), ("tv", "TV")]
+FIXED_ROWS = [("call", "Tel"), ("outlook", "Outlook"), ("vpn", "VPN"), ("tv", "TV"),
+              ("pcstate", "PC-Zustand"), ("wlan", "WLAN"), ("files", "Dateien")]
 OUTLOOK_TYPES = ("Termin", "Teams-Besprechung", "Mail gesendet")
 # Legende links: Name der Zeile und Schlüssel in config["type_colors"] für das Farbfeld
 LEGEND_FIXED = {"call": ("Telefon", "Telefonat"), "outlook": ("Outlook", "Termin"),
                 "vpn": ("VPN", "VPN-Verbindung"),
-                "tv": ("TeamViewer", "TeamViewer")}
+                "tv": ("TeamViewer", "TeamViewer"),
+                "pcstate": ("PC-Zustand", "PC gesperrt"), "wlan": ("WLAN", "WLAN"),
+                "files": ("Dateien & Web", "Datei geöffnet")}
 LEGEND_BANDS = {"work": ("Personalzeit", "Personalzeit"), "doc": ("Dokumentation", "Dokumentiert"), "m42": ("Matrix42", "Matrix42-Buchung"),
                 "rule": ("Zuordnung o. KI", "Klassifizierung"), "ai": ("KI-Vorschläge", "KI-Vorschlag")}
 
@@ -136,11 +140,14 @@ TIMELINE_ROWS = [
     ("outlook", "&Outlook (Termine, Mails)"),
     ("vpn", "&VPN"),
     ("tv", "T&eamViewer"),
+    ("pcstate", "PC-&Zustand (gesperrt, Ruhezustand)"),
+    ("wlan", "&WLAN"),
+    ("files", "Dateien und &Browser"),
     ("other", "&Remote / Weitere (RDM, SSH, RDP …)"),
 ]
 ROW_NAMES = {"pc": "PC-Aktivität", "work": "Personalzeit", "doc": "Dokumentation", "m42": "Matrix42", "rule": "Zuordnung ohne KI",
              "ai": "KI-Vorschläge", "call": "Telefon", "outlook": "Outlook", "vpn": "VPN", "tv": "TeamViewer",
-             "other": "Remote / Weitere"}
+             "pcstate": "PC-Zustand", "wlan": "WLAN", "files": "Dateien & Web", "other": "Remote / Weitere"}
 
 
 def row_kind(activity):
@@ -154,6 +161,12 @@ def row_kind(activity):
         return "vpn"
     if kind.startswith("TeamViewer"):
         return "tv"
+    if kind in PC_STATE_TYPES:
+        return "pcstate"
+    if kind == WLAN_TYPE:
+        return "wlan"
+    if kind in (FILE_TYPE, BROWSER_TYPE):
+        return "files"
     return None
 
 
@@ -446,6 +459,8 @@ class TimelineView(QGraphicsView):
         self._vpn_parser = VpnParser(self.config)
         self.rdp_reader = RdpReader(self.config)  # RDM Better und mstsc
         self._rdp_index = None
+        self.local_reader = LocalReader(self.config)  # Spuren vom PC (local_sources.py)
+        self._local_index = None
         self._tv_index = None   # None = Logs noch nicht gelesen
         self._rdm_index = None
         self.vpn_reader = VpnReader()  # Sophos Connect/FortiClient; Archivdatei setzt das Hauptfenster
@@ -574,6 +589,7 @@ class TimelineView(QGraphicsView):
         self._tv_index, self._rdm_index, self._vpn_index = tv_index, rdm_index, vpn_index
         self._sophos_index = None  # Archiv der VPN-Aufzeichnung beim nächsten Zeichnen neu lesen
         self._rdp_index = None     # ebenso RDM Better und mstsc
+        self._local_index = None   # und die Spuren vom PC
         self._remote_cache.clear()
         self.loading = False
         self.loading_changed.emit(False)
@@ -615,6 +631,13 @@ class TimelineView(QGraphicsView):
 
         day = self._tv_index.get_for_date(date_str) + self._rdm_index.get_for_date(date_str)
         day += self._rdp_index.get_for_date(date_str)
+        if self._local_index is None:
+            try:
+                self._local_index = ConnectionIndex(self.local_reader.entries())
+            except Exception as e:
+                print(f"Fehler beim Lesen der Spuren vom PC: {e}")
+                self._local_index = ConnectionIndex([])
+        day += self._local_index.get_for_date(date_str)
         day += self._vpn_index.get_for_date(date_str) + self._sophos_index.get_for_date(date_str)
         for conn in day:
             conn["is_suggestion"] = True

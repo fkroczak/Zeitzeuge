@@ -202,6 +202,8 @@ SOURCE_TILES = [
      "edit_rdmbetter_settings", ("log", "RDM Better")),
     ("mstsc_enabled", "mstsc", "Remotedesktop (mstsc)", "Offene RDP-Fenster, alle 30 Sekunden",
      "edit_mstsc_settings", None),
+    ("shell_enabled", "shell", "SSH und PowerShell", "ssh, PuTTY, WinSCP, PSSession",
+     "edit_shell_settings", None),
     ("sophos_enabled", "sophos", "Sophos Connect", "VPN-Verbindungen mit Namen", "edit_sophos_settings", None),
     ("forti_enabled", "forti", "FortiClient", "VPN-Zeiten aus den FortiClient-Logs", "edit_forti_settings", None),
     ("vpn_enabled", "vpn", "Weitere VPN-Logs", "OpenVPN und andere Clients", "edit_vpn_settings", None),
@@ -213,6 +215,12 @@ SOURCE_TILES = [
      ("reader", "m42_reader")),
     ("outlook_enabled", "outlook", "Outlook", "Termine und gesendete Mails", "open_outlook_settings", None),
     ("teams_calls_enabled", "teams", "Teams-Anrufe", "Anrufe aus Microsoft Teams", "open_teams_settings", None),
+    ("pcstate_enabled", "pcstate", "PC gesperrt / Ruhezustand", "Sperren, Schlafen, Aus, Abmelden",
+     "edit_pcstate_settings", None),
+    ("wlan_enabled", "wlan", "WLAN", "Verbundenes Netz, alle 2 Minuten", "edit_wlan_settings", None),
+    ("recent_files_enabled", "files", "Zuletzt geöffnete Dateien", "Dateiname und Uhrzeit",
+     "edit_recent_files_settings", None),
+    ("browser_enabled", "browser", "Browser-Verlauf", "Nur Domains und Tickets", "edit_browser_settings", None),
     ("tracking", "tracking", "Aktive Fenster", "Band „PC“, alle 5 Sekunden", "edit_tracking_filters", None),
 ]
 

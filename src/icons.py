@@ -201,6 +201,28 @@ BRANDS = {
               '<rect x="5" y="6" width="14" height="9.5" rx="1.2" fill="none" stroke="#FFFFFF" '
               'stroke-width="1.8"/><path d="M9.5 19h5M12 15.5V19M9.5 11h5M12.5 9l2 2-2 2" stroke="#FFFFFF" '
               'stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>'),
+    # SSH / PowerShell: Eingabeaufforderung
+    "shell": ('#2B2F36', 'square',
+              '<path d="M6 8l4 4-4 4M12 16.5h6" stroke="#FFFFFF" stroke-width="2" fill="none" '
+              'stroke-linecap="round" stroke-linejoin="round"/>'),
+    # PC gesperrt: Schloss
+    "pcstate": ('#4B5563', 'square',
+                '<rect x="7" y="11" width="10" height="7.5" rx="1.2" fill="#FFFFFF"/>'
+                '<path d="M9 11V9a3 3 0 0 1 6 0v2" stroke="#FFFFFF" stroke-width="1.8" fill="none"/>'),
+    # WLAN: Bögen
+    "wlan": ('#0EA5A4', 'square',
+             '<path d="M5 10.5a10 10 0 0 1 14 0M7.5 13a6.5 6.5 0 0 1 9 0M10 15.5a3 3 0 0 1 4 0" '
+             'stroke="#FFFFFF" stroke-width="1.8" fill="none" stroke-linecap="round"/>'
+             '<circle cx="12" cy="18" r="1.3" fill="#FFFFFF"/>'),
+    # Dateien: Blatt mit Ecke
+    "files": ('#D97706', 'square',
+              '<path d="M8 5h6l3 3v11H8z" fill="none" stroke="#FFFFFF" stroke-width="1.8" '
+              'stroke-linejoin="round"/><path d="M14 5v3h3" fill="none" stroke="#FFFFFF" stroke-width="1.6"/>'),
+    # Browser: Globus
+    "browser": ('#2563EB', 'circle',
+                '<circle cx="12" cy="12" r="6.5" fill="none" stroke="#FFFFFF" stroke-width="1.6"/>'
+                '<path d="M5.5 12h13M12 5.5c-2.2 2.2-2.2 10.8 0 13M12 5.5c2.2 2.2 2.2 10.8 0 13" '
+                'fill="none" stroke="#FFFFFF" stroke-width="1.4"/>'),
     "sophos": ('#005BC8', 'square', _BRAND_TEXT.format(y=17, size=14, text="S")),
     # Fortinet: rotes Feld mit weißem Raster
     "forti": ('#DA291C', 'square',

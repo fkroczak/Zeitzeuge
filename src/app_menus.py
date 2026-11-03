@@ -15,6 +15,7 @@ import datastore
 import icons
 import storage
 from log_parsers import VpnParser
+from local_sources import DEFAULT_BROWSER_HISTORY, DEFAULT_RECENT_DIR
 from rdp_reader import DEFAULT_LAUNCHER_LOG
 from vpn_reader import DEFAULT_DIRS as VPN_DEFAULT_DIRS, FORTI_TRACE_PATHS, vpn_sources
 from settings_dialogs import ActivityTypeSettingsDialog, ConnectionSettingsDialog, WorkHoursDialog
@@ -346,7 +347,7 @@ class MenusMixin:
         menu.addSeparator()
         self.row_actions = {}
         for key, text in TIMELINE_ROWS:
-            if key in ("doc", "call"):  # Gruppen: Zeit | Auswertung | Verbindungen
+            if key in ("doc", "call", "pcstate"):  # Gruppen: Zeit | Auswertung | Verbindungen | PC
                 menu.addSeparator()
             action = QAction(text, self)
             action.setCheckable(True)
@@ -466,16 +467,21 @@ class MenusMixin:
     # Datenquellen: Schlüssel in der Config, Text im Menü (Gruppen mit Trennlinie)
     SOURCES = [
         [("teamviewer_enabled", "&TeamViewer"), ("rdm_enabled", "&RDM (Remote Desktop Manager)"),
-         ("rdmbetter_enabled", "RDM &Better"), ("mstsc_enabled", "Remote&desktop (mstsc)")],
+         ("rdmbetter_enabled", "RDM &Better"), ("mstsc_enabled", "Remote&desktop (mstsc)"),
+         ("shell_enabled", "SS&H und PowerShell")],
         [("sophos_enabled", "&Sophos Connect"), ("forti_enabled", "&FortiClient"),
          ("vpn_enabled", "&Weitere VPN-Logs (OpenVPN …)")],
         [("pbx_reader_enabled", "&3CX-Anrufe"), ("itm_reader_enabled", "&ITM-Personalzeiten"),
          ("m42_reader_enabled", "&Matrix42-Buchungen (Firmennetz)"),
          ("outlook_enabled", "&Outlook (Termine, Mails)"), ("teams_calls_enabled", "Tea&ms-Anrufe")],
+        [("pcstate_enabled", "&PC gesperrt / Ruhezustand"), ("wlan_enabled", "W&LAN"),
+         ("recent_files_enabled", "&Zuletzt geöffnete Dateien"), ("browser_enabled", "Bro&wser-Verlauf")],
     ]
 
     SOURCE_BRANDS = {"teamviewer_enabled": "teamviewer", "rdm_enabled": "rdm",
-                     "rdmbetter_enabled": "rdmbetter", "mstsc_enabled": "mstsc", "sophos_enabled": "sophos",
+                     "rdmbetter_enabled": "rdmbetter", "mstsc_enabled": "mstsc", "shell_enabled": "shell",
+                     "pcstate_enabled": "pcstate", "wlan_enabled": "wlan", "recent_files_enabled": "files",
+                     "browser_enabled": "browser", "sophos_enabled": "sophos",
                      "forti_enabled": "forti", "vpn_enabled": "vpn", "pbx_reader_enabled": "pbx",
                      "itm_reader_enabled": "itm", "m42_reader_enabled": "m42", "outlook_enabled": "outlook",
                      "teams_calls_enabled": "teams"}
@@ -503,7 +509,8 @@ class MenusMixin:
         for entry in (("Team&Viewer-Logs …", self.edit_teamviewer_settings, "teamviewer"),
                       ("&RDM-Logs …", self.edit_rdm_settings, "rdm"),
                       ("RDM &Better …", self.edit_rdmbetter_settings, "rdmbetter"),
-                      ("Remote&desktop (mstsc) …", self.edit_mstsc_settings, "mstsc"), None,
+                      ("Remote&desktop (mstsc) …", self.edit_mstsc_settings, "mstsc"),
+                      ("SS&H und PowerShell …", self.edit_shell_settings, "shell"), None,
                       ("&Sophos Connect …", self.edit_sophos_settings, "sophos"),
                       ("&FortiClient …", self.edit_forti_settings, "forti"),
                       ("Weitere &VPN-Logs …", self.edit_vpn_settings, "vpn"), None,
@@ -511,7 +518,11 @@ class MenusMixin:
                       ("&ITM-Personalzeiten …", self.open_itm_settings, "itm"),
                       ("&Matrix42 …", self.open_m42_settings, "m42"),
                       ("&Outlook …", self.open_outlook_settings, "outlook"),
-                      ("Tea&ms-Anrufe …", self.open_teams_settings, "teams")):
+                      ("Tea&ms-Anrufe …", self.open_teams_settings, "teams"), None,
+                      ("&PC gesperrt / Ruhezustand …", self.edit_pcstate_settings, "pcstate"),
+                      ("W&LAN …", self.edit_wlan_settings, "wlan"),
+                      ("&Zuletzt geöffnete Dateien …", self.edit_recent_files_settings, "files"),
+                      ("Bro&wser-Verlauf …", self.edit_browser_settings, "browser")):
             if entry is None:
                 setup.addSeparator()  # Webseiten im Hintergrund
                 continue
@@ -581,6 +592,8 @@ class MenusMixin:
             self.apply_vpn_monitor()
         elif key in ("mstsc_enabled", "rdmbetter_enabled"):
             self.apply_mstsc_monitor()
+        elif key in self.LOCAL_KEYS:
+            self.apply_local_monitor()
         self.timeline.refresh()  # neu einlesen und zeichnen
 
     def show_about(self):
@@ -731,6 +744,65 @@ class MenusMixin:
                  "Sie stehen in der Timeline wie die Verbindungen aus RDM. Auch Starts aus "
                  "RDM Better bekommen so ihr Ende.",
             after=self.apply_mstsc_monitor,
+        )
+
+    def edit_shell_settings(self):
+        self._edit_log_settings(
+            "shell", [], "SSH und PowerShell",
+            enabled_text="SSH- und PowerShell-Fernsitzungen aufzeichnen",
+            paths=False, timezone=False,
+            hint="Zeitzeuge prüft alle 30 Sekunden, welche Sitzungen offen sind: ssh.exe, PuTTY, "
+                 "KiTTY, plink, WinSCP und PowerShell mit Enter-PSSession oder -ComputerName in "
+                 "der Befehlszeile. Gespeichert werden Ziel, Beginn und Ende. Sie stehen in der "
+                 "Timeline bei den Verbindungen wie RDM.",
+            after=self.apply_local_monitor,
+        )
+
+    def edit_pcstate_settings(self):
+        self._edit_log_settings(
+            "pcstate", [], "PC gesperrt / Ruhezustand",
+            enabled_text="Sperren, Ruhezustand, Ausschalten und Abmelden anzeigen",
+            paths=False, timezone=False,
+            hint="Gesperrt: Zeitzeuge prüft alle 30 Sekunden selbst, ob der Bildschirm gesperrt ist. "
+                 "Ruhezustand, ausgeschaltet und abgemeldet liest es aus dem Windows-"
+                 "Ereignisprotokoll „System“, auch für Zeiten, in denen Zeitzeuge nicht lief "
+                 "(14 Tage zurück). Alles steht in der Zeile „PC-Zustand“.",
+            after=self.apply_local_monitor,
+        )
+
+    def edit_wlan_settings(self):
+        self._edit_log_settings(
+            "wlan", [], "WLAN",
+            enabled_text="Verbundenes WLAN aufzeichnen",
+            paths=False, timezone=False,
+            hint="Zeitzeuge merkt sich alle 2 Minuten den Namen des WLANs, mit dem der PC verbunden "
+                 "ist. So siehst du in der Zeile „WLAN“, wann du z. B. beim Kunden vor Ort warst.",
+            after=self.apply_local_monitor,
+        )
+
+    def edit_recent_files_settings(self):
+        self._edit_log_settings(
+            "recent_files", [DEFAULT_RECENT_DIR], "Zuletzt geöffnete Dateien",
+            enabled_text="Zuletzt geöffnete Dateien anzeigen",
+            paths_key="recent_files_dirs", path_title="Ordner mit Verknüpfungen",
+            files=False, folders=True, timezone=False,
+            hint="Windows legt für jede geöffnete Datei eine Verknüpfung im Ordner „Recent“ an. "
+                 "Zeitzeuge liest daraus Dateiname und Uhrzeit (alle 2 Minuten) und hebt sie auf, "
+                 "auch wenn Windows die Liste kürzt. Inhalte liest es nicht.",
+            after=self.apply_local_monitor,
+        )
+
+    def edit_browser_settings(self):
+        self._edit_log_settings(
+            "browser", list(DEFAULT_BROWSER_HISTORY), "Browser-Verlauf",
+            enabled_text="Browser-Verlauf auswerten (nur Domains und Ticketnummern)",
+            path_title="Verlauf-Dateien (Edge, Chrome)", timezone=False,
+            hint="Zeitzeuge liest alle 2 Minuten den Verlauf von Edge und Chrome (14 Tage zurück) und "
+                 "behält davon nur die Domain (z. B. „kunde.de“) und Ticketnummern aus Adresse oder "
+                 "Titel. Adressen und Seitentitel speichert es nicht. Aufrufe derselben Domain mit "
+                 "weniger als 5 Minuten Pause sind ein Block. Suchmaschinen und Anmeldeseiten "
+                 "fallen weg (browser_ignore_domains in der zeitzeuge_config.json).",
+            after=self.apply_local_monitor,
         )
 
     def edit_sophos_settings(self):
