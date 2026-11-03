@@ -29,6 +29,11 @@ VIEW_HELP = {
                "egal welche Quelle. Praktisch, um einen Block als Ticket zu schreiben.",
                ["09:02–10:48  SSL VPN, srv-dc01, TeamViewer Müller GmbH",
                 "11:30–12:05  Telefonat, OPNsense"]),
+    "calls": ("phone",
+              "Nur Telefonate: Anrufe aus 3CX (eingehend, ausgehend, verpasst) und Teams-Anrufe, "
+              "jeder einzeln mit Dauer. Gut, um Telefonate nachzutragen.",
+              ["08:05–08:09  Telefonat eingehend  Kanzlei Schmidt (0251 123456)",
+               "11:30–11:45  Teams-Anruf  Müller GmbH"]),
     "doc": ("doc",
             "Deine eingetragenen Tätigkeiten und gestrichelt, was noch nicht dokumentiert ist.",
             ["✓ 09:00–10:45  Müller GmbH · Fernwartung: Drucker eingerichtet",

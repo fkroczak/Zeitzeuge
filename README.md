@@ -246,7 +246,7 @@ Fährst du über einen Knopf, erklärt ein Hinweis, was er tut. Im schmalen Fens
 
 Alles, was nur die Anzeige ändert, nie die Daten:
 
-- **Tagesliste:** Zusammengefasst, Einzeln, Arbeitsblöcke, Dokumentation, Zuordnung ohne KI, KI-Vorschläge, Matrix42-Abgleich. Die aktuelle Ansicht ist fett und blau. Fährst du über eine Ansicht, steht dort, was sie zeigt. **Was zeigen die Ansichten? …** (F1) erklärt alle mit Beispielen. Darunter **PC-Verlauf in der Liste**.
+- **Tagesliste:** Zusammengefasst, Einzeln, Arbeitsblöcke, Telefonate (nur 3CX- und Teams-Anrufe, jeder einzeln), Dokumentation, Zuordnung ohne KI, KI-Vorschläge, Matrix42-Abgleich. Die aktuelle Ansicht ist fett und blau. Fährst du über eine Ansicht, steht dort, was sie zeigt. **Was zeigen die Ansichten? …** (F1) erklärt alle mit Beispielen. Darunter **PC-Verlauf in der Liste**.
 - **Zeilen der Timeline** (Untermenü, auch per Rechtsklick auf die Legende links): jede Zeile mit einem Kästchen in ihrer Farbe zum Ein- und Ausblenden, dazu **Alle Zeilen einblenden**. Leere Zeilen blendet Zeitzeuge von selbst aus.
 - **PC-Aktivität als Arbeitsblöcke:** an = Blöcke je Tätigkeit, aus = jedes Fenster einzeln.
 - **Übersichten:** Wochenabschluss, Offene Tätigkeiten.
@@ -327,7 +327,7 @@ Die Anmeldung bleibt gespeichert (`%LOCALAPPDATA%\Zeitzeuge\3cx_profil`). Läuft
 
 Zeitzeuge scrollt die Anrufliste so viele Tage zurück, wie unter **Anrufe zurück lesen** im Dialog eingestellt ist (Standard 14, Schlüssel `calls_days_back`). Erhöhst du die Zahl, liest es die fehlenden Tage nach. Bis zu welchem Tag die Anrufe vollständig sind, merkt es sich in der Datenbank. Zeigst du einen älteren Tag an, scrollt Zeitzeuge im Hintergrund bis dorthin weiter. Das geht nur so weit zurück, wie 3CX die Anrufe selbst noch anzeigt.
 
-**Direkt-Abfrage prüfen:** Im 3CX-Dialog holt **Direkt-Abfrage prüfen** die Anrufe ohne Webseite direkt vom 3CX-Server und vergleicht sie mit deiner gespeicherten Anrufliste. Den Bericht `3cx_pruefung_….json` legt Zeitzeuge in den Datenordner, Namen und Nummern nur maskiert. Damit lässt sich festlegen, welche Felder Dauer und Richtung tragen. Danach kann Zeitzeuge 3CX ganz ohne Edge lesen.
+**Direkt-Abfrage prüfen:** Unter **Einstellungen → Fehlersuche & Analyse** holt **3CX: Direkt-Abfrage prüfen** die Anrufe ohne Webseite direkt vom 3CX-Server und vergleicht sie mit deiner gespeicherten Anrufliste. Den Bericht `3cx_pruefung_….json` legt Zeitzeuge in den Datenordner, Namen und Nummern nur maskiert. Damit lässt sich festlegen, welche Felder Dauer und Richtung tragen. Danach kann Zeitzeuge 3CX ganz ohne Edge lesen.
 
 Die Einstellungen für Telefonate stehen in `zeitzeuge_config.json`:
 
@@ -388,12 +388,14 @@ Gut zu wissen:
 
 Mit einem Mitschnitt lässt sich prüfen, ob Zeitzeuge die Daten später direkt beim Server abfragen kann, ohne die Seite dauerhaft in Edge offen zu halten. Das spart viel Arbeitsspeicher.
 
-1. **Einstellungen → Datenquellen → Einrichten → 3CX …**, **ITM-Personalzeiten …** oder **Matrix42 …** öffnen.
-2. **Abfragen mitschneiden …** klicken. Ein Edge-Fenster öffnet sich.
+Im Alltag brauchst du das nicht. Die Knöpfe stehen deshalb nicht in den Einrichtungsdialogen, sondern in einem eigenen Bereich für tiefergehende Analysen.
+
+1. **Einstellungen → Fehlersuche & Analyse** öffnen (die Quelle muss eingerichtet sein).
+2. **3CX: Abfragen mitschneiden**, **ITM: Abfragen mitschneiden** oder **Matrix42: Abfragen mitschneiden** öffnen. Ein Edge-Fenster öffnet sich.
 3. Falls nötig anmelden. Bei 3CX die Anrufliste ein Stück nach unten scrollen, bei ITM zwei oder drei andere Tage aufrufen.
 4. Das Fenster schließen. Zeitzeuge speichert `mitschnitt_pbx_….json`, `mitschnitt_itm_….json` oder `mitschnitt_m42_….json` im Datenordner.
 
-**Buchung mitschneiden (Matrix42):** Für „In Matrix42 buchen“ muss Zeitzeuge wissen, wie Matrix42 eine Zeiterfassung speichert. Im Dialog **Matrix42 …** klickst du **Buchung mitschneiden …**, legst im Edge-Fenster eine Zeiterfassung an, öffnest sie noch einmal, änderst etwas und speicherst. Dann das Fenster schließen. Zeitzeuge speichert `mitschnitt_m42_buchung_….json`. Darin stehen Abfragen, die etwas speichern, vollständig. Passwörter und Token bleiben geschwärzt.
+**Buchung mitschneiden (Matrix42):** Für „In Matrix42 buchen“ muss Zeitzeuge wissen, wie Matrix42 eine Zeiterfassung speichert. Unter **Einstellungen → Fehlersuche & Analyse** öffnest du **Matrix42: Buchung mitschneiden**, legst im Edge-Fenster eine Zeiterfassung an, öffnest sie noch einmal, änderst etwas und speicherst. Dann das Fenster schließen. Zeitzeuge speichert `mitschnitt_m42_buchung_….json`. Darin stehen Abfragen, die etwas speichern, vollständig. Passwörter und Token bleiben geschwärzt.
 
 Aufgezeichnet werden nur Datenabfragen, keine Bilder oder Skripte. Passwörter, Token und Cookie-Werte sind geschwärzt. Von Token und Cookies bleiben Name, Länge und Ablaufzeit, damit man sieht, wie lange eine Anmeldung hält. Antworten sind gekürzt (die ersten drei Einträge einer Liste). Darin können trotzdem Namen und Telefonnummern stehen, schau die Datei also vor dem Weitergeben durch.
 

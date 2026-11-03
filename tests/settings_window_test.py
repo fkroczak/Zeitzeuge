@@ -20,7 +20,7 @@ def gui_test():
     import main_timeline
     from PySide6.QtCore import Qt
     from PySide6.QtTest import QTest
-    from PySide6.QtWidgets import QApplication, QSystemTrayIcon, QToolButton
+    from PySide6.QtWidgets import QApplication, QPushButton, QSystemTrayIcon, QToolButton
 
     QSystemTrayIcon.isSystemTrayAvailable = staticmethod(lambda: True)
     app = QApplication(sys.argv)
@@ -51,8 +51,9 @@ def gui_test():
         assert text in texts, (text, texts)
     for text in ("Dunkles Design", "Ganzer Tag", "Arbeitszeit"):
         assert text not in texts, (text, texts)
-    # Einträge ohne Überschriften. 15 seit dem Tagesabschluss (Gruppe „Übersichten“ hat 3 von 5)
-    assert len([t for t in texts if t]) <= 15, texts
+    # Einträge ohne Überschriften. 15 seit dem Tagesabschluss (Gruppe „Übersichten“ hat 3 von 5),
+    # 16 seit der Ansicht „Telefonate“
+    assert len([t for t in texts if t]) <= 16, texts
     assert "Tagesabschluss …" in texts, texts
     settings_texts = [a.text().replace("&", "") for a in window.menu_button.menu().actions()]
     assert "Dunkles Design" in settings_texts and "Datenquellen …" in settings_texts, settings_texts
@@ -95,6 +96,17 @@ def gui_test():
     assert not any(p.get("pc_block") for p in preview.timeline._pc_band)
     settings.preview_hover(None)
     assert preview.variant is None and any(p.get("pc_block") for p in preview.timeline._pc_band)
+    # Vorschau bleibt sichtbar, im Ruhezustand schemenhaft, beim Darüberfahren kräftig
+    assert preview.timeline.isVisible() and preview._fades[0].opacity() < 1
+    settings.preview_hover(row.spec)
+    assert preview._fades[0].opacity() == 1
+    settings.preview_hover(None)
+    # Ansicht „Telefonate“: nur Anrufe
+    preview.show_variant({"list_view": "calls"}, "Telefonate")
+    kinds = [preview.table.item(r, 2).text() for r in range(preview.table.rowCount())]
+    assert kinds and all(k.startswith("Telefonat") or k == "Teams-Anruf" for k in kinds), kinds
+    preview.show_variant(None)
+    assert "calls" in window.view_actions and "calls" in dict(window.VIEWS)
     # Auswahl: schon beim Durchgehen der Liste, gespeichert erst beim Wählen
     combo = next(r for r in settings.rows if r.spec[5] == "list_view").control
     single = combo.findData("single")
@@ -129,6 +141,18 @@ def gui_test():
     assert tile.state == "off" and tile.switch.text() == "Aus"
     window.source_actions["rdm_enabled"].setChecked(True)  # von außen: Kachel zieht mit
     assert tile.switch.isChecked() and tile.state != "off"
+
+    # Fehlersuche & Analyse: Mitschnitte stehen hier, nicht mehr in den Einrichtungsdialogen
+    settings.show_page("debug")
+    debug_rows = [r.spec[3] for r in settings.rows if r.spec[0] == "debug"]
+    assert "Matrix42: Buchung mitschneiden" in debug_rows and "3CX: Direkt-Abfrage prüfen" in debug_rows
+    m42_dialog = window.build_reader_dialog("m42")
+    assert not [b for b in m42_dialog.findChildren(QPushButton) if "mitschneiden" in b.text()]
+    m42_dialog.deleteLater()
+    calls = []
+    window.record_source = lambda kind, booking=False: calls.append((kind, booking))
+    next(r for r in settings.rows if r.spec[3] == "Matrix42: Buchung mitschneiden").control.click()
+    assert calls == [("m42", True)], calls
 
     # Grenzwert ändern wirkt sofort
     row = next(r for r in settings.rows if r.spec[5] == "idle_prompt_minutes")

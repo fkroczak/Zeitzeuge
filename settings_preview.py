@@ -9,8 +9,8 @@ Keine echten Daten, keine Logs, kein Netz: alles kommt aus DEMO_* unten.
 from datetime import datetime, timedelta
 
 from PySide6.QtCore import QDate, Qt
-from PySide6.QtWidgets import (QAbstractItemView, QFrame, QHBoxLayout, QHeaderView, QLabel,
-                               QTableWidget, QTableWidgetItem, QVBoxLayout)
+from PySide6.QtWidgets import (QAbstractItemView, QFrame, QGraphicsOpacityEffect, QHBoxLayout,
+                               QHeaderView, QLabel, QTableWidget, QTableWidgetItem, QVBoxLayout)
 
 import rules as rule_engine
 from activity_tracker import app_label
@@ -104,6 +104,8 @@ class PreviewTimeline(TimelineView):
     def __init__(self, config, parent=None):
         super().__init__([], config, parent)
         self.setMinimumHeight(0)
+        # Die Vorschau ist niedriger als die Timeline: untere Zeilen über die Scrollleiste erreichbar
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.setAccessibleName("Vorschau der Timeline mit Beispieldaten")
         self.current_date = DEMO_DATE
         self.tracker = _DemoTracker(demo_segments())
@@ -141,6 +143,9 @@ def list_entries(timeline, config):
     entries = timeline.activities_for(DEMO_DATE)
     if view == "single":
         pass
+    elif view == "calls":
+        from app_daylist import call_entries
+        entries = call_entries(entries)
     elif view == "blocks":
         entries = work_blocks(entries, config.get("block_gap_minutes", 10))
     else:
@@ -154,7 +159,8 @@ def list_entries(timeline, config):
 class PreviewPane(QFrame):
     """Kasten „Vorschau“: Satz, was gezeigt wird, darunter Timeline und Tagesliste."""
 
-    LIST_ROWS = 5
+    LIST_ROWS = 3
+    TIMELINE_HEIGHT = 170
 
     def __init__(self, main, parent=None):
         super().__init__(parent)
@@ -170,10 +176,11 @@ class PreviewPane(QFrame):
         head.addWidget(title)
         self.caption = QLabel()
         self.caption.setObjectName("hint")
+        self.caption.setWordWrap(True)
         head.addWidget(self.caption, 1)
         layout.addLayout(head)
         self.timeline = PreviewTimeline(dict(main.config), self)
-        self.timeline.setFixedHeight(230)
+        self.timeline.setFixedHeight(self.TIMELINE_HEIGHT)
         layout.addWidget(self.timeline)
         self.table = QTableWidget(0, 5, self)
         self.table.setAccessibleName("Vorschau der Tagesliste mit Beispieldaten")
@@ -188,7 +195,32 @@ class PreviewPane(QFrame):
         self.table.horizontalHeader().setStretchLastSection(True)
         self.table.setFixedHeight(26 + self.LIST_ROWS * 24 + 4)
         layout.addWidget(self.table)
+        # Im Ruhezustand schemenhaft, damit die Einstellungen darunter im Vordergrund stehen.
+        # Kräftig, sobald du über eine Einstellung oder die Vorschau selbst fährst.
+        self._fades = []
+        for widget in (self.timeline, self.table):
+            effect = QGraphicsOpacityEffect(widget)
+            widget.setGraphicsEffect(effect)
+            self._fades.append(effect)
+        self._hover = False
         self.refresh()
+
+    FADED = 0.35
+
+    def _update_fade(self):
+        level = 1.0 if (self.variant or self._hover) else self.FADED
+        for effect in self._fades:
+            effect.setOpacity(level)
+
+    def enterEvent(self, event):
+        self._hover = True
+        self._update_fade()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        self._hover = False
+        self._update_fade()
+        super().leaveEvent(event)
 
     def config(self):
         """Aktuelle Einstellungen, bei einer Variante mit den geänderten Werten."""
@@ -215,9 +247,9 @@ class PreviewPane(QFrame):
         else:
             tl.show_whole_day()
         self.caption.setText(self.variant[1] if self.variant
-                             else "Beispieltag mit deinen Einstellungen. Fahr über eine Einstellung, "
-                                  "um die Änderung vorab zu sehen.")
+                             else "Beispieltag. Fahr über eine Einstellung, um die Änderung vorab zu sehen.")
         self._fill_list(cfg)
+        self._update_fade()
 
     def _fill_list(self, cfg):
         from app_daylist import new_details  # erst hier: app_daylist lädt das Hauptfenster
