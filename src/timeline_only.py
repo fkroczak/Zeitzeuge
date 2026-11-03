@@ -29,6 +29,15 @@ def parse_time(text):
     return datetime.fromisoformat(text)
 
 
+def _first_line(text):
+    """Erste nicht-leere Zeile: Balken-Beschriftungen sind einzeilig, sonst laufen
+    mehrzeilige Beschreibungen über die Zeilen darunter."""
+    for line in (text or "").splitlines():
+        if line.strip():
+            return line.strip()
+    return ""
+
+
 WEEKDAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
 
 
@@ -1021,6 +1030,8 @@ class TimelineView(QGraphicsView):
     def _add_label(self, text, x, y, w, h, font, metrics, color, alternatives=()):
         """Beschriftung in einem Balken; zu wenig Platz: kürzere Alternative, sonst keine
         (der Name steht im Hinweis beim Darüberfahren)."""
+        text = _first_line(text)
+        alternatives = tuple(_first_line(t) for t in alternatives if t)
         if w < 28 or not text:
             return None
         room = int(w - 8)
