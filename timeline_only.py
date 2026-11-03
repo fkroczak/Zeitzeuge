@@ -5,7 +5,7 @@ from datetime import datetime
 from html import escape
 
 from PySide6.QtCore import QDate, QDateTime, QPoint, Qt, QTimer, Signal
-from PySide6.QtGui import QBrush, QColor, QFontMetrics, QPainter, QPen
+from PySide6.QtGui import QBrush, QColor, QContextMenuEvent, QFontMetrics, QPainter, QPen
 from PySide6.QtWidgets import (QDialog, QDialogButtonBox, QFormLayout, QGraphicsRectItem,
                                QGraphicsScene, QGraphicsView, QLabel, QLineEdit, QMenu,
                                QTextEdit, QVBoxLayout)
@@ -323,7 +323,8 @@ class TimelineView(QGraphicsView):
     # Rechtsklick auf einen KI-Vorschlag: (Eintrag, "übernehmen" | "verwerfen")
     ai_action = Signal(dict, str)
     # Tätigkeit eintragen/ändern: (Aktion, Eintrag oder {"minute": …})
-    # Aktionen: "add" (zu einem Eintrag), "add_at" (freie Stelle), "edit", "delete", "ignore"
+    # Aktionen: "add" (zu einem Eintrag), "add_at" (freie Stelle), "edit", "delete", "ignore",
+    # "add_range" (mit links gezogener Bereich: {"start_min": …, "end_min": …})
     doc_request = Signal(str, dict)
     # Rechtsklick-Menü: (Befehl aus entry_menu_items, Eintrag oder {"minute": …})
     entry_action = Signal(str, dict)
@@ -400,6 +401,7 @@ class TimelineView(QGraphicsView):
         self.zoom_level = 1.0
         self.fit_day = True        # ganzen Tag ins Fenster einpassen
         self._drag_start = None    # Mausposition beim Drücken (Bereich ziehen)
+        self._drag_button = None   # links: Tätigkeit eintragen, rechts: Zoom
         self._drag_item = None     # markierter Bereich während des Ziehens
         self._hover_line = None    # senkrechte Linie unter der Maus
         self._hover_label = None   # Uhrzeit oben an der Linie
@@ -1184,24 +1186,26 @@ class TimelineView(QGraphicsView):
 
     def mouseMoveEvent(self, event):
         pos = event.position().toPoint()
-        # Klicken und ziehen: Bereich markieren
+        # Klicken und ziehen: Bereich markieren (links: Tätigkeit, rechts: Zoom)
         if self._drag_start is not None and abs(pos.x() - self._drag_start.x()) > 5:
             self._hide_hover()
             x1 = self.mapToScene(self._drag_start).x()
             x2 = self.mapToScene(pos).x()
             rect = self.sceneRect()
+            zoom = self._drag_button == Qt.RightButton
             if self._drag_item is None:
-                color = QColor("#0078D7")
-                color.setAlpha(50)
-                self._drag_item = self.scene.addRect(0, 0, 0, 0, QPen(QColor("#0078D7"), 1), QBrush(color))
+                color = QColor("#0078D7" if zoom else "#18B34B")
+                fill = QColor(color)
+                fill.setAlpha(50)
+                self._drag_item = self.scene.addRect(0, 0, 0, 0, QPen(color, 1), QBrush(fill))
                 self._drag_item.setZValue(100)
             self._drag_item.setRect(min(x1, x2), 0, abs(x2 - x1), rect.height())
-            a, b = sorted((self._minute_at(self._drag_start.x()), self._minute_at(pos.x())))
-            a, b = max(0, int(a)), min(24 * 60, int(b))
-            self.tooltip.setText(f"{a // 60:02d}:{a % 60:02d} – {b // 60:02d}:{b % 60:02d}")
+            a, b = self._drag_minutes(self._drag_start.x(), pos.x())
+            hint = "Loslassen: diesen Zeitraum zeigen" if zoom else "Loslassen: Tätigkeit eintragen"
+            self.tooltip.setText(f"<b>{hhmm(a)} – {hhmm(b)}</b> ({format_duration((b - a) * 60)})"
+                                 f"<br><i>{hint}</i>")
             self.tooltip.adjustSize()
-            gp = self.mapToGlobal(pos)
-            self.tooltip.move(gp.x() + 15, gp.y() + 15)
+            self._move_tooltip(pos)
             self.tooltip.show()
             return
 
@@ -1343,49 +1347,91 @@ class TimelineView(QGraphicsView):
         self._hide_hover()
         super().leaveEvent(event)
 
+    def _drag_minutes(self, x1, x2):
+        """Gezogener Bereich in ganzen Minuten seit 0 Uhr (innerhalb des Tages)."""
+        a, b = sorted((self._minute_at(x1), self._minute_at(x2)))
+        return max(0, round(a)), min(24 * 60, round(b))
+
+    def _cancel_drag(self):
+        self._drag_start = self._drag_button = None
+        if self._drag_item is not None:
+            self.scene.removeItem(self._drag_item)
+            self._drag_item = None
+        self.tooltip.hide()
+
     def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton:
-            self._drag_start = event.position().toPoint()
+        if event.button() in (Qt.LeftButton, Qt.RightButton) and self._ppm:
+            if self._drag_start is not None:  # zweite Taste während des Ziehens: abbrechen
+                self._cancel_drag()
+                return
+            pos = event.position().toPoint()
+            if event.button() == Qt.RightButton and self._legend and pos.x() < self.LEFT - 6:
+                return  # Legende: Menü beim Loslassen, kein Bereich
+            self._drag_start, self._drag_button = pos, event.button()
             return
         super().mousePressEvent(event)
 
     def mouseReleaseEvent(self, event):
-        if event.button() == Qt.LeftButton and self._drag_start is not None:
-            start, self._drag_start = self._drag_start, None
-            if self._drag_item is not None:  # Bereich gezogen -> diesen Bereich zeigen
-                self.scene.removeItem(self._drag_item)
-                self._drag_item = None
-                self.tooltip.hide()
-                self.show_range(self._minute_at(start.x()), self._minute_at(event.position().x()))
-                return
-            a = self._activity_at(event.position().toPoint())  # einfacher Klick -> Details
-            if a:
-                self.tooltip.hide()
-                if a.get("open"):  # offene Tätigkeit: gleich eintragen
-                    self.doc_request.emit("add", a["source_entry"])
-                elif a.get("m42_gap"):  # nicht gebucht: Tätigkeit ab hier eintragen
-                    self.doc_request.emit("add_at", a)
-                elif a.get("doc"):
-                    self.doc_request.emit("edit", a)
-                else:
-                    ActivityViewDialog(a, self).exec()
+        button = event.button()
+        pos = event.position().toPoint()
+        if button == Qt.RightButton and self._drag_start is None:  # Legende oder abgebrochen
+            if self._legend and pos.x() < self.LEFT - 6:
+                self._show_menu(pos, event.globalPosition().toPoint())
             return
-        super().mouseReleaseEvent(event)
+        if button != self._drag_button or self._drag_start is None:
+            super().mouseReleaseEvent(event)
+            return
+        start = self._drag_start
+        dragged = self._drag_item is not None
+        self._cancel_drag()
+        if dragged:
+            a, b = self._drag_minutes(start.x(), pos.x())
+            if button == Qt.RightButton:  # rechts gezogen -> diesen Bereich zeigen
+                self.show_range(a, b)
+            elif b > a:  # links gezogen -> Tätigkeit für diesen Zeitraum eintragen
+                self.doc_request.emit("add_range", {"start_min": a, "end_min": b})
+            return
+        if button == Qt.RightButton:  # einfacher Rechtsklick -> Menü
+            self._show_menu(pos, event.globalPosition().toPoint())
+            return
+        a = self._activity_at(pos)  # einfacher Klick -> Details
+        if a:
+            if a.get("open"):  # offene Tätigkeit: gleich eintragen
+                self.doc_request.emit("add", a["source_entry"])
+            elif a.get("m42_gap"):  # nicht gebucht: Tätigkeit ab hier eintragen
+                self.doc_request.emit("add_at", a)
+            elif a.get("doc"):
+                self.doc_request.emit("edit", a)
+            else:
+                ActivityViewDialog(a, self).exec()
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_Escape and self._drag_start is not None:
+            self._cancel_drag()
+            return
+        super().keyPressEvent(event)
 
     def contextMenuEvent(self, event):
-        """Rechtsklick: dasselbe Menü wie in der Tagesliste (entry_menu_items)."""
-        if self._legend and event.pos().x() < self.LEFT - 6:  # Legende: Zeilen ein-/ausblenden
-            self._hide_hover()
-            self.rows_menu_requested.emit(event.globalPos())
+        """Menütaste der Tastatur; mit der Maus kommt das Menü beim Loslassen (Rechtsziehen = Zoom)."""
+        if event.reason() == QContextMenuEvent.Mouse:
+            event.accept()
             return
-        a = self._activity_at(event.pos())
+        self._show_menu(event.pos(), event.globalPos())
+
+    def _show_menu(self, pos, global_pos):
+        """Rechtsklick: dasselbe Menü wie in der Tagesliste (entry_menu_items)."""
+        if self._legend and pos.x() < self.LEFT - 6:  # Legende: Zeilen ein-/ausblenden
+            self._hide_hover()
+            self.rows_menu_requested.emit(global_pos)
+            return
+        a = self._activity_at(pos)
         self._hide_hover()
         if a is None:
-            minute = self._minute_at(event.pos().x()) if self._ppm else -1
+            minute = self._minute_at(pos.x()) if self._ppm else -1
             if not 0 <= minute < 24 * 60:
                 return
             a = {"minute": minute}
-        key = exec_entry_menu(self, a, event.globalPos())
+        key = exec_entry_menu(self, a, global_pos)
         if key:
             self.entry_action.emit(key, a)
 
