@@ -96,11 +96,8 @@ def gui_test():
     assert not any(p.get("pc_block") for p in preview.timeline._pc_band)
     settings.preview_hover(None)
     assert preview.variant is None and any(p.get("pc_block") for p in preview.timeline._pc_band)
-    # Vorschau bleibt sichtbar, im Ruhezustand schemenhaft, beim Darüberfahren kräftig
-    assert preview.timeline.isVisible() and preview._fades[0].opacity() < 1
-    settings.preview_hover(row.spec)
-    assert preview._fades[0].opacity() == 1
-    settings.preview_hover(None)
+    # Vorschau bleibt sichtbar und kräftig, auch ohne Maus darüber (nicht verblasst)
+    assert preview.timeline.isVisible() and preview.timeline.graphicsEffect() is None
     # Ansicht „Telefonate“: nur Anrufe
     preview.show_variant({"list_view": "calls"}, "Telefonate")
     kinds = [preview.table.item(r, 2).text() for r in range(preview.table.rowCount())]

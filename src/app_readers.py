@@ -110,7 +110,7 @@ class ReadersMixin:
             title="3CX direkt auslesen",
             text="Zeitzeuge öffnet den 3CX-Webclient unsichtbar mit Microsoft Edge (eigenes Profil) "
                  "und liest jede Minute die Anrufliste. Es hält die eingestellten Tage vollständig, "
-                 "ältere Tage beim Blättern. Tampermonkey wird dafür nicht gebraucht.\n\n"
+                 "ältere Tage beim Blättern.\n\n"
                  "Zum Anmelden öffnet sich ein Edge-Fenster: anmelden und das Fenster schließen. "
                  "Die Anmeldung bleibt gespeichert. Ton, Mikrofon und Benachrichtigungen sind gesperrt.",
             url_label="3CX-Adresse:", url_key="calls_3cx_url", enabled_key="pbx_reader_enabled",
