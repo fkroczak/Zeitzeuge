@@ -72,8 +72,11 @@ Abrechnung zu erfassen. Du bekommst die Spuren eines Tages: Fernwartungs-Verbind
 Telefonate und die aktiven Fenster am PC.
 
 Fasse zusammengehörige Spuren zu Tätigkeitsblöcken zusammen und ordne jeden Block ein:
-- kunde: der Kunde oder das System, um das es geht. Leite ihn aus Verbindungs-, \
-Anrufer- und Fensternamen ab. Unbekannt oder intern: leerer Text.
+- kunde: die Firma, um die es geht. Leite sie aus Verbindungs-, Anrufer- und \
+Fensternamen ab. Eine Person ist nie der Kunde: Steht beim Anruf nur ein Personenname \
+(Ansprechpartner), nimm die Firma nur, wenn sie aus anderen Spuren hervorgeht. Anrufe \
+mit „Kollege“ kommen aus der eigenen Firma; der Kollege ist nie der Kunde. Unbekannt \
+oder intern: leerer Text.
 - kategorie: genau eine aus der vorgegebenen Liste.
 - beschreibung: ein kurzer Satz auf Deutsch, wie ihn ein Techniker ins Ticket schreibt, \
 z. B. "Fernwartung Server, Updates eingespielt" oder "Rückruf wegen Druckerproblem". \

@@ -160,6 +160,8 @@ def same_customer(a, b):
         return False
     if ka == kb or (min(len(ka), len(kb)) >= 4 and (ka in kb or kb in ka)):
         return True
+    if ka.replace(" ", "") == kb.replace(" ", ""):
+        return True  # „Münsterlandpflege“ = „Münsterland Pflege“
     wa = {w for w in ka.split() if len(w) >= 3}
     wb = {w for w in kb.split() if len(w) >= 3}
     short, long_ = sorted((wa, wb), key=len)

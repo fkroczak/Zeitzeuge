@@ -470,6 +470,7 @@ class ReadersMixin:
             )
         )
         self.m42_reader.recording_done.connect(self.on_recording_done)
+        self.m42_reader.day_read.connect(lambda _d: self.schedule_customer_discovery())
         self._watch_reader(self.m42_reader)
         self.m42_reader.start()
         self.m42_reader.want(self.current_date.toString("yyyy-MM-dd"))

@@ -9,11 +9,14 @@ import os
 import threading
 from datetime import datetime, timedelta
 
+import colleagues
 import datastore
 import safe_io
 
 TIME_FMT = "%Y-%m-%d %H:%M:%S"
 _lock = threading.Lock()
+_colleague_cache = {}  # Pfad -> (Stand, Kollegen); merge_calls zählt den Stand hoch
+_version = [0]
 
 def _key(call):
     # Gleicher Anruf = gleiche Startminute + gleiche Nummer/Name + angenommen ja/nein.
@@ -88,6 +91,7 @@ def merge_calls(path, new_calls):
                     changed[day] = sorted(calls.values(), key=lambda c: c["start"])
             if changed:
                 store.put_many(name, changed)
+                _version[0] += 1
             return added
         except datastore.Busy as e:
             # Beim nächsten Lesen kommen die Anrufe wieder
@@ -95,8 +99,24 @@ def merge_calls(path, new_calls):
             return 0
 
 
-def load_call_suggestions(path, date_str, ignore_missed=True, min_seconds=0):
-    """Anrufe eines Tages (YYYY-MM-DD) als Timeline-Vorschläge."""
+def colleagues_for(path, manual=(), auto=True):
+    """Kollegen aus allen gespeicherten Anrufen (colleagues.py), zwischengespeichert bis neue
+    Anrufe dazukommen."""
+    key = (path, tuple(manual or ()), auto)
+    cached = _colleague_cache.get(key)
+    if cached and cached[0] == _version[0]:
+        return cached[1]
+    found = colleagues.detect(load_calls(path) if auto else [], manual, auto)
+    _colleague_cache.clear()
+    _colleague_cache[key] = (_version[0], found)
+    return found
+
+
+def load_call_suggestions(path, date_str, ignore_missed=True, min_seconds=0, colleague=None):
+    """Anrufe eines Tages (YYYY-MM-DD) als Timeline-Vorschläge.
+
+    colleague: colleagues.Colleagues. Anrufe von Kollegen bekommen "colleague": True
+    (bleiben sichtbar und werden nachgefragt, der Kollege ist aber nie der Kunde)."""
     try:
         store, name = _store(path)
         calls = _load_day(store, name, date_str)
@@ -123,6 +143,9 @@ def load_call_suggestions(path, date_str, ignore_missed=True, min_seconds=0):
         details = [f"{c.get('direction', 'Anruf')}, Dauer {seconds // 60}:{seconds % 60:02d}"]
         if c.get("via"):
             details.append(f"via {c['via']}")
+        is_colleague = bool(colleague and colleague.is_colleague(number))
+        if is_colleague:
+            details.append("Kollege")
         result.append({
             "start": start.strftime(TIME_FMT),
             "end": end.strftime(TIME_FMT),
@@ -133,5 +156,6 @@ def load_call_suggestions(path, date_str, ignore_missed=True, min_seconds=0):
             "phone": number,  # für die Kundenliste (customers.py)
             "details": ", ".join(details),
             "is_suggestion": True,
+            **({"colleague": True} if is_colleague else {}),
         })
     return result

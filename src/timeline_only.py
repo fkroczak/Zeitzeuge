@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (QDialog, QDialogButtonBox, QFormLayout, QGraphics
                                QTextEdit, QVBoxLayout)
 
 from activity_tracker import app_label, merge_segments, read_segments
+import call_import
 from call_import import load_call_suggestions
 import focus
 import travel
@@ -683,6 +684,9 @@ class TimelineView(QGraphicsView):
                 self.calls_file, date_str,
                 ignore_missed=self.config.get("calls_ignore_missed", True),
                 min_seconds=self.config.get("calls_min_duration", 0),
+                colleague=call_import.colleagues_for(
+                    self.calls_file, self.config.get("colleague_numbers") or (),
+                    self.config.get("colleagues_auto", True)),
             )
         if self.outlook_entries:
             try:

@@ -138,6 +138,13 @@ def default_config():
         "calls_min_duration": 0,
         "calls_days_back": 14,  # 3CX: so viele Tage zurück lesen
         "calls_3cx_url": "https://voice.visaas.de:5001",
+        # Kollegen (colleagues.py): Durchwahlen, Handys von Kollegen und die Zentrale erkennt
+        # Zeitzeuge selbst; weitere Nummern hier, Anfang mit * („02542917918*“)
+        "colleagues_auto": True,
+        "colleague_numbers": [],
+        # Kundenliste aus den Matrix42-Buchungen lernen: sichere Spuren (Telefonnummer,
+        # TeamViewer-ID, RDM, VPN) von selbst übernehmen (customer_discovery.py)
+        "customers_auto_learn": True,
 
         # Aktivitätsprotokoll (aktives Fenster)
         "tracking_enabled": True,

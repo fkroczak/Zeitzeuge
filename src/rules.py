@@ -198,6 +198,9 @@ def match_entry(entry, compiled, is_pc=False):
                 template = rule.get("customer") or ""
                 if template:
                     customer = fill_customer(template, m)
+                elif entry.get("type") == "Telefonat":
+                    # Anrufer ist eine Person (Kollege oder Ansprechpartner), kein Kunde
+                    customer = ""
                 else:
                     customer = values["customer"]
                 return index, rule, customer
