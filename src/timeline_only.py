@@ -1198,7 +1198,10 @@ class TimelineView(QGraphicsView):
 
     def scrollContentsBy(self, dx, dy):
         super().scrollContentsBy(dx, dy)
-        self.viewport().update()  # Legende neu zeichnen, sonst wandert sie beim Blättern mit
+        # Nur den Legendenstreifen neu zeichnen, sonst wandert sie beim Blättern mit.
+        # Nicht die ganze Fläche: Qt verschiebt den Rest als Bild, das hält Blättern flüssig.
+        # + |dx|: die mitgeschobene alte Legende rechts daneben ebenfalls übermalen
+        self.viewport().update(0, 0, self.LEFT + abs(dx) + 2, self.viewport().height())
 
     def wheelEvent(self, event):
         """STRG + Mausrad: Zoom, UMSCHALT + Mausrad: Zeilen, Mausrad: horizontal blättern."""
