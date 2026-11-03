@@ -734,7 +734,8 @@ class DocsMixin(CustomersMixin):
         if not self.config.get("prompt_end_of_day", True):
             open_items = []  # Erinnerung an Offenes aus; die Prüfung hat ihren eigenen Schalter
         checks_on = self.config.get("day_checks_enabled", True)
-        if not (self.tray and (open_items or checks_on)):
+        close_on = self.config.get("day_close_end_of_day", True) and hasattr(self, "day_close_hint")
+        if not (self.tray and (open_items or checks_on or close_on)):
             return
         today = now.strftime("%Y-%m-%d")
         if self._reminded_day == today:
@@ -752,13 +753,24 @@ class DocsMixin(CustomersMixin):
         if checks_on:
             rate = week_dialogs.rate_for(self, today, now, inputs)
             findings = week_dialogs.checks_for(self, today, now, inputs, rate)
-        if not (open_items or findings):
+        # Tagesabschluss (app_day_close.py): Vorschläge bereit? Dann öffnet der Klick ihn
+        close_text = self.day_close_hint(today, now) if close_on else ""
+        if not (open_items or findings or close_text):
             return
         self._reminded_day = today
         lines = [f"- {f.text}" for f in findings[:4]]
         if len(findings) > 4:
             lines.append(f"- und {len(findings) - 4} weitere (Knopf „Wochenabschluss“)")
-        if open_items:
+        if close_text:  # Klick öffnet den Tagesabschluss; er enthält auch das Offene
+            self._tray_close_hint = True
+            title = ("Feierabend: noch nicht alles dokumentiert" if open_items else
+                     "Feierabend: bitte prüfen" if findings else "Feierabend: Tagesabschluss bereit")
+            text = f"Heute sind noch {len(open_items)} Tätigkeiten offen.\n" if open_items else ""
+            text += f"{close_text} Klick hier zum Prüfen und Buchen."
+            if lines:
+                text += "\nAußerdem:\n" + "\n".join(lines)
+            self.tray.showMessage(title, text, QSystemTrayIcon.Warning, 15000)
+        elif open_items:
             self._tray_doc_hint = True
             text = f"Heute sind noch {len(open_items)} Tätigkeiten offen. Klick hier zum Nachtragen."
             if lines:

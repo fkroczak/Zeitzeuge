@@ -51,7 +51,9 @@ def gui_test():
         assert text in texts, (text, texts)
     for text in ("Dunkles Design", "Ganzer Tag", "Arbeitszeit"):
         assert text not in texts, (text, texts)
-    assert len([t for t in texts if t]) <= 14, texts  # Einträge ohne Überschriften
+    # Einträge ohne Überschriften. 15 seit dem Tagesabschluss (Gruppe „Übersichten“ hat 3 von 5)
+    assert len([t for t in texts if t]) <= 15, texts
+    assert "Tagesabschluss …" in texts, texts
     settings_texts = [a.text().replace("&", "") for a in window.menu_button.menu().actions()]
     assert "Dunkles Design" in settings_texts and "Datenquellen …" in settings_texts, settings_texts
     # PC-Aktivität: Arbeitsblöcke <-> jedes Fenster, im Menü Ansicht und im Menü der Zeilen
