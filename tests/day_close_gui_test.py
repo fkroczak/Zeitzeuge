@@ -186,6 +186,8 @@ def gui_test():
     window.day_close_plan = lambda d, now=None: day_close.build(
         d, [(day.replace(hour=14), day.replace(hour=15))], [],
         [(1, {"start": f"{D} 14:00:00", "end": f"{D} 15:00:00", "type": "TeamViewer", "customer_name": "Gamma"})])
+    assert window.day_close_hint(D) == ""  # gerade erst leer gerechnet: 10 Minuten Ruhe
+    window._day_close_hint_empty = None
     assert "1 Vorschlag" in window.day_close_hint(D) and "100 %" in window.day_close_hint(D)
     window.config["day_close_end_of_day"] = False
     assert window.day_close_hint(D) == ""

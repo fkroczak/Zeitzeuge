@@ -3,7 +3,7 @@
 Teil von TimelineApp (main_timeline.py), nur über main_timeline laden. Die Rechnung steht in
 day_close.py (ohne Qt), das Fenster in day_close_dialog.py.
 """
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from PySide6.QtCore import QDate
 
@@ -96,6 +96,11 @@ class DayCloseMixin:
         92 % der Personalzeit dokumentiert“. '' wenn es nichts vorzuschlagen gibt."""
         if not self.config.get("day_close_end_of_day", True):
             return ""
+        # Die Prüfung bei Feierabend läuft jede Minute: ohne Vorschläge erst nach 10 Minuten neu rechnen
+        now = now or datetime.now()
+        last = getattr(self, "_day_close_hint_empty", None)
+        if last and last[0] == date_str and now - last[1] < timedelta(minutes=10):
+            return ""
         try:
             plan = self.day_close_plan(date_str, now)
         except Exception:  # der Hinweis darf die Erinnerung nie verhindern
@@ -104,6 +109,7 @@ class DayCloseMixin:
             return ""
         todo = [r for r in plan["rows"] if r["checked"]]
         if not todo or plan["percent_after"] is None:
+            self._day_close_hint_empty = (date_str, now)
             return ""
         return (f"Tagesabschluss: {len(todo)} Vorschl{'äge' if len(todo) != 1 else 'ag'} bereit, "
                 f"danach {plan['percent_after']} % der Personalzeit erfasst.")

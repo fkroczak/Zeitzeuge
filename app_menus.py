@@ -307,11 +307,10 @@ class MenusMixin:
         self._icon_actions.append((menu.addAction("Wochen&abschluss …", self.show_week), "gauge"))
         # Tagesabschluss (app_day_close.py): Vorschläge prüfen, dokumentieren, buchen
         self.day_close_action = QAction("&Tagesabschluss …", self)
-        self.day_close_action.setShortcut(QKeySequence("F7"))
         self.day_close_action.setToolTip("Tag aus allen Spuren zu Blöcken je Kunde zusammenstellen, "
                                          "prüfen, dokumentieren und in Matrix42 buchen")
         self.day_close_action.triggered.connect(lambda: self.show_day_close())
-        self.addAction(self.day_close_action)
+        # kein Kürzel: F7 bis F12 bleiben für andere Werkzeuge frei (README, Tastenkürzel)
         menu.addAction(self.day_close_action)
         self._icon_actions.append((self.day_close_action, "check"))
         self._icon_actions.append((menu.addAction("&Offene Tätigkeiten …", self.show_open_docs), "alert"))
