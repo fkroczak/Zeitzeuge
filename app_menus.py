@@ -138,7 +138,7 @@ class MenusMixin:
         # Verkleinern/Vergrößern nur per Tastatur (Strg+-, Strg++) und Strg+Mausrad, nicht als Knöpfe
         whole_day = self._action("Ganzer Tag", self.timeline_whole_day, "Ctrl+0",
                                  "Ganzen Tag zeigen (oder Doppelklick in die Timeline; "
-                                 "feiner zoomen mit Strg+Mausrad)", "whole_day")
+                                 "zoomen mit Strg+Mausrad oder mit rechts ziehen)", "whole_day")
         work_time = self._action("Arbeitszeit", self.timeline_work_time, "Ctrl+9",
                                  "Arbeitszeit des Tages zeigen (feiner zoomen mit Strg+Mausrad)", "work_time")
         tb.addAction(whole_day)
