@@ -255,6 +255,12 @@ class WeekDialog(QDialog):
                                     "prüfen und in Matrix42 buchen")
         self.book_button.clicked.connect(self.book_day)
         buttons.addButton(self.book_button, QDialogButtonBox.ActionRole)
+        self.close_button = QPushButton("&Tagesabschluss …", self)
+        self.close_button.setEnabled(hasattr(window, "show_day_close"))
+        self.close_button.setToolTip("Markierten Tag aus allen Spuren zu Blöcken je Kunde zusammenstellen, "
+                                     "dokumentieren und in Matrix42 buchen")
+        self.close_button.clicked.connect(self.close_day)
+        buttons.addButton(self.close_button, QDialogButtonBox.ActionRole)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
         self.fill()
@@ -380,6 +386,12 @@ class WeekDialog(QDialog):
             self.fill()
 
     # ---- Springen
+
+    def close_day(self):
+        row = self.table.currentRow()
+        if 0 <= row < len(self.rows) and hasattr(self.window, "show_day_close"):
+            self.window.show_day_close(self.rows[row], parent=self)
+            self.fill()
 
     def open_day(self, row):
         if 0 <= row < len(self.rows):

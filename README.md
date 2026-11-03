@@ -62,6 +62,19 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
   - Ist in Matrix42 zu der Zeit schon etwas gebucht, steht ein Hinweis im Fenster. Gebuchte Tätigkeiten merken sich die Nummer der Zeiterfassung (z. B. TE0000088403) und lassen sich nicht doppelt buchen.
   - Im Wochenabschluss bucht **Tag in Matrix42 buchen …** alle noch offenen Tätigkeiten des markierten Tags nacheinander, jede mit eigenem Fenster.
   - Matrix42 muss eingeschaltet und angemeldet sein (nur im Firmennetz). Zeitzeuge bucht über das unsichtbare Edge, wie die Matrix42-Seite selbst.
+- **Tagesabschluss** (Menü **Ansicht → Tagesabschluss …**, im Wochenabschluss oder per Klick auf die Meldung bei Feierabend): Zeitzeuge stellt den Tag aus allen Spuren zu Blöcken je Kunde zusammen, mit Ticket und kurzem Tickettext. Du prüfst die Liste und bestätigst einmal für alles. Ziel: mit wenig Aufwand rund 90 % der Personalzeit erfasst.
+  - **Woher die Blöcke kommen:** deine eingetragenen Tätigkeiten, Verbindungen und Telefonate, KI-Vorschläge, die Zuordnung ohne KI und die Arbeitsblöcke am PC, in dieser Reihenfolge. Was in Matrix42 schon gebucht ist, bleibt außen vor. Gleicher Kunde hintereinander wird ein Block, kurze Lücken (bis 10 Minuten) gehören zum Block davor. PC-Aktivität zählt nur in der Personalzeit.
+  - **Ticket:** aus den Fenstertiteln im Block. Kennt Zeitzeuge zum Ticket keinen Kunden, schlägt es ihn in deinem Verlauf oder direkt in Matrix42 nach. Ohne Ticket im Fenstertitel nimmt es das Ticket, das du zuletzt (14 Tage) für den Kunden benutzt hast, als **vermutet**. **Text:** der Satz aus dem KI-Vorschlag, sonst aus der Regel, sonst kurz aus den Spuren, z. B. „Fernwartung: RDP DC01, Telefonat“.
+  - Oben steht, wie viel der Personalzeit schon gebucht ist und wie viel es mit den angehakten Zeilen wird, z. B. „mit den angehakten Zeilen 7:20 h (92 %)“.
+  - Angehakt sind Blöcke mit Kunde. Kunde, Ticket und Text änderst du per Doppelklick direkt in der Tabelle. Zeit ohne Spur steht als „nicht zugeordnet“ ohne Haken da; trägst du dort einen Kunden ein, ist sie dabei.
+  - **Dokumentieren und buchen** speichert die angehakten Zeilen als Tätigkeiten und bucht alle mit Ticket nacheinander in Matrix42 (Status „Neu“, Freigeben in Matrix42). Ohne Ticket wird nur dokumentiert. **Nur dokumentieren** bucht nichts. **Einzeln buchen …** öffnet für die markierte Zeile das Fenster „In Matrix42 buchen“ mit Ticketsuche.
+  - Der Abrechnungstakt gilt wie beim einzelnen Buchen. Reicht eine Buchung dadurch in die nächste hinein, rückt die nächste ans Ende der vorigen. Überschneidet sich eine Zeile mit einer Buchung, die schon in Matrix42 steht, bucht Zeitzeuge sie nicht und sagt es.
+  - **Sicherheit:** Ohne Rückfrage bucht Zeitzeuge nur sichere Tickets (aus dem Fenstertitel, von Hand eingetragen oder intern). Vermutete Tickets bucht es erst, wenn du in der Rückfrage **Vermutete mitbuchen** wählst. Gehört ein Ticket laut Verlauf zu einem anderen Kunden, schlägt Zeitzeuge es nicht vor. Passt ein Kundenname auf mehrere Kunden (z. B. „Huber“), nimmt es kein Ticket statt eines falschen.
+  - **Erkennung messen …** zeigt, wie gut der Tagesabschluss die letzten 20 Tage erkannt hätte. Dazu rechnet Zeitzeuge jeden Tag nach, als wäre nichts eingetragen und gebucht, und vergleicht mit deinen echten Matrix42-Buchungen: Erkennungsgrad (Zeit mit richtigem Kunden), Kunde richtig, Ticket richtig, falsches Ticket. Ziel: Erkennungsgrad 70–90 %, falsches Ticket unter 10 %.
+  - Nach dem Abschluss fragt Zeitzeuge zu diesen Zeiten nicht mehr nach.
+  - Bei Feierabend nennt die Meldung den Tagesabschluss („Tagesabschluss: 5 Vorschläge bereit, danach 92 % der Personalzeit erfasst“), ein Klick öffnet ihn. Abschalten mit `day_close_end_of_day: false`, dann ist die Meldung wie vorher.
+  - Zeit ohne Kunden (E-Mail, Excel …) kann auf ein internes Ticket gehen: `day_close_internal` in der `zeitzeuge_config.json`, z. B. `{"customer": "ITM intern", "ticket": "TCK0000012345", "category": "Intern", "categories": ["E-Mail / Kommunikation", "Teams"]}`. Mit `categories` gilt es nur für diese Kategorien, sonst für alle Blöcke ohne Kunde.
+  - So sieht es aus: [Bildschirmfoto Tagesabschluss](docs/screenshots/2026-11-03/tagesabschluss.png)
 - **Aktivitätsprotokoll:** Alle 5 Sekunden merkt sich Zeitzeuge das aktive Fenster, zum Beispiel eine RDP-Sitzung, einen Browser-Tab, Outlook oder PuTTY.
   - Es erscheint oben in der Timeline als Zeile „PC-Aktivität“, zusammengefasst zu **Arbeitsblöcken** je Tätigkeit, z. B. „E-Mail“, „DC01 · Fernwartung“ oder „Excel“. Aus 180 Fensterwechseln an einem Tag werden so etwa 10 Blöcke.
   - Die Tätigkeit kommt aus der **Zuordnung ohne KI** (Outlook und Thunderbird sind beide „E-Mail“, ein Remotedesktop-Fenster „DC01 – Remotedesktopverbindung“ ist „DC01 · Fernwartung“), sonst ist es das Programm.
@@ -153,7 +166,7 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
 | ALT + A | Menü Ansicht öffnen |
 | F1 | Was zeigen die Ansichten der Tagesliste? |
 
-F7 bis F12 belegt Zeitzeuge bewusst nicht, damit sie für andere Werkzeuge frei bleiben. Nachtragen erreichst du über den Stift in der Werkzeugleiste, den Wochenabschluss über das Menü **Ansicht**.
+F7 bis F12 belegt Zeitzeuge bewusst nicht, damit sie für andere Werkzeuge frei bleiben. Nachtragen erreichst du über den Stift in der Werkzeugleiste, Wochen- und Tagesabschluss über das Menü **Ansicht**.
 
 ## Voraussetzungen
 
@@ -423,6 +436,10 @@ Unter **Einstellungen → Nachfragen und Erinnerungen …** legst du fest, wann 
 | `m42_gap_minutes` | `5` | Kürzere Lücken ohne Buchung zählen nicht |
 | `pc_blocks` | `true` | PC-Aktivität als Arbeitsblöcke je Tätigkeit statt jedes Fenster einzeln |
 | `pc_jump_seconds` | `120` | Kürzere Fensterwechsel zählen zur Haupttätigkeit (0 = aus) |
+| `day_close_end_of_day` | `true` | Meldung bei Feierabend nennt den Tagesabschluss, ein Klick öffnet ihn (`false`: Meldung wie früher) |
+| `day_close_gap_minutes` | `10` | Tagesabschluss: kürzere Lücken in der Personalzeit gehören zum Nachbarblock |
+| `day_close_min_minutes` | `5` | Tagesabschluss: kürzere Blöcke gehen im Nachbarn auf, kürzere freie Zeit fällt weg |
+| `day_close_internal` | `{}` | Tagesabschluss: Zeit ohne Kunden auf ein internes Ticket, z. B. `{"customer": "ITM intern", "ticket": "TCK…", "category": "Intern", "categories": ["E-Mail / Kommunikation"]}` |
 | `timeline_range` | `work` | Zeitraum beim Start und beim Blättern: `work` (Arbeitszeit) oder `day` (ganzer Tag); merkt sich den zuletzt gewählten |
 | `timeline_rows` | alle an außer `rule` | Sichtbare Zeilen der Timeline: `pc`, `work` (Personalzeit), `doc`, `m42`, `rule` (Zuordnung ohne KI), `ai`, `call`, `vpn`, `tv`, `other` (Remote / Weitere) |
 
@@ -628,6 +645,10 @@ Für Tests und Hilfsskripte gibt es zwei Umgebungsvariablen: `ZEITZEUGE_DATA` se
 | `settings_preview.py` | Vorschau mit Beispieltag auf der Seite Ansicht der Einstellungen |
 | `focus.py` | PC-Aktivität zu Arbeitsblöcken zusammenfassen (kurze Sprünge, Splitter, Anteile) |
 | `app_docs.py` | Tätigkeiten dokumentieren, Nachfragen, KI-Vorschläge |
+| `day_close.py` | Tagesabschluss: Vorschläge je Kunde aus allen Spuren, Lücken, Ticket und Text (ohne Qt) |
+| `day_close_eval.py` | Tagesabschluss: Erkennung an den echten Matrix42-Buchungen messen (ohne Qt) |
+| `app_day_close.py` | Hauptfenster: Spuren für den Tagesabschluss sammeln, Hinweis bei Feierabend |
+| `day_close_dialog.py` | Fenster Tagesabschluss: prüfen, dokumentieren, nacheinander in Matrix42 buchen |
 | `idle_watch.py` | Abwesenheit am PC erkennen (für die Nachfrage) |
 | `prompt_topics.py` | Nachfragen zu Themen zusammenfassen, Beantwortetes wiedererkennen (keine Doppelten) |
 | `settings_window.py` | Fenster Einstellungen: Bereiche, Suche, Kacheln der Datenquellen |

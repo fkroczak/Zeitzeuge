@@ -134,7 +134,11 @@ class TrayMixin:
 
     def on_tray_message_clicked(self):
         """Klick auf "Anmeldung nötig" öffnet die passende Anmeldung."""
-        if getattr(self, "_tray_doc_hint", False):  # Meldung zu offenen Tätigkeiten
+        if getattr(self, "_tray_close_hint", False):  # Feierabend: Tagesabschluss bereit
+            self._tray_close_hint = False
+            self.show_from_tray()
+            self.show_day_close(datetime.now().strftime("%Y-%m-%d"))
+        elif getattr(self, "_tray_doc_hint", False):  # Meldung zu offenen Tätigkeiten
             self._tray_doc_hint = False
             if self._prompt_queue and self.config.get("prompt_mode") == "tray":
                 self.show_next_prompt(force=True)

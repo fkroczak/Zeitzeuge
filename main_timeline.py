@@ -4,6 +4,7 @@ TimelineApp setzt sich aus Mixins zusammen:
   app_menus    Werkzeugleiste, Menü Einstellungen, Design, Einstellungsdialoge
   app_daylist  Tagesliste, Statuszeile, Blättern zwischen den Tagen
   app_docs     KI-Vorschläge, eigene Tätigkeiten, Nachfragen
+  app_day_close Tagesabschluss: Vorschläge sammeln, dokumentieren, in Matrix42 buchen
   app_readers  3CX/ITM im Hintergrund, Wächter, Fehleranzeige
   app_tray     Fensteraufzeichnung, Infobereich, Beenden
   app_transfer Export/Import für einen anderen PC (PAW)
@@ -52,6 +53,7 @@ from theme import GERMAN, STYLESHEET, THEMES, AppStyle, install_translator
 from app_menus import MenusMixin
 from app_daylist import DayListMixin
 from app_docs import DocsMixin
+from app_day_close import DayCloseMixin
 from app_readers import ReadersMixin
 from app_tray import TrayMixin
 from app_transfer import TransferMixin
@@ -406,7 +408,7 @@ def merged_seconds(activities):
     return total
 
 
-class TimelineApp(MenusMixin, DayListMixin, DocsMixin, ReadersMixin, TrayMixin, TransferMixin,
+class TimelineApp(MenusMixin, DayListMixin, DayCloseMixin, DocsMixin, ReadersMixin, TrayMixin, TransferMixin,
                   ProtectMixin, OutlookMixin, QMainWindow):
     COLUMNS = ["Von", "Bis", "Dauer", "Typ", "Kunde / Verbindung", "Details"]
 

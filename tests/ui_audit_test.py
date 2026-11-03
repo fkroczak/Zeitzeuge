@@ -211,7 +211,7 @@ for path in ["main_timeline.py", "theme.py", "app_menus.py", "app_daylist.py", "
              "app_protect.py", "protect_dialogs.py", "app_transfer.py", "snippets_dialogs.py",
              "billing_dialogs.py", "retention_dialogs.py", "journal_dialogs.py", "week_dialogs.py",
              "customers_dialogs.py", "outlook_dialogs.py", "app_outlook.py",
-             "m42_booking_dialogs.py"]:
+             "m42_booking_dialogs.py", "day_close_dialog.py", "app_day_close.py"]:
     with open(os.path.join(ROOT, path), encoding="utf-8") as f:
         for no, line in enumerate(f, 1):
             if re.search(r"color:\s*(gray|grey|#999|#aaa)\b", line, re.I):
@@ -223,7 +223,7 @@ UI_FILES = ["main_timeline.py", "theme.py", "app_menus.py", "app_daylist.py", "a
             "timeline_only.py", "app_protect.py", "protect_dialogs.py", "app_transfer.py",
             "snippets_dialogs.py", "billing_dialogs.py", "retention_dialogs.py", "journal_dialogs.py",
             "week_dialogs.py", "customers_dialogs.py", "outlook_dialogs.py", "app_outlook.py",
-            "m42_booking_dialogs.py", "view_help.py", "setup_wizard.py", "config_defaults.py",
+            "m42_booking_dialogs.py", "day_close_dialog.py", "app_day_close.py", "view_help.py", "setup_wizard.py", "config_defaults.py",
             "busy_bar.py", "booking_rate.py"]
 UI_RULES = [
     (r"(QLabel|setText|setHorizontalHeaderLabels|addAction|setTitle)\(.*\.upper\(\)",

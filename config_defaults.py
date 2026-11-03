@@ -225,6 +225,12 @@ def default_config():
         "booking_rate_status": True,   # Quote heute / 7 Tage in der Statuszeile zeigen
         "day_checks_enabled": True,    # bei Feierabend Pausen, Stempelung und Buchungen prüfen
         "day_checks_pc_minutes": 10,   # ab so vielen Minuten "PC aktiv, aber ausgestempelt"
+        # Tagesabschluss (day_close.py, app_day_close.py, day_close_dialog.py)
+        "day_close_end_of_day": True,  # Feierabend-Meldung nennt den Tagesabschluss, Klick öffnet ihn
+        "day_close_gap_minutes": 10,   # kürzere Lücken in der Personalzeit gehören zum Nachbarblock
+        "day_close_min_minutes": 5,    # kürzere Blöcke gehen im Nachbarn auf
+        # Zeit ohne Kunden (E-Mail, Excel …) auf ein internes Ticket: {"customer", "ticket", "category"}
+        "day_close_internal": {},
 
         # Outlook und Teams (outlook_data.py, teams_calls.py, outlook_reader.py, app_outlook.py).
         # Standardmäßig aus: Zeitzeuge steuert Outlook nicht ungefragt an.
