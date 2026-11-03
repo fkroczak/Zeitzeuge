@@ -26,7 +26,7 @@ ANCHOR = "af567babd694d1a2ac95c475aed78184a9dde9ea"
 ANCHOR_VERSION, ANCHOR_MONTH = (4, 1, 0), "2026-11"
 MAJOR_MARK, MINOR_MARK = "[major]", "[minor]"
 
-HERE = os.path.dirname(os.path.abspath(__file__))
+HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # Projektordner (über src/)
 
 
 def _git(*args):

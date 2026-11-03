@@ -57,7 +57,7 @@ def ui_text():
     """Deutsche Sätze aus Zeichenketten im Code (Dialoge, Hinweise, Status)."""
     out = []
     for path in UI_FILES:
-        with open(os.path.join(ROOT, path), encoding="utf-8") as f:
+        with open(os.path.join(ROOT, "src", path), encoding="utf-8") as f:
             for m in re.findall(r'"([^"\n]{25,})"', f.read()):
                 if re.search(r"[äöüÄÖÜß]|\b(und|die|der|das|nicht|wird|du)\b", m):
                     out.append(re.sub(r"<[^>]+>", "", m))

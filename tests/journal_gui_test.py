@@ -11,7 +11,7 @@ import tempfile
 import traceback
 from datetime import datetime, timedelta
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"))
 # Unter Windows geht gepufferte Ausgabe bei einem harten Ende verloren: sofort schreiben
 sys.stdout.reconfigure(line_buffering=True, errors="backslashreplace")
 faulthandler.enable()

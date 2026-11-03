@@ -3,7 +3,7 @@ import os
 import random
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"))
 
 from focus import focus_blocks  # noqa: E402
 from rules import default_rules  # noqa: E402

@@ -22,7 +22,7 @@ from datetime import date, datetime, timedelta, timezone
 from urllib.parse import parse_qs, urlsplit
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, ROOT)
+sys.path.insert(0, os.path.join(ROOT, "src"))
 
 from PySide6.QtCore import QCoreApplication  # noqa: E402
 

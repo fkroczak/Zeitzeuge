@@ -12,7 +12,7 @@ import threading
 import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, ROOT)
+sys.path.insert(0, os.path.join(ROOT, "src"))
 
 import pytest  # noqa: E402
 from PySide6.QtCore import QCoreApplication  # noqa: E402
@@ -114,7 +114,7 @@ def test_pruefbericht(base, tmp_path):
     with open(calls_file, "w", encoding="utf-8") as f:
         json.dump([{"start": start, "duration_s": 100, "name": "Müller 0", "number": "02510000",
                     "direction": "Anruf", "via": ""}], f)
-    with open(os.path.join(ROOT, "zeitzeuge_anrufe.user.js"), encoding="utf-8") as f:
+    with open(os.path.join(ROOT, "assets", "zeitzeuge_anrufe.user.js"), encoding="utf-8") as f:
         script = f.read()
     reader = PbxReader(base, calls_file, os.path.join(tmp, "profil"), script)
     reader.browser_cookies = lambda: [{"name": "RefreshTokenCookie", "value": COOKIE}]

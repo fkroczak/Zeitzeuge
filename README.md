@@ -14,7 +14,7 @@ Pfade, Zeitzonen und Anmeldungen stellst du über **Einrichten …** in der Kach
 
 Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträglich erfassen oder abrechnen.
 
-![Zeitzeuge Timeline](zeitzeuge.png)
+![Zeitzeuge Timeline](assets/zeitzeuge.png)
 
 ## Funktionen
 
@@ -182,7 +182,7 @@ F7 bis F12 belegt Zeitzeuge bewusst nicht, damit sie für andere Werkzeuge frei 
 git clone https://github.com/fkroczak/Zeitzeuge.git
 cd zeitzeuge
 pip install -r requirements.txt
-python main_timeline.py
+python src/main_timeline.py
 ```
 
 ### EXE herunterladen
@@ -641,6 +641,19 @@ Für Tests und Hilfsskripte gibt es zwei Umgebungsvariablen: `ZEITZEUGE_DATA` se
 
 ## Projektstruktur
 
+| Ordner / Datei | Inhalt |
+|---|---|
+| `src/` | Quellcode (Python-Module, siehe unten). Start aus dem Quelltext: `python src/main_timeline.py` |
+| `assets/` | Logo und Icon (`zeitzeuge.ico`, `.png`, `.svg`) und `zeitzeuge_anrufe.user.js` (liest die Anrufliste aus der 3CX-Webseite, für das Lesen über Edge) |
+| `tests/` | Tests (pytest), laufen bei jedem Build: Start, Bedienbarkeit, Infobereich, Log-Parser, VPN-Logs, 3CX und ITM mit nachgebauten Seiten, KI-Vorschläge mit nachgebauter API, Fensterabfrage, Anrufliste. Dazu `start_bench.py` (Startzeit messen) und `screenshots.sh` (Bildschirmfotos mit Demodaten) |
+| `docs/` | Entscheidungen, Übergaben, Hintergründe und Screenshots |
+| `CHANGELOG.md` | Änderungen je MAJOR.MINOR, Regeln für die Nummer |
+| `ZeitZeuge.spec` | Build-Datei für PyInstaller |
+| `build.bat` | EXE auf dem eigenen PC bauen |
+| `.github/workflows/build.yml` | Automatischer EXE-Build auf GitHub |
+
+Module in `src/`:
+
 | Datei | Inhalt |
 |---|---|
 | `main_timeline.py` | Start, Config laden/speichern, Hauptfenster (setzt sich aus den `app_*.py` zusammen) |
@@ -662,7 +675,6 @@ Für Tests und Hilfsskripte gibt es zwei Umgebungsvariablen: `ZEITZEUGE_DATA` se
 | `theme.py` | Design: Farben (hell/dunkel), Stylesheet, Qt-Stil, deutsche Dialogknöpfe |
 | `config_defaults.py` | Standardwerte der Einstellungen |
 | `version.py` | Versionsnummer (zählt aus git) und Herkunft des Builds (Fenstertitel, Info, fehler.log) |
-| `CHANGELOG.md` | Änderungen je MAJOR.MINOR, Regeln für die Nummer |
 | `timeline_only.py` | Zeichnen der Timeline, Tooltips, Zoom, Logs im Hintergrund lesen |
 | `icons.py` | Linien-Icons (Lucide, ISC-Lizenz) und Zustandspunkt der Aufzeichnung |
 | `log_parsers.py` | Einlesen der TeamViewer- und RDM-Logs |
@@ -688,14 +700,9 @@ Für Tests und Hilfsskripte gibt es zwei Umgebungsvariablen: `ZEITZEUGE_DATA` se
 | `protect_dialogs.py` | Dialoge: Schlüssel einmal zeigen, Schlüssel oder PIN eingeben, PIN festlegen, „Daten sind gesperrt“ |
 | `safe_io.py` | Dateien sicher lesen und schreiben, kaputte Dateien beiseitelegen, große Logs nur am Ende lesen, `fehler.log` |
 | `net.py` | Prüfen, ob ein Server erreichbar ist, und Wartezeit nach Fehlern |
-| `tests/` | Tests (pytest), laufen bei jedem Build: Start, Bedienbarkeit, Infobereich, Log-Parser, VPN-Logs, 3CX und ITM mit nachgebauten Seiten, KI-Vorschläge mit nachgebauter API, Fensterabfrage, Anrufliste. Dazu `start_bench.py` (Startzeit messen) und `screenshots.sh` (Bildschirmfotos mit Demodaten) |
 | `setup_wizard.py` | Einrichtungsassistent: beim ersten Start alle Datenquellen Schritt für Schritt |
 | `settings_dialogs.py` | Dialoge für Logpfade, Aktivitätstypen, Arbeitszeiten, KI, Fenster-Filter und Regeln |
-| `zeitzeuge_anrufe.user.js` | Liest die Anrufliste aus der 3CX-Webseite (für das Lesen über Edge) |
 | `pbx_direct.py` | 3CX direkt abfragen (Anmeldung, Protobuf) |
-| `ZeitZeuge.spec` | Build-Datei für PyInstaller |
-| `build.bat` | EXE auf dem eigenen PC bauen |
-| `.github/workflows/build.yml` | Automatischer EXE-Build auf GitHub |
 
 ## Datenschutz
 

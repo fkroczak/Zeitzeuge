@@ -22,7 +22,7 @@ import re
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, ROOT)
+sys.path.insert(0, os.path.join(ROOT, "src"))
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import main_timeline  # setzt die Hi-DPI-Rundung vor dem QApplication-Start
@@ -212,7 +212,7 @@ for path in ["main_timeline.py", "theme.py", "app_menus.py", "app_daylist.py", "
              "billing_dialogs.py", "retention_dialogs.py", "journal_dialogs.py", "week_dialogs.py",
              "customers_dialogs.py", "outlook_dialogs.py", "app_outlook.py",
              "m42_booking_dialogs.py", "day_close_dialog.py", "app_day_close.py"]:
-    with open(os.path.join(ROOT, path), encoding="utf-8") as f:
+    with open(os.path.join(ROOT, "src", path), encoding="utf-8") as f:
         for no, line in enumerate(f, 1):
             if re.search(r"color:\s*(gray|grey|#999|#aaa)\b", line, re.I):
                 problem("Kontrast", f"{path}:{no} blasser Text ({line.strip()[:60]})")
@@ -238,13 +238,13 @@ UI_RULES = [
 # Bewusste Ausnahmen: kurze Überschrift zwischen den Pfeilen der Wochen-Navigation
 UI_ALLOWED = {("week_dialogs.py", "AlignCenter")}
 for path in UI_FILES:
-    with open(os.path.join(ROOT, path), encoding="utf-8") as f:
+    with open(os.path.join(ROOT, "src", path), encoding="utf-8") as f:
         for no, line in enumerate(f, 1):
             for pattern, why in UI_RULES:
                 found = re.search(pattern, line)
                 if found and (path, found.group(0)) not in UI_ALLOWED:
                     problem("UI-Regeln", f"{path}:{no} {why} ({line.strip()[:60]})")
-if "line-height" not in open(os.path.join(ROOT, "theme.py"), encoding="utf-8").read():
+if "line-height" not in open(os.path.join(ROOT, "src", "theme.py"), encoding="utf-8").read():
     problem("UI-Regeln", "Fließtext ohne Zeilenhöhe 1,5 (theme.prose)")
 
 # 3. Sichtbarer Fokus

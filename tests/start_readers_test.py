@@ -5,7 +5,7 @@ Hier stürzte 4.0.0 beim Start ab: Der 3CX-Leser startete, bevor itm_reader ange
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"))
 
 import itm_reader
 import main_timeline

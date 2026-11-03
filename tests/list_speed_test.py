@@ -27,7 +27,7 @@ with open(os.path.join(data, "zeitzeuge_config.json"), "w", encoding="utf-8") as
     # Erst jedes Fenster einzeln (Belastungstest), danach als Arbeitsblöcke
     json.dump({"tracking_enabled": True, "show_pc_in_list": True, "pc_blocks": False}, f)
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"))
 import main_timeline  # noqa: E402  (erst nach ZEITZEUGE_DATA laden)
 from PySide6.QtWidgets import QApplication  # noqa: E402
 

@@ -4,7 +4,7 @@ import sys
 import tempfile
 from datetime import datetime
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"))
 os.environ.setdefault("ZEITZEUGE_DATA", tempfile.mkdtemp())
 
 from prompt_topics import answer_span, build_topics, customer_key, matches_span  # noqa: E402
