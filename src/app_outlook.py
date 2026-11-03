@@ -78,10 +78,10 @@ class OutlookMixin:
         # Kopien: Timeline und Gruppierung ergänzen Felder
         return [dict(e) for e in self._outlook_cache[date_str]]
 
-    def build_outlook_dialog(self):
+    def build_outlook_dialog(self, part="outlook"):
         status = self.outlook_reader.status if self.outlook_reader else (
             "Auf der PAW aus." if self.is_paw() else "Aus")
-        dialog = OutlookSettingsDialog(self.config, status, self)
+        dialog = OutlookSettingsDialog(self.config, status, self, part=part)
         connected = [None]
 
         def apply():
@@ -98,17 +98,23 @@ class OutlookMixin:
                     connected[0] = reader
 
         def read_now():
-            if not dialog.outlook.isChecked() and not dialog.teams.isChecked():
-                dialog.outlook.setChecked(True)
+            box = dialog.teams if part == "teams" else dialog.outlook
+            if not box.isChecked() and not (part is None and dialog.teams.isChecked()):
+                box.setChecked(True)
             apply()
 
         dialog.read_button.clicked.connect(read_now)
         dialog.accepted.connect(apply)
         return dialog
 
-    def open_outlook_settings(self):
-        dialog = self.build_outlook_dialog()
+    def open_outlook_settings(self, part="outlook"):
+        if part not in ("outlook", "teams", None):
+            part = "outlook"  # Qt gibt bei Menüeinträgen checked=False mit
+        dialog = self.build_outlook_dialog(part)
         dialog.exec()
         if dialog.result() != QDialog.Accepted:
             self.sync_source_actions()
         dialog.deleteLater()  # sonst sammeln sich Dialoge samt Verbindungen an
+
+    def open_teams_settings(self):
+        self.open_outlook_settings("teams")

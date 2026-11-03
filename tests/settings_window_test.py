@@ -139,6 +139,38 @@ def gui_test():
     window.source_actions["rdm_enabled"].setChecked(True)  # von außen: Kachel zieht mit
     assert tile.switch.isChecked() and tile.state != "off"
 
+    # Jede Datenquelle hat ihr eigenes Einrichtungsfenster und einen eigenen Schalter darin
+    from settings_window import SOURCE_TILES
+    setups = [spec[4] for spec in SOURCE_TILES]
+    assert len(set(setups)) == len(setups), setups
+    from PySide6.QtWidgets import QDialog
+    seen = []
+    original_exec = QDialog.exec
+    QDialog.exec = lambda self: seen.append(self) or QDialog.Rejected
+    try:
+        for spec in SOURCE_TILES:
+            if spec[0] in ("tracking", "pbx_reader_enabled", "itm_reader_enabled", "m42_reader_enabled"):
+                continue  # eigene Fenster mit Browser-Anmeldung
+            before = len(seen)
+            getattr(window, spec[4])()
+            assert len(seen) == before + 1, spec
+    finally:
+        QDialog.exec = original_exec
+    titles = [d.windowTitle() for d in seen]
+    for title in ("Sophos Connect", "FortiClient", "Weitere VPN-Logs (OpenVPN …)", "RDM Better",
+                  "Remotedesktop (mstsc)", "Outlook", "Teams-Anrufe"):
+        assert title in titles, (title, titles)
+    from PySide6.QtWidgets import QCheckBox
+    for d in seen:
+        assert d.findChildren(QCheckBox), d.windowTitle()  # eigener Schalter
+    # Pfade bei Sophos sind Ordner aus sophos_connect_dirs
+    sophos = next(d for d in seen if d.windowTitle() == "Sophos Connect")
+    assert "sophos_connect_dirs" in sophos.values() and "sophos_enabled" in sophos.values()
+    teams = next(d for d in seen if d.windowTitle() == "Teams-Anrufe")
+    assert teams.outlook.parent() is None and teams.teams.parent() is teams  # nur Teams im Fenster
+    for d in seen:
+        d.deleteLater()
+
     # Fehlersuche & Analyse: Mitschnitte stehen hier, nicht mehr in den Einrichtungsdialogen
     settings.show_page("debug")
     debug_rows = [r.spec[3] for r in settings.rows if r.spec[0] == "debug"]

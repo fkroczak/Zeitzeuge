@@ -15,7 +15,8 @@ import datastore
 import icons
 import storage
 from log_parsers import VpnParser
-from vpn_reader import vpn_sources
+from rdp_reader import DEFAULT_LAUNCHER_LOG
+from vpn_reader import DEFAULT_DIRS as VPN_DEFAULT_DIRS, FORTI_TRACE_PATHS, vpn_sources
 from settings_dialogs import ActivityTypeSettingsDialog, ConnectionSettingsDialog, WorkHoursDialog
 from theme import GERMAN, STYLESHEET, THEMES
 from timeline_only import DEFAULT_CALL_COLORS, LEGEND_BANDS, LEGEND_FIXED, TIMELINE_ROWS
@@ -464,7 +465,8 @@ class MenusMixin:
 
     # Datenquellen: Schlüssel in der Config, Text im Menü (Gruppen mit Trennlinie)
     SOURCES = [
-        [("teamviewer_enabled", "&TeamViewer"), ("rdm_enabled", "&RDM (Remote Desktop Manager)")],
+        [("teamviewer_enabled", "&TeamViewer"), ("rdm_enabled", "&RDM (Remote Desktop Manager)"),
+         ("rdmbetter_enabled", "RDM &Better"), ("mstsc_enabled", "Remote&desktop (mstsc)")],
         [("sophos_enabled", "&Sophos Connect"), ("forti_enabled", "&FortiClient"),
          ("vpn_enabled", "&Weitere VPN-Logs (OpenVPN …)")],
         [("pbx_reader_enabled", "&3CX-Anrufe"), ("itm_reader_enabled", "&ITM-Personalzeiten"),
@@ -472,7 +474,8 @@ class MenusMixin:
          ("outlook_enabled", "&Outlook (Termine, Mails)"), ("teams_calls_enabled", "Tea&ms-Anrufe")],
     ]
 
-    SOURCE_BRANDS = {"teamviewer_enabled": "teamviewer", "rdm_enabled": "rdm", "sophos_enabled": "sophos",
+    SOURCE_BRANDS = {"teamviewer_enabled": "teamviewer", "rdm_enabled": "rdm",
+                     "rdmbetter_enabled": "rdmbetter", "mstsc_enabled": "mstsc", "sophos_enabled": "sophos",
                      "forti_enabled": "forti", "vpn_enabled": "vpn", "pbx_reader_enabled": "pbx",
                      "itm_reader_enabled": "itm", "m42_reader_enabled": "m42", "outlook_enabled": "outlook",
                      "teams_calls_enabled": "teams"}
@@ -498,12 +501,17 @@ class MenusMixin:
         menu.addSeparator()
         setup = menu.addMenu("&Einrichten")
         for entry in (("Team&Viewer-Logs …", self.edit_teamviewer_settings, "teamviewer"),
-                                  ("&RDM-Logs …", self.edit_rdm_settings, "rdm"),
-                                  ("&VPN-Logs …", self.edit_vpn_settings, "vpn"), None,
-                                  ("&3CX …", self.open_pbx_settings, "pbx"),
-                                  ("&ITM-Personalzeiten …", self.open_itm_settings, "itm"),
-                                  ("&Matrix42 …", self.open_m42_settings, "m42"),
-                                  ("&Outlook und Teams …", self.open_outlook_settings, "outlook")):
+                      ("&RDM-Logs …", self.edit_rdm_settings, "rdm"),
+                      ("RDM &Better …", self.edit_rdmbetter_settings, "rdmbetter"),
+                      ("Remote&desktop (mstsc) …", self.edit_mstsc_settings, "mstsc"), None,
+                      ("&Sophos Connect …", self.edit_sophos_settings, "sophos"),
+                      ("&FortiClient …", self.edit_forti_settings, "forti"),
+                      ("Weitere &VPN-Logs …", self.edit_vpn_settings, "vpn"), None,
+                      ("&3CX …", self.open_pbx_settings, "pbx"),
+                      ("&ITM-Personalzeiten …", self.open_itm_settings, "itm"),
+                      ("&Matrix42 …", self.open_m42_settings, "m42"),
+                      ("&Outlook …", self.open_outlook_settings, "outlook"),
+                      ("Tea&ms-Anrufe …", self.open_teams_settings, "teams")):
             if entry is None:
                 setup.addSeparator()  # Webseiten im Hintergrund
                 continue
@@ -571,6 +579,8 @@ class MenusMixin:
         elif key in ("sophos_enabled", "forti_enabled"):
             self.timeline.vpn_reader.sources = vpn_sources(self.config)
             self.apply_vpn_monitor()
+        elif key in ("mstsc_enabled", "rdmbetter_enabled"):
+            self.apply_mstsc_monitor()
         self.timeline.refresh()  # neu einlesen und zeichnen
 
     def show_about(self):
@@ -670,49 +680,109 @@ class MenusMixin:
 
     # ---------------------- Einstellungen / Dialoge ---------------------------
 
-    def _edit_log_settings(self, key, default_path, title, **options):
+    def _edit_log_settings(self, key, default_path, title, after=None, **options):
+        """Einrichtungsfenster einer Datenquelle: eigener Schalter, Pfade, Zeitzone."""
         defaults = default_path if isinstance(default_path, list) else [default_path]
+        options.setdefault("enabled_text", "Diese Datenquelle auslesen und anzeigen")
         dialog = ConnectionSettingsDialog(
             self.config, key, [os.path.expandvars(p) for p in defaults], title, self, **options
         )
         if dialog.exec() == QDialog.Accepted:
-            self.config[f"{key}_paths"] = dialog.get_paths()
-            if dialog.enabled_box:
-                self.config[f"{key}_enabled"] = dialog.enabled_box.isChecked()
-            self.config[f"{key}_timezone_correction"] = dialog.get_timezone_correction()
+            self.config.update(dialog.values())
             mt.save_config(self.config)
             self.sync_source_actions()
+            if after:
+                after()
             self.timeline.refresh()
 
     def edit_teamviewer_settings(self):
         self._edit_log_settings(
             "teamviewer", r"%APPDATA%\TeamViewer\Connections.txt",
             "TeamViewer-Logeinstellungen",
+            enabled_text="TeamViewer-Verbindungen auslesen und anzeigen",
         )
 
     def edit_rdm_settings(self):
         self._edit_log_settings(
             "rdm", r"%LOCALAPPDATA%\Devolutions\RemoteDesktopManager\Connections.log",
             "RDM-Logeinstellungen",
+            enabled_text="RDM-Sitzungen auslesen und anzeigen",
+        )
+
+    def edit_rdmbetter_settings(self):
+        self._edit_log_settings(
+            "rdmbetter", DEFAULT_LAUNCHER_LOG, "RDM Better",
+            enabled_text="Starts aus RDM Better auslesen und anzeigen",
+            timezone=False,
+            hint="RDM Better schreibt in launcher.log nur, wann du eine Verbindung startest "
+                 "(Zeit in UTC, Zeitzeuge rechnet sie in Ortszeit um). Das Ende erkennt Zeitzeuge "
+                 "am Fenster der Remotedesktopverbindung (mstsc), das es dafür alle 30 Sekunden "
+                 "prüft. Findet es keins, steht ein Start 1 Minute in der Timeline.",
+            after=self.apply_mstsc_monitor,
+        )
+
+    def edit_mstsc_settings(self):
+        self._edit_log_settings(
+            "mstsc", [], "Remotedesktop (mstsc)",
+            enabled_text="Remotedesktop-Verbindungen (mstsc) aufzeichnen",
+            paths=False, timezone=False,
+            hint="Zeitzeuge prüft alle 30 Sekunden, welche Remotedesktopverbindungen (mstsc.exe) "
+                 "offen sind, und speichert Beginn, Ende und Ziel (z. B. DC01 oder 10.10.80.35). "
+                 "Sie stehen in der Timeline wie die Verbindungen aus RDM. Auch Starts aus "
+                 "RDM Better bekommen so ihr Ende.",
+            after=self.apply_mstsc_monitor,
+        )
+
+    def edit_sophos_settings(self):
+        self._edit_log_settings(
+            "sophos", list(VPN_DEFAULT_DIRS), "Sophos Connect",
+            enabled_text="Sophos-Connect-Verbindungen auslesen und anzeigen",
+            paths_key="sophos_connect_dirs", path_title="Ordner von Sophos Connect",
+            files=False, folders=True, timezone=False,
+            hint="Zeitzeuge liest scvpn.log und scgui.log aus dem Programmordner von Sophos "
+                 "Connect, mit dem Namen, den du der Verbindung gegeben hast. Zusätzlich prüft "
+                 "es alle 30 Sekunden, ob der Sophos-Adapter verbunden ist.",
+            after=self.apply_vpn_settings,
+        )
+
+    def edit_forti_settings(self):
+        self._edit_log_settings(
+            "forti", list(FORTI_TRACE_PATHS), "FortiClient",
+            enabled_text="FortiClient-Verbindungen auslesen und anzeigen",
+            path_title="Logdateien von FortiClient", timezone=False,
+            hint="Zeitzeuge liest die Trace-Logs von FortiClient (logs\\trace\\FortiVPN_1.log, "
+                 "sslvpndaemon_1.log) mit Verbinden und Trennen. Fehlen sie, nimmt es die "
+                 "Adapter-Meldungen aus charon.log von Sophos Connect. Zusätzlich prüft es alle "
+                 "30 Sekunden, ob der Fortinet-Adapter verbunden ist.",
+            after=self.apply_vpn_settings,
         )
 
     def edit_vpn_settings(self):
         self._edit_log_settings(
-            "vpn", VpnParser().default_paths, "VPN-Verbindungen",
+            "vpn", VpnParser().default_paths, "Weitere VPN-Logs (OpenVPN …)",
             enabled_text="Diese VPN-Logs auslesen und anzeigen",
             folders=True,
             hint="Logdateien oder Ordner deiner VPN-Clients, z. B. OpenVPN GUI "
                  "(%USERPROFILE%\\OpenVPN\\log), OpenVPN Connect oder Sophos SSL VPN. "
                  "Bei einem Ordner zählen alle .log- und .txt-Dateien darin, "
                  "der Dateiname wird zum Verbindungsnamen. Sophos Connect und FortiClient "
-                 "erkennt Zeitzeuge von selbst.",
+                 "haben eigene Fenster.",
         )
+
+    def apply_vpn_settings(self):
+        """Sophos-/FortiClient-Einstellungen an den VPN-Leser geben."""
+        vpn = self.timeline.vpn_reader
+        vpn.dirs = self.config.get("sophos_connect_dirs") or VPN_DEFAULT_DIRS
+        vpn.forti_paths = self.config.get("forti_paths") or FORTI_TRACE_PATHS
+        vpn.sources = vpn_sources(self.config)
+        vpn._sig = None  # neu lesen
         self.apply_vpn_monitor()
 
     def edit_work_hours(self):
         dialog = WorkHoursDialog(self.config, self)
         if dialog.exec() == QDialog.Accepted:
             self.config["work_days"] = dialog.get_work_days()
+            self.config["work_breaks"] = dialog.get_work_breaks()
             mt.save_config(self.config)
             self.timeline._first_draw = True  # auf die neue Arbeitszeit springen
             self.timeline.draw_timeline(self.current_date)
@@ -739,6 +809,7 @@ class MenusMixin:
         new_dir = QFileDialog.getExistingDirectory(
             self, f"Speicherort wählen (bisher: {mt.DATA_DIR})", mt.DATA_DIR
         )
+        new_dir = os.path.normpath(new_dir) if new_dir else new_dir  # Qt liefert / statt Backslash
         if not new_dir or os.path.abspath(new_dir) == os.path.abspath(mt.DATA_DIR):
             return
         answer = QMessageBox.question(

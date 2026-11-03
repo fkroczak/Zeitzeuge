@@ -6,10 +6,12 @@ stehen in PAGES und ROWS; die Suche geht über Titel, Beschreibung und Bereich j
 
 Teil von TimelineApp (main_timeline.py): SettingsWindow(main) bekommt das Hauptfenster.
 """
+import os
+
 from PySide6.QtCore import QSize, Qt, QTimer, QUrl
 from PySide6.QtGui import QCursor, QDesktopServices
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QFrame, QGridLayout, QHBoxLayout, QLabel,
-                               QLineEdit, QListWidget, QListWidgetItem, QPushButton, QScrollArea,
+                               QLineEdit, QListWidget, QListWidgetItem, QMessageBox, QPushButton, QScrollArea,
                                QSpinBox, QStackedWidget, QVBoxLayout, QWidget)
 
 import icons
@@ -18,7 +20,7 @@ import main_timeline as mt  # Pfade und save_config zur Laufzeit von dort (Tests
 
 # Bereiche: Schlüssel, Name, Symbol, Satz darunter
 PAGES = [
-    ("general", "Allgemein", "settings", "Arbeitszeiten und Aufzeichnung der aktiven Fenster."),
+    ("general", "Allgemein", "settings", "Arbeitszeiten und Pausen."),
     ("view", "Ansicht", "eye", "Timeline, Tagesliste und Aussehen."),
     ("sources", "Datenquellen", "plug", "Woher Zeitzeuge deine Spuren liest. Schalter und Zustand je Quelle."),
     ("prompts", "Nachfragen & Grenzwerte", "bell", "Wann Zeitzeuge nachfragt und ab welchen Minuten."),
@@ -55,11 +57,11 @@ def _billing_summary(main):
 ROWS = [
     ("general", "button", "clock", "Arbeitszeiten", "Arbeitstage und Zeiten, wenn keine ITM-Personalzeit da ist.",
      "edit_work_hours", None),
-    ("general", "toggle", "monitor", "Aktive Fenster aufzeichnen",
+    ("sources", "toggle", "monitor", "Aktive Fenster aufzeichnen",
      "Alle 5 Sekunden das aktive Fenster merken (Band „PC“).", "tracking_action", None),
-    ("general", "button", "filter", "Fenster-Filter", "Private Programme ausblenden oder nur erlaubte aufzeichnen.",
+    ("sources", "button", "filter", "Fenster-Filter", "Private Programme ausblenden oder nur erlaubte aufzeichnen.",
      "edit_tracking_filters", None),
-    ("general", "spin", "pause", "Leerlauf nach", "Ohne Maus und Tastatur zeichnet Zeitzeuge nichts auf.",
+    ("sources", "spin", "pause", "Leerlauf nach", "Ohne Maus und Tastatur zeichnet Zeitzeuge nichts auf.",
      "tracking_idle_minutes", (1, 60, "min", "", "idle_limit")),
 
     # Ansicht: alles, was nur die Darstellung ändert (mit Vorschau, settings_preview.py)
@@ -127,7 +129,8 @@ ROWS = [
      "edit_snippets", None),
 
     ("data", "button", "folder", "Datenordner öffnen", "Ordner mit Einstellungen und Sicherung im Explorer zeigen.",
-     lambda main: QDesktopServices.openUrl(QUrl.fromLocalFile(mt.DATA_DIR)), lambda _m: mt.DATA_DIR),
+     lambda main: QDesktopServices.openUrl(QUrl.fromLocalFile(mt.DATA_DIR)),
+     lambda _m: os.path.normpath(mt.DATA_DIR)),
     ("data", "button", "folder", "Speicherort ändern", "Daten in einen anderen Ordner verschieben (startet neu).",
      "change_data_dir", None),
     ("data", "button", "lock", "Schutz", "PIN beim Start und Wiederherstellungsschlüssel.", "show_protection", None),
@@ -157,8 +160,35 @@ ROWS = [
      lambda main: QDesktopServices.openUrl(QUrl.fromLocalFile(mt.DATA_DIR)), None),
 
     ("about", "button", "info", "Über Zeitzeuge", "Version, Neuigkeiten und Projektseite.", "show_about", None),
-    ("about", "button", "power", "Zeitzeuge beenden", "Aufzeichnung und Datenquellen stoppen.", "request_quit", None),
+    ("about", "button", "power", "Zeitzeuge beenden", "Aufzeichnung und Datenquellen stoppen.",
+     lambda main: _confirm_quit(main), None),
 ]
+
+# Beschriftung des Knopfs je Zeile (sonst „Öffnen …“). „…“ nur, wenn noch ein Fenster kommt.
+BUTTON_TEXT = {
+    "Datenordner öffnen": "Im Explorer zeigen",
+    "Speicherort ändern": "Ändern …",
+    "Daten exportieren": "Exportieren …",
+    "Daten übernehmen": "Übernehmen …",
+    "3CX: Abfragen mitschneiden": "Mitschneiden …",
+    "Matrix42: Abfragen mitschneiden": "Mitschneiden …",
+    "Matrix42: Buchung mitschneiden": "Mitschneiden …",
+    "ITM: Abfragen mitschneiden": "Mitschneiden …",
+    "Zeitzeuge beenden": "Beenden …",
+}
+
+
+def _confirm_quit(main):
+    """Beenden aus den Einstellungen erst nach Rückfrage (ein Klick daneben soll nichts stoppen)."""
+    box = QMessageBox(QMessageBox.Question, "Zeitzeuge beenden",
+                      "Zeitzeuge beenden? Aufzeichnung und Datenquellen stoppen dann.",
+                      parent=main._settings_window if getattr(main, "_settings_window", None) else main)
+    quit_button = box.addButton("&Beenden", QMessageBox.AcceptRole)
+    box.addButton("Abbre&chen", QMessageBox.RejectRole)
+    box.setDefaultButton(quit_button)
+    box.exec()
+    if box.clickedButton() is quit_button:
+        main.request_quit()
 
 # Datenquellen als Kacheln: (Schalter, Zeichen, Name, Beschreibung, Einrichten, Zustand)
 #   Schalter: Schlüssel in main.source_actions, "tracking" = Aufzeichnung der Fenster
@@ -168,8 +198,12 @@ SOURCE_TILES = [
      "edit_teamviewer_settings", ("log", "TeamViewer")),
     ("rdm_enabled", "rdm", "Remote Desktop Manager", "Sitzungen und Passwort-Anzeigen",
      "edit_rdm_settings", ("log", "RDM")),
-    ("sophos_enabled", "sophos", "Sophos Connect", "VPN-Verbindungen mit Namen", "edit_vpn_settings", None),
-    ("forti_enabled", "forti", "FortiClient", "VPN-Zeiten (über Sophos-Log)", "edit_vpn_settings", None),
+    ("rdmbetter_enabled", "rdmbetter", "RDM Better", "Starts aus launcher.log",
+     "edit_rdmbetter_settings", ("log", "RDM Better")),
+    ("mstsc_enabled", "mstsc", "Remotedesktop (mstsc)", "Offene RDP-Fenster, alle 30 Sekunden",
+     "edit_mstsc_settings", None),
+    ("sophos_enabled", "sophos", "Sophos Connect", "VPN-Verbindungen mit Namen", "edit_sophos_settings", None),
+    ("forti_enabled", "forti", "FortiClient", "VPN-Zeiten aus den FortiClient-Logs", "edit_forti_settings", None),
     ("vpn_enabled", "vpn", "Weitere VPN-Logs", "OpenVPN und andere Clients", "edit_vpn_settings", None),
     ("pbx_reader_enabled", "pbx", "3CX-Telefonate", "Anrufliste aus dem Webclient", "open_pbx_settings",
      ("reader", "pbx_reader")),
@@ -178,7 +212,7 @@ SOURCE_TILES = [
     ("m42_reader_enabled", "m42", "Matrix42", "Gebuchte Zeiten (Firmennetz)", "open_m42_settings",
      ("reader", "m42_reader")),
     ("outlook_enabled", "outlook", "Outlook", "Termine und gesendete Mails", "open_outlook_settings", None),
-    ("teams_calls_enabled", "teams", "Teams-Anrufe", "Anrufe aus Microsoft Teams", "open_outlook_settings", None),
+    ("teams_calls_enabled", "teams", "Teams-Anrufe", "Anrufe aus Microsoft Teams", "open_teams_settings", None),
     ("tracking", "tracking", "Aktive Fenster", "Band „PC“, alle 5 Sekunden", "edit_tracking_filters", None),
 ]
 
@@ -204,6 +238,11 @@ def tile_state(main, key, kind):
             missing = [] if main.timeline.loading else main.timeline.missing_sources()
         except Exception:
             missing = []
+        if kind[1] == "RDM Better":
+            try:
+                missing = ["RDM Better"] if main.timeline.rdmbetter_missing() else []
+            except Exception:
+                missing = []
         if kind[1] in missing:
             return "warn", "Logdatei nicht gefunden"
     if key == "tracking":
@@ -328,9 +367,10 @@ class _Row(QFrame):
             if extra:
                 self.value = QLabel()
                 self.value.setObjectName("row_value")
+                self.value.setMaximumWidth(320)  # lange Pfade quetschen sonst die Beschreibung
                 layout.addWidget(self.value)
-            self.control = QPushButton("Öffnen …" if kind == "button" else "")
-            self.control.setAccessibleName(f"{title} öffnen")
+            self.control = QPushButton(BUTTON_TEXT.get(title, "Öffnen …") if kind == "button" else "")
+            self.control.setAccessibleName(f"{title}: {self.control.text().rstrip(' …')}")
             self.control.setAutoDefault(False)
             self.control.clicked.connect(self._run)
         layout.addWidget(self.control)
@@ -381,7 +421,10 @@ class _Row(QFrame):
         kind, target, extra = self.spec[1], self.spec[5], self.spec[6]
         main = self.window.main
         if self.value is not None and extra:
-            self.value.setText(extra(main))
+            full = str(extra(main))
+            shown = self.value.fontMetrics().elidedText(full, Qt.ElideMiddle, self.value.maximumWidth())
+            self.value.setText(shown)
+            self.value.setToolTip(full if shown != full else "")
         elif kind == "spin":
             self.control.blockSignals(True)
             self.control.setValue(int(main.config.get(target, extra[0]) or 0))
@@ -577,7 +620,7 @@ class SettingsWindow(QDialog):
             head.addWidget(self.preview)
         if key == "sources":  # Einrichtungsassistent ganz oben, darunter die Kacheln
             for spec in ROWS:
-                if spec[0] == key:
+                if spec[0] == key and spec[1] == "button" and spec[5] == "show_setup_wizard":
                     row = _Row(self, spec)
                     self.rows.append(row)
                     layout.addWidget(row)
@@ -592,8 +635,11 @@ class SettingsWindow(QDialog):
                 grid.setColumnStretch(col, 1)
             layout.addLayout(grid)
             layout.addSpacing(12)
+            pc = QLabel("Aktive Fenster")  # Aufzeichnung am PC: Schalter, Filter, Leerlauf
+            pc.setObjectName("row_title")
+            layout.addWidget(pc)
         for spec in ROWS:
-            if spec[0] == key and key != "sources":
+            if spec[0] == key and not (key == "sources" and spec[5] == "show_setup_wizard"):
                 row = _Row(self, spec)
                 self.rows.append(row)
                 layout.addWidget(row)

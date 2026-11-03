@@ -90,6 +90,16 @@ def default_config():
         "rdm_enabled": True,
         "sophos_enabled": True,
         "forti_enabled": True,
+        # FortiClient: eigene Trace-Logs (sonst Adapter-Meldungen aus charon.log von Sophos)
+        "forti_paths": [
+            r"C:\Program Files\Fortinet\FortiClient\logs\trace\FortiVPN_1.log",
+            r"C:\Program Files\Fortinet\FortiClient\logs\trace\sslvpndaemon_1.log",
+        ],
+        # RDM Better: Starts aus launcher.log (UTC), das Ende kommt aus der mstsc-Aufzeichnung
+        "rdmbetter_enabled": True,
+        "rdmbetter_paths": [r"%LOCALAPPDATA%\RDM Better\launcher.log"],
+        # Remotedesktop (mstsc): offene Verbindungen alle 30 Sekunden selbst aufzeichnen
+        "mstsc_enabled": True,
         # Weitere VPN-Clients (OpenVPN usw.) über ihre Logdateien
         "vpn_enabled": True,
         "vpn_paths": VpnParser().default_paths,  # OpenVPN GUI, OpenVPN Connect, Sophos SSL VPN

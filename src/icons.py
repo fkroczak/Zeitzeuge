@@ -195,6 +195,12 @@ BRANDS = {
                    '<path d="M5 12h14M8.5 8.5 5 12l3.5 3.5M15.5 8.5 19 12l-3.5 3.5" stroke="#FFFFFF" '
                    'stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>'),
     "rdm": ('#E8412C', 'square', _BRAND_TEXT.format(y=15.5, size=8, text="RDM")),  # Devolutions RDM
+    "rdmbetter": ('#B2331F', 'square', _BRAND_TEXT.format(y=15.5, size=8, text="RDM+")),  # RDM Better
+    # Remotedesktop (mstsc): Bildschirm mit Pfeil
+    "mstsc": ('#0067B8', 'square',
+              '<rect x="5" y="6" width="14" height="9.5" rx="1.2" fill="none" stroke="#FFFFFF" '
+              'stroke-width="1.8"/><path d="M9.5 19h5M12 15.5V19M9.5 11h5M12.5 9l2 2-2 2" stroke="#FFFFFF" '
+              'stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>'),
     "sophos": ('#005BC8', 'square', _BRAND_TEXT.format(y=17, size=14, text="S")),
     # Fortinet: rotes Feld mit weißem Raster
     "forti": ('#DA291C', 'square',

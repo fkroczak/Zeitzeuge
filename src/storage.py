@@ -48,7 +48,7 @@ def data_dir():
         with open(_pointer_file(), encoding="utf-8") as f:
             path = f.read().strip()
         if path:
-            return path
+            return os.path.normpath(path)  # alte Einträge mit / aus dem Ordner-Dialog
     except OSError:
         pass
     return default_data_dir()
@@ -58,7 +58,7 @@ def set_data_dir(path):
     pointer = _pointer_file()
     os.makedirs(os.path.dirname(pointer), exist_ok=True)
     with open(pointer, "w", encoding="utf-8") as f:
-        f.write(path)
+        f.write(os.path.normpath(path))
 
 
 def local_dir():

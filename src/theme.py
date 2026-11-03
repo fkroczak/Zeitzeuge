@@ -246,7 +246,7 @@ QLabel#row_title { font-weight: bold; }
 QLabel#row_page { color: $muted; font-size: 12px; font-weight: bold; }
 QLabel#row_value { color: $text; font-weight: bold; }
 QListWidget#settings_nav { border: none; border-right: 1px solid $border; background-color: $surface;
-                           padding: 6px 0; }
+                           padding: 6px 0; outline: none; }
 QListWidget#settings_nav::item { padding: 4px 10px; border-left: 3px solid transparent; }
 QListWidget#settings_nav::item:selected { background-color: $sel; color: $seltext;
                                           border-left: 3px solid $accent; font-weight: bold; }

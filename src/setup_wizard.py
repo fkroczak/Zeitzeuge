@@ -68,6 +68,18 @@ GROUPS = [
              missing="Connections.log nicht gefunden. Liegt sie woanders, trag den Pfad unter "
                      "„Einrichten …“ ein.",
              setup="edit_rdm_settings", button="Pfad einrichten …", file=True),
+        dict(id="rdmbetter", key="rdmbetter_enabled", title="RDM Better",
+             text="Liest aus launcher.log, wann du eine Remotedesktop-Verbindung gestartet hast. "
+                  "Das Ende kommt aus der Aufzeichnung „Remotedesktop (mstsc)“.",
+             detect=lambda c: _found(_exists(c.get("rdmbetter_paths"))),
+             missing="launcher.log nicht gefunden. Liegt sie woanders, trag den Pfad unter "
+                     "„Einrichten …“ ein.",
+             setup="edit_rdmbetter_settings", button="Pfad einrichten …", file=True),
+        dict(id="mstsc", key="mstsc_enabled", title="Remotedesktop (mstsc)",
+             text="Zeitzeuge prüft alle 30 Sekunden, welche Remotedesktopverbindungen offen sind, "
+                  "und zeigt sie mit Ziel, Beginn und Ende wie die Verbindungen aus RDM.",
+             detect=lambda c: "Läuft auf jedem Windows-PC.", missing="",
+             setup="edit_mstsc_settings", button="Einrichten …"),
     ]),
     ("VPN", [
         dict(id="sophos", key="sophos_enabled", title="Sophos Connect",
@@ -76,14 +88,16 @@ GROUPS = [
                   "ob ein VPN-Adapter verbunden ist.",
              detect=lambda c: _found(_sophos_log(c, "scvpn.log") or _exists(c.get("sophos_connect_dirs"))),
              missing="Sophos Connect ist auf diesem PC nicht installiert.",
-             file=True),
+             setup="edit_sophos_settings", button="Ordner einrichten …", file=True),
         dict(id="forti", key="forti_enabled", title="FortiClient",
-             text="FortiClient-Verbindungen stehen in Sophos' charon.log. Zeitzeuge zeigt die "
-                  "Zeiten, aber ohne Namen der Verbindung. Ohne Sophos Connect gibt es nur die "
-                  "eigene Adapter-Aufzeichnung.",
-             detect=lambda c: _found(_sophos_log(c, "charon.log")),
-             missing="charon.log nicht gefunden (kommt mit Sophos Connect).",
-             file=True),
+             text="Liest Verbinden und Trennen aus den Trace-Logs von FortiClient "
+                  "(FortiVPN_1.log, sslvpndaemon_1.log). Fehlen sie, nimmt Zeitzeuge die "
+                  "Adapter-Meldungen aus Sophos' charon.log und prüft alle 30 Sekunden selbst, "
+                  "ob der Fortinet-Adapter verbunden ist.",
+             detect=lambda c: _found(_exists(c.get("forti_paths")) or _sophos_log(c, "charon.log")),
+             missing="Keine Logs von FortiClient gefunden. Eigene Pfade trägst du unter "
+                     "„Einrichten …“ ein.",
+             setup="edit_forti_settings", button="Pfade einrichten …", file=True),
         dict(id="vpn", key="vpn_enabled", title="Weitere VPN-Logs (OpenVPN …)",
              text="Logdateien oder Ordner weiterer VPN-Clients, z. B. OpenVPN GUI, OpenVPN Connect "
                   "oder Sophos SSL VPN.",
@@ -124,7 +138,7 @@ GROUPS = [
              text="Erkennt Teams-Anrufe an der Mikrofon-Nutzung von Teams und an den Teams-Logs. "
                   "Sie stehen in der Zeile „Tel“ wie 3CX-Anrufe.",
              detect=lambda c: "", missing="",
-             setup="open_outlook_settings", button="Teams einrichten …"),
+             setup="open_teams_settings", button="Teams einrichten …"),
     ]),
     ("Dieser PC", [
         dict(id="tracking", key="tracking_enabled", title="Aktive Fenster aufzeichnen",

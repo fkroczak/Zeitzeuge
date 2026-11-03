@@ -2,11 +2,11 @@ Im Fenster **Einstellungen → Datenquellen** schaltest du jede Quelle in ihrer 
 
 | Gruppe | Quellen |
 |---|---|
-| Fernwartung | TeamViewer, RDM |
+| Fernwartung | TeamViewer, RDM, RDM Better, Remotedesktop (mstsc) |
 | VPN | Sophos Connect, FortiClient, weitere VPN-Logs (OpenVPN …) |
 | Telefon und Zeiten | 3CX-Anrufe, ITM-Personalzeiten, Matrix42, Outlook, Teams-Anrufe |
 
-Pfade, Zeitzonen und Anmeldungen stellst du über **Einrichten …** in der Kachel ein. Das Aufzeichnen der aktiven Fenster schaltest du in der Kachel „Aktive Fenster“, über den Pfeil am Knopf **Einstellungen** oder unten rechts in der Statuszeile.
+Jede Quelle hat ihr eigenes Fenster **Einrichten …** mit eigenem Schalter; dort stellst du Pfade, Zeitzonen und Anmeldungen ein. Das Aufzeichnen der aktiven Fenster schaltest du in der Kachel „Aktive Fenster“, über den Pfeil am Knopf **Einstellungen** oder unten rechts in der Statuszeile.
 
 # Zeitzeuge
 
@@ -24,6 +24,8 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
 - **Remote Desktop Manager (Devolutions):** liest `Connections.log`.
   - RDP-, SSH-, VPN-, FTP- und Website-Verbindungen mit Beginn und Ende.
   - Angezeigte Passwörter, Benutzernamen und Einmal-Passwörter (OTP).
+- **RDM Better:** liest die Starts aus `%LOCALAPPDATA%\RDM Better\launcher.log` (Ziel und Benutzer, Zeit in UTC, Zeitzeuge rechnet in Ortszeit um). RDM Better schreibt kein Ende; das kommt aus der mstsc-Aufzeichnung. Ohne passendes mstsc-Fenster steht ein Start 1 Minute in der Timeline.
+- **Remotedesktop (mstsc):** Zeitzeuge prüft alle 30 Sekunden, welche Remotedesktopverbindungen (`mstsc.exe`) offen sind, und speichert Beginn, Ende und Ziel in der Datenbank. Das Ziel kommt aus der Befehlszeile (`/v:` oder `.rdp`-Datei), sonst aus dem Fenstertitel. Sie stehen in der Timeline wie die RDP-Verbindungen aus RDM.
 - **VPN aus Sophos Connect:** liest `scvpn.log` und `scgui.log` aus `C:\Program Files (x86)\Sophos\Connect`. Jede Verbindung erscheint mit Beginn, Ende und dem Namen, den du ihr in Sophos Connect gegeben hast (z. B. „Kunde Müller“).
   - Ist der PC eingeschlafen, endet die Verbindung beim Einschlafen.
   - Sophos überschreibt seine Logs bei Neustarts und neuen Verbindungen. Zeitzeuge liest sie deshalb alle 2 Minuten und hebt alles in der Datenbank auf, egal welcher Tag gerade angezeigt wird.
@@ -32,7 +34,7 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
   - Steht dieselbe Verbindung auch in den Logs, zeigt Zeitzeuge nur den Eintrag aus den Logs, weil er den Namen kennt.
   - Ruhezustand, Absturz oder ein Neustart von Zeitzeuge beenden den laufenden Eintrag beim letzten Blick auf den Adapter.
   - Weitere Adapter (z. B. WireGuard) trägst du in der `zeitzeuge_config.json` unter `vpn_adapters` ein: Teil der Adapterbeschreibung und Name der Quelle. Mit `vpn_monitor_enabled: false` schaltest du die Aufzeichnung ab.
-- **VPN aus FortiClient:** steht ebenfalls in Sophos' `charon.log`, weil dort jede Änderung an Netzwerkadaptern landet. Zeitzeuge zeigt die Zeiten als „FortiClient“, aber ohne Namen der Verbindung. Ohne installiertes Sophos Connect gibt es diese Quelle nicht.
+- **VPN aus FortiClient:** Zeitzeuge liest die Trace-Logs von FortiClient (`C:\Program Files\Fortinet\FortiClient\logs\trace\FortiVPN_1.log` und `sslvpndaemon_1.log`, änderbar unter **Einrichten …**) mit Verbinden, Trennen und, wenn er dasteht, dem Namen der Verbindung. Fehlen sie, nimmt es die Adapter-Meldungen aus Sophos' `charon.log` (Zeiten ohne Namen).
   - Andere Ordner trägst du in der `zeitzeuge_config.json` unter `sophos_connect_dirs` ein.
 - **Telefonate aus 3CX:** Zeitzeuge liest die Anrufliste selbst aus dem 3CX-Webclient, ohne dass du die Webseite offen haben musst.
   - Alle gelesenen Anrufe landen in der Datenbank. So entsteht eine eigene Anrufliste, die auch offline bleibt.
@@ -138,7 +140,7 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
   - Fehlt eine TeamViewer- oder RDM-Logdatei, erscheint „Logs: TeamViewer fehlt“ mit gelbem Dreieck.
   - Ein Klick führt direkt zur Lösung: zur Anmeldung oder zu den Einstellungen. Fährst du mit der Maus darüber, steht dort der genaue Stand.
 - **Zeitlinie unter der Maus:** Eine gestrichelte senkrechte Linie folgt der Maus, oben steht die genaue Uhrzeit. Der Hinweis daneben zeigt, welche Einträge gerade liefen.
-- **Zeile „Personalzeit“:** Jeder gestempelte Abschnitt ist ein Block mit Beginn und Ende, z. B. „08:10 – 12:39“, Pausen sind Lücken. Bist du noch eingestempelt, steht dort „08:02 – jetzt“. Ohne ITM heißt die Zeile „Arbeitszeit“ und zeigt gestrichelt die Arbeitszeit aus den Einstellungen. Der helle Hintergrund markiert dieselben Zeiten. Blendest du die Zeile aus, steht die Personalzeit wieder im Hinweis unter der Maus.
+- **Zeile „Personalzeit“:** Jeder gestempelte Abschnitt ist ein Block mit Beginn und Ende, z. B. „08:10 – 12:39“, Pausen sind Lücken. Bist du noch eingestempelt, steht dort „08:02 – jetzt“. Ohne ITM heißt die Zeile „Arbeitszeit“ und zeigt gestrichelt die Arbeitszeit aus den Einstellungen; eine dort eingetragene Pause (Einstellungen → Allgemein → Arbeitszeiten) ist eine Lücke. Der helle Hintergrund markiert dieselben Zeiten. Blendest du die Zeile aus, steht die Personalzeit wieder im Hinweis unter der Maus.
 - **Details:** Fährst du über einen Eintrag, siehst du Kunde, Zeitraum und Dauer. Ein Klick in der Timeline, ein Doppelklick oder **Enter** in der Liste öffnet die Details.
 - **Immer aktuell:** Die Logs werden alle 2 Minuten geprüft. Mit F5 (Aktualisieren) liest du sie sofort neu ein, Matrix42 gleich mit (die Woche des angezeigten Tags). Gelesen werden nur Dateien, die sich geändert haben.
 - **Bedienung:**
@@ -282,7 +284,7 @@ Unter **Einstellungen → Datenquellen** schaltest du jede Quelle mit einem Klic
 
 | Gruppe | Quellen |
 |---|---|
-| Fernwartung | TeamViewer, RDM |
+| Fernwartung | TeamViewer, RDM, RDM Better, Remotedesktop (mstsc) |
 | VPN | Sophos Connect, FortiClient, weitere VPN-Logs (OpenVPN …) |
 | Telefon und Zeiten | 3CX-Anrufe, ITM-Personalzeiten |
 

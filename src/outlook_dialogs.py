@@ -4,85 +4,93 @@ from PySide6.QtWidgets import (QCheckBox, QDialog, QDialogButtonBox, QFormLayout
                                QLineEdit, QPushButton, QSpinBox, QVBoxLayout)
 
 from theme import prose
-INTRO = ("Zeitzeuge liest aus dem klassischen Outlook deine Termine (auch Teams-Besprechungen) "
-         "und gesendete Mails. Gespeichert werden nur Betreff, Zeit, Ort und die Domains der "
-         "Teilnehmer, z. B. „kunde.de“, keine Adressen und keine Mailtexte. Das neue Outlook "
-         "bietet dafür keine Schnittstelle.\n\n"
-         "Teams-Anrufe erkennt Zeitzeuge daran, dass Teams das Mikrofon benutzt (das merkt "
-         "sich Windows), ergänzt um die Teams-Logs. Sie stehen in der Zeile „Tel“ wie 3CX.")
+INTRO_OUTLOOK = ("Zeitzeuge liest aus dem klassischen Outlook deine Termine (auch Teams-Besprechungen) "
+                 "und gesendete Mails. Gespeichert werden nur Betreff, Zeit, Ort und die Domains der "
+                 "Teilnehmer, z. B. „kunde.de“, keine Adressen und keine Mailtexte. Das neue Outlook "
+                 "bietet dafür keine Schnittstelle.")
+INTRO_TEAMS = ("Teams-Anrufe erkennt Zeitzeuge daran, dass Teams das Mikrofon benutzt (das merkt "
+               "sich Windows), ergänzt um die Teams-Logs. Sie stehen in der Zeile „Tel“ wie 3CX.")
+INTRO = INTRO_OUTLOOK + "\n\n" + INTRO_TEAMS
+TITLES = {"outlook": "Outlook", "teams": "Teams-Anrufe", None: "Outlook und Teams"}
 
 
 class OutlookSettingsDialog(QDialog):
-    def __init__(self, config, status="", parent=None):
+    """part: "outlook", "teams" oder None (beides). Jede Quelle hat ihr eigenes Fenster."""
+
+    def __init__(self, config, status="", parent=None, part=None):
         super().__init__(parent)
-        self.setWindowTitle("Outlook und Teams")
+        self.part = part
+        self.setWindowTitle(TITLES.get(part, TITLES[None]))
         self.setMinimumWidth(540)
         layout = QVBoxLayout(self)
-        intro = QLabel(INTRO)
+        intro = QLabel({"outlook": INTRO_OUTLOOK, "teams": INTRO_TEAMS}.get(part, INTRO))
         intro.setWordWrap(True)
         prose(intro)
         layout.addWidget(intro)
 
         form = QFormLayout()
+        outlook_rows, teams_rows = [], []
         self.outlook = QCheckBox("&Outlook lesen (Termine, gesendete Mails)")
         self.outlook.setChecked(bool(config.get("outlook_enabled")))
-        form.addRow("", self.outlook)
+        outlook_rows.append(("", self.outlook))
         self.calendar = QCheckBox("&Termine und Teams-Besprechungen aus dem Kalender")
         self.calendar.setChecked(config.get("outlook_calendar_enabled", True))
-        form.addRow("", self.calendar)
+        outlook_rows.append(("", self.calendar))
         self.mails = QCheckBox("&Gesendete Mails")
         self.mails.setChecked(config.get("outlook_mails_enabled", True))
-        form.addRow("", self.mails)
+        outlook_rows.append(("", self.mails))
         self.external = QCheckBox("Nur Mails an &andere Firmen (Kundendomains)")
         self.external.setChecked(config.get("outlook_mails_external_only", True))
-        form.addRow("", self.external)
+        outlook_rows.append(("", self.external))
 
         domains = config.get("outlook_own_domains") or []
         self.own = QLineEdit(", ".join(domains) if isinstance(domains, list) else str(domains))
         self.own.setPlaceholderText("leer: erkennt Zeitzeuge aus Outlook")
         self.own.setToolTip("Domains deiner Firma, durch Komma getrennt, z. B. itm-gruppe.de. "
                             "Sie zählen nicht als Kunde.")
-        form.addRow("&Domains deiner Firma:", self.own)
+        outlook_rows.append(("&Domains deiner Firma:", self.own))
         self.mail_minutes = QSpinBox()
         self.mail_minutes.setRange(1, 30)
         self.mail_minutes.setSuffix(" min")
         self.mail_minutes.setValue(int(config.get("outlook_mail_minutes", 3) or 3))
         self.mail_minutes.setToolTip("So breit steht eine gesendete Mail in der Timeline.")
-        form.addRow("Dauer je &Mail:", self.mail_minutes)
+        outlook_rows.append(("Dauer je &Mail:", self.mail_minutes))
         self.days = QSpinBox()
         self.days.setRange(1, 90)
         self.days.setSuffix(" Tage")
         self.days.setValue(int(config.get("outlook_days_back", 14) or 14))
         self.days.setToolTip("Ältere Tage liest Zeitzeuge nach, sobald du sie anzeigst.")
-        form.addRow("&Zurück lesen:", self.days)
+        outlook_rows.append(("&Zurück lesen:", self.days))
         self.interval = QSpinBox()
         self.interval.setRange(1, 120)
         self.interval.setPrefix("alle ")
         self.interval.setSuffix(" min")
         self.interval.setValue(int(config.get("outlook_interval_minutes", 10) or 10))
-        form.addRow("&Lesen:", self.interval)
+        outlook_rows.append(("&Lesen:", self.interval))
         self.calendar_folder = QLineEdit(config.get("outlook_calendar_folder", ""))
         self.calendar_folder.setPlaceholderText("leer: Standardkalender")
         self.calendar_folder.setToolTip("Anderer Kalender als Pfad, z. B. \\\\name@firma.de\\Kalender")
-        form.addRow("&Kalender-Ordner:", self.calendar_folder)
+        outlook_rows.append(("&Kalender-Ordner:", self.calendar_folder))
         self.sent_folder = QLineEdit(config.get("outlook_sent_folder", ""))
         self.sent_folder.setPlaceholderText("leer: Gesendete Elemente")
         self.sent_folder.setToolTip("Anderer Ordner als Pfad, z. B. \\\\name@firma.de\\Gesendete Elemente")
-        form.addRow("Ordner für gesendete Ma&ils:", self.sent_folder)
+        outlook_rows.append(("Ordner für gesendete Ma&ils:", self.sent_folder))
         self.start_outlook = QCheckBox("Outlook &starten, wenn es nicht läuft")
         self.start_outlook.setChecked(bool(config.get("outlook_start_if_closed", False)))
         self.start_outlook.setToolTip("Sonst liest Zeitzeuge nur, während Outlook geöffnet ist.")
-        form.addRow("", self.start_outlook)
+        outlook_rows.append(("", self.start_outlook))
 
         self.teams = QCheckBox("Teams-Anr&ufe erkennen")
         self.teams.setChecked(bool(config.get("teams_calls_enabled")))
-        form.addRow("", self.teams)
+        teams_rows.append(("", self.teams))
         self.teams_min = QSpinBox()
         self.teams_min.setRange(0, 600)
         self.teams_min.setSuffix(" s")
         self.teams_min.setValue(int(config.get("teams_min_seconds", 30) or 0))
         self.teams_min.setToolTip("Kürzere Mikrofon-Nutzung (z. B. Gerätetest) zählt nicht als Anruf.")
-        form.addRow("Teams-Anrufe a&b:", self.teams_min)
+        teams_rows.append(("Teams-Anrufe a&b:", self.teams_min))
+        for label, widget in (outlook_rows if part != "teams" else []) + (teams_rows if part != "outlook" else []):
+            form.addRow(label, widget)
         layout.addLayout(form)
 
         self.status = QLabel(status or "Aus")

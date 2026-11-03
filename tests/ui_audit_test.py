@@ -370,7 +370,7 @@ for area, dialog in dialogs.items():
 
 # Arbeitszeiten: "bis" vor "von" muss als Fehler erkennbar sein
 wh = dialogs["Arbeitszeiten"]
-active, t_from, t_to, total = wh.rows[0]
+active, t_from, t_to, total, *_pause = wh.rows[0]
 active.setChecked(True)
 t_from.setTime(t_from.time().fromString("17:00", "HH:mm"))
 t_to.setTime(t_to.time().fromString("08:00", "HH:mm"))

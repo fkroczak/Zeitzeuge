@@ -16,6 +16,7 @@ import focus
 import customers
 from grouping import format_tv_id, group_entries
 from log_parsers import ConnectionIndex, RdmParser, TeamViewerParser, VpnParser
+from rdp_reader import RdpReader
 from theme import THEMES, readable_on, ui_font
 from vpn_reader import VpnReader, vpn_sources
 
@@ -61,6 +62,30 @@ def work_hours(config, weekday):
         return _to_min(start), _to_min(end)
     except (AttributeError, ValueError):
         return None
+
+
+def work_break(config, weekday):
+    """Pause (Start, Ende) in Minuten für einen Wochentag, None = keine."""
+    try:
+        text = (config.get("work_breaks") or {}).get(WEEKDAYS[weekday], "")
+        if not text:
+            return None
+        start, end = text.split("-")
+        start, end = _to_min(start), _to_min(end)
+        return (start, end) if end > start else None
+    except (AttributeError, ValueError):
+        return None
+
+
+def work_spans(config, weekday):
+    """Arbeitszeit eines Wochentags als [(Start, Ende)] in Minuten, ohne die Pause."""
+    hours = work_hours(config, weekday)
+    if not hours:
+        return []
+    pause = work_break(config, weekday)
+    if not pause or pause[1] <= hours[0] or pause[0] >= hours[1]:
+        return [hours]
+    return [(a, b) for a, b in ((hours[0], pause[0]), (pause[1], hours[1])) if b > a]
 
 
 # Farben für Telefonate wie im 3CX-Client (in der Config unter "call_colors" änderbar)
@@ -419,6 +444,8 @@ class TimelineView(QGraphicsView):
         self._tv_parser = TeamViewerParser(self.config)
         self._rdm_parser = RdmParser(self.config)
         self._vpn_parser = VpnParser(self.config)
+        self.rdp_reader = RdpReader(self.config)  # RDM Better und mstsc
+        self._rdp_index = None
         self._tv_index = None   # None = Logs noch nicht gelesen
         self._rdm_index = None
         self.vpn_reader = VpnReader()  # Sophos Connect/FortiClient; Archivdatei setzt das Hauptfenster
@@ -546,6 +573,7 @@ class TimelineView(QGraphicsView):
             return  # beim Beenden nichts mehr zeichnen
         self._tv_index, self._rdm_index, self._vpn_index = tv_index, rdm_index, vpn_index
         self._sophos_index = None  # Archiv der VPN-Aufzeichnung beim nächsten Zeichnen neu lesen
+        self._rdp_index = None     # ebenso RDM Better und mstsc
         self._remote_cache.clear()
         self.loading = False
         self.loading_changed.emit(False)
@@ -577,7 +605,16 @@ class TimelineView(QGraphicsView):
                 print(f"Fehler beim Lesen der VPN-Logs: {e}")
                 self._sophos_index = ConnectionIndex([])
 
+        if self._rdp_index is None:
+            try:
+                wanted = self.config.get("mstsc_enabled", True) or self.config.get("rdmbetter_enabled", True)
+                self._rdp_index = ConnectionIndex(self.rdp_reader.connections() if wanted else [])
+            except Exception as e:
+                print(f"Fehler beim Lesen der Remotedesktop-Sitzungen: {e}")
+                self._rdp_index = ConnectionIndex([])
+
         day = self._tv_index.get_for_date(date_str) + self._rdm_index.get_for_date(date_str)
+        day += self._rdp_index.get_for_date(date_str)
         day += self._vpn_index.get_for_date(date_str) + self._sophos_index.get_for_date(date_str)
         for conn in day:
             conn["is_suggestion"] = True
@@ -666,6 +703,10 @@ class TimelineView(QGraphicsView):
         return [name for name, parser in [("TeamViewer", self._tv_parser), ("RDM", self._rdm_parser)]
                 if parser.files_read == 0]
 
+    def rdmbetter_missing(self):
+        """launcher.log von RDM Better nicht gefunden (nur für die Kachel in den Einstellungen)."""
+        return self.config.get("rdmbetter_enabled", True) and self.rdp_reader.launcher.files_read == 0
+
     def app_color(self, app):
         return QColor(self.APP_COLORS[sum(map(ord, app.lower())) % len(self.APP_COLORS)])
 
@@ -718,8 +759,7 @@ class TimelineView(QGraphicsView):
                 end_min = end.hour * 60 + end.minute if end.date() == start.date() else 24 * 60
                 spans.append((start.hour * 60 + start.minute, end_min))
             return spans, True, open_idx
-        hours = work_hours(self.config, date.dayOfWeek() - 1)
-        return ([hours] if hours else []), False, None
+        return work_spans(self.config, date.dayOfWeek() - 1), False, None
 
     def work_entries(self, date_str):
         """Zeile "Personalzeit": je gestempeltem Abschnitt ein Block mit Beginn und Ende

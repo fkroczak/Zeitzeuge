@@ -18,7 +18,7 @@ import day_checks
 import icons
 import m42_booking
 from theme import THEMES
-from timeline_only import work_hours
+from timeline_only import work_hours, work_spans
 
 DAY_NAMES = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]
 TIME_FMT = "%Y-%m-%d %H:%M:%S"
@@ -50,8 +50,8 @@ def day_inputs(window, date_str, now):
         from_itm = True
     else:
         spans, running, from_itm = [], False, False
-        if planned and planned[1] > planned[0]:
-            spans = [(day + timedelta(minutes=planned[0]), day + timedelta(minutes=planned[1]))]
+        spans = [(day + timedelta(minutes=a), day + timedelta(minutes=b))
+                 for a, b in work_spans(window.config, day.weekday())]
     if date_str == now.strftime("%Y-%m-%d"):
         spans = [(a, min(b, now)) for a, b in spans if min(b, now) > a]
     elif date_str > now.strftime("%Y-%m-%d"):

@@ -359,6 +359,24 @@ class DayListMixin:
         else:
             self.vpn_timer.stop()
 
+    def apply_mstsc_monitor(self):
+        """mstsc aufzeichnen, wenn „Remotedesktop (mstsc)“ oder RDM Better an ist (RDM Better braucht das Ende)."""
+        if self.config.get("mstsc_enabled", True) or self.config.get("rdmbetter_enabled", True):
+            if not self.mstsc_timer.isActive():
+                self.mstsc_timer.start(30 * 1000)
+                QTimer.singleShot(0, self.mstsc_sample)
+        else:
+            self.mstsc_timer.stop()
+
+    def mstsc_sample(self):
+        try:
+            changed = self.timeline.rdp_reader.sample()
+        except Exception as e:  # Aufzeichnung darf das Programm nie stören
+            print(f"Fehler bei der mstsc-Aufzeichnung: {e}")
+            return
+        if changed and self.current_date == QDate.currentDate() and self.isVisible():
+            self.timeline.refresh()
+
     def vpn_sample(self):
         if self.timeline.vpn_reader.sample() and self.current_date == QDate.currentDate() and self.isVisible():
             self.timeline.refresh()

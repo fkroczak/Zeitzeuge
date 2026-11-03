@@ -63,7 +63,7 @@ from app_outlook import OutlookMixin
 # Weiter über main_timeline erreichbar (Tests, Hilfsskripte)
 __all__ = [
     "TimelineApp", "AppStyle", "install_translator", "GERMAN", "THEMES", "STYLESHEET",
-    "resource_path", "APP_DIR", "DATA_DIR", "CONFIG_FILE", "CALLS_FILE", "VPN_FILE",
+    "resource_path", "APP_DIR", "DATA_DIR", "CONFIG_FILE", "CALLS_FILE", "VPN_FILE", "RDP_FILE",
     "ACTIVITY_DIR", "PBX_PROFILE_DIR", "ITM_FILE", "ITM_PROFILE_DIR", "ITM_AUTH_FILE",
     "M42_FILE", "M42_PROFILE_DIR", "OUTLOOK_FILE", "TEAMS_CALLS_FILE", "IMPORT_FILE", "AI_DIR", "JOURNAL_DIR", "DB_FILE", "BACKUP_FILE",
     "open_store", "backup_store",
@@ -109,6 +109,7 @@ BACKUP_FILE = storage.backup_file(DATA_DIR)  # None, wenn die Datenbank im Daten
 CONFIG_FILE = os.path.join(DATA_DIR, "zeitzeuge_config.json")
 CALLS_FILE = os.path.join(DATA_DIR, "anrufe.json")
 VPN_FILE = os.path.join(DATA_DIR, "vpn_verbindungen.json")
+RDP_FILE = os.path.join(DATA_DIR, "rdp_sitzungen.json")  # mstsc, selbst aufgezeichnet
 ACTIVITY_DIR = os.path.join(DATA_DIR, "aktivitaet")
 # 3CX-Anmeldung immer lokal (nicht in OneDrive-synchronisierten Dokumenten)
 PBX_PROFILE_DIR = os.path.join(storage.local_dir(), "3cx_profil")
@@ -585,11 +586,17 @@ class TimelineApp(MenusMixin, DayListMixin, DayCloseMixin, DocsMixin, ReadersMix
         vpn = self.timeline.vpn_reader
         vpn.archive_file = VPN_FILE
         vpn.dirs = self.config.get("sophos_connect_dirs") or vpn.dirs
+        vpn.forti_paths = self.config.get("forti_paths") or vpn.forti_paths
         vpn.adapters = self.config.get("vpn_adapters") or vpn.adapters
         vpn.sources = vpn_sources(self.config)
         self.vpn_timer = QTimer(self)
         self.vpn_timer.timeout.connect(self.vpn_sample)
         self.apply_vpn_monitor()
+        # Remotedesktop (mstsc): offene Verbindungen alle 30 Sekunden festhalten
+        self.timeline.rdp_reader.archive_file = RDP_FILE
+        self.mstsc_timer = QTimer(self)
+        self.mstsc_timer.timeout.connect(self.mstsc_sample)
+        self.apply_mstsc_monitor()
 
         # Logs regelmäßig neu prüfen (nur geänderte Dateien werden gelesen)
         self.refresh_timer = QTimer(self)

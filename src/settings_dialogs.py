@@ -14,17 +14,27 @@ from PySide6.QtWidgets import (QAbstractItemView, QButtonGroup, QCheckBox, QColo
 from theme import prose, readable_on
 class ConnectionSettingsDialog(QDialog):
     def __init__(self, config, config_key, default_paths, title, parent=None,
-                 enabled_text=None, folders=False, hint=None):
+                 enabled_text=None, folders=False, hint=None, paths_key=None,
+                 timezone=True, files=True, paths=True, path_title="Logdatei-Pfade",
+                 enabled_key=None):
         super().__init__(parent)
         self.config = config
         self.config_key = config_key
         self.default_paths = default_paths
-        self.enabled_text = enabled_text  # Schalter "auslesen ja/nein" (z. B. VPN)
+        self.enabled_text = enabled_text  # Schalter "auslesen ja/nein"
+        self.enabled_key = enabled_key or f"{config_key}_enabled"
         self.folders = folders            # auch ganze Ordner als Pfad erlauben
+        self.files = files                # einzelne Dateien erlauben
+        self.show_paths = paths           # ohne Pfade: nur Schalter und Hinweis
+        self.paths_key = paths_key or f"{config_key}_paths"
+        self.path_title = path_title
+        self.show_timezone = timezone
         self.hint = hint
         self.enabled_box = None
+        self.path_list = None
+        self.tz_spinbox = None
         self.setWindowTitle(title)
-        self.setMinimumWidth(400)
+        self.setMinimumWidth(580)  # lange Pfade lesbar
         self.init_ui()
     
     def init_ui(self):
@@ -32,7 +42,7 @@ class ConnectionSettingsDialog(QDialog):
 
         if self.enabled_text:
             self.enabled_box = QCheckBox(self.enabled_text)
-            self.enabled_box.setChecked(self.config.get(f"{self.config_key}_enabled", True))
+            self.enabled_box.setChecked(bool(self.config.get(self.enabled_key, True)))
             layout.addWidget(self.enabled_box)
         if self.hint:
             hint = QLabel(self.hint)
@@ -40,14 +50,27 @@ class ConnectionSettingsDialog(QDialog):
             prose(hint)
             layout.addWidget(hint)
 
-        # Pfadeinstellungen
-        path_group = QGroupBox("Logdatei-Pfade")
+        if self.show_paths:
+            self._add_paths(layout)
+        if self.show_timezone:
+            self._add_timezone(layout)
+
+        # Button Box
+        button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        button_box.accepted.connect(self.accept)
+        button_box.rejected.connect(self.reject)
+        layout.addWidget(button_box)
+
+        self.setLayout(layout)
+
+    def _add_paths(self, layout):
+        path_group = QGroupBox(self.path_title)
         path_layout = QVBoxLayout()
         
         self.path_list = QListWidget()
-        self.path_list.setAccessibleName("Logdatei-Pfade")
+        self.path_list.setAccessibleName(self.path_title)
         # Lade gespeicherte Pfade oder Standardpfade
-        saved_paths = self.config.get(f'{self.config_key}_paths', self.default_paths)
+        saved_paths = self.config.get(self.paths_key, self.default_paths)
         self.path_list.addItems(saved_paths)
         path_layout.addWidget(self.path_list)
         
@@ -60,7 +83,8 @@ class ConnectionSettingsDialog(QDialog):
         self.path_list.currentItemChanged.connect(
             lambda item, _old: remove_btn.setEnabled(item is not None))
         
-        btn_layout.addWidget(add_btn)
+        if self.files:
+            btn_layout.addWidget(add_btn)
         if self.folders:
             folder_btn = QPushButton("&Ordner hinzufügen …")
             folder_btn.clicked.connect(self.add_folder)
@@ -72,7 +96,8 @@ class ConnectionSettingsDialog(QDialog):
             path_group.setEnabled(self.enabled_box.isChecked())
             self.enabled_box.toggled.connect(path_group.setEnabled)
         layout.addWidget(path_group)
-        
+
+    def _add_timezone(self, layout):
         # Zeitzonenkorrektur
         tz_group = QGroupBox("Zeitzoneneinstellungen")
         tz_layout = QFormLayout()
@@ -87,20 +112,25 @@ class ConnectionSettingsDialog(QDialog):
         tz_layout.addRow("Zeitzonenkorrektur (Stunden):", self.tz_spinbox)
         tz_group.setLayout(tz_layout)
         layout.addWidget(tz_group)
-        
-        # Button Box
-        button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        button_box.accepted.connect(self.accept)
-        button_box.rejected.connect(self.reject)
-        layout.addWidget(button_box)
-        
-        self.setLayout(layout)
-    
+
     def get_paths(self):
+        if self.path_list is None:
+            return None
         return [self.path_list.item(i).text() for i in range(self.path_list.count())]
-    
+
     def get_timezone_correction(self):
-        return self.tz_spinbox.value()
+        return self.tz_spinbox.value() if self.tz_spinbox else None
+
+    def values(self):
+        """Geänderte Einstellungen (nur die Teile, die das Fenster zeigt)."""
+        result = {}
+        if self.path_list is not None:
+            result[self.paths_key] = self.get_paths()
+        if self.enabled_box:
+            result[self.enabled_key] = self.enabled_box.isChecked()
+        if self.tz_spinbox:
+            result[f"{self.config_key}_timezone_correction"] = self.get_timezone_correction()
+        return result
     
     def add_path(self):
         # Datei auswählen statt Pfad abtippen (vermeidet Tippfehler)
@@ -215,47 +245,63 @@ class ActivityTypeSettingsDialog(QDialog):
         return [self.type_list.item(i).text() for i in range(self.type_list.count())]
 
 class WorkHoursDialog(QDialog):
-    """Arbeitszeiten pro Wochentag festlegen."""
+    """Arbeitszeiten und Pause pro Wochentag festlegen."""
 
     DAY_NAMES = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]
 
     def __init__(self, config, parent=None):
         super().__init__(parent)
-        from timeline_only import WEEKDAYS, work_hours
+        from timeline_only import WEEKDAYS, work_break, work_hours
         self.weekdays = WEEKDAYS
         self.setWindowTitle("Arbeitszeiten")
+        self.setMinimumWidth(640)
         layout = QVBoxLayout(self)
+        layout.setSpacing(10)
 
-        hint = QLabel("Die Arbeitszeit wird in der Timeline hervorgehoben. "
-                      "Freie Tage sind komplett abgedunkelt.")
+        hint = QLabel("Die Arbeitszeit wird in der Timeline hervorgehoben, die Pause abgedunkelt. "
+                      "Freie Tage sind komplett abgedunkelt. Gilt nur, wenn keine ITM-Personalzeit "
+                      "da ist.")
         hint.setWordWrap(True)
+        prose(hint)
         layout.addWidget(hint)
 
         grid = QGridLayout()
-        grid.addWidget(QLabel("<b>Tag</b>"), 0, 0)
-        grid.addWidget(QLabel("<b>von</b>"), 0, 1)
-        grid.addWidget(QLabel("<b>bis</b>"), 0, 2)
-        grid.addWidget(QLabel("<b>Stunden</b>"), 0, 3)
+        grid.setHorizontalSpacing(14)
+        grid.setVerticalSpacing(6)
+        for col, text in enumerate(("Tag", "von", "bis", "Pause", "Pause von", "bis", "Stunden")):
+            grid.addWidget(QLabel(f"<b>{text}</b>"), 0, col)
         self.rows = []
         for i, name in enumerate(self.DAY_NAMES):
             hours = work_hours(config, i)
+            pause = work_break(config, i)
             active = QCheckBox(name)
             active.setChecked(hours is not None)
             start, end = hours or (8 * 60, 17 * 60)
             t_from = QTimeEdit(QTime(start // 60, start % 60))
             t_to = QTimeEdit(QTime(end // 60, end % 60))
-            for t in (t_from, t_to):
+            has_pause = QCheckBox()
+            has_pause.setAccessibleName(f"{name} Pause")
+            has_pause.setChecked(pause is not None)
+            p_start, p_end = pause or (12 * 60, 12 * 60 + 30)
+            p_from = QTimeEdit(QTime(p_start // 60, p_start % 60))
+            p_to = QTimeEdit(QTime(p_end // 60, p_end % 60))
+            for t in (t_from, t_to, p_from, p_to):
                 t.setDisplayFormat("HH:mm")
+                t.setMinimumWidth(72)
             t_from.setAccessibleName(f"{name} von")
             t_to.setAccessibleName(f"{name} bis")
+            p_from.setAccessibleName(f"{name} Pause von")
+            p_to.setAccessibleName(f"{name} Pause bis")
             total = QLabel()
-            for w in (active, t_from, t_to):
-                (w.toggled if w is active else w.timeChanged).connect(self.update_totals)
-            grid.addWidget(active, i + 1, 0)
-            grid.addWidget(t_from, i + 1, 1)
-            grid.addWidget(t_to, i + 1, 2)
-            grid.addWidget(total, i + 1, 3)
-            self.rows.append((active, t_from, t_to, total))
+            total.setMinimumWidth(110)
+            for w in (active, has_pause):
+                w.toggled.connect(self.update_totals)
+            for w in (t_from, t_to, p_from, p_to):
+                w.timeChanged.connect(self.update_totals)
+            for col, w in enumerate((active, t_from, t_to, has_pause, p_from, p_to, total)):
+                grid.addWidget(w, i + 1, col)
+            self.rows.append((active, t_from, t_to, total, has_pause, p_from, p_to))
+        grid.setColumnStretch(6, 1)
         layout.addLayout(grid)
 
         self.week_total = QLabel()
@@ -273,34 +319,69 @@ class WorkHoursDialog(QDialog):
         self.update_totals()
 
     def copy_monday(self):
-        _, mo_from, mo_to, _ = self.rows[0]
-        for active, t_from, t_to, _ in self.rows[1:]:
+        _, mo_from, mo_to, _, mo_pause, mo_p_from, mo_p_to = self.rows[0]
+        for active, t_from, t_to, _, has_pause, p_from, p_to in self.rows[1:]:
             if active.isChecked():
                 t_from.setTime(mo_from.time())
                 t_to.setTime(mo_to.time())
+                has_pause.setChecked(mo_pause.isChecked())
+                p_from.setTime(mo_p_from.time())
+                p_to.setTime(mo_p_to.time())
+
+    @staticmethod
+    def _pause_minutes(t_from, t_to, p_from, p_to):
+        """Minuten der Pause innerhalb der Arbeitszeit (None = Pause ungültig)."""
+        if p_from.time() >= p_to.time():
+            return None
+        a = max(t_from.time(), p_from.time())
+        b = min(t_to.time(), p_to.time())
+        return a.secsTo(b) // 60 if a < b else 0
 
     def update_totals(self):
         week, errors = 0, 0
-        for active, t_from, t_to, total in self.rows:
-            t_from.setEnabled(active.isChecked())
-            t_to.setEnabled(active.isChecked())
-            if active.isChecked() and t_from.time() >= t_to.time():
+        for active, t_from, t_to, total, has_pause, p_from, p_to in self.rows:
+            on = active.isChecked()
+            t_from.setEnabled(on)
+            t_to.setEnabled(on)
+            has_pause.setEnabled(on)
+            p_from.setEnabled(on and has_pause.isChecked())
+            p_to.setEnabled(on and has_pause.isChecked())
+            if not on:
+                total.setText("frei")
+                continue
+            if t_from.time() >= t_to.time():
                 # Fehler direkt neben dem Tag zeigen, nicht stumm als "frei" speichern
                 errors += 1
                 total.setText("⚠ Ende vor Beginn")
                 continue
-            minutes = t_from.time().secsTo(t_to.time()) // 60 if active.isChecked() else 0
+            minutes = t_from.time().secsTo(t_to.time()) // 60
+            if has_pause.isChecked():
+                pause = self._pause_minutes(t_from, t_to, p_from, p_to)
+                if pause is None:
+                    errors += 1
+                    total.setText("⚠ Pause: Ende vor Beginn")
+                    continue
+                minutes -= pause
             week += minutes
-            total.setText(f"{minutes // 60}:{minutes % 60:02d} h" if minutes else "frei")
-        self.week_total.setText(f"Pro Woche: <b>{week // 60}:{week % 60:02d} h</b>")
+            total.setText(f"{minutes // 60}:{minutes % 60:02d} h")
+        self.week_total.setText(f"Pro Woche: <b>{week // 60}:{week % 60:02d} h</b> (ohne Pausen)")
         if hasattr(self, "ok_button"):
             self.ok_button.setEnabled(errors == 0)
 
     def get_work_days(self):
         result = {}
-        for key, (active, t_from, t_to, _) in zip(self.weekdays, self.rows):
+        for key, (active, t_from, t_to, *_rest) in zip(self.weekdays, self.rows):
             if active.isChecked() and t_from.time() < t_to.time():
                 result[key] = f"{t_from.time().toString('HH:mm')}-{t_to.time().toString('HH:mm')}"
+            else:
+                result[key] = ""
+        return result
+
+    def get_work_breaks(self):
+        result = {}
+        for key, (active, _f, _t, _total, has_pause, p_from, p_to) in zip(self.weekdays, self.rows):
+            if active.isChecked() and has_pause.isChecked() and p_from.time() < p_to.time():
+                result[key] = f"{p_from.time().toString('HH:mm')}-{p_to.time().toString('HH:mm')}"
             else:
                 result[key] = ""
         return result
