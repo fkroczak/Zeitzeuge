@@ -68,9 +68,9 @@ def rate_for(window, date_str, now, inputs=None):
                        gap_minutes=window.config.get("m42_gap_minutes", 5))
 
 
-def seven_for(window, now):
-    """7-Tage-Wert: letzte 7 gestempelte Tage ab heute."""
-    rates = [rate_for(window, d, now) for d in br.lookback_dates(now.strftime("%Y-%m-%d"))]
+def seven_for(window, now, day=None):
+    """7-Tage-Wert: letzte 7 gestempelte Tage bis day (Standard: heute)."""
+    rates = [rate_for(window, d, now) for d in br.lookback_dates(day or now.strftime("%Y-%m-%d"))]
     return br.seven_days(rates)
 
 
@@ -98,26 +98,40 @@ def has_m42(window):
 # ------------------------------------------------------------------ Statuszeile
 
 
-def status_text(window, now=None):
-    """(Text, Stufe, Hinweis) für die Statuszeile oder None, wenn Matrix42 nichts liefert."""
+def selected_day(window, now):
+    """Im Hauptfenster gewählter Tag (YYYY-MM-DD), sonst heute."""
+    current = getattr(window, "current_date", None)
+    day = current.toString("yyyy-MM-dd") if current is not None else ""
+    return day or now.strftime("%Y-%m-%d")
+
+
+def status_text(window, now=None, day=None):
+    """(Text, Stufe, Hinweis) für die Statuszeile oder None, wenn Matrix42 nichts liefert.
+
+    Gilt für den gewählten Tag: Quote des Tages und 7 Tage bis zu diesem Tag."""
     now = now or datetime.now()
+    day = day or selected_day(window, now)
+    is_today = day == now.strftime("%Y-%m-%d")
+    label = "heute" if is_today else datetime.strptime(day, "%Y-%m-%d").strftime("%d.%m.")
     goal = target(window.config)
-    today = rate_for(window, now.strftime("%Y-%m-%d"), now)
-    seven = seven_for(window, now)
+    today = rate_for(window, day, now)
+    seven = seven_for(window, now, day)
     if today.percent is None and seven.percent is None:
         return None  # Matrix42 liefert (noch) nichts, das sich rechnen lässt
     parts = []
     if today.percent is not None:
-        parts.append(f"Quote heute {br.percent_text(today.percent)}")
+        parts.append(f"Quote {label} {br.percent_text(today.percent)}")
     parts.append(f"7 Tage {br.percent_text(seven.percent)}")
     lvl = br.level(seven.percent if seven.percent is not None else today.percent, goal)
     text = " · ".join(parts) + f"  {br.LEVELS[lvl][0]}"
     tip = [f"Ziel: {goal} % der Personalzeit in Matrix42 buchen"]
     if today.percent is not None:
-        tip.append(f"Heute: {br.percent_text(today.percent)} – {br.level_text(br.level(today.percent, goal), goal)}")
+        tip.append(f"{label.capitalize()}: {br.percent_text(today.percent)} – "
+                   f"{br.level_text(br.level(today.percent, goal), goal)}")
     elif today.personal_seconds > 0 and not today.m42_read:
-        tip.append("Heute: Matrix42 nicht gelesen")
-    tip.append(f"Letzte {len(seven.window)} gestempelte Tage: {br.percent_text(seven.percent)} – "
+        tip.append(f"{label.capitalize()}: Matrix42 nicht gelesen")
+    until = "" if is_today else f" bis {label}"
+    tip.append(f"Letzte {len(seven.window)} gestempelte Tage{until}: {br.percent_text(seven.percent)} – "
                f"{br.level_text(br.level(seven.percent, goal), goal)}")
     if seven.unread:
         tip.append(f"{len(seven.unread)} Tag(e) ohne Matrix42-Daten zählen nicht mit")
