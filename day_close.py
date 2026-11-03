@@ -273,7 +273,7 @@ def build(date_str, work_spans, docs=(), evidence=(), bookings=(), hint=None, ti
                 row = {"kind": KIND_GAP, "start": _text(day, start), "end": _text(day, m),
                        "customer": "", "category": "", "ticket": "", "ticket_source": "",
                        "text": "", "sources": [], "confidence": "niedrig", "checked": False,
-                       "note": "keine Spur – Kunde, Ticket und Text eintragen oder leer lassen"}
+                       "note": "keine Spur – bei Bedarf ausfüllen"}
                 if internal and internal.get("customer"):
                     row.update(customer=internal["customer"], ticket=internal.get("ticket", ""),
                                category=internal.get("category", ""), ticket_source="intern",

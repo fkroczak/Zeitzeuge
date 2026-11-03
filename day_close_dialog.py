@@ -14,7 +14,7 @@ Zeitzeuge bucht nie von selbst: erst der Klick auf einen der Knöpfe speichert o
 from datetime import datetime, timedelta
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QKeySequence, QShortcut
+from PySide6.QtGui import QFont, QFontMetrics, QKeySequence, QShortcut
 from PySide6.QtWidgets import (QAbstractItemView, QDialog, QDialogButtonBox, QHBoxLayout, QHeaderView,
                                QLabel, QMessageBox, QPushButton, QTableWidget, QTableWidgetItem,
                                QToolButton, QVBoxLayout)
@@ -134,10 +134,16 @@ class DayCloseDialog(QDialog):
         self.doc_button.setAutoDefault(False)
         self.doc_button.setToolTip("Angehakte Vorschläge als Tätigkeiten speichern, nichts buchen")
         self.doc_button.clicked.connect(lambda: self.run(book=False))
-        self.book_button = QPushButton("Dokumentieren und in Matrix42 &buchen", self)
+        self.book_button = QPushButton("Dokumentieren und &buchen", self)
         self.book_button.setDefault(True)
         self.book_button.setToolTip("Angehakte Zeilen speichern und alle mit Ticket in Matrix42 buchen")
         self.book_button.clicked.connect(lambda: self.run(book=True))
+        # Standardknopf ist fett: etwas Luft, damit der Text nie abgeschnitten wird
+        bold = QFont(self.book_button.font())
+        bold.setBold(True)
+        # (min-width im Stylesheet, setMinimumWidth überschriebe das Design beim Polieren)
+        width = QFontMetrics(bold).horizontalAdvance(self.book_button.text().replace("&", "")) + 36
+        self.book_button.setStyleSheet(f"QPushButton {{ min-width: {width}px; }}")
         self.buttons.addButton(self.doc_button, QDialogButtonBox.ActionRole)
         self.buttons.addButton(self.book_button, QDialogButtonBox.ActionRole)
         self.buttons.rejected.connect(self.reject)
@@ -210,11 +216,10 @@ class DayCloseDialog(QDialog):
     def note(row):
         if row.get("result"):
             return row["result"]
-        parts = [KIND_NAMES.get(row["kind"], "")]
+        # Was zu tun ist zuerst, dann woher es kommt
+        parts = [row.get("note", ""), KIND_NAMES.get(row["kind"], "")]
         if row["kind"] == dc.KIND_DRAFT:
             parts.append(f"Sicherheit {row['confidence']}")
-        if row.get("note"):
-            parts.append(row["note"])
         return " · ".join(p for p in parts if p)
 
     @staticmethod
