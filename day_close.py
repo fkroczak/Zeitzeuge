@@ -127,7 +127,7 @@ def compose_text(category, evidence, customer=""):
             return entry["description"].strip()
     labels = []
     for entry, _m in evidence:
-        for part in [entry] + [p for p in entry.get("parts") or [] if p is not entry]:
+        for part in [entry] + [p for p in entry.get("parts") or [] if isinstance(p, dict) and p is not entry]:
             label = evidence_label(part, customer)
             if label and label not in labels and label != category:
                 labels.append(label)

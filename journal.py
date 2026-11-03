@@ -38,6 +38,12 @@ def _t(text):
     return datetime.strptime(text, TIME_FMT)
 
 
+def sub_entries(entry):
+    """Teil-Einträge eines zusammengefassten Eintrags. PC-Arbeitsblöcke führen unter "parts"
+    nur (Programm, Sekunden)-Paare, die zählen hier nicht."""
+    return [p for p in entry.get("parts") or [] if isinstance(p, dict)]
+
+
 def entry_key(entry):
     """Fester Schlüssel eines erkannten Eintrags (zum Ignorieren/Zurückstellen)."""
     who = entry.get("tv_id") or entry.get("customer_name") or ""
@@ -163,7 +169,7 @@ class Journal:
         data = self.load(date_str)
         if data.get("locked"):
             return
-        for e in [entry] + list(entry.get("parts") or []):
+        for e in [entry] + sub_entries(entry):
             key = entry_key(e)
             if key not in data["ignored"]:
                 data["ignored"].append(key)
@@ -174,7 +180,7 @@ class Journal:
         date_str = entry["start"][:10]
         data, extra = self.load(date_str), self._extra(date_str)
         if any(entry_key(e) in data["ignored"] or entry_key(e) in extra["ignored"]
-               for e in [entry] + list(entry.get("parts") or [])):
+               for e in [entry] + sub_entries(entry)):
             return True
         return any(prompt_topics.matches_span(entry, s) for s in data.get("ignored_spans", []))
 
@@ -275,7 +281,7 @@ class Journal:
             length = e.get("duration_s", seconds)
             limit = min_minutes(e) if callable(min_minutes) else min_minutes
             # Läuft noch (VPN offen, Ende = letzter Blick): erst nach dem Ende fragen
-            running = e.get("running") or any(p.get("running") for p in e.get("parts", []))
+            running = e.get("running") or any(p.get("running") for p in sub_entries(e))
             if length < limit * 60 or running or end > now - timedelta(minutes=3):
                 continue
             if self.is_ignored(e) or self.is_answered(e, date_str):
