@@ -114,6 +114,38 @@ FORTI = """\
 """.splitlines()
 
 
+# Aus einer echten FortiVPN_1.log (FortiClient 7), gekürzt
+FORTIVPN = """\
+[2026-10-12 17:21:19.3224544 UTC+02:00] [11544:11532] [FortiVPN  2204    info] fortivpn::StateMachine::HandleTunnelConnected "av" is connected.
+[2026-10-12 17:30:00.0000000 UTC+02:00] [11544:11840] [FortiVPN  1    info] fortivpn::IFortiVPN_Impl::Handle_PowerBroadcastMsg() Unhandled Power Event: 0x12
+[2026-10-12 18:12:48.5048035 UTC+02:00] [11544:11532] [FortiVPN  2331    info] fortivpn::StateMachine::HandleTunnelDisconnectRequest() "av" is going to be disconnected.
+[2026-10-12 18:12:54.1352009 UTC+02:00] [11544:11532] [FortiVPN  2370    info] fortivpn::StateMachine::HandleTunnelDisconnected "av" is disconnected.
+[2026-10-12 18:12:55.4286733 UTC+02:00] [11544:11532] [FortiVPN  2370    info] fortivpn::StateMachine::HandleTunnelDisconnected "av" is disconnected.
+[2026-10-13 08:34:22.1478512 UTC+02:00] [11544:11532] [FortiVPN  2370    info] fortivpn::StateMachine::HandleTunnelDisconnected "A.S.I." is disconnected.
+[2026-10-13 08:49:05.5787346 UTC+02:00] [11544:11532] [FortiVPN  2204    info] fortivpn::StateMachine::HandleTunnelConnected "A.S.I." is connected.
+[2026-10-13 12:01:59.9952371 UTC+02:00] [11544:11840] [FortiVPN  749    info] Sleep while machine is running, will suspend myself.
+[2026-10-13 13:42:03.9977917 UTC+02:00] [11544:11840] [FortiVPN  743    info] wakeup after sleep, will resume.
+[2026-11-03 21:07:02.0000000 UTC+02:00] [19768:5760] [FortiVPN  2204    info] fortivpn::StateMachine::HandleTunnelConnected "kreimer" is connected.
+""".splitlines()
+
+
+def test_fortivpn_log(same):
+    rows = [(c["start"], c["end"], c["customer_name"], c["running"])
+            for c in parse_forti_trace(FORTIVPN, now=datetime(2026, 11, 3, 21, 30))]
+    same("FortiVPN_1.log", rows, [
+        ("2026-10-12 17:21:19", "2026-10-12 18:12:54", "av", False),
+        ("2026-10-13 08:49:05", "2026-10-13 12:01:59", "A.S.I.", False),   # Ruhezustand beendet
+        ("2026-11-03 21:07:02", "2026-11-03 21:30:00", "kreimer", True),   # noch verbunden
+    ])
+    with temp_dir() as tmp:
+        for name in ("FortiVPN_1.log", "FortiVPN_1_error.log"):
+            with open(os.path.join(tmp, name), "w", encoding="cp1252") as f:
+                f.write("\n".join(FORTIVPN[:5] if name == "FortiVPN_1.log" else ["[x] Fehler"]) + "\n")
+        reader = VpnReader(os.path.join(tmp, "vpn.json"), [os.path.join(tmp, "fehlt")], adapter_func=lambda: [])
+        reader.forti_paths = [os.path.join(tmp, "FortiVPN_*.log")]
+        same("mit *", [c["customer_name"] for c in reader.connections()], ["av"])
+
+
 def test_forticlient_trace(same):
     rows = [(c["start"][11:], c["end"][11:], c["customer_name"])
             for c in parse_forti_trace(FORTI, now=datetime(2026, 11, 3, 12, 0))]

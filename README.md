@@ -42,7 +42,7 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
   - Steht dieselbe Verbindung auch in den Logs, zeigt Zeitzeuge nur den Eintrag aus den Logs, weil er den Namen kennt.
   - Ruhezustand, Absturz oder ein Neustart von Zeitzeuge beenden den laufenden Eintrag beim letzten Blick auf den Adapter.
   - Weitere Adapter (z. B. WireGuard) trägst du in der `zeitzeuge_config.json` unter `vpn_adapters` ein: Teil der Adapterbeschreibung und Name der Quelle. Mit `vpn_monitor_enabled: false` schaltest du die Aufzeichnung ab.
-- **VPN aus FortiClient:** Zeitzeuge liest die Trace-Logs von FortiClient (`C:\Program Files\Fortinet\FortiClient\logs\trace\FortiVPN_1.log` und `sslvpndaemon_1.log`, änderbar unter **Einrichten …**) mit Verbinden, Trennen und, wenn er dasteht, dem Namen der Verbindung. Fehlen sie, nimmt es die Adapter-Meldungen aus Sophos' `charon.log` (Zeiten ohne Namen).
+- **VPN aus FortiClient:** Zeitzeuge liest `C:\Program Files\Fortinet\FortiClient\logs\trace\FortiVPN_1.log` (änderbar unter **Einrichten …**): jede Verbindung mit dem Namen aus FortiClient (z. B. „Tenbrink“), Beginn und Ende. Geht der PC in den Ruhezustand, endet die Verbindung dort. Fehlt die Datei, nimmt es die Adapter-Meldungen aus Sophos' `charon.log` (Zeiten ohne Namen).
   - Andere Ordner trägst du in der `zeitzeuge_config.json` unter `sophos_connect_dirs` ein.
 - **Telefonate aus 3CX:** Zeitzeuge liest die Anrufliste selbst aus dem 3CX-Webclient, ohne dass du die Webseite offen haben musst.
   - Alle gelesenen Anrufe landen in der Datenbank. So entsteht eine eigene Anrufliste, die auch offline bleibt.

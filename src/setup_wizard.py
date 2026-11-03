@@ -95,8 +95,8 @@ GROUPS = [
              missing="Sophos Connect ist auf diesem PC nicht installiert.",
              setup="edit_sophos_settings", button="Ordner einrichten …", file=True),
         dict(id="forti", key="forti_enabled", title="FortiClient",
-             text="Liest Verbinden und Trennen aus den Trace-Logs von FortiClient "
-                  "(FortiVPN_1.log, sslvpndaemon_1.log). Fehlen sie, nimmt Zeitzeuge die "
+             text="Liest jede Verbindung mit ihrem Namen, Beginn und Ende aus FortiVPN_1.log "
+                  "von FortiClient. Fehlt die Datei, nimmt Zeitzeuge die "
                   "Adapter-Meldungen aus Sophos' charon.log und prüft alle 30 Sekunden selbst, "
                   "ob der Fortinet-Adapter verbunden ist.",
              detect=lambda c: _found(_exists(c.get("forti_paths")) or _sophos_log(c, "charon.log")),

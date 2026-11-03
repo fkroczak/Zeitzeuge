@@ -822,10 +822,11 @@ class MenusMixin:
             "forti", list(FORTI_TRACE_PATHS), "FortiClient",
             enabled_text="FortiClient-Verbindungen auslesen und anzeigen",
             path_title="Logdateien von FortiClient", timezone=False,
-            hint="Zeitzeuge liest die Trace-Logs von FortiClient (logs\\trace\\FortiVPN_1.log, "
-                 "sslvpndaemon_1.log) mit Verbinden und Trennen. Fehlen sie, nimmt es die "
-                 "Adapter-Meldungen aus charon.log von Sophos Connect. Zusätzlich prüft es alle "
-                 "30 Sekunden, ob der Fortinet-Adapter verbunden ist.",
+            hint="Zeitzeuge liest FortiVPN_1.log aus logs\\trace von FortiClient: jede Verbindung "
+                 "mit ihrem Namen aus FortiClient (z. B. „Tenbrink“), Beginn und Ende. Ruhezustand "
+                 "beendet eine Verbindung. Fehlt die Datei, nimmt es die Adapter-Meldungen aus "
+                 "charon.log von Sophos Connect. Zusätzlich prüft es alle 30 Sekunden, ob der "
+                 "Fortinet-Adapter verbunden ist. * im Pfad steht für beliebige Zeichen.",
             after=self.apply_vpn_settings,
         )
 

@@ -9,8 +9,8 @@ Sophos Connect schreibt in seinen Programmordner:
 - charon.log: strongSwan merkt jede Änderung an Netzwerkadaptern, auch an den
               Adaptern von FortiClient ("Fortinet ... changed state from Down to Up").
 
-FortiClient selbst schreibt Trace-Logs (logs\\trace\\FortiVPN_1.log, sslvpndaemon_1.log).
-Stehen dort Verbindungen, haben sie Vorrang vor charon.log.
+FortiClient selbst schreibt Trace-Logs (logs\\trace\\FortiVPN_1.log) mit dem Namen jeder
+Verbindung. Stehen dort Verbindungen, haben sie Vorrang vor charon.log.
 
 Die Logs werden bei Neustarts und neuen Verbindungen überschrieben. Darum hält
 Zeitzeuge alles in vpn_verbindungen.json fest und zeichnet zusätzlich selbst auf:
@@ -18,6 +18,7 @@ Alle 30 Sekunden prüft es, ob ein VPN-Adapter (Sophos, Fortinet, ...) verbunden
 ist. So bleiben die Zeiten erhalten, auch wenn die Logs fehlen oder gelöscht sind.
 """
 
+import glob
 import os
 import re
 import sys
@@ -175,12 +176,65 @@ def parse_fortinet(charon_lines, now=None):
     return result
 
 
-# FortiClient-Trace-Logs (logs\trace\FortiVPN_1.log, sslvpndaemon_1.log): Zeilen mit
-# Zeitstempel, das Format schwankt je Version. Erkannt werden Verbinden und Trennen.
+# FortiClient-Trace-Logs: FortiVPN_1.log hat ein festes Format (parse_fortivpn). Für andere
+# Dateien (z. B. sslvpndaemon_1.log, ältere Versionen) gibt es eine allgemeine Erkennung.
 FORTI_TRACE_PATHS = [
-    r"C:\Program Files\Fortinet\FortiClient\logs\trace\FortiVPN_1.log",
-    r"C:\Program Files\Fortinet\FortiClient\logs\trace\sslvpndaemon_1.log",
+    r"C:\Program Files\Fortinet\FortiClient\logs\trace\FortiVPN_*.log",  # auch _2, _3 … nach dem Rotieren
 ]
+
+# FortiVPN_1.log (FortiClient 7):
+# [2026-10-12 17:21:19.3224544 UTC+02:00] [11544:11532] [FortiVPN  2204    info]
+#     fortivpn::StateMachine::HandleTunnelConnected "av" is connected.
+# Die Zeit ist Ortszeit; der Zusatz "UTC+02:00" stimmt im Winter nicht und zählt nicht.
+_FVPN_LINE = re.compile(r"^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})[^\]]*\] \[[\d:]+\] \[FortiVPN[^\]]*\] (.*)$")
+_FVPN_UP = re.compile(r'HandleTunnelConnected "(.+)" is connected\.')
+_FVPN_DOWN = re.compile(r'HandleTunnelDisconnected "(.+)" is disconnected\.')
+# Danach läuft kein Tunnel mehr: Ruhezustand, Dienst beendet oder neu gestartet
+_FVPN_ALL_DOWN = ("Sleep while machine is running", "Cleaning up process resources and exiting",
+                  "Starting FortiVPN")
+
+
+def parse_fortivpn(lines, now=None):
+    """Tunnel aus FortiVPN_1.log mit dem Namen der Verbindung aus FortiClient."""
+    now = now or datetime.now()
+    result, open_ = [], {}
+    last = None
+
+    def close(name, end, running=False):
+        start = open_.pop(name)
+        if (end - start).total_seconds() >= MIN_SECONDS:
+            result.append(_conn(start, end, "FortiClient", name, name,
+                                f"FortiClient: {name}", running))
+
+    for line in lines:
+        m = _FVPN_LINE.match(line.strip())
+        if not m:
+            continue
+        try:
+            when = datetime.strptime(m.group(1), TIME_FMT)
+        except ValueError:
+            continue
+        msg = m.group(2)
+        up = _FVPN_UP.search(msg)
+        down = None if up else _FVPN_DOWN.search(msg)
+        if up:
+            open_.setdefault(up.group(1), when)
+        elif down:
+            if down.group(1) in open_:
+                close(down.group(1), when)
+        elif any(text in msg for text in _FVPN_ALL_DOWN):
+            # Beim Neustart des Dienstes endet ein offener Tunnel beim letzten Eintrag davor
+            end = last if msg.startswith("Starting") and last else when
+            for name in list(open_):
+                close(name, max(end, open_[name]))
+        last = when
+    for name in list(open_):
+        close(name, max(now, open_[name]), running=True)
+    return result
+
+
+def is_fortivpn_log(lines):
+    return any(_FVPN_LINE.match(line.strip()) for line in lines[:50])
 _FORTI_DOWN = re.compile(r"\bdisconnect(ed|ing)?\b|tunnel (is )?down|connection (closed|terminated|lost)"
                          r"|\bvpn (is )?down\b|status[=: ]+(down|disconnected)|getrennt", re.I)
 _FORTI_UP = re.compile(r"\bconnected\b|tunnel (is )?up\b|tunnel (established|connected)"
@@ -193,6 +247,8 @@ _FORTI_NAME = re.compile(r"(?:connection|tunnel|profile|vpn)[ _]?(?:name)?\s*[:=
 
 def parse_forti_trace(lines, now=None, label="FortiClient"):
     """FortiClient-Verbindungen aus einem Trace-Log (Beginn/Ende, Name wenn er dasteht)."""
+    if is_fortivpn_log(lines):
+        return parse_fortivpn(lines, now)
     from log_parsers import VpnParser
     parse_time = VpnParser().parse_time
     now = now or datetime.now()
@@ -407,8 +463,12 @@ class VpnReader:
     def update_from_logs(self):
         """Sophos-/charon-Logs lesen und Neues ins Archiv übernehmen (nur wenn sich Dateien geändert haben)."""
         folders = [os.path.expandvars(d) for d in self.dirs if os.path.isdir(os.path.expandvars(d))]
-        traces = [os.path.expandvars(p) for p in self.forti_paths]
-        traces = [p for p in traces if os.path.isfile(p)]
+        traces = []
+        for p in self.forti_paths:
+            p = os.path.expandvars(p)
+            for path in (sorted(glob.glob(p)) if any(c in p for c in "*?[") else [p]):
+                if os.path.isfile(path) and path not in traces:
+                    traces.append(path)
         self.files_read = len(folders)
         self.forti_files_read = len(traces)
         files = [os.path.join(d, n + s) for d in folders

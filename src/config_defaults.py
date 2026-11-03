@@ -91,10 +91,7 @@ def default_config():
         "sophos_enabled": True,
         "forti_enabled": True,
         # FortiClient: eigene Trace-Logs (sonst Adapter-Meldungen aus charon.log von Sophos)
-        "forti_paths": [
-            r"C:\Program Files\Fortinet\FortiClient\logs\trace\FortiVPN_1.log",
-            r"C:\Program Files\Fortinet\FortiClient\logs\trace\sslvpndaemon_1.log",
-        ],
+        "forti_paths": [r"C:\Program Files\Fortinet\FortiClient\logs\trace\FortiVPN_*.log"],
         # RDM Better: Starts aus launcher.log (UTC), das Ende kommt aus der mstsc-Aufzeichnung
         "rdmbetter_enabled": True,
         "rdmbetter_paths": [r"%LOCALAPPDATA%\RDM Better\launcher.log"],
