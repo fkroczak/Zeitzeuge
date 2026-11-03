@@ -4,8 +4,9 @@ Rein funktional, ohne Qt. Das Hauptfenster (week_dialogs.py) sammelt je Tag die
 Personalzeit (ITM, sonst Arbeitszeit aus den Einstellungen) und die Matrix42-Buchungen
 und gibt sie hier hinein.
 
-Quote eines Tages = gebuchte Zeit (Buchungen zusammengeführt, Überschneidungen nur
-einmal) ÷ Personalzeit. Heute zählt nur bis jetzt.
+Quote eines Tages = gebuchte Zeit ÷ gestempelte Personalzeit. Gebucht zählt wie in
+Matrix42: jede Buchung mit ihrer gerundeten Arbeitszeit (WorktimeRounded), auch wenn sich
+Buchungen überschneiden. Fehlt die gerundete Zeit, zählt Ende − Anfang. Heute zählt nur bis jetzt.
 
 7-Tage-Wert = die letzten 7 Tage mit Personalzeit (gestempelt), rückwärts ab heute.
 Tage, für die Matrix42 nicht gelesen ist, zählen nicht mit (weder gebucht noch
@@ -97,6 +98,28 @@ def booking_spans(bookings, until=None):
     return spans
 
 
+def booked_seconds(bookings, until=None):
+    """Gebuchte Zeit wie in Matrix42: Summe der Buchungen, Überschneidungen zählen doppelt.
+
+    Je Buchung die gerundete Arbeitszeit aus Matrix42 ("minutes_rounded"), sonst Ende − Anfang.
+    Reicht eine Buchung über until hinaus (heute, vorgebucht), zählt nur der Teil bis until."""
+    total = 0.0
+    for b in bookings or []:
+        try:
+            a, e = _dt(b["start"]), _dt(b["end"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if until is not None and e > until:
+            total += max(0.0, (until - a).total_seconds())
+            continue
+        rounded = b.get("minutes_rounded")
+        if isinstance(rounded, (int, float)) and not isinstance(rounded, bool) and rounded > 0:
+            total += rounded * 60
+        elif e > a:
+            total += (e - a).total_seconds()
+    return total
+
+
 def itm_spans(day, now):
     """Personalzeiten aus ITM ({"zeiten": [{start, end}]}) -> ([(start, end)], eingestempelt?).
     Ein offener Abschnitt (noch eingestempelt) zählt bis jetzt."""
@@ -171,7 +194,7 @@ def day_rate(date_str, spans, bookings, now, from_itm=False, day=None, running=F
     rate.personal_seconds = personal_seconds(spans, day if from_itm else None, running)
     if bookings is not None:
         booked = booking_spans(bookings, until)
-        rate.booked_seconds = seconds(booked)
+        rate.booked_seconds = booked_seconds(bookings, until)
         rate.gaps = gaps(spans, booked, gap_minutes)
     return rate
 

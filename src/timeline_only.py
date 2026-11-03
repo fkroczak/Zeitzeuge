@@ -198,6 +198,29 @@ def cluster_open(band, gap_seconds=120):
     return result
 
 
+def stack_lanes(spans, max_lanes=10):
+    """Überlappende Zeiträume auf Unterzeilen verteilen (wie im Kalender).
+
+    spans: [(start, end)]. -> ([Unterzeile je Zeitraum, ab 0], Anzahl Unterzeilen).
+    Jeder Zeitraum kommt in die oberste Unterzeile, in der er nichts überdeckt. Was nur
+    aneinanderstößt (Ende = Anfang), bleibt in einer Zeile. Mehr als max_lanes: die letzte
+    Unterzeile nimmt den Rest auf.
+    """
+    lanes, ends = [0] * len(spans), []
+    for i in sorted(range(len(spans)), key=lambda i: spans[i]):
+        start, end = spans[i]
+        for idx, lane_end in enumerate(ends):
+            if start >= lane_end:
+                break
+        else:
+            if len(ends) < max_lanes:
+                ends.append(start)
+            idx = len(ends) - 1
+        ends[idx] = max(ends[idx], end)
+        lanes[i] = idx
+    return lanes, len(ends)
+
+
 def entry_menu_items(entry, customer_known=False):
     """Befehle für einen Eintrag: [(Text, Befehl)], None = Trennlinie.
 
@@ -754,48 +777,36 @@ class TimelineView(QGraphicsView):
 
         activities = self.view_entries(date)
 
-        # Telefonate, VPN und TeamViewer je in eine feste Zeile; der Rest (v. a. RDM)
-        # wird auf Spuren verteilt: überlappende Einträge kommen in die nächste Spur.
-        # Ausgeblendete Zeilen (Menü "Zeilen der Timeline") fallen ganz weg.
+        # Telefonate, Outlook, VPN und TeamViewer je in eine feste Zeile; der Rest (v. a. RDM)
+        # in die freien Spuren. Überlappende Einträge kommen in jeder Zeile in eine weitere
+        # Zeile darunter (stack_lanes). Ausgeblendete Zeilen (Menü "Zeilen der Timeline") fallen ganz weg.
         shown = self.config.get("timeline_rows", {})
         # Feste Zeilen nur, wenn es an diesem Tag etwas darin gibt (leere Zeilen lenken ab)
         present = {row_kind(a) for a in activities}
         fixed_rows = [(kind, label) for kind, label in FIXED_ROWS if shown.get(kind, True)
                       and kind in present]
         show_other = shown.get("other", True)
-        fixed_index = {kind: i for i, (kind, _label) in enumerate(fixed_rows)}
-        n_fixed = len(fixed_rows)
-        lanes_end = []
-        placed = []
+        fixed_items = {kind: [] for kind, _label in fixed_rows}
+        free_items = []
         for a in activities:
-            start, end = parse_time(a["start"]), parse_time(a["end"])
             kind = row_kind(a)
-            if kind is not None:
-                if kind in fixed_index:
-                    placed.append((a, start, end, fixed_index[kind]))
-                continue
-            if not show_other:
-                continue
-            for idx, lane_end in enumerate(lanes_end):
-                if start >= lane_end:
-                    lanes_end[idx] = end
-                    break
-            else:
-                if len(lanes_end) >= self.MAX_LANES:
-                    idx = self.MAX_LANES - 1
-                    lanes_end[idx] = max(lanes_end[idx], end)
-                else:
-                    lanes_end.append(end)
-                    idx = len(lanes_end) - 1
-            placed.append((a, start, end, n_fixed + idx))
-
+            if kind is None:
+                if show_other:
+                    free_items.append(a)
+            elif kind in fixed_items:
+                fixed_items[kind].append(a)
+        fixed_layout = [(kind, *self._stacked(fixed_items[kind])) for kind, _label in fixed_rows]
+        free_placed, n_free = self._stacked(free_items)
         show_pc = shown.get("pc", True)
         pc_band = self.pc_blocks_for(date) if show_pc else []
         blocks_on = any(p.get("pc_block") for p in pc_band)
         pc_h = self.PC_BAND_H if blocks_on else self.PC_RAW_H
         bands = self.band_rows(date)
         ai_band = next((e for k, _t, e in bands if k == "ai"), [])
-        n_lanes = max(self.MIN_LANES, len(lanes_end)) if show_other else 0
+        # Doku: offene Einträge erst zusammenfassen, dann auf Unterzeilen verteilen
+        band_layout = [(kind, *self._stacked(cluster_open(band) if kind == "doc" else band))
+                       for kind, _text, band in bands]
+        n_lanes = max(self.MIN_LANES, n_free) if show_other else 0
         show_other = show_other and n_lanes > 0
         band_y = self.AXIS_H + 6
         show_band = show_pc and bool(self.tracker or pc_band)
@@ -803,21 +814,27 @@ class TimelineView(QGraphicsView):
         # Zeilenhöhe so wählen, dass alle Zeilen ohne senkrechte Scrollleiste ins Fenster passen;
         # Platz für die horizontale Scrollleiste lassen
         free_h = self.maximumViewportSize().height() - self.horizontalScrollBar().sizeHint().height()
-        n_rows = len(bands) + n_fixed + n_lanes
+        n_rows = (sum(max(1, n) for _k, _p, n in band_layout)
+                  + sum(max(1, n) for _k, _p, n in fixed_layout) + n_lanes)
         fit = (free_h - top - (4 if bands else 0) - 6 - 8) / max(1, n_rows)
         lane_h, gap = type(self).LANE_H, type(self).LANE_GAP
         if fit < lane_h + gap:
             gap = 4
             lane_h = max(self.MIN_LANE_H, int(fit - gap))
         self.LANE_H, self.LANE_GAP = lane_h, gap
+        row_h = self.LANE_H + self.LANE_GAP
         band_tops = []
-        for _band in bands:  # eigene Zeilen für Doku, Regeln und KI über den Einträgen
+        for _kind, _placed, n in band_layout:  # eigene Zeilen für Doku, Regeln und KI über den Einträgen
             band_tops.append(top)
-            top += self.LANE_H + self.LANE_GAP
+            top += max(1, n) * row_h
         if bands:
             top += 4
-        row_h = self.LANE_H + self.LANE_GAP
-        free_top = top + n_fixed * row_h + 6  # kleiner Abstand vor den freien Spuren
+        fixed_tops = []
+        y = top
+        for _kind, _placed, n in fixed_layout:
+            fixed_tops.append(y)
+            y += max(1, n) * row_h
+        free_top = y + 6  # kleiner Abstand vor den freien Spuren
         content_h = free_top + n_lanes * row_h + 8
         height = max(content_h, free_h)
         width = self._x(24 * 60) + self.RIGHT
@@ -852,42 +869,47 @@ class TimelineView(QGraphicsView):
 
         # Jede zweite Zeile leicht hinterlegt, damit die Zeilen unterscheidbar sind
         stripe = QColor(255, 255, 255, 10) if self.dark_mode else QColor(0, 0, 0, 10)
-        row_tops = [top + i * row_h for i in range(n_fixed)]  # nur sichtbare Zeilen
-        row_tops += [free_top + i * row_h for i in range(n_lanes)]
-        for i, y in enumerate(row_tops):
+        # (eine feste Zeile mit Unterzeilen bleibt eine Fläche)
+        row_tops = [(y, max(1, n)) for y, (_k, _p, n) in zip(fixed_tops, fixed_layout)]
+        row_tops += [(free_top + i * row_h, 1) for i in range(n_lanes)]
+        for i, (y, n) in enumerate(row_tops):
             if i % 2 == 0:
-                self.scene.addRect(0, y - self.LANE_GAP / 2, width, row_h, no_pen, QBrush(stripe))
+                self.scene.addRect(0, y - self.LANE_GAP / 2, width, n * row_h, no_pen, QBrush(stripe))
 
         # Legende links (schwebt über den Zeilen, siehe drawForeground) und Trennlinie
         colors = self.config.get("type_colors", {})
         legend = []
         if show_band:
             legend.append((band_y, pc_h, "PC-Aktivität", None))
-        for (kind, _text, band), y in zip(bands, band_tops):
+        # Name mittig über alle Unterzeilen einer Zeile
+        for (kind, _text, band), y, (_k, _p, n) in zip(bands, band_tops, band_layout):
             name, key = LEGEND_BANDS[kind]
             if kind == "work" and band and not band[0].get("from_itm"):
                 name = "Arbeitszeit"  # ohne ITM: Arbeitszeit aus den Einstellungen
-            legend.append((y, self.LANE_H, name, colors.get(key)))
-        for i, (kind, _text) in enumerate(fixed_rows):
+            legend.append((y, max(1, n) * row_h - self.LANE_GAP, name, colors.get(key)))
+        for (kind, _placed, n), y in zip(fixed_layout, fixed_tops):
             name, key = LEGEND_FIXED[kind]
-            legend.append((top + i * row_h, self.LANE_H, name, colors.get(key)))
+            legend.append((y, max(1, n) * row_h - self.LANE_GAP, name, colors.get(key)))
         if show_other:
             legend.append((free_top, self.LANE_H, "Remote / Weitere", colors.get("RDP-Verbindung")))
             sep_y = free_top - (6 + self.LANE_GAP) / 2
-            if n_fixed:
+            if fixed_layout:
                 self.scene.addLine(0, sep_y, width, sep_y, QPen(self.hour_line, 1))
         self._legend = legend
 
         # Einträge
         label_font = ui_font(8)
         metrics = QFontMetrics(label_font)
-        for a, start, end, lane in placed:
+        placed = [(a, y + lane * row_h) for (_k, items, _n), y in zip(fixed_layout, fixed_tops)
+                  for a, lane in items]
+        placed += [(a, free_top + lane * row_h) for a, lane in free_placed]
+        for a, y in placed:
+            start, end = parse_time(a["start"]), parse_time(a["end"])
             x1 = self._x(start.hour * 60 + start.minute + start.second / 60)
             x2 = self._x(end.hour * 60 + end.minute + end.second / 60)
             if end.date() > start.date():  # über Mitternacht
                 x2 = self._x(24 * 60)
             w = max(4.0, x2 - x1)
-            y = top + lane * row_h + (6 if lane >= n_fixed else 0)
 
             # Metro: volle Kachel ohne Rand, Schrift hell oder dunkel je nach Farbe
             base = entry_color(a, self.config)
@@ -906,9 +928,9 @@ class TimelineView(QGraphicsView):
             self._add_label(label_text, x1, y, w, self.LANE_H, label_font, metrics, label_color)
 
         # Obere Zeilen: Doku (eigene Tätigkeiten, offene gestrichelt), Regeln, KI
-        for (kind, text, band), y in zip(bands, band_tops):
-            for a in (cluster_open(band) if kind == "doc" else band):
-                self._draw_band_entry(a, y, label_font, metrics)
+        for (_kind, items, _n), y in zip(band_layout, band_tops):
+            for a, lane in items:
+                self._draw_band_entry(a, y + lane * row_h, label_font, metrics)
 
         # PC-Aktivität: Arbeitsblöcke mit Beschriftung (oder schmales Band je Fenster)
         if show_band:
@@ -940,7 +962,7 @@ class TimelineView(QGraphicsView):
         self._hover_label.setDefaultTextColor(self.text_color)
         self._hover_label.setZValue(91)
         self._hover_label.hide()
-        self._day_entries = [a for a, _s, _e, _l in placed]  # nur die gezeichneten
+        self._day_entries = [a for a, _y in placed]  # nur die gezeichneten
         self._pc_band = pc_band
         self._ai_band = ai_band
         self._bands = bands
@@ -958,6 +980,12 @@ class TimelineView(QGraphicsView):
             self.centerOn(self._x(center_min), self.mapToScene(0, 0).y())
 
         self.day_loaded.emit(activities, self.pc_entries_for(date))
+
+    def _stacked(self, items):
+        """Einträge einer Zeile -> ([(Eintrag, Unterzeile)], Anzahl Unterzeilen)."""
+        spans = [(parse_time(a["start"]), parse_time(a["end"])) for a in items]
+        lanes, count = stack_lanes(spans, self.MAX_LANES)
+        return list(zip(items, lanes)), count
 
     # Obere Zeilen: Kennung, Beschriftung links, Schlüssel in config["timeline_rows"]
     BAND_ROWS = [("work", "Personalzeit"), ("doc", "Doku"), ("m42", "Matrix42"), ("rule", "Zuordnung"), ("ai", "KI")]
