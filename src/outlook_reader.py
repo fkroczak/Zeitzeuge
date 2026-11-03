@@ -56,7 +56,8 @@ class OutlookReader(QObject):
     # ------------------------------------------------------------ Steuerung
 
     def outlook_on(self):
-        return bool(self.config.get("outlook_enabled"))
+        """Outlook lesen: für Termine und Mails oder nur für die Teams-Chats."""
+        return bool(self.config.get("outlook_enabled") or self.config.get("teams_chats_enabled"))
 
     def teams_on(self):
         return bool(self.config.get("teams_calls_enabled"))
@@ -180,9 +181,12 @@ class OutlookReader(QObject):
         self._failures = 0
         self._failed = False
         self.last_ok = now
+        outlook = bool(self.config.get("outlook_enabled"))
         days = outlook_data.split_days(result, start, end, now,
-                                       calendar=self.config.get("outlook_calendar_enabled", True),
-                                       mails=self.config.get("outlook_mails_enabled", True))
+                                       calendar=outlook and self.config.get("outlook_calendar_enabled", True),
+                                       mails=outlook and self.config.get("outlook_mails_enabled", True),
+                                       inbox=outlook and self.config.get("outlook_replies_enabled", True),
+                                       chats=bool(self.config.get("teams_chats_enabled")))
         for day in outlook_data.save_days(self.outlook_file, days):
             self.day_read.emit(day)
         self._set_status(outlook_data.status_text(result, now))
@@ -198,7 +202,7 @@ def day_entries(config, outlook_file, teams_file, date_str):
     """Termine, Mails und Teams-Anrufe eines Tages aus der Ablage. Abgeschaltete Quellen
     liefern nichts (auch nicht, was früher gelesen wurde)."""
     result, meetings = [], []
-    if config.get("outlook_enabled"):
+    if config.get("outlook_enabled") or config.get("teams_chats_enabled"):
         doc = outlook_data.load_day(outlook_file, date_str)
         result = outlook_data.day_entries(doc, config) if doc else []
         meetings = [e for e in result if e["type"] == outlook_data.TYPE_MEETING]

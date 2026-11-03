@@ -29,7 +29,7 @@ PAW_OFF = [("teamviewer_enabled", "TeamViewer-Logs"), ("sophos_enabled", "Sophos
            ("forti_enabled", "FortiClient"), ("vpn_enabled", "weitere VPN-Logs"),
            ("pbx_reader_enabled", "3CX"), ("itm_reader_enabled", "ITM"),
            ("m42_reader_enabled", "Matrix42"), ("outlook_enabled", "Outlook"),
-           ("teams_calls_enabled", "Teams-Anrufe")]
+           ("teams_calls_enabled", "Teams-Anrufe"), ("teams_chats_enabled", "Teams-Chats")]
 
 
 class TransferMixin:

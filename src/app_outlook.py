@@ -9,7 +9,7 @@ import safe_io
 import main_timeline as mt  # Pfade und save_config zur Laufzeit von dort (Tests ersetzen sie dort)
 from outlook_dialogs import OutlookSettingsDialog
 
-SOURCE_KEYS = ("outlook_enabled", "teams_calls_enabled")
+SOURCE_KEYS = ("outlook_enabled", "teams_calls_enabled", "teams_chats_enabled")
 
 
 class OutlookMixin:

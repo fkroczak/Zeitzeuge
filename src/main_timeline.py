@@ -260,6 +260,8 @@ def load_config_with_defaults():
                         # Outlook und Teams (app_outlook.py)
                         ("Termin", "#0F6CBD"), ("Teams-Besprechung", "#5B5FC7"),
                         ("Mail gesendet", "#009BBB"), ("Teams-Anruf", "#565EBF"),
+                        ("Mail beantwortet", "#0B7FA0"), ("Teams-Chat", "#6264A7"),
+                        ("Fahrt (vermutet)", "#B45309"),
                         *LOCAL_COLORS.items()]:
         cfg["type_colors"].setdefault(kind, color)
     # Design "Metro Klar": alte Standardfarben einmalig umstellen, selbst gewählte Farben bleiben.

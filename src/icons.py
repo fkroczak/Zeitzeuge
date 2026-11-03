@@ -223,6 +223,15 @@ BRANDS = {
                 '<circle cx="12" cy="12" r="6.5" fill="none" stroke="#FFFFFF" stroke-width="1.6"/>'
                 '<path d="M5.5 12h13M12 5.5c-2.2 2.2-2.2 10.8 0 13M12 5.5c2.2 2.2 2.2 10.8 0 13" '
                 'fill="none" stroke="#FFFFFF" stroke-width="1.4"/>'),
+    # Teams-Chat: Sprechblase
+    "teamschat": ('#6264A7', 'square',
+                  '<path d="M5.5 6.5h13v8.5h-7l-3.5 3v-3h-2.5z" fill="none" stroke="#FFFFFF" '
+                  'stroke-width="1.8" stroke-linejoin="round"/>'),
+    # Fahrten: Auto
+    "travel": ('#B45309', 'square',
+               '<path d="M5 15.5v-3l2-4.5h10l2 4.5v3zM5 12.5h14" fill="none" stroke="#FFFFFF" '
+               'stroke-width="1.7" stroke-linejoin="round"/><circle cx="8.5" cy="16.5" r="1.5" '
+               'fill="#FFFFFF"/><circle cx="15.5" cy="16.5" r="1.5" fill="#FFFFFF"/>'),
     "sophos": ('#005BC8', 'square', _BRAND_TEXT.format(y=17, size=14, text="S")),
     # Fortinet: rotes Feld mit weißem Raster
     "forti": ('#DA291C', 'square',

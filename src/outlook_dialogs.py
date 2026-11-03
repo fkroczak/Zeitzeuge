@@ -39,7 +39,12 @@ class OutlookSettingsDialog(QDialog):
         self.mails = QCheckBox("&Gesendete Mails")
         self.mails.setChecked(config.get("outlook_mails_enabled", True))
         outlook_rows.append(("", self.mails))
-        self.external = QCheckBox("Nur Mails an &andere Firmen (Kundendomains)")
+        self.replies = QCheckBox("&Beantwortete Mails aus dem Posteingang")
+        self.replies.setChecked(config.get("outlook_replies_enabled", True))
+        self.replies.setToolTip("Eingegangene Mails, auf die du geantwortet oder die du weitergeleitet "
+                                "hast, stehen beim Eingang als „Mail beantwortet“.")
+        outlook_rows.append(("", self.replies))
+        self.external = QCheckBox("Nur Mails von und an &andere Firmen (Kundendomains)")
         self.external.setChecked(config.get("outlook_mails_external_only", True))
         outlook_rows.append(("", self.external))
 
@@ -112,7 +117,7 @@ class OutlookSettingsDialog(QDialog):
 
     def _sync(self):
         on = self.outlook.isChecked()
-        for w in (self.calendar, self.mails, self.own, self.days, self.interval,
+        for w in (self.calendar, self.mails, self.replies, self.own, self.days, self.interval,
                   self.calendar_folder, self.sent_folder, self.start_outlook):
             w.setEnabled(on)
         for w in (self.external, self.mail_minutes):
@@ -124,6 +129,7 @@ class OutlookSettingsDialog(QDialog):
             "outlook_enabled": self.outlook.isChecked(),
             "outlook_calendar_enabled": self.calendar.isChecked(),
             "outlook_mails_enabled": self.mails.isChecked(),
+            "outlook_replies_enabled": self.replies.isChecked(),
             "outlook_mails_external_only": self.external.isChecked(),
             "outlook_own_domains": [d for d in own if d],
             "outlook_mail_minutes": self.mail_minutes.value(),

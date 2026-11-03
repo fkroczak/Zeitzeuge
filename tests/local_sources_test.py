@@ -148,12 +148,12 @@ def test_leser(same):
         tick()
         rows = [(e["type"], e["customer_name"]) for e in reader.entries()]
         same("Einträge", sorted(rows), sorted([("PC gesperrt", "gesperrt"), ("SSH-Verbindung", "fw01"),
-                                               ("WLAN", "Kunde-Gast")]))
+                                               ("Netzwerk", "Kunde-Gast")]))
         # Neu gestartet: alles kommt aus dem Archiv
         again = ls.LocalReader({}, os.path.join(tmp, "lokal_spuren.json"), funcs={"threaded": False})
         same("Archiv", len(again.entries()), 3)
         again.config["wlan_enabled"] = False
-        same("WLAN aus", [e["type"] for e in again.entries() if e["type"] == "WLAN"], [])
+        same("Netzwerk aus", [e["type"] for e in again.entries() if e["type"] == "Netzwerk"], [])
 
 
 def test_keine_nachfrage_fuer_spuren(same):
@@ -161,3 +161,16 @@ def test_keine_nachfrage_fuer_spuren(same):
     same("Zeilen", [row_kind({"type": t}) for t in (ls.LOCKED, ls.WLAN_TYPE, ls.FILE_TYPE, ls.BROWSER_TYPE)],
          ["pcstate", "wlan", "files", "files"])
     same("SSH bleibt Verbindung", row_kind({"type": "SSH-Verbindung"}), None)
+
+
+def test_netzwerkprofile(same):
+    text = "ITM.local\tEthernet 2\tDomainAuthenticated\r\nKunde-Gast\tWLAN\tPublic\r\nfirma.vpn\tFortinet SSL VPN\t1\r\n"
+    nets = ls.parse_profiles(text)
+    same("Profile", [(n["name"], n["wireless"], n["category"]) for n in nets],
+         [("ITM.local", False, "Domäne"), ("Kunde-Gast", True, "öffentlich"), ("firma.vpn", False, "privat")])
+    same("ohne VPN", [n["name"] for n in ls.location_networks(nets, ls.DEFAULT_NETWORK_IGNORE)],
+         ["ITM.local", "Kunde-Gast"])
+    import customers
+    config = {"customers": [{"name": "Müller GmbH", "traces": [{"kind": "net", "value": "kunde-gast"}]}]}
+    same("Kunde zum Netz", customers.customer_for({"type": "Netzwerk", "customer_name": "Kunde-Gast"}, config),
+         "Müller GmbH")

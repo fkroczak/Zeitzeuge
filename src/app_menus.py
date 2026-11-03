@@ -484,10 +484,12 @@ class MenusMixin:
         [("sophos_enabled", "&Sophos Connect"), ("forti_enabled", "&FortiClient"),
          ("vpn_enabled", "&Weitere VPN-Logs (OpenVPN …)")],
         [("pbx_reader_enabled", "&3CX-Anrufe"), ("itm_reader_enabled", "&ITM-Personalzeiten"),
-         ("m42_reader_enabled", "&Matrix42-Buchungen (Firmennetz)"),
-         ("outlook_enabled", "&Outlook (Termine, Mails)"), ("teams_calls_enabled", "Tea&ms-Anrufe")],
-        [("pcstate_enabled", "&PC gesperrt / Ruhezustand"), ("wlan_enabled", "W&LAN"),
-         ("recent_files_enabled", "&Zuletzt geöffnete Dateien"), ("browser_enabled", "Bro&wser-Verlauf")],
+         ("m42_reader_enabled", "&Matrix42-Buchungen (Firmennetz)")],
+        [("outlook_enabled", "&Outlook (Termine, Mails)"), ("teams_calls_enabled", "Tea&ms-Anrufe"),
+         ("teams_chats_enabled", "Teams-&Chats")],
+        [("pcstate_enabled", "&PC gesperrt / Ruhezustand"), ("wlan_enabled", "&Netzwerk (WLAN, Kabel)"),
+         ("recent_files_enabled", "&Zuletzt geöffnete Dateien"), ("browser_enabled", "Bro&wser-Verlauf"),
+         ("travel_enabled", "&Fahrten (vermutet)")],
     ]
 
     SOURCE_BRANDS = {"teamviewer_enabled": "teamviewer", "rdm_enabled": "rdm",
@@ -496,7 +498,8 @@ class MenusMixin:
                      "browser_enabled": "browser", "sophos_enabled": "sophos",
                      "forti_enabled": "forti", "vpn_enabled": "vpn", "pbx_reader_enabled": "pbx",
                      "itm_reader_enabled": "itm", "m42_reader_enabled": "m42", "outlook_enabled": "outlook",
-                     "teams_calls_enabled": "teams"}
+                     "teams_calls_enabled": "teams", "teams_chats_enabled": "teamschat",
+                     "travel_enabled": "travel"}
 
     def _build_sources_menu(self):
         """Jede Datenquelle als Schalter, die Einrichtung (Pfade, Anmeldung) im Untermenü."""
@@ -512,7 +515,8 @@ class MenusMixin:
                                                                           "itm_reader_enabled",
                                                                           "m42_reader_enabled",
                                                                           "outlook_enabled",
-                                                                          "teams_calls_enabled"))))
+                                                                          "teams_calls_enabled",
+                                                                          "teams_chats_enabled"))))
                 action.toggled.connect(lambda on, k=key: self.toggle_source(k, on))
                 action.setIcon(icons.brand_icon(self.SOURCE_BRANDS[key]))
                 self.source_actions[key] = action
@@ -528,13 +532,15 @@ class MenusMixin:
                       ("Weitere &VPN-Logs …", self.edit_vpn_settings, "vpn"), None,
                       ("&3CX …", self.open_pbx_settings, "pbx"),
                       ("&ITM-Personalzeiten …", self.open_itm_settings, "itm"),
-                      ("&Matrix42 …", self.open_m42_settings, "m42"),
+                      ("&Matrix42 …", self.open_m42_settings, "m42"), None,
                       ("&Outlook …", self.open_outlook_settings, "outlook"),
-                      ("Tea&ms-Anrufe …", self.open_teams_settings, "teams"), None,
+                      ("Tea&ms-Anrufe …", self.open_teams_settings, "teams"),
+                      ("Teams-&Chats …", self.edit_teams_chats_settings, "teamschat"), None,
                       ("&PC gesperrt / Ruhezustand …", self.edit_pcstate_settings, "pcstate"),
-                      ("W&LAN …", self.edit_wlan_settings, "wlan"),
+                      ("&Netzwerk …", self.edit_wlan_settings, "wlan"),
                       ("&Zuletzt geöffnete Dateien …", self.edit_recent_files_settings, "files"),
-                      ("Bro&wser-Verlauf …", self.edit_browser_settings, "browser")):
+                      ("Bro&wser-Verlauf …", self.edit_browser_settings, "browser"),
+                      ("&Fahrten (vermutet) …", self.edit_travel_settings, "travel")):
             if entry is None:
                 setup.addSeparator()  # Webseiten im Hintergrund
                 continue
@@ -590,7 +596,7 @@ class MenusMixin:
                 self.start_m42_reader()
             else:
                 self.stop_m42_reader()
-        elif key in ("outlook_enabled", "teams_calls_enabled"):
+        elif key in ("outlook_enabled", "teams_calls_enabled", "teams_chats_enabled"):
             if on and self.is_paw():
                 self.statusBar().showMessage("Outlook und Teams: auf der PAW aus. Daten kommen über "
                                              "„Daten übernehmen“.", 8000)
@@ -784,11 +790,14 @@ class MenusMixin:
 
     def edit_wlan_settings(self):
         self._edit_log_settings(
-            "wlan", [], "WLAN",
-            enabled_text="Verbundenes WLAN aufzeichnen",
+            "wlan", [], "Netzwerk",
+            enabled_text="Verbundene Netzwerke aufzeichnen (WLAN und Kabel)",
             paths=False, timezone=False,
-            hint="Zeitzeuge merkt sich alle 2 Minuten den Namen des WLANs, mit dem der PC verbunden "
-                 "ist. So siehst du in der Zeile „WLAN“, wann du z. B. beim Kunden vor Ort warst.",
+            hint="Zeitzeuge merkt sich alle 2 Minuten, mit welchem Netzwerk der PC verbunden ist: den "
+                 "Namen, den Windows dem Netz gibt (beim WLAN der WLAN-Name, im Firmennetz meist die "
+                 "Domäne), auch über Kabel und Dockingstation. VPN-Adapter zählen nicht. So siehst du "
+                 "in der Zeile „Netzwerk“, ob du im Büro, im Homeoffice oder beim Kunden warst. "
+                 "Rechtsklick auf ein Netz → „Kunde merken“ ordnet es einem Kunden zu.",
             after=self.apply_local_monitor,
         )
 
@@ -815,6 +824,38 @@ class MenusMixin:
                  "weniger als 5 Minuten Pause sind ein Block. Suchmaschinen und Anmeldeseiten "
                  "fallen weg (browser_ignore_domains in der zeitzeuge_config.json).",
             after=self.apply_local_monitor,
+        )
+
+    def edit_teams_chats_settings(self):
+        if self.is_paw():
+            self.statusBar().showMessage("Teams-Chats: auf der PAW aus.", 8000)
+            return
+        self._edit_log_settings(
+            "teams_chats", [], "Teams-Chats",
+            enabled_text="Teams-Chats aus dem Postfach lesen (über Outlook)",
+            paths=False, timezone=False,
+            hint="Exchange legt jede Teams-Nachricht auch in deinem Postfach ab. Zeitzeuge liest sie "
+                 "über das klassische Outlook (wie Termine und Mails, Outlook muss dafür nicht als "
+                 "Datenquelle an sein) und behält nur Uhrzeit, ob die Nachricht von dir war, und die "
+                 "Domains der Gesprächspartner (z. B. „kunde.de“). Keine Texte, keine Namen. "
+                 "Nachrichten mit derselben Firma und weniger als 10 Minuten Pause sind ein Block "
+                 "„Chat mit kunde.de“ in der Zeile Outlook. Standardmäßig nur Chats mit anderen Firmen "
+                 "(teams_chats_external_only).",
+            after=self.apply_outlook_reader,
+        )
+
+    def edit_travel_settings(self):
+        self._edit_log_settings(
+            "travel", [], "Fahrten (vermutet)",
+            enabled_text="Fahrten vermuten und vorschlagen",
+            paths=False, timezone=False,
+            hint="Hat ein Outlook-Termin einen Ort (kein Teams, kein Link), ist die Zeit davor ohne "
+                 "Arbeit am PC vermutlich die Hinfahrt, die Zeit danach die Rückfahrt (höchstens "
+                 "90 Minuten, ab 10 Minuten). Ebenso eine Lücke beim Wechsel in ein Kundennetz "
+                 "(Netzwerk mit Kunde in der Kundenliste). Fahrten stehen neben dem Termin in der "
+                 "Zeile Outlook, Zeitzeuge fragt danach wie bei Verbindungen und schlägt "
+                 "„Fahrt / Reise“ vor. Orte, die keine Fahrt sind (z. B. Besprechungsraum), trägst "
+                 "du unter travel_ignore_locations in der zeitzeuge_config.json ein.",
         )
 
     def edit_sophos_settings(self):

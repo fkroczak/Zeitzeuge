@@ -66,7 +66,11 @@ DEFAULT_RULES = [
     {"name": "Termin / Teams-Besprechung (Outlook)", "field": "type",
      "match": "re:^(Termin|Teams-Besprechung)$",
      "category": "Beratung / Abstimmung", "customer": "", "enabled": True},
-    {"name": "Gesendete Mail (Outlook)", "field": "type", "match": "re:^Mail gesendet$",
+    {"name": "Gesendete Mail (Outlook)", "field": "type", "match": "re:^Mail (gesendet|beantwortet)$",
+     "category": "E-Mail / Kommunikation", "customer": "", "enabled": True},
+    {"name": "Fahrt (vermutet)", "field": "type", "match": "re:^Fahrt",
+     "category": "Fahrt / Reise", "customer": "", "enabled": True},
+    {"name": "Teams-Chat", "field": "type", "match": "re:^Teams-Chat$",
      "category": "E-Mail / Kommunikation", "customer": "", "enabled": True},
 ]
 

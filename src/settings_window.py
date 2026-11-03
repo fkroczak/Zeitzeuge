@@ -215,12 +215,15 @@ SOURCE_TILES = [
      ("reader", "m42_reader")),
     ("outlook_enabled", "outlook", "Outlook", "Termine und gesendete Mails", "open_outlook_settings", None),
     ("teams_calls_enabled", "teams", "Teams-Anrufe", "Anrufe aus Microsoft Teams", "open_teams_settings", None),
+    ("teams_chats_enabled", "teamschat", "Teams-Chats", "Nur Zeit und Firma, über Outlook",
+     "edit_teams_chats_settings", None),
     ("pcstate_enabled", "pcstate", "PC gesperrt / Ruhezustand", "Sperren, Schlafen, Aus, Abmelden",
      "edit_pcstate_settings", None),
-    ("wlan_enabled", "wlan", "WLAN", "Verbundenes Netz, alle 2 Minuten", "edit_wlan_settings", None),
+    ("wlan_enabled", "wlan", "Netzwerk", "WLAN und Kabel, alle 2 Minuten", "edit_wlan_settings", None),
     ("recent_files_enabled", "files", "Zuletzt geöffnete Dateien", "Dateiname und Uhrzeit",
      "edit_recent_files_settings", None),
     ("browser_enabled", "browser", "Browser-Verlauf", "Nur Domains und Tickets", "edit_browser_settings", None),
+    ("travel_enabled", "travel", "Fahrten (vermutet)", "Termine mit Ort, Kundennetze", "edit_travel_settings", None),
     ("tracking", "tracking", "Aktive Fenster", "Band „PC“, alle 5 Sekunden", "edit_tracking_filters", None),
 ]
 

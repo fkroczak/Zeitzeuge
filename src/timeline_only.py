@@ -13,11 +13,12 @@ from PySide6.QtWidgets import (QDialog, QDialogButtonBox, QFormLayout, QGraphics
 from activity_tracker import app_label, merge_segments, read_segments
 from call_import import load_call_suggestions
 import focus
+import travel
 import customers
 from grouping import format_tv_id, group_entries
 from log_parsers import ConnectionIndex, RdmParser, TeamViewerParser, VpnParser
 from rdp_reader import RdpReader
-from local_sources import BROWSER_TYPE, FILE_TYPE, PC_STATE_TYPES, WLAN_TYPE, LocalReader
+from local_sources import BROWSER_TYPE, FILE_TYPE, NET_TYPE, PC_STATE_TYPES, WLAN_TYPE, LocalReader
 from theme import THEMES, readable_on, ui_font
 from vpn_reader import VpnReader, vpn_sources
 
@@ -116,13 +117,13 @@ def entry_color(activity, config):
 # Eigene Zeile je Quelle (Kennung, Beschriftung links); nur RDM und der Rest teilen sich mehrere Spuren
 # Outlook (Termine, Mails) nur, wenn die Datenquelle an ist (sonst bliebe die Zeile leer)
 FIXED_ROWS = [("call", "Tel"), ("outlook", "Outlook"), ("vpn", "VPN"), ("tv", "TV"),
-              ("pcstate", "PC-Zustand"), ("wlan", "WLAN"), ("files", "Dateien")]
-OUTLOOK_TYPES = ("Termin", "Teams-Besprechung", "Mail gesendet")
+              ("pcstate", "PC-Zustand"), ("wlan", "Netz"), ("files", "Dateien")]
+OUTLOOK_TYPES = ("Termin", "Teams-Besprechung", "Mail gesendet", "Mail beantwortet", "Teams-Chat")
 # Legende links: Name der Zeile und Schlüssel in config["type_colors"] für das Farbfeld
 LEGEND_FIXED = {"call": ("Telefon", "Telefonat"), "outlook": ("Outlook", "Termin"),
                 "vpn": ("VPN", "VPN-Verbindung"),
                 "tv": ("TeamViewer", "TeamViewer"),
-                "pcstate": ("PC-Zustand", "PC gesperrt"), "wlan": ("WLAN", "WLAN"),
+                "pcstate": ("PC-Zustand", "PC gesperrt"), "wlan": ("Netzwerk", "Netzwerk"),
                 "files": ("Dateien & Web", "Datei geöffnet")}
 LEGEND_BANDS = {"work": ("Personalzeit", "Personalzeit"), "doc": ("Dokumentation", "Dokumentiert"), "m42": ("Matrix42", "Matrix42-Buchung"),
                 "rule": ("Zuordnung o. KI", "Klassifizierung"), "ai": ("KI-Vorschläge", "KI-Vorschlag")}
@@ -141,13 +142,13 @@ TIMELINE_ROWS = [
     ("vpn", "&VPN"),
     ("tv", "T&eamViewer"),
     ("pcstate", "PC-&Zustand (gesperrt, Ruhezustand)"),
-    ("wlan", "&WLAN"),
+    ("wlan", "&Netzwerk (WLAN, Kabel)"),
     ("files", "Dateien und &Browser"),
     ("other", "&Remote / Weitere (RDM, SSH, RDP …)"),
 ]
 ROW_NAMES = {"pc": "PC-Aktivität", "work": "Personalzeit", "doc": "Dokumentation", "m42": "Matrix42", "rule": "Zuordnung ohne KI",
              "ai": "KI-Vorschläge", "call": "Telefon", "outlook": "Outlook", "vpn": "VPN", "tv": "TeamViewer",
-             "pcstate": "PC-Zustand", "wlan": "WLAN", "files": "Dateien & Web", "other": "Remote / Weitere"}
+             "pcstate": "PC-Zustand", "wlan": "Netzwerk", "files": "Dateien & Web", "other": "Remote / Weitere"}
 
 
 # Zeilen, die sich in der Legende verschieben lassen (PC-Aktivität bleibt oben, Remote / Weitere unten)
@@ -179,7 +180,7 @@ def row_kind(activity):
     kind = activity.get("type", "")
     if activity.get("direction") or kind == "Telefonat":
         return "call"
-    if kind in OUTLOOK_TYPES:
+    if kind in OUTLOOK_TYPES or kind == travel.TYPE:  # Fahrten stehen neben ihrem Termin
         return "outlook"
     if kind.startswith("VPN"):
         return "vpn"
@@ -187,7 +188,7 @@ def row_kind(activity):
         return "tv"
     if kind in PC_STATE_TYPES:
         return "pcstate"
-    if kind == WLAN_TYPE:
+    if kind in (WLAN_TYPE, NET_TYPE):
         return "wlan"
     if kind in (FILE_TYPE, BROWSER_TYPE):
         return "files"
@@ -716,7 +717,26 @@ class TimelineView(QGraphicsView):
             if tv_id:
                 a["customer_name"] = names.get(tv_id) or f"TeamViewer {format_tv_id(tv_id)}"
                 a["details"] = f"TeamViewer-ID {format_tv_id(tv_id)}"
+        if self.config.get("travel_enabled", True):
+            valid = self._with_trips(date, valid)
         return valid
+
+    def _with_trips(self, date, entries):
+        """Vermutete Fahrten zu Terminen mit Ort und zu Kundennetzen dazu (travel.py)."""
+        places = any(e.get("type") == "Termin" and "Ort: " in (e.get("details") or "") for e in entries)
+        nets = any(e.get("type") in (NET_TYPE, WLAN_TYPE) for e in entries)
+        if not places and not nets:
+            return entries  # nichts, woraus sich eine Fahrt ergibt: aktive Fenster nicht lesen
+        try:
+            index = customers.index(self.config)
+            trips = travel.suggest(entries, self.pc_entries_for(date),
+                                   customer_net=lambda name: index.lookup("net", name),
+                                   ignore_locations=self.config.get("travel_ignore_locations") or [],
+                                   max_minutes=int(self.config.get("travel_max_minutes", travel.MAX_MINUTES)))
+        except Exception as e:  # Vorschläge dürfen die Timeline nie leeren
+            print(f"Fehler bei den vermuteten Fahrten: {e}")
+            return entries
+        return sorted(entries + trips, key=lambda a: a["start"])
 
     def view_entries(self, date: QDate):
         """Einträge so, wie Timeline und Liste sie zeigen (einzeln oder zusammengefasst)."""

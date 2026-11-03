@@ -103,6 +103,9 @@ def default_config():
         "wlan_enabled": True,           # verbundenes WLAN (SSID)
         "recent_files_enabled": True,   # zuletzt geöffnete Dateien (Recent-Ordner von Windows)
         "recent_files_dirs": [r"%APPDATA%\Microsoft\Windows\Recent"],
+        "travel_enabled": True,         # vermutete Fahrten zu Terminen mit Ort und zu Kundennetzen
+        "travel_ignore_locations": [],  # Orte, die keine Fahrt sind (z. B. Besprechungsraum, Büro)
+        "travel_max_minutes": 90,       # längste Fahrt vor oder nach einem Termin
         "browser_enabled": True,        # Browser-Verlauf: nur Domain und Ticketnummer
         "browser_paths": [
             r"%LOCALAPPDATA%\Microsoft\Edge\User Data\Default\History",
@@ -270,4 +273,7 @@ def default_config():
         "teams_calls_enabled": False,       # Teams-Anrufe (Mikrofon-Nutzung von Teams, Teams-Logs)
         "teams_logs_enabled": True,         # zusätzlich die Logs des neuen Teams auswerten
         "teams_min_seconds": 30,            # kürzere Mikrofon-Nutzung zählt nicht als Anruf
+        "outlook_replies_enabled": True,    # eingegangene Mails, auf die du geantwortet hast
+        "teams_chats_enabled": False,       # Teams-Chats aus dem Postfach (über Outlook), nur Zeit und Domains
+        "teams_chats_external_only": True,  # nur Chats mit anderen Firmen
     }

@@ -372,7 +372,8 @@ class DayListMixin:
         else:
             self.mstsc_timer.stop()
 
-    LOCAL_KEYS = ("pcstate_enabled", "shell_enabled", "wlan_enabled", "recent_files_enabled", "browser_enabled")
+    LOCAL_KEYS = ("pcstate_enabled", "shell_enabled", "wlan_enabled", "recent_files_enabled", "browser_enabled",
+                  "travel_enabled")
 
     def apply_local_monitor(self):
         """Spuren vom PC aufzeichnen, solange eine dieser Quellen an ist."""

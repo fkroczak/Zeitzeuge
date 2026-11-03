@@ -144,6 +144,11 @@ GROUPS = [
                   "Sie stehen in der Zeile „Tel“ wie 3CX-Anrufe.",
              detect=lambda c: "", missing="",
              setup="open_teams_settings", button="Teams einrichten …"),
+        dict(id="teamschat", key="teams_chats_enabled", title="Teams-Chats",
+             text="Wann du mit welcher Firma in Teams geschrieben hast, aus dem Postfach über Outlook. "
+                  "Nur Uhrzeit und Domain, keine Texte.",
+             detect=lambda c: "", missing="",
+             setup="edit_teams_chats_settings", button="Einrichten …"),
     ]),
     ("Dieser PC", [
         dict(id="tracking", key="tracking_enabled", title="Aktive Fenster aufzeichnen",
@@ -157,8 +162,8 @@ GROUPS = [
                   "Zeitzeuge selbst, den Rest liest es aus dem Windows-Ereignisprotokoll.",
              detect=lambda c: "", missing="",
              setup="edit_pcstate_settings", button="Einrichten …"),
-        dict(id="wlan", key="wlan_enabled", title="WLAN",
-             text="Mit welchem WLAN der PC verbunden war, z. B. beim Kunden vor Ort.",
+        dict(id="wlan", key="wlan_enabled", title="Netzwerk (WLAN, Kabel)",
+             text="Mit welchem Netzwerk der PC verbunden war: Büro, Homeoffice oder beim Kunden vor Ort.",
              detect=lambda c: "", missing="",
              setup="edit_wlan_settings", button="Einrichten …"),
         dict(id="files", key="recent_files_enabled", title="Zuletzt geöffnete Dateien",
@@ -172,6 +177,11 @@ GROUPS = [
              detect=lambda c: _found(_exists(c.get("browser_paths"))),
              missing="Kein Verlauf von Edge oder Chrome gefunden.",
              setup="edit_browser_settings", button="Pfade einrichten …", file=True),
+        dict(id="travel", key="travel_enabled", title="Fahrten (vermutet)",
+             text="Hin- und Rückfahrt zu Terminen mit Ort und zu Kundennetzen als Vorschlag "
+                  "„Fahrt / Reise“.",
+             detect=lambda c: "", missing="",
+             setup="edit_travel_settings", button="Einrichten …"),
         dict(id="work", key=None, title="Arbeitszeiten",
              text="Arbeitszeit je Wochentag. Sie gilt, solange keine Personalzeiten aus der "
                   "ITM-Zeiterfassung kommen.",

@@ -41,13 +41,14 @@ BROWSER_DAYS = 14           # so weit zurück liest Zeitzeuge den Verlauf
 # Typen in der Timeline (eigene Zeilen, keine Nachfragen)
 LOCKED, SLEEP, OFF, LOGGED_OFF = "PC gesperrt", "Ruhezustand", "PC aus", "Abgemeldet"
 PC_STATE_TYPES = (LOCKED, SLEEP, OFF, LOGGED_OFF)
-WLAN_TYPE = "WLAN"
+WLAN_TYPE = "WLAN"          # ältere Einträge (nur WLAN)
+NET_TYPE = "Netzwerk"       # WLAN und Kabel, Name des Netzwerkprofils von Windows
 FILE_TYPE = "Datei geöffnet"
 BROWSER_TYPE = "Browser"
-LOCAL_TYPES = PC_STATE_TYPES + (WLAN_TYPE, FILE_TYPE, BROWSER_TYPE)
+LOCAL_TYPES = PC_STATE_TYPES + (WLAN_TYPE, NET_TYPE, FILE_TYPE, BROWSER_TYPE)
 # Kontrast mindestens 3:1 auf hellem und dunklem Grund (ui_audit_test.py)
 COLORS = {LOCKED: "#6B7280", SLEEP: "#64748B", OFF: "#7B8494", LOGGED_OFF: "#8B7AA8",
-          WLAN_TYPE: "#0EA5A4", FILE_TYPE: "#D97706", BROWSER_TYPE: "#2563EB",
+          WLAN_TYPE: "#0EA5A4", NET_TYPE: "#0EA5A4", FILE_TYPE: "#D97706", BROWSER_TYPE: "#2563EB",
           "PowerShell-Sitzung": "#3F73D0"}
 
 DEFAULT_RECENT_DIR = r"%APPDATA%\Microsoft\Windows\Recent"
@@ -401,6 +402,51 @@ def parse_netsh(text):
     return ssid if ssid and connected is not False else ""
 
 
+# Adapter, die kein Ort sind (VPN, virtuelle Netze): Teil von Name oder Adapter, ohne Groß/Klein
+DEFAULT_NETWORK_IGNORE = ["vpn", "fortinet", "sophos", "tap-", "wireguard", "vethernet",
+                          "loopback", "hyper-v", "virtualbox", "vmware"]
+CATEGORIES = {"domainauthenticated": "Domäne", "private": "privat", "public": "öffentlich",
+              "0": "öffentlich", "1": "privat", "2": "Domäne"}
+_NET_SCRIPT = ("Get-NetConnectionProfile | ForEach-Object { "
+               "\"$($_.Name)`t$($_.InterfaceAlias)`t$($_.NetworkCategory)\" }")
+
+
+def current_networks():
+    """Verbundene Netzwerke: [{"name", "adapter", "category", "wireless"}] (nur Windows)."""
+    if sys.platform != "win32":
+        return []
+    try:
+        out = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", _NET_SCRIPT],
+                             capture_output=True, timeout=20, **_no_window()).stdout
+        nets = parse_profiles(out.decode("utf-8", errors="replace"))
+    except (OSError, subprocess.SubprocessError):
+        nets = []
+    if not nets:  # ohne PowerShell: wenigstens das WLAN
+        ssid = current_wlan()
+        nets = [{"name": ssid, "adapter": "WLAN", "category": "", "wireless": True}] if ssid else []
+    return nets
+
+
+def parse_profiles(text):
+    """Zeilen "Name<TAB>Adapter<TAB>Kategorie" -> Netzwerke."""
+    result = []
+    for line in text.splitlines():
+        parts = line.rstrip("\r").split("\t")
+        if len(parts) < 2 or not parts[0].strip():
+            continue
+        adapter = parts[1].strip()
+        result.append({"name": parts[0].strip(), "adapter": adapter,
+                       "category": CATEGORIES.get(parts[2].strip().lower(), "") if len(parts) > 2 else "",
+                       "wireless": bool(re.search(r"wlan|wi-?fi|wireless|drahtlos", adapter, re.I))})
+    return result
+
+
+def location_networks(nets, ignore):
+    ignore = [i.lower() for i in ignore]
+    return [n for n in nets
+            if not any(i in n["name"].lower() or i in n["adapter"].lower() for i in ignore)]
+
+
 # ------------------------------------------------------------------ Leser
 
 class LocalReader:
@@ -419,6 +465,13 @@ class LocalReader:
             self.title_func = window_titles
         self.events_func = f.get("events", read_system_events)
         self.wlan_func = f.get("wlan", current_wlan)
+        if "networks" in f:
+            self.network_func = f["networks"]
+        elif "wlan" in f:  # Tests: nur ein WLAN-Name
+            self.network_func = lambda: [{"name": s, "adapter": "WLAN", "category": "", "wireless": True}
+                                         for s in [self.wlan_func()] if s]
+        else:
+            self.network_func = current_networks
         self.history_func = f.get("history", read_history)
         self.threaded = f.get("threaded", True)
         self._data = None
@@ -558,7 +611,8 @@ class LocalReader:
                 results["events"] = [{"start": _fmt(a), "end": _fmt(b), "kind": k}
                                      for a, b, k in event_spans(self.events_func())]
             if self.on("wlan_enabled"):
-                results["wlan"] = self.wlan_func()
+                results["networks"] = location_networks(
+                    self.network_func(), self.config.get("network_ignore", DEFAULT_NETWORK_IGNORE))
             if self.on("recent_files_enabled"):
                 results["files"] = []
                 for folder in self.config.get("recent_files_dirs") or [DEFAULT_RECENT_DIR]:
@@ -588,10 +642,11 @@ class LocalReader:
                 if (e["start"], e["kind"]) not in known:
                     data["events"].append(e)
                     changed = True
-        if "wlan" in results:
-            ssid = results["wlan"]
-            changed |= self._track(data["wlan"], {f"wlan-{ssid}": {"ssid": ssid}} if ssid else {},
-                                   now, gap)
+        if "networks" in results:
+            live = {f"net-{n['name']}": {"ssid": n["name"], "adapter": n["adapter"],
+                                          "category": n["category"], "wireless": n["wireless"]}
+                    for n in results["networks"]}
+            changed |= self._track(data["wlan"], live, now, gap)
         if "files" in results:
             known = {(f["start"], f["name"]) for f in data["files"]}
             for when, name in results["files"]:
@@ -640,8 +695,14 @@ class LocalReader:
                                    "details": f"{kind} {host} ({s.get('program', '')}, von Zeitzeuge aufgezeichnet)"})
             if self.on("wlan_enabled"):
                 for w in data["wlan"]:
-                    result.append(_entry(_t(w["start"]), _t(w["end"]), WLAN_TYPE, w.get("ssid", ""),
-                                         f"WLAN {w.get('ssid', '')}"))
+                    name = w.get("ssid", "")
+                    if "adapter" not in w:  # ältere Einträge: nur WLAN
+                        result.append(_entry(_t(w["start"]), _t(w["end"]), WLAN_TYPE, name, f"WLAN {name}"))
+                        continue
+                    how = "WLAN" if w.get("wireless") else "Kabel"
+                    extra = f", {w['category']}" if w.get("category") else ""
+                    result.append(_entry(_t(w["start"]), _t(w["end"]), NET_TYPE, name,
+                                         f"Netzwerk {name} ({how}, {w.get('adapter', '')}{extra})"))
             if self.on("recent_files_enabled"):
                 for f in data["files"]:
                     start = _t(f["start"])
