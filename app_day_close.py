@@ -21,10 +21,12 @@ class DayCloseMixin:
         """Internes Ticket für Zeit ohne Kunden (Einstellung day_close_internal) oder None."""
         value = self.config.get("day_close_internal") or {}
         if isinstance(value, dict) and (value.get("customer") or "").strip():
-            return {k: (value.get(k) or "").strip() for k in ("customer", "ticket", "category")}
+            found = {k: (value.get(k) or "").strip() for k in ("customer", "ticket", "category")}
+            found["categories"] = [c for c in value.get("categories") or [] if isinstance(c, str)]
+            return found
         return None
 
-    def day_close_evidence(self, date_str):
+    def day_close_evidence(self, date_str, replay=False):
         """Spuren des Tages als [(Stufe, Eintrag)] für day_close.build (siehe dort)."""
         date = QDate.fromString(date_str, "yyyy-MM-dd")
         index = self.customer_index()
@@ -39,15 +41,27 @@ class DayCloseMixin:
         first = [e for e in first if not self.journal.is_ignored(e)]
         evidence = [(1, e) for e in prompt_topics.build_topics(
             first, index, self.config.get("prompt_topic_gap_minutes", 15))]
-        evidence += [(2, e) for e in self.ai_day_entries(date_str)
-                     if e.get("status") not in ("verworfen", "übernommen")]
+        # Übernommene KI-Vorschläge stehen schon als Tätigkeit da; beim Nachspielen zählen sie mit
+        skip = ("verworfen",) if replay else ("verworfen", "übernommen")
+        evidence += [(2, e) for e in self.ai_day_entries(date_str) if e.get("status") not in skip]
         evidence += [(3, b) for b in self.rule_band(date_str)
                      if not b.get("sources") or any(s.get("type") not in OUTLOOK_TYPES for s in b["sources"])]
         evidence += [(4, b) for b in self._pc_focus_blocks(date) if not self.journal.is_ignored(b)]
         return evidence
 
-    def day_close_plan(self, date_str, now=None):
-        """Buchungsvorschläge für einen Tag (day_close.build mit den Daten des Hauptfensters)."""
+    def day_close_history(self, date_str):
+        """Matrix42-Buchungen der Tage vor date_str (für Ticket je Kunde und Kunde je Ticket)."""
+        day = datetime.strptime(date_str, "%Y-%m-%d")
+        found = []
+        for back in range(1, day_close.HISTORY_DAYS + 1):
+            found += self._m42_bookings((day - timedelta(days=back)).strftime("%Y-%m-%d")) or []
+        return found
+
+    def day_close_plan(self, date_str, now=None, replay=False):
+        """Buchungsvorschläge für einen Tag (day_close.build mit den Daten des Hauptfensters).
+
+        replay: so rechnen, als wäre an dem Tag noch nichts eingetragen und nichts gebucht
+        (zum Messen der Erkennung an den echten Buchungen, day_close_eval.py)."""
         now = now or datetime.now()
         inputs = week_dialogs.day_inputs(self, date_str, now)
         index = self.customer_index()
@@ -70,15 +84,19 @@ class DayCloseMixin:
             return hints[key]
 
         def ticket_for(start, end):
-            found = self.ticket_suggestions(start, end)
+            # nur Fenstertitel: Gebuchtes ist schon ausgespart, und eine angrenzende Buchung eines
+            # anderen Kunden soll ihr Ticket nicht über den Rand von 5 Minuten vererben
+            found = self.ticket_suggestions(start, end, use_bookings=False)
             return (found[0]["ticket"], ", ".join(found[0]["sources"][:2])) if found else ("", "")
 
         day = datetime.strptime(date_str, "%Y-%m-%d")
         recent = self.journal.recent_items(days=day_close.HISTORY_DAYS + 1, today=day)
-        docs = [i for i in self.journal.items(date_str) if not i.get("von_pc")]
+        docs = [] if replay else [i for i in self.journal.items(date_str) if not i.get("von_pc")]
+        bookings = [] if replay else (inputs["bookings"] or [])
         return day_close.build(
-            date_str, inputs["spans"], docs, self.day_close_evidence(date_str),
-            inputs["bookings"] or [], hint=hint, ticket_for=ticket_for, recent=recent,
+            date_str, inputs["spans"], docs, self.day_close_evidence(date_str, replay),
+            bookings, hint=hint, ticket_for=ticket_for, recent=recent,
+            history_bookings=self.day_close_history(date_str),
             gap_minutes=self.config.get("day_close_gap_minutes", day_close.GAP_MINUTES),
             min_minutes=self.config.get("day_close_min_minutes", day_close.MIN_MINUTES),
             internal=self.day_close_internal())
@@ -113,3 +131,25 @@ class DayCloseMixin:
             return ""
         return (f"Tagesabschluss: {len(todo)} Vorschl{'äge' if len(todo) != 1 else 'ag'} bereit, "
                 f"danach {plan['percent_after']} % der Personalzeit erfasst.")
+
+    def day_close_quality(self, days=20, now=None):
+        """Erkennung der letzten Tage an den echten Matrix42-Buchungen messen (day_close_eval.py).
+
+        -> {"days": [(Tag, Kennzahlen)], "total": Kennzahlen}, nur Tage mit Buchungen, ohne heute."""
+        import day_close_eval as ev
+        now = now or datetime.now()
+        result, total = [], {}
+        for back in range(1, days + 1):
+            date_str = (now - timedelta(days=back)).strftime("%Y-%m-%d")
+            truth = self._m42_bookings(date_str)
+            if not truth:
+                continue
+            try:
+                counts = ev.evaluate_day(date_str, self.day_close_plan(date_str, now, replay=True)["rows"], truth)
+            except Exception as e:  # ein kaputter Tag darf die Messung nicht abbrechen
+                import safe_io
+                safe_io.report(f"Tagesabschluss: Messung {date_str} ging nicht ({type(e).__name__})")
+                continue
+            ev.add(total, counts)
+            result.append((date_str, ev.rates(counts)))
+        return {"days": result, "total": ev.rates(total)}

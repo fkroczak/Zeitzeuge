@@ -75,7 +75,10 @@ def gui_test():
             self.activity_types_loaded.emit([(10, "Administration")])
 
         def search_tickets(self, text, ticket_list=None):
-            pass
+            self.searches = getattr(self, "searches", []) + [text]
+            rows = [{"ticket": "TCK0000000777", "id": "x", "subject": "Neu", "customer": "Neukunde GmbH",
+                     "state": "Neu", "initiator": "", "recipient": "", "created": ""}]
+            QTimer.singleShot(10, lambda: self.tickets_found.emit({"text": text, "rows": rows, "error": ""}))
 
         def book(self, request):
             if self.busy_once:  # einmal „bucht gerade“: der Abschluss wartet und versucht es erneut
@@ -191,6 +194,52 @@ def gui_test():
     assert "1 Vorschlag" in window.day_close_hint(D) and "100 %" in window.day_close_hint(D)
     window.config["day_close_end_of_day"] = False
     assert window.day_close_hint(D) == ""
+
+    # 6. Sicherheit: vermutetes Ticket nur nach Bestätigung, Kunde zu neuem Ticket aus Matrix42
+    window.config["day_close_end_of_day"] = True
+    window.m42_reader = reader
+    reader.requests.clear()
+    D3 = "2026-10-21"
+    d3 = day.replace(day=21)
+
+    def plan3(date_str, now=None):
+        evidence = [(1, {"start": f"{D3} 08:00:00", "end": f"{D3} 09:00:00", "type": "TeamViewer",
+                         "customer_name": "Alt"}),
+                    (4, {"start": f"{D3} 09:00:00", "end": f"{D3} 10:00:00", "pc_block": True,
+                         "type": "PC: Ticketsystem", "category": "Ticketsystem", "customer_name": ""})]
+        return day_close.build(
+            date_str, [(d3.replace(hour=8), d3.replace(hour=10))], [], evidence, [],
+            hint=lambda e: (e["customer_name"], "Fernwartung"),
+            ticket_for=lambda s, e: ("TCK0000000777", "Edge") if s.hour == 9 else ("", ""),
+            history_bookings=[{"start": "2026-10-20 08:00:00", "customer": "Alt", "ticket": "TCK0000000555"}])
+    window.day_close_plan = plan3
+
+    def drive3():
+        dialog = next(w for w in app.topLevelWidgets()
+                      if isinstance(w, day_close_dialog.DayCloseDialog) and w.isVisible())
+        rows = dialog.rows
+        seen["guessed"] = [(r["customer"], r["ticket"], r.get("ticket_guessed")) for r in rows]
+        seen["looked_up"] = wait(app, lambda: any(r["customer"] == "Neukunde GmbH" for r in rows))
+        # Rückfrage: Standard „Nur sichere buchen“
+        QTimer.singleShot(100, lambda: app.activeModalWidget().defaultButton().click())
+        dialog.book_button.click()
+        seen["done3"] = wait(app, lambda: not dialog.busy() and "Fertig" in dialog.status.text())
+        seen["notes3"] = [dialog.table.item(i, day_close_dialog.COL_NOTE).text() for i in range(len(rows))]
+        dialog.reject()
+
+    QTimer.singleShot(200, drive3)
+    window.show_day_close(D3)
+    assert ("Alt", "TCK0000000555", True) in seen["guessed"], seen["guessed"]
+    assert seen["looked_up"], seen
+    assert seen["done3"], seen
+    assert [r["ticket"] for r in reader.requests] == ["TCK0000000777"], reader.requests  # nur das sichere
+    assert any("Ticket vermutet" in n for n in seen["notes3"]), seen["notes3"]
+    assert {i["customer"] for i in window.journal.items(D3)} == {"Alt", "Neukunde GmbH"}  # beide dokumentiert
+
+    # 7. Erkennung messen: läuft mit den echten Daten des Hauptfensters durch
+    del window.day_close_plan  # wieder die echte Rechnung
+    quality = window.day_close_quality(5, now=datetime(2026, 10, 22, 18, 0))
+    assert isinstance(quality["days"], list) and "recognized" in quality["total"], quality
     assert Qt and timedelta
     window.quit_app()
 

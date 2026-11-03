@@ -566,8 +566,9 @@ class DocsMixin(CustomersMixin):
         return {"snippets": snippets.from_config(self.config), "recent_texts": recent,
                 "ticket": ticket, "ticket_suggestions": self.ticket_suggestions(start, end)}
 
-    def ticket_suggestions(self, start, end):
-        """Ticketnummern aus Fenstertiteln und Matrix42-Buchungen rund um die Tätigkeit."""
+    def ticket_suggestions(self, start, end, use_bookings=True):
+        """Ticketnummern aus Fenstertiteln und Matrix42-Buchungen rund um die Tätigkeit
+        (use_bookings=False: nur Fenstertitel, zum Messen des Tagesabschlusses)."""
         patterns = self.config.get("ticket_patterns", tickets.DEFAULT_PATTERNS)
         if not patterns:
             return []
@@ -575,7 +576,7 @@ class DocsMixin(CustomersMixin):
         segments = [{"start": e["start"], "end": e["end"], "title": e.get("customer_name", ""),
                      "app": e.get("type", "")[4:]}  # "PC: Outlook" -> "Outlook"
                     for e in self.timeline.pc_entries_for(date, min_seconds=0)]
-        bookings = self._m42_bookings(start.strftime("%Y-%m-%d")) or []
+        bookings = (self._m42_bookings(start.strftime("%Y-%m-%d")) or []) if use_bookings else []
         return tickets.suggest(start, end, segments, bookings, patterns)
 
     def edit_snippets(self):

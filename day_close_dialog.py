@@ -123,9 +123,15 @@ class DayCloseDialog(QDialog):
         self.single_button.setToolTip("Markierte Zeile im Fenster „In Matrix42 buchen“ prüfen, "
                                       "mit Ticketsuche")
         self.single_button.clicked.connect(self.book_single)
+        self.measure_button = QPushButton("Erkennung &messen …", self)
+        self.measure_button.setAutoDefault(False)
+        self.measure_button.setToolTip("Wie gut hätte der Tagesabschluss die letzten 20 Tage erkannt? "
+                                       "Vergleich mit deinen echten Matrix42-Buchungen")
+        self.measure_button.clicked.connect(self.measure)
         tools.addWidget(self.all_button)
         tools.addWidget(self.single_button)
         tools.addStretch(1)
+        tools.addWidget(self.measure_button)
         layout.addLayout(tools)
 
         self.buttons = QDialogButtonBox(QDialogButtonBox.Close, self)
@@ -149,10 +155,13 @@ class DayCloseDialog(QDialog):
         self.buttons.rejected.connect(self.reject)
         layout.addWidget(self.buttons)
 
+        self.lookups = set()  # Tickets, deren Kunde gerade in Matrix42 nachgeschlagen wird
         reader = self.reader()
         if reader is not None:
-            # Methode (kein Lambda): Qt trennt sie, sobald das Fenster gelöscht ist
+            # Methoden (keine Lambdas): Qt trennt sie, sobald das Fenster gelöscht ist
             reader.booking_done.connect(self.on_booked, Qt.QueuedConnection)
+            if hasattr(reader, "tickets_found"):
+                reader.tickets_found.connect(self.on_ticket_customer, Qt.QueuedConnection)
         self.fill()
 
     # ---- Daten
@@ -187,6 +196,7 @@ class DayCloseDialog(QDialog):
         for i, row in enumerate(self.rows):
             self._set_row(i, row)
         self._filling = False
+        self.lookup_customers()
         if not self.rows and not self.status.text():
             self.status.setText("Für diesen Tag gibt es nichts mehr zu dokumentieren oder zu buchen.")
         self.update_summary()
@@ -227,6 +237,8 @@ class DayCloseDialog(QDialog):
         lines = [DayCloseDialog.note(row)]
         if row.get("sources"):
             lines.append("Aus: " + ", ".join(row["sources"]))
+        if row.get("customer_source"):
+            lines.append(f"Kunde {row['customer_source']}")
         if row.get("ticket_source"):
             lines.append(f"Ticket aus: {row['ticket_source']}")
         if row.get("category"):
@@ -270,6 +282,65 @@ class DayCloseDialog(QDialog):
         self.all_button.setEnabled(not busy)
         self.prev_button.setEnabled(not busy)
 
+    # ---- Kunde zu einem neuen Ticket: Matrix42 weiß, wem es gehört
+
+    def lookup_customers(self):
+        reader = self.reader()
+        if reader is None or not hasattr(reader, "search_tickets"):
+            return
+        for row in self.rows:
+            ticket = mb.normalize_ticket(row.get("ticket", ""))
+            if row["kind"] == dc.KIND_DRAFT and ticket and not row.get("customer") and ticket not in self.lookups:
+                self.lookups.add(ticket)
+                reader.search_tickets(ticket, mb.ids(self.window.config).get("ticket_list"))
+
+    def on_ticket_customer(self, result):
+        ticket = (result.get("text") or "").upper()
+        if ticket not in self.lookups:
+            return  # Suche aus einem anderen Fenster
+        self.lookups.discard(ticket)
+        hit = next((r for r in result.get("rows") or [] if r.get("ticket") == ticket and r.get("customer")), None)
+        if not hit:
+            return
+        changed = False
+        for row in self.rows:
+            if mb.normalize_ticket(row.get("ticket", "")) == ticket and not row.get("customer") \
+                    and not row.get("result_ok"):
+                row.update(customer=hit["customer"], customer_source="aus Matrix42 (Ticket)", checked=True,
+                           note="" if row.get("note") == "Kunde fehlt" else row.get("note", ""))
+                if row.get("confidence") == "niedrig":
+                    row["confidence"] = "mittel"
+                changed = True
+        if changed:
+            self.refresh_rows()
+            self.update_buttons()
+
+    # ---- Erkennung messen (day_close_eval.py)
+
+    def measure(self):
+        import day_close_eval as ev
+        from PySide6.QtGui import QCursor
+        from PySide6.QtWidgets import QApplication
+        if not hasattr(self.window, "day_close_quality"):
+            return
+        QApplication.setOverrideCursor(QCursor(Qt.WaitCursor))
+        try:
+            quality = self.window.day_close_quality(20)
+        finally:
+            QApplication.restoreOverrideCursor()
+        total = quality["total"]
+        _level, text = ev.verdict(total)
+        lines = [text, "", ev.summary_text(total), ""]
+        for date_str, r in quality["days"][:10]:
+            lines.append(f"{date_str[8:10]}.{date_str[5:7]}.: Erkennungsgrad "
+                         f"{'–' if r['recognized'] is None else str(r['recognized']) + ' %'}, "
+                         f"gebucht {dc.hm(r['truth_minutes'])}")
+        lines += ["", "So gemessen: Für jeden der letzten 20 Tage mit Matrix42-Buchungen rechnet Zeitzeuge die "
+                  "Vorschläge, als wäre nichts eingetragen und nichts gebucht, und vergleicht Minute für Minute "
+                  "mit deinen echten Buchungen."]
+        self.quality_text = "\n".join(lines)
+        QMessageBox.information(self, "Erkennung des Tagesabschlusses", self.quality_text)
+
     # ---- Bearbeiten in der Tabelle
 
     def on_item_changed(self, item):
@@ -286,6 +357,11 @@ class DayCloseDialog(QDialog):
                 value = mb.normalize_ticket(value) or value
             row[key] = value
             row["edited"] = True
+            if key == "ticket":  # von Hand eingetragen oder geändert: gilt als bestätigt
+                row["ticket_guessed"] = False
+                row["ticket_source"] = "von Hand" if value else ""
+                if row.get("note", "").startswith("Ticket"):
+                    row["note"] = "" if value else "Ticket fehlt – wird nur dokumentiert"
             if key in ("customer", "ticket", "text") and value and row["kind"] != dc.KIND_DOC:
                 row["checked"] = bool(row.get("customer"))
             self._filling = True
@@ -347,6 +423,21 @@ class DayCloseDialog(QDialog):
             QMessageBox.information(self, "Tagesabschluss", f"{len(missing)} angehakte Zeile(n) ohne Kunde und "
                                     "Text. Bitte ergänzen oder den Haken entfernen.")
             return
+        include_guessed = False
+        guessed = [r for r in todo if book and r.get("ticket_guessed") and r.get("ticket")]
+        if guessed and self.reader() is not None:
+            box = QMessageBox(QMessageBox.Question, "Tagesabschluss",
+                              f"{len(guessed)} Zeile(n) haben nur ein vermutetes Ticket (zuletzt für den Kunden "
+                              "benutzt). Das kann ein altes Ticket sein.\n\nSichere Zeilen werden gebucht. "
+                              "Die vermuteten auch?", parent=self)
+            safe = box.addButton("Nur &sichere buchen", QMessageBox.AcceptRole)
+            also = box.addButton("&Vermutete mitbuchen", QMessageBox.YesRole)
+            box.addButton("Abbrechen", QMessageBox.RejectRole)
+            box.setDefaultButton(safe)
+            box.exec()
+            if box.clickedButton() not in (safe, also):
+                return
+            include_guessed = box.clickedButton() is also
         self.results = {"booked": 0, "documented": 0, "failed": 0, "no_ticket": 0, "skipped": 0}
         saved = [(r, self._document(r)) for r in todo]
         saved = [(r, item) for r, item in saved if item is not None]
@@ -364,6 +455,10 @@ class DayCloseDialog(QDialog):
                 continue
             if not mb.normalize_ticket(item.get("ticket", "")):
                 row["result"] = "nur dokumentiert – Ticket fehlt (Einzeln buchen …)"
+                self.results["no_ticket"] += 1
+                continue
+            if row.get("ticket_guessed") and not include_guessed:
+                row["result"] = "nur dokumentiert – Ticket vermutet, bitte prüfen (Einzeln buchen …)"
                 self.results["no_ticket"] += 1
                 continue
             plan = mb.plan(item, self.window.billing(), self.window.config.get("ticket_format", ""))
@@ -457,7 +552,7 @@ class DayCloseDialog(QDialog):
         if r["booked"]:
             parts.append(f"{r['booked']} in Matrix42 gebucht")
         if r["no_ticket"]:
-            parts.append(f"{r['no_ticket']} ohne Ticket (nur dokumentiert)")
+            parts.append(f"{r['no_ticket']} ohne sicheres Ticket (nur dokumentiert)")
         if r["skipped"]:
             parts.append(f"{r['skipped']} übersprungen (Überschneidung)")
         if r["failed"]:

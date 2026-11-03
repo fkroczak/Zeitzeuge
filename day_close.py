@@ -24,6 +24,7 @@ Das Ergebnis sind nur Vorschläge. Gespeichert und gebucht wird erst im Fenster
 
 Zeiten als Text "JJJJ-MM-TT hh:mm:ss" wie überall, intern als Minuten des Tages.
 """
+import re
 from datetime import datetime, timedelta
 
 TIME_FMT = "%Y-%m-%d %H:%M:%S"
@@ -33,6 +34,7 @@ MIN_MINUTES = 5    # kürzere Blöcke gehen im Nachbarn auf, kürzere freie Zeit
 HISTORY_DAYS = 14  # so weit zurück zählt „zuletzt für den Kunden benutzt“ (Ticket)
 TEXT_LIMIT = 120   # zusammengesetzte Tickettexte höchstens so lang
 
+GUESSED = "zuletzt für den Kunden"  # Quelle eines vermuteten Tickets
 KIND_DOC = "doc"      # eigene Tätigkeit, noch nicht gebucht
 KIND_DRAFT = "draft"  # aus Spuren vorbereitet
 KIND_GAP = "gap"      # Personalzeit ohne Spur
@@ -136,34 +138,93 @@ def compose_text(category, evidence, customer=""):
     return text if len(text) <= TEXT_LIMIT else text[:TEXT_LIMIT - 1].rstrip(" ,") + "…"
 
 
-# ------------------------------------------------------------ Ticket aus dem Verlauf
+# ------------------------------------------------------------ Kunden vergleichen, Verlauf
+
+_LEGAL = re.compile(r"\b(gmbh|mbh|ag|kg|ohg|gbr|ug|e\.?\s?k|e\.?\s?v|co|inc|ltd|haftungsbeschränkt|und|&)\b\.?")
+_UMLAUT = str.maketrans({"ä": "ae", "ö": "oe", "ü": "ue", "ß": "ss"})
+
+
+def customer_key(name):
+    """Vergleichsform eines Kundennamens: ohne Rechtsform, Umlaute, Satzzeichen, Kundennummer.
+    'Müller GmbH & Co. KG (10023)' -> 'mueller'"""
+    text = re.sub(r"\s*\(\d+\)\s*$", "", name or "").casefold()
+    text = _LEGAL.sub(" ", text).translate(_UMLAUT)
+    return " ".join(re.sub(r"[^a-z0-9]+", " ", text).split())
+
+
+def same_customer(a, b):
+    """Gleicher Kunde trotz anderer Schreibweise? Gleich, einer im anderen enthalten oder alle
+    Wörter des kürzeren Namens stecken im längeren."""
+    ka, kb = customer_key(a), customer_key(b)
+    if not ka or not kb:
+        return False
+    if ka == kb or (min(len(ka), len(kb)) >= 4 and (ka in kb or kb in ka)):
+        return True
+    wa = {w for w in ka.split() if len(w) >= 3}
+    wb = {w for w in kb.split() if len(w) >= 3}
+    short, long_ = sorted((wa, wb), key=len)
+    # alle Wörter des kürzeren Namens im längeren: „Kanzlei Schmidt“ = „Schmidt & Partner
+    # Kanzlei“, aber nie „Auto Huber“ = „Bäckerei Huber“ (falsches Ticket wäre teurer)
+    return bool(short) and short <= long_ and any(len(w) >= 4 for w in short)
+
+
+class History:
+    """Was du früher gebucht oder eingetragen hast (vor dem Tag, höchstens days Tage zurück).
+
+    ticket(Kunde): zuletzt benutztes Ticket des Kunden (Schreibweise egal).
+    customer(Ticket): Kunde, für den das Ticket zuletzt benutzt wurde.
+    items: Tätigkeiten aus dem Journal und Matrix42-Buchungen ({start, customer, ticket})."""
+
+    def __init__(self, items=(), before=None, days=HISTORY_DAYS):
+        self.by_customer = {}  # Vergleichsform -> (Beginn, Ticket)
+        self.by_ticket = {}    # Ticket (groß) -> (Beginn, Kunde)
+        limit = (before - timedelta(days=days)).strftime(TIME_FMT) if before else ""
+        upper = before.strftime(TIME_FMT) if before else "9999"
+        for item in items or []:
+            if not isinstance(item, dict):
+                continue
+            start, ticket = str(item.get("start", "")), (item.get("ticket") or "").strip()
+            customer = (item.get("customer") or "").strip()
+            if not ticket or (limit and start < limit) or start >= upper:
+                continue
+            key = customer_key(customer)
+            if key and start >= self.by_customer.get(key, ("", ""))[0]:
+                self.by_customer[key] = (start, ticket)
+            if customer and start >= self.by_ticket.get(ticket.upper(), ("", ""))[0]:
+                self.by_ticket[ticket.upper()] = (start, customer)
+
+    def ticket(self, customer):
+        key = customer_key(customer)
+        if not key:
+            return ""
+        if key in self.by_customer:
+            return self.by_customer[key][1]
+        hits = [k for k in self.by_customer if same_customer(k, key)]
+        # mehrdeutig (z. B. „Huber“: Auto Huber und Bäckerei Huber): lieber kein Ticket als ein falsches
+        return self.by_customer[hits[0]][1] if len(hits) == 1 else ""
+
+    def customer(self, ticket):
+        return self.by_ticket.get((ticket or "").strip().upper(), ("", ""))[1]
+
 
 def last_tickets(recent_items, before=None, days=HISTORY_DAYS):
-    """Kunde (normalisiert) -> zuletzt benutzte Ticketnummer aus deinen Tätigkeiten."""
-    found = {}
-    limit = (before - timedelta(days=days)).strftime(TIME_FMT) if before else ""
-    upper = before.strftime(TIME_FMT) if before else "9999"
-    for item in sorted(recent_items or [], key=lambda i: str(i.get("start", ""))):
-        if not isinstance(item, dict) or not item.get("ticket") or not item.get("customer"):
-            continue
-        start = str(item.get("start", ""))
-        if limit and start < limit or start >= upper:
-            continue
-        found[_norm(item["customer"])] = item["ticket"]
-    return found
+    """Kunde (Vergleichsform) -> zuletzt benutzte Ticketnummer (siehe History)."""
+    return {k: v[1] for k, v in History(recent_items, before, days).by_customer.items()}
 
 
 # ------------------------------------------------------------ Vorschläge bauen
 
 def build(date_str, work_spans, docs=(), evidence=(), bookings=(), hint=None, ticket_for=None,
-          recent=(), gap_minutes=GAP_MINUTES, min_minutes=MIN_MINUTES, internal=None):
+          recent=(), gap_minutes=GAP_MINUTES, min_minutes=MIN_MINUTES, internal=None,
+          history_bookings=()):
     """Buchungsvorschläge eines Tages.
 
     work_spans: [(datetime, datetime)] Personalzeit (sonst Arbeitszeit aus den Einstellungen).
     docs: eigene Tätigkeiten des Tages (Journal). evidence: [(Stufe 1–4, Eintrag)].
     bookings: Matrix42-Buchungen des Tages. hint(Eintrag) -> (Kunde, Kategorie).
     ticket_for(start, end) -> (Ticket, Quelle) oder ("", ""). recent: Tätigkeiten der letzten
-    Tage (für das zuletzt benutzte Ticket je Kunde). internal: {"customer", "ticket",
+    Tage, history_bookings: Matrix42-Buchungen der letzten Tage (beides für Ticket je Kunde und
+    Kunde je Ticket, nur was vor dem Tag liegt). internal: {"customer", "ticket",
     "category"} für Blöcke ohne Kunde (z. B. internes Ticket), sonst None.
 
     -> {"rows": [...], "work", "booked", "documented", "proposed" (Minuten in der Personalzeit),
@@ -219,6 +280,8 @@ def build(date_str, work_spans, docs=(), evidence=(), bookings=(), hint=None, ti
             "note": "zur Zeit ist in Matrix42 schon gebucht" if likely_booked else "",
         })
 
+    history = History(list(recent or []) + list(history_bookings or []), before=day)
+
     # Spuren: Stufe für Stufe, jede nur auf noch freie Minuten
     ev = []
     for tier, entry in sorted(evidence or [], key=lambda te: (te[0], str(te[1].get("start", "")))):
@@ -226,15 +289,24 @@ def build(date_str, work_spans, docs=(), evidence=(), bookings=(), hint=None, ti
         if not span or span[1] <= span[0]:
             continue
         customer, category = hint(entry)
-        ev.append({"tier": tier, "entry": entry, "customer": (customer or "").strip(),
-                   "category": (category or "").strip()})
+        e = {"tier": tier, "entry": entry, "customer": (customer or "").strip(),
+             "category": (category or "").strip(), "ticket": "", "customer_source": ""}
+        if not e["customer"] and ticket_for:
+            # Ohne Kunde (z. B. Ticketarbeit am PC): Ticket aus dem Fenstertitel trennt die Blöcke,
+            # und der Verlauf sagt, zu welchem Kunden das Ticket gehört
+            e["ticket"] = _ticket_for(ticket_for, _text(day, span[0]), _text(day, span[1]))[0]
+            if e["ticket"] and history.customer(e["ticket"]):
+                e["customer"], e["customer_source"] = history.customer(e["ticket"]), "aus dem Ticket"
+        ev.append(e)
         if not claim(span, ("ev", len(ev) - 1), work_only=tier >= 3):
             ev.pop()  # nichts mehr frei: Spur bringt nichts Neues
 
     def key_of(value):
         if isinstance(value, tuple) and value[0] == "ev":
             e = ev[value[1]]
-            return ("c", _norm(e["customer"])) if e["customer"] else ("k", _norm(e["category"]))
+            if e["customer"]:
+                return ("c", customer_key(e["customer"]) or _norm(e["customer"]))
+            return ("k", _norm(e["category"]), e["ticket"].upper())
         return None
 
     # Läufe bilden: gleiche Kunden-/Kategorie-Schlüssel hintereinander
@@ -254,9 +326,8 @@ def build(date_str, work_spans, docs=(), evidence=(), bookings=(), hint=None, ti
     runs = _absorb_small(runs, min_minutes, gap_minutes)
     _fill_gaps(runs, owner, work, gap_minutes)
 
-    last_ticket = last_tickets(recent, before=day)
     for run in runs:
-        rows.append(_draft(day, run, ev, ticket_for, last_ticket, internal))
+        rows.append(_draft(day, run, ev, ticket_for, history, internal))
 
     # Personalzeit, die noch frei ist (nicht in einem Lauf aufgegangen)
     taken = [False] * DAY_MINUTES
@@ -354,7 +425,22 @@ def _fill_gaps(runs, owner, work, gap_minutes):
             run["start"] = n
 
 
-def _draft(day, run, ev, ticket_for, last_ticket, internal):
+def _internal_fits(internal, category):
+    """Internes Ticket für diesen Block? Mit "categories" nur für diese Kategorien (z. B. E-Mail)."""
+    if not internal or not internal.get("customer"):
+        return False
+    wanted = [c for c in internal.get("categories") or [] if c]
+    return not wanted or category in wanted
+
+
+def _ticket_for(ticket_for, start_text, end_text):
+    try:
+        return ticket_for(_t(start_text), _t(end_text)) or ("", "")
+    except (TypeError, ValueError):
+        return "", ""
+
+
+def _draft(day, run, ev, ticket_for, history, internal):
     used = sorted(((ev[i], mins) for i, mins in run["minutes"].items()), key=lambda x: -x[1])
     customers, categories = {}, {}
     for e, mins in used:
@@ -365,23 +451,28 @@ def _draft(day, run, ev, ticket_for, last_ticket, internal):
     customer = max(customers, key=customers.get) if customers else ""
     category = max(categories, key=categories.get) if categories else ""
     start_text, end_text = _text(day, run["start"]), _text(day, run["end"])
-    ticket, source = ("", "")
-    if ticket_for:
-        try:
-            ticket, source = ticket_for(_t(start_text), _t(end_text)) or ("", "")
-        except (TypeError, ValueError):
-            ticket, source = "", ""
-    if not ticket and customer and last_ticket.get(_norm(customer)):
-        ticket, source = last_ticket[_norm(customer)], "zuletzt für den Kunden"
+    ticket, source = _ticket_for(ticket_for, start_text, end_text) if ticket_for else ("", "")
+    customer_source = next((e["customer_source"] for e, _m in used
+                            if e["customer_source"] and same_customer(e["customer"], customer)), "")
+    owner = history.customer(ticket) if ticket else ""
+    if ticket and customer and owner and not same_customer(customer, owner):
+        # Gegenprobe: das Ticket gehört laut Verlauf einem anderen Kunden -> nicht vorschlagen
+        ticket, source = "", ""
+    if ticket and not customer and owner:
+        # Ticket im Fenstertitel, Kunde unbekannt: Kunde, für den das Ticket gebucht wurde
+        customer, customer_source = history.customer(ticket), "aus dem Ticket"
+    if not ticket and customer and history.ticket(customer):
+        ticket, source = history.ticket(customer), GUESSED
     note = ""
-    if not customer and internal and internal.get("customer"):
+    if not customer and _internal_fits(internal, category):
         customer = internal["customer"]
         category = category or internal.get("category", "")
         if not ticket:
             ticket, source = internal.get("ticket", ""), "intern"
         note = "intern"
     best_tier = min((e["tier"] for e, _m in used), default=4)
-    if customer and ticket and best_tier <= 2 and source not in ("zuletzt für den Kunden", "intern"):
+    if (customer and ticket and best_tier <= 2 and not customer_source
+            and source not in (GUESSED, "intern")):
         confidence = "hoch"
     elif customer and ticket:
         confidence = "mittel"
@@ -391,6 +482,8 @@ def _draft(day, run, ev, ticket_for, last_ticket, internal):
         note = "Kunde fehlt"
     elif not ticket:
         note = "Ticket fehlt – wird nur dokumentiert"
+    elif source == GUESSED:
+        note = "Ticket vermutet – bitte prüfen"
     tiers = []
     for e, _m in used:
         name = TIER_NAMES.get(e["tier"], "")
@@ -401,6 +494,9 @@ def _draft(day, run, ev, ticket_for, last_ticket, internal):
         "customer": customer, "category": category, "ticket": ticket, "ticket_source": source,
         "text": compose_text(category, [(e["entry"], m) for e, m in used], customer),
         "sources": tiers, "confidence": confidence, "checked": bool(customer),
+        "customer_source": customer_source,
+        # vermutet (zuletzt für den Kunden benutzt): wird nur nach ausdrücklicher Bestätigung gebucht
+        "ticket_guessed": source == GUESSED,
         "note": note, "evidence": [e["entry"] for e, _m in used],
     }
 

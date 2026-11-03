@@ -167,3 +167,82 @@ def test_to_item_and_summary_follow_checks():
 def test_empty_day():
     plan = dc.build(D, [], evidence=[])
     assert plan["rows"] == [] and plan["percent_after"] is None
+
+
+# ------------------------------------------------------------ Sicherheit der Erkennung
+
+def test_same_customer_tolerates_spelling_but_not_other_firms():
+    assert dc.same_customer("Müller GmbH", "Mueller")
+    assert dc.same_customer("Kanzlei Schmidt", "Kanzlei Schmidt & Partner")
+    assert dc.same_customer("Systems (12)", "Systems")
+    assert not dc.same_customer("Auto Huber", "Bäckerei Huber")
+    assert not dc.same_customer("ITM systems", "ITM solutions")
+    assert not dc.same_customer("", "Müller")
+
+
+def test_history_is_ambiguity_safe():
+    items = [{"start": "2026-10-30 08:00:00", "customer": "Auto Huber", "ticket": "TCK1"},
+             {"start": "2026-10-30 09:00:00", "customer": "Bäckerei Huber", "ticket": "TCK2"}]
+    h = dc.History(items, before=DAY)
+    assert h.ticket("Auto Huber GmbH") == "TCK1"
+    assert h.ticket("Huber") == ""            # mehrdeutig: lieber kein Ticket
+    assert h.customer("tck2") == "Bäckerei Huber"
+
+
+def test_ticket_of_another_customer_is_dropped():
+    history = [{"start": "2026-10-30 08:00:00", "customer": "B", "ticket": "TCK0000000002"}]
+    plan = dc.build(D, work(("08:00", "09:00")), evidence=[(1, conn("08:00", "09:00", "Alpha - x"))],
+                    hint=hint, ticket_for=lambda s, e: ("TCK0000000002", "Edge"), history_bookings=history)
+    row = plan["rows"][0]
+    assert row["customer"] == "Alpha" and row["ticket"] == ""
+
+
+def test_ticket_work_is_split_by_ticket_and_gets_customer_from_history():
+    def block(a, b):
+        return (4, {"start": t(a), "end": t(b), "pc_block": True, "category": "Ticketsystem",
+                    "customer_name": "", "type": "PC: Ticketsystem"})
+    history = [{"start": "2026-10-30 08:00:00", "customer": "Alpha", "ticket": "TCK0000000001"},
+               {"start": "2026-10-30 09:00:00", "customer": "Beta", "ticket": "TCK0000000002"}]
+
+    def ticket_for(s, e):
+        return ("TCK0000000001", "Edge") if s.hour == 8 else ("TCK0000000002", "Edge")
+
+    plan = dc.build(D, work(("08:00", "10:00")), evidence=[block("08:00", "09:00"), block("09:00", "10:00")],
+                    ticket_for=ticket_for, history_bookings=history)
+    drafts = [(r["customer"], r["ticket"], r["customer_source"]) for r in plan["rows"]]
+    assert drafts == [("Alpha", "TCK0000000001", "aus dem Ticket"), ("Beta", "TCK0000000002", "aus dem Ticket")]
+
+
+def test_guessed_ticket_is_marked():
+    history = [{"start": "2026-10-30 08:00:00", "customer": "Alpha", "ticket": "TCK0000000001"}]
+    plan = dc.build(D, work(("08:00", "09:00")), evidence=[(1, conn("08:00", "09:00", "Alpha - x"))],
+                    hint=hint, history_bookings=history)
+    row = plan["rows"][0]
+    assert row["ticket_guessed"] and row["confidence"] == "mittel" and "vermutet" in row["note"]
+
+
+def test_internal_ticket_only_for_listed_categories():
+    internal = {"customer": "ITM intern", "ticket": "TCK9", "categories": ["E-Mail / Kommunikation"]}
+    evidence = [(4, {"start": t("08:00"), "end": t("09:00"), "pc_block": True, "category": "Ticketsystem",
+                     "customer_name": "", "type": "PC: x"}),
+                (4, {"start": t("09:00"), "end": t("10:00"), "pc_block": True,
+                     "category": "E-Mail / Kommunikation", "customer_name": "", "type": "PC: y"})]
+    plan = dc.build(D, work(("08:00", "10:00")), evidence=evidence, hint=lambda e: ("", e["category"]),
+                    internal=internal)
+    assert [r["customer"] for r in plan["rows"]] == ["", "ITM intern"]
+
+
+def test_evaluation_counts_minutes_against_real_bookings():
+    import day_close_eval as ev
+    rows = [{"kind": "draft", "start": t("08:00"), "end": t("09:00"), "customer": "Mueller", "ticket": "TCK1"},
+            {"kind": "draft", "start": t("09:00"), "end": t("10:00"), "customer": "Beta", "ticket": "TCK9",
+             "ticket_guessed": True},
+            {"kind": "gap", "start": t("10:00"), "end": t("11:00"), "customer": ""}]
+    truth = [{"start": t("08:00"), "end": t("09:00"), "customer": "Müller GmbH", "ticket": "TCK1"},
+             {"start": t("09:00"), "end": t("10:00"), "customer": "Beta", "ticket": "TCK2"},
+             {"start": t("10:00"), "end": t("11:00"), "customer": "Gamma", "ticket": "TCK3"}]
+    r = ev.rates(ev.evaluate_day(D, rows, truth))
+    assert r["recognized"] == 67 and r["customer"] == 100
+    assert r["ticket"] == 100 and r["ticket_wrong"] == 0 and r["guessed"] == 0
+    level, text = ev.verdict(r)
+    assert level == "warn" and "67 %" in text
