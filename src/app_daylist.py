@@ -89,7 +89,7 @@ class DayListMixin:
         for col in range(4):
             header.setSectionResizeMode(col, QHeaderView.Fixed)
         self.table.setRowCount(len(entries))
-        # Ansicht "Dokumentation": abgerechnete Zeit neben der Dauer (Abrechnungstakt)
+        # Ansicht "Dokumentation": abgerechnete Zeit im Hinweis der Dauer (Abrechnungstakt)
         billing = self.billing() if self.config.get("list_view") == "doc" else None
         index = self.customer_index()  # Kundenliste: Kunde zur Spur (customers.py)
         for row, a in enumerate(entries):
@@ -103,12 +103,14 @@ class DayListMixin:
             customer_text = customers.with_customer(a, index)
             details = a.get("details", "")
             details_item = QTableWidgetItem(new_details(details, type_label(a), customer_text))
+            # Spalte Dauer: nur die echte Dauer; die abgerechnete Zeit steht im Hinweis
+            duration_item = QTableWidgetItem(format_duration((end - start).total_seconds()))
+            note = (billing.note((end - start).total_seconds(), a.get("customer_name", ""))
+                    if billing and a.get("doc") else "")
             values = [
                 QTableWidgetItem(f"{start:%H:%M}"),
                 QTableWidgetItem(f"{end:%H:%M}"),
-                QTableWidgetItem(format_duration((end - start).total_seconds())
-                                 + (billing.note((end - start).total_seconds(), a.get("customer_name", ""))
-                                    if billing and a.get("doc") else "")),
+                duration_item,
                 type_item,
                 QTableWidgetItem(customer_text),
                 details_item,
@@ -117,6 +119,8 @@ class DayListMixin:
                 item.setToolTip(item.text())
                 self.table.setItem(row, col, item)
             details_item.setToolTip(details)  # im Hinweis alles, in der Zelle nur Neues
+            if note:
+                duration_item.setToolTip(duration_item.text() + note.replace(" →", ",", 1))
         for col in range(4):
             header.setSectionResizeMode(col, QHeaderView.ResizeToContents)  # einmal messen
         self.table.setUpdatesEnabled(True)

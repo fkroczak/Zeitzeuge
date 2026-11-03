@@ -70,6 +70,7 @@ Testversionen aus Branches tragen die Version ihres main-Stands plus Buildnummer
 - Versionsnummer zählt von selbst (4.1.0, 4.1.1, …); steht im Fenstertitel, unter **Info**, in fehler.log, in der EXE und im Namen der Downloads.
 
 ### Behoben
+- Tagesliste: Die Spalte „Dauer“ zeigt nur noch die echte Dauer („35 min“) statt „35 min → abgerechnet 0:45 h“. Die abgerechnete Zeit steht im Hinweis beim Darüberfahren und weiter in der Statuszeile.
 - Einstellungen: kein Fokusrahmen mehr um den gewählten Bereich links. Der Datenordner steht mit `\` statt gemischten Schrägstrichen da, lange Pfade werden in der Mitte gekürzt (ganzer Pfad im Tooltip).
 - **Zeile Dokumentation leer** und wiederholt „Interner Fehler (AttributeError)“, sobald ein PC-Arbeitsblock noch offen war: der Text der Nachfrage las die Programmliste des Blocks als Einträge. Auch die Nachfrage selbst stürzte deshalb ab.
 - Matrix42: „Bei Matrix42 anmelden“ öffnete das Fenster nur kurz und schloss es gleich wieder. Es bleibt jetzt offen, bis die Anmeldung wirklich geklappt hat.
