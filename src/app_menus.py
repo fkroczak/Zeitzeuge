@@ -8,7 +8,7 @@ import sys
 from PySide6.QtCore import QPoint, QProcess, QSize, Qt, QTimer, QUrl
 from PySide6.QtGui import (QAction, QActionGroup, QColor, QDesktopServices, QIcon, QKeySequence,
                            QPalette)
-from PySide6.QtWidgets import (QApplication, QDateEdit, QDialog, QFileDialog, QLabel, QMenu, QMessageBox,
+from PySide6.QtWidgets import (QApplication, QColorDialog, QDateEdit, QDialog, QFileDialog, QLabel, QMenu, QMessageBox,
                                QToolBar, QToolButton, QHBoxLayout, QSizePolicy, QWidget, QWidgetAction)
 
 import datastore
@@ -20,7 +20,8 @@ from rdp_reader import DEFAULT_LAUNCHER_LOG
 from vpn_reader import DEFAULT_DIRS as VPN_DEFAULT_DIRS, FORTI_TRACE_PATHS, vpn_sources
 from settings_dialogs import ActivityTypeSettingsDialog, ConnectionSettingsDialog, WorkHoursDialog
 from theme import GERMAN, STYLESHEET, THEMES
-from timeline_only import DEFAULT_CALL_COLORS, LEGEND_BANDS, LEGEND_FIXED, TIMELINE_ROWS
+from timeline_only import (COLOR_ROWS, DEFAULT_CALL_COLORS, LEGEND_BANDS, LEGEND_FIXED, ROW_NAMES,
+                           TIMELINE_ROWS)
 from view_help import VIEW_HELP, ViewHelpDialog, help_text
 from version import build_details, full_version
 import main_timeline as mt  # Pfade und save_config zur Laufzeit von dort (Tests ersetzen sie dort)
@@ -358,6 +359,13 @@ class MenusMixin:
         menu.addSeparator()
         self._icon_actions.append((menu.addAction("A&lle Zeilen einblenden", self.show_all_rows), "rows"))
         menu.addAction("&Reihenfolge zurücksetzen", lambda: self.set_row_order(None))
+        colors = menu.addMenu("&Farben der Zeilen")
+        for key in COLOR_ROWS:
+            if key in ("doc", "call", "pcstate"):  # Gruppen wie oben im Menü
+                colors.addSeparator()
+            colors.addAction(f"{ROW_NAMES[key]} …", lambda k=key: self.choose_row_color(k))
+        colors.addSeparator()
+        colors.addAction("Alle &Standardfarben", lambda: self.set_row_color(None, None))
         hint = menu.addAction("Leere Zeilen blendet Zeitzeuge von selbst aus")
         hint.setEnabled(False)
         hint = menu.addAction("Verschieben: Zeilenname links anfassen und ziehen")
@@ -374,20 +382,67 @@ class MenusMixin:
         mt.save_config(self.config)
         self.timeline.draw_timeline(self.current_date)
 
-    def show_rows_menu(self, pos):
-        """Rechtsklick auf die Legende der Timeline."""
-        self.rows_menu.exec(pos)
+    def show_rows_menu(self, pos, key=""):
+        """Rechtsklick auf die Legende der Timeline: Farbe der Zeile darunter, dann alle Zeilen."""
+        menu = self.rows_menu
+        extra = []
+        if key in COLOR_ROWS:  # nur für diesen Aufruf oben einfügen
+            name = ROW_NAMES[key]
+            pick = QAction(f"&Farbe für „{name}“ ändern …", menu)
+            pick.triggered.connect(lambda: self.choose_row_color(key))
+            default = QAction(f"Standardfarbe für „{name}“", menu)
+            default.triggered.connect(lambda: self.set_row_color(key, None))
+            default.setEnabled(key in (self.config.get("row_colors") or {}))
+            sep = QAction(menu)
+            sep.setSeparator(True)
+            extra = [pick, default, sep]
+            first = menu.actions()[0] if menu.actions() else None
+            menu.insertActions(first, extra)
+        try:
+            menu.exec(pos)
+        finally:
+            for action in extra:
+                menu.removeAction(action)
+
+    def row_color(self, key):
+        """Farbe, in der die Zeile gerade gezeichnet wird (eigene oder die des Typs)."""
+        own = (self.config.get("row_colors") or {}).get(key)
+        if own:
+            return own
+        colors = self.config.get("type_colors", {})
+        if key == "call":
+            return {**DEFAULT_CALL_COLORS, **self.config.get("call_colors", {})}["Eingehend"]
+        if key == "other":
+            return colors.get("RDP-Sitzung", "#BB8400")
+        legend = LEGEND_BANDS.get(key) or LEGEND_FIXED.get(key)
+        return colors.get(legend[1], "#4682B4") if legend else "#4682B4"
+
+    def choose_row_color(self, key):
+        color = QColorDialog.getColor(QColor(self.row_color(key)), self, f"Farbe für „{ROW_NAMES[key]}“")
+        if color.isValid():
+            self.set_row_color(key, color.name())
+
+    def set_row_color(self, key, color):
+        """Eigene Farbe einer Zeile (None = Standard); key None = alle zurücksetzen."""
+        own = dict(self.config.get("row_colors") or {})
+        if key is None:
+            own = {}
+        elif color:
+            own[key] = color
+        else:
+            own.pop(key, None)
+        if own:
+            self.config["row_colors"] = own
+        else:
+            self.config.pop("row_colors", None)
+        mt.save_config(self.config)
+        self.update_row_icons()
+        self.timeline.draw_timeline(self.current_date)  # auch die Tagesliste zeigt die Farben
 
     def update_row_icons(self):
         """Kästchen je Zeile der Timeline, in der Farbe ihrer Einträge."""
-        colors = self.config.get("type_colors", {})
-        call = {**DEFAULT_CALL_COLORS, **self.config.get("call_colors", {})}["Eingehend"]
-        fixed = {"pc": "#2F7BFF", "call": call, "other": colors.get("RDP-Sitzung", "#BB8400")}
         for key, action in self.row_actions.items():
-            color = fixed.get(key)
-            if color is None:
-                legend = LEGEND_BANDS.get(key) or LEGEND_FIXED.get(key)
-                color = colors.get(legend[1], "#4682B4") if legend else "#4682B4"
+            color = "#2F7BFF" if key == "pc" else self.row_color(key)
             proxy = self._check_proxies.get(action)
             if proxy is not None:
                 proxy.setData(color)
@@ -756,11 +811,15 @@ class MenusMixin:
         self._edit_log_settings(
             "mstsc", [], "Remotedesktop (mstsc)",
             enabled_text="Remotedesktop-Verbindungen (mstsc) aufzeichnen",
+            checks=[("mstsc_events_enabled", "Auch aus dem Windows-Ereignisprotokoll lesen", True)],
             paths=False, timezone=False,
             hint="Zeitzeuge prüft alle 30 Sekunden, welche Remotedesktopverbindungen (mstsc.exe) "
                  "offen sind, und speichert Beginn, Ende und Ziel (z. B. DC01 oder 10.10.80.35). "
                  "Sie stehen in der Timeline wie die Verbindungen aus RDM. Auch Starts aus "
-                 "RDM Better bekommen so ihr Ende.",
+                 "RDM Better bekommen so ihr Ende.\n\n"
+                 "Das Ereignisprotokoll des RDP-Clients (TerminalServices-RDPClient/Operational) "
+                 "kennt Aufbau und Trennung jeder Verbindung sekundengenau, auch aus Zeiten, in "
+                 "denen Zeitzeuge nicht lief. Windows hält es nur einige Wochen.",
             after=self.apply_mstsc_monitor,
         )
 

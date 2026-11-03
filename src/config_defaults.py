@@ -97,6 +97,7 @@ def default_config():
         "rdmbetter_paths": [r"%LOCALAPPDATA%\RDM Better\launcher.log"],
         # Remotedesktop (mstsc): offene Verbindungen alle 30 Sekunden selbst aufzeichnen
         "mstsc_enabled": True,
+        "mstsc_events_enabled": True,  # zusätzlich RDPClient-Ereignisprotokoll lesen
         # Spuren vom PC (local_sources.py)
         "pcstate_enabled": True,        # gesperrt, Ruhezustand, aus, abgemeldet
         "shell_enabled": True,          # SSH (ssh, PuTTY, KiTTY, plink, WinSCP) und PowerShell-Fernsitzungen

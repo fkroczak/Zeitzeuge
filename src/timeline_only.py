@@ -21,7 +21,7 @@ from log_parsers import ConnectionIndex, RdmParser, TeamViewerParser, VpnParser
 from rdp_reader import RdpReader
 from local_sources import BROWSER_TYPE, FILE_TYPE, NET_TYPE, PC_STATE_TYPES, WLAN_TYPE, LocalReader
 from theme import THEMES, readable_on, ui_font
-from vpn_reader import VpnReader, vpn_sources
+from vpn_reader import VpnReader, drop_unnamed_twins, vpn_sources
 
 TIME_FMT = "%Y-%m-%d %H:%M:%S"
 
@@ -106,7 +106,11 @@ def _blend(fill, background):
 
 
 def entry_color(activity, config):
-    """Farbe eines Eintrags: Telefonate nach Richtung, sonst nach Aktivitätstyp."""
+    """Farbe eines Eintrags: eigene Farbe der Zeile (config["row_colors"]), sonst
+    Telefonate nach Richtung und alles andere nach Aktivitätstyp."""
+    own = (config.get("row_colors") or {}).get(row_of(activity))
+    if own:
+        return QColor(own)
     direction = activity.get("direction")
     if direction:
         colors = {**DEFAULT_CALL_COLORS, **config.get("call_colors", {})}
@@ -194,6 +198,27 @@ def row_kind(activity):
     if kind in (FILE_TYPE, BROWSER_TYPE):
         return "files"
     return None
+
+
+def row_of(activity):
+    """Zeile der Timeline, in der ein Eintrag steht (Kennung aus TIMELINE_ROWS)."""
+    if activity.get("work"):
+        return "work"
+    if activity.get("doc") or activity.get("open") or activity.get("cluster"):
+        return "doc"
+    if activity.get("m42") or activity.get("m42_gap"):
+        return "m42"
+    if activity.get("rule"):
+        return "rule"
+    if activity.get("ai"):
+        return "ai"
+    if activity.get("app") or activity.get("pc_block"):
+        return "pc"
+    return row_kind(activity) or "other"
+
+
+# Zeilen mit einstellbarer Farbe (PC-Aktivität färbt nach Tätigkeit bzw. Programm)
+COLOR_ROWS = [k for k, _t in TIMELINE_ROWS if k != "pc"]
 
 
 def type_label(activity):
@@ -426,7 +451,8 @@ class TimelineView(QGraphicsView):
     # Rechtsklick-Menü: (Befehl aus entry_menu_items, Eintrag oder {"minute": …})
     entry_action = Signal(str, dict)
     # Rechtsklick auf die Legende links: Menü „Zeilen der Timeline“ an dieser Stelle (global)
-    rows_menu_requested = Signal(QPoint)
+    # und die Zeile unter der Maus ("" = keine), für „Farbe ändern“
+    rows_menu_requested = Signal(QPoint, str)
     # Zeilen in der Legende verschoben: neue Reihenfolge (Liste der Kennungen)
     row_order_changed = Signal(list)
     # Hintergrund-Thread hat TeamViewer- und RDM-Logs gelesen
@@ -499,9 +525,15 @@ class TimelineView(QGraphicsView):
         self._thread = None
         self._threads = []      # alle gestarteten Einlese-Threads (zum Abwarten beim Beenden)
         self._closing = False   # beim Beenden: Thread darf nichts mehr melden
+        self._day_data = None   # Daten vom letzten draw_timeline (Zoom zeichnet nur neu)
         self.logs_loaded.connect(self._on_logs_loaded)
 
         self.zoom_level = 1.0
+        self._wheel_zoom = None    # (Zoomstufe, Mausposition), noch nicht gezeichnet
+        self._wheel_timer = QTimer(self)
+        self._wheel_timer.setSingleShot(True)
+        self._wheel_timer.setInterval(30)
+        self._wheel_timer.timeout.connect(self._apply_wheel_zoom)
         self.fit_day = True        # ganzen Tag ins Fenster einpassen
         self._drag_start = None    # Mausposition beim Drücken (Bereich ziehen)
         self._drag_button = None   # links: Tätigkeit eintragen, rechts: Zoom
@@ -522,6 +554,7 @@ class TimelineView(QGraphicsView):
         self._legend = []          # [(y, Höhe, Name, Farbe oder None)] für die Legende links
         self._legend_keys = []     # Kennung je Legendenzeile (gleiche Reihenfolge)
         self._row_drag = None      # Zeile, die gerade in der Legende verschoben wird: [Kennung, y]
+        self._legend_cursor = False  # Hand über der Legende gesetzt
         self.setAlignment(Qt.AlignLeft | Qt.AlignTop)
         self.setMouseTracking(True)
 
@@ -552,7 +585,7 @@ class TimelineView(QGraphicsView):
         self.dark_mode = enabled
         self.init_timeline_colors()
         if self._ppm:  # erst neu zeichnen, wenn schon einmal gezeichnet wurde
-            self.draw_timeline(self.current_date)
+            self.relayout()
 
     # ----------------------------- Tooltip -----------------------------------
 
@@ -711,6 +744,11 @@ class TimelineView(QGraphicsView):
             except (KeyError, ValueError):
                 continue
             valid.append(a)
+        # Derselbe VPN-Tunnel aus zwei Quellen (Logs, Archiv, anderer PC): der mit Namen gewinnt
+        vpn = [a for a in valid if a.get("vpn_source")]
+        if len(vpn) > 1:
+            kept = {id(a) for a in drop_unnamed_twins(vpn)}
+            valid = [a for a in valid if not a.get("vpn_source") or id(a) in kept]
         valid.sort(key=lambda a: a["start"])
 
         # TeamViewer: eigener Name statt nur der ID
@@ -884,25 +922,23 @@ class TimelineView(QGraphicsView):
         return spans[0][0], max(end for _start, end in spans)
 
     def draw_timeline(self, date: QDate):
-        # Mittelpunkt merken, damit Zoom/Neuzeichnen die Ansicht nicht verschiebt
-        center_min = None
-        if not self._first_draw and self._ppm:
-            center_x = self.mapToScene(self.viewport().rect().center()).x()
-            center_min = (center_x - self.LEFT) / self._ppm
+        """Daten des Tages neu lesen und zeichnen (nach Änderungen an den Daten)."""
+        self._day_data = self._collect(date)
+        self._render()
+        self.day_loaded.emit(self._day_data["activities"], self.pc_entries_for(date))
 
-        self.current_date = date
-        if self.fit_day:
-            self.zoom_level = self._fit_ppm() / self.BASE_PX_PER_MIN
-            center_min = None
-        self._ppm = self.BASE_PX_PER_MIN * self.zoom_level
-        self._drag_item = None
-        self.scene.clear()
-        self._hover_line = self._hover_label = None  # mit der Szene gelöscht
-        self.activity_rects.clear()
-        self.tooltip.hide()
-        self.scene.setBackgroundBrush(self.background_color)
+    def relayout(self):
+        """Nur neu anordnen (Zoom, Fenstergröße, Design): Daten vom letzten Zeichnen,
+        ohne Logs, Outlook, Anrufe … erneut zu lesen und ohne die Tagesliste neu aufzubauen."""
+        if self._day_data is None or self._day_data["date"] != self.current_date:
+            self.draw_timeline(self.current_date)
+        else:
+            self._render()
 
+    def _collect(self, date: QDate):
+        """Alles, was das Zeichnen braucht und nicht vom Zoom abhängt."""
         activities = self.view_entries(date)
+
 
         # Telefonate, Outlook, VPN und TeamViewer je in eine feste Zeile; der Rest (v. a. RDM)
         # in die freien Spuren. Überlappende Einträge kommen in jeder Zeile in eine weitere
@@ -933,6 +969,35 @@ class TimelineView(QGraphicsView):
         # Doku: offene Einträge erst zusammenfassen, dann auf Unterzeilen verteilen
         band_layout = [(kind, *self._stacked(cluster_open(band) if kind == "doc" else band))
                        for kind, _text, band in bands]
+        return {"date": date, "activities": activities, "fixed_layout": fixed_layout,
+                "free_placed": free_placed, "n_free": n_free, "show_other": show_other,
+                "show_pc": show_pc, "pc_band": pc_band, "pc_h": pc_h, "bands": bands,
+                "ai_band": ai_band, "band_layout": band_layout}
+
+    def _render(self):
+        """Szene aus den gesammelten Daten aufbauen (schnell, für Zoom und Größe)."""
+        d = self._day_data
+        date = d["date"]
+        # Mittelpunkt merken, damit Zoom/Neuzeichnen die Ansicht nicht verschiebt
+        center_min = None
+        if not self._first_draw and self._ppm:
+            center_x = self.mapToScene(self.viewport().rect().center()).x()
+            center_min = (center_x - self.LEFT) / self._ppm
+
+        self.current_date = date
+        if self.fit_day:
+            self.zoom_level = self._fit_ppm() / self.BASE_PX_PER_MIN
+            center_min = None
+        self._ppm = self.BASE_PX_PER_MIN * self.zoom_level
+        self._drag_item = None
+        self.scene.clear()
+        self._hover_line = self._hover_label = None  # mit der Szene gelöscht
+        self.activity_rects.clear()
+        self.tooltip.hide()
+        self.scene.setBackgroundBrush(self.background_color)
+        fixed_layout, free_placed, n_free = d["fixed_layout"], d["free_placed"], d["n_free"]
+        show_other, show_pc, pc_band, pc_h = d["show_other"], d["show_pc"], d["pc_band"], d["pc_h"]
+        bands, ai_band, band_layout = d["bands"], d["ai_band"], d["band_layout"]
         n_lanes = max(self.MIN_LANES, n_free) if show_other else 0
         show_other = show_other and n_lanes > 0
         band_y = self.AXIS_H + 6
@@ -989,11 +1054,11 @@ class TimelineView(QGraphicsView):
                 xh = self._x(hour * 60 + 30)
                 self.scene.addLine(xh, self.AXIS_H, xh, height, QPen(self.half_line, 1))
             if hour % step == 0 and hour < 24:
-                label = self.scene.addText(f"{hour:02d}:00", hour_font)
-                label.setDefaultTextColor(
+                label = self.scene.addSimpleText(f"{hour:02d}:00", hour_font)
+                label.setBrush(
                     self.text_color if any(a <= hour * 60 < b for a, b in spans) else self.muted_text
                 )
-                label.setPos(x + 2, 3)
+                label.setPos(x + 6, 7)
 
         # Jede zweite Zeile leicht hinterlegt, damit die Zeilen unterscheidbar sind
         stripe = QColor(255, 255, 255, 10) if self.dark_mode else QColor(0, 0, 0, 10)
@@ -1006,6 +1071,7 @@ class TimelineView(QGraphicsView):
 
         # Legende links (schwebt über den Zeilen, siehe drawForeground) und Trennlinie
         colors = self.config.get("type_colors", {})
+        own = self.config.get("row_colors") or {}
         legend, legend_keys = [], []
         if show_band:
             legend.append((band_y, pc_h, "PC-Aktivität", None))
@@ -1015,14 +1081,15 @@ class TimelineView(QGraphicsView):
             name, key = LEGEND_BANDS[kind]
             if kind == "work" and band and not band[0].get("from_itm"):
                 name = "Arbeitszeit"  # ohne ITM: Arbeitszeit aus den Einstellungen
-            legend.append((y, max(1, n) * row_h - self.LANE_GAP, name, colors.get(key)))
+            legend.append((y, max(1, n) * row_h - self.LANE_GAP, name, own.get(kind) or colors.get(key)))
             legend_keys.append(kind)
         for (kind, _placed, n), y in zip(fixed_layout, fixed_tops):
             name, key = LEGEND_FIXED[kind]
-            legend.append((y, max(1, n) * row_h - self.LANE_GAP, name, colors.get(key)))
+            legend.append((y, max(1, n) * row_h - self.LANE_GAP, name, own.get(kind) or colors.get(key)))
             legend_keys.append(kind)
         if show_other:
-            legend.append((free_top, self.LANE_H, "Remote / Weitere", colors.get("RDP-Verbindung")))
+            legend.append((free_top, self.LANE_H, "Remote / Weitere",
+                           own.get("other") or colors.get("RDP-Verbindung")))
             legend_keys.append("other")
             sep_y = free_top - (6 + self.LANE_GAP) / 2
             if fixed_layout:
@@ -1114,8 +1181,6 @@ class TimelineView(QGraphicsView):
         elif center_min is not None:
             self.centerOn(self._x(center_min), self.mapToScene(0, 0).y())
 
-        self.day_loaded.emit(activities, self.pc_entries_for(date))
-
     def _stacked(self, items):
         """Einträge einer Zeile -> ([(Eintrag, Unterzeile)], Anzahl Unterzeilen)."""
         spans = [(parse_time(a["start"]), parse_time(a["end"])) for a in items]
@@ -1168,9 +1233,9 @@ class TimelineView(QGraphicsView):
             visible = shown.rstrip("…").strip(" ?✓·↙↗")
             if len(visible) < min(self.MIN_LABEL_CHARS, len(text.strip(" ?✓·↙↗"))):
                 return None
-        item = self.scene.addText(shown, font)
-        item.setDefaultTextColor(color)
-        item.setPos(x + 2, y + (h - item.boundingRect().height()) / 2)
+        item = self.scene.addSimpleText(shown, font)
+        item.setBrush(color)
+        item.setPos(x + 6, y + (h - metrics.height()) / 2)
         item.setAcceptedMouseButtons(Qt.NoButton)
         return item
 
@@ -1235,7 +1300,7 @@ class TimelineView(QGraphicsView):
             (self.fit_day and abs(self._ppm - self._fit_ppm()) > 0.01)
             or abs(self.sceneRect().height() - self.viewport().height()) > 30
         ):
-            self.draw_timeline(self.current_date)
+            self.relayout()
 
     # ----------------------------- Ansicht / Zoom -----------------------------
 
@@ -1246,7 +1311,7 @@ class TimelineView(QGraphicsView):
 
     def show_whole_day(self):
         self.fit_day = True
-        self.draw_timeline(self.current_date)
+        self.relayout()
 
     def show_range(self, start_min, end_min):
         """Zeitraum (Minuten seit 0 Uhr) genau ins Fenster einpassen."""
@@ -1258,7 +1323,7 @@ class TimelineView(QGraphicsView):
         self.zoom_level = max(1.0, width / (end_min - start_min)) / self.BASE_PX_PER_MIN
         self.zoom_level = min(self.zoom_level, 30.0)
         self._first_draw = False
-        self.draw_timeline(self.current_date)
+        self.relayout()
         self.horizontalScrollBar().setValue(int(self._x(start_min) - self.LEFT))
 
     def show_work_time(self):
@@ -1277,16 +1342,22 @@ class TimelineView(QGraphicsView):
         self.fit_day = False
         if anchor_viewport_x is None:
             self.zoom_level = level
-            self.draw_timeline(self.current_date)
+            self.relayout()
             return
         # Zeitpunkt unter der Maus bleibt an derselben Stelle
         scene_x = self.mapToScene(int(anchor_viewport_x), 0).x()
         minute = (scene_x - self.LEFT) / self._ppm
         self.zoom_level = level
         self._first_draw = False
-        self.draw_timeline(self.current_date)
+        self.relayout()
         target = self._x(minute) - anchor_viewport_x
         self.horizontalScrollBar().setValue(int(target))
+
+    def _apply_wheel_zoom(self):
+        if self._wheel_zoom:
+            level, x = self._wheel_zoom
+            self._wheel_zoom = None
+            self.set_zoom(level, x)
 
     def drawForeground(self, painter, rect):
         """Legende links: Name und Farbe jeder Zeile, bleibt beim Blättern stehen."""
@@ -1342,8 +1413,11 @@ class TimelineView(QGraphicsView):
         """STRG + Mausrad: Zoom, UMSCHALT + Mausrad: Zeilen, Mausrad: horizontal blättern."""
         delta = event.angleDelta().y()
         if event.modifiers() & Qt.ControlModifier:
-            factor = 1.15 if delta > 0 else 1 / 1.15
-            self.set_zoom(self.zoom_level * factor, event.position().x())
+            if delta:
+                factor = 1.15 if delta > 0 else 1 / 1.15
+                level = (self._wheel_zoom[0] if self._wheel_zoom else self.zoom_level) * factor
+                self._wheel_zoom = (level, event.position().x())
+                self._wheel_timer.start()  # schnelles Drehen: nur einmal zeichnen
         elif delta and event.modifiers() & Qt.ShiftModifier:  # ohne Scrollleiste: Zeilen blättern
             bar = self.verticalScrollBar()
             bar.setValue(bar.value() - delta)
@@ -1388,9 +1462,18 @@ class TimelineView(QGraphicsView):
             self._row_drag[1] = pos.y()
             self.viewport().update()  # Linie reicht über die ganze Breite
             return
-        if self._legend and pos.x() < self.LEFT - 6 and self._drag_start is None:
-            movable = self._legend_key_at(pos.y()) in MOVABLE_ROWS
-            self.viewport().setCursor(Qt.OpenHandCursor if movable else Qt.ArrowCursor)
+        in_legend = bool(self._legend) and pos.x() < self.LEFT - 6 and self._drag_start is None
+        if in_legend:  # Hand über verschiebbaren Zeilen, sonst Pfeil (auch über Balken darunter)
+            if self._legend_key_at(pos.y()) in MOVABLE_ROWS:
+                self.viewport().setCursor(Qt.OpenHandCursor)
+            else:
+                self.viewport().setCursor(Qt.ArrowCursor)
+            self._legend_cursor = True
+        elif self._legend_cursor:
+            # Hand nur über der Legende; sonst merkt sich QGraphicsView sie als Grundzeiger
+            # und zeigt sie überall statt des Pfeils
+            self.viewport().unsetCursor()
+            self._legend_cursor = False
         # Klicken und ziehen: Bereich markieren (links: Tätigkeit, rechts: Zoom)
         if self._drag_start is not None and abs(pos.x() - self._drag_start.x()) > 5:
             self._hide_hover()
@@ -1423,7 +1506,8 @@ class TimelineView(QGraphicsView):
             self.tooltip.show()
         else:
             self._hide_hover()
-        super().mouseMoveEvent(event)
+        if not in_legend:  # Balken unter der Legende sollen dort keinen Zeiger setzen
+            super().mouseMoveEvent(event)
 
     def _show_hover_line(self, minute):
         if not self._hover_line:
@@ -1550,6 +1634,9 @@ class TimelineView(QGraphicsView):
 
     def leaveEvent(self, event):
         self._hide_hover()
+        if self._legend_cursor and self._row_drag is None:
+            self.viewport().unsetCursor()
+            self._legend_cursor = False
         super().leaveEvent(event)
 
     def _drag_minutes(self, x1, x2):
@@ -1577,6 +1664,7 @@ class TimelineView(QGraphicsView):
                 if key in MOVABLE_ROWS:
                     self._row_drag = [key, pos.y()]
                     self.viewport().setCursor(Qt.ClosedHandCursor)
+                    self._legend_cursor = True
                 return
             self._drag_start, self._drag_button = pos, event.button()
             return
@@ -1588,7 +1676,8 @@ class TimelineView(QGraphicsView):
         if self._row_drag is not None and button == Qt.LeftButton:
             key = self._row_drag[0]
             self._row_drag = None
-            self.viewport().setCursor(Qt.OpenHandCursor)
+            self.viewport().unsetCursor()
+            self._legend_cursor = False  # nächste Mausbewegung setzt die Hand wieder, falls nötig
             target, below = self._row_drop(pos.y())
             if target and target != key:
                 self.row_order_changed.emit(moved(row_order(self.config), key, target, below))
@@ -1646,7 +1735,7 @@ class TimelineView(QGraphicsView):
         """Rechtsklick: dasselbe Menü wie in der Tagesliste (entry_menu_items)."""
         if self._legend and pos.x() < self.LEFT - 6:  # Legende: Zeilen ein-/ausblenden
             self._hide_hover()
-            self.rows_menu_requested.emit(global_pos)
+            self.rows_menu_requested.emit(global_pos, self._legend_key_at(pos.y()) or "")
             return
         a = self._activity_at(pos)
         self._hide_hover()
