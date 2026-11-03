@@ -12,7 +12,7 @@ import threading
 import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, ROOT)
+sys.path.insert(0, os.path.join(ROOT, "src"))
 os.chdir(ROOT)  # Browser-Skript wird relativ gesucht (resource_path)
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 DATA = tempfile.mkdtemp()
@@ -174,7 +174,7 @@ class OfflineReader(pbx_reader.PbxReader):
         pass
 
 
-script = open(os.path.join(ROOT, "zeitzeuge_anrufe.user.js"), encoding="utf-8").read()
+script = open(os.path.join(ROOT, "assets", "zeitzeuge_anrufe.user.js"), encoding="utf-8").read()
 reader = OfflineReader("https://3cx.example.invalid:5001", os.path.join(DATA, "anrufe_off.json"),
                        os.path.join(DATA, "profil_off"), script)
 troubles = []

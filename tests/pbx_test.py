@@ -12,7 +12,7 @@ import threading
 import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, ROOT)
+sys.path.insert(0, os.path.join(ROOT, "src"))
 
 from PySide6.QtCore import QCoreApplication
 
@@ -31,7 +31,7 @@ print("Browser:", find_browser())
 tmp = tempfile.mkdtemp()
 calls_file = os.path.join(tmp, "anrufe.json")
 profile = os.path.join(tmp, "profil")
-script = open(os.path.join(ROOT, "zeitzeuge_anrufe.user.js"), encoding="utf-8").read()
+script = open(os.path.join(ROOT, "assets", "zeitzeuge_anrufe.user.js"), encoding="utf-8").read()
 
 
 def fail(problem, reader):

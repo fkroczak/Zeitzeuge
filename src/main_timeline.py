@@ -81,20 +81,24 @@ QApplication.setHighDpiScaleFactorRoundingPolicy(
     Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
 
 
+# Projektordner beim Start aus dem Quelltext (Quellcode liegt in src/, Bilder in assets/)
+SOURCE_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
 def resource_path(relative_path: str) -> str:
     """Pfad für Ressourcen, funktioniert im Script und in der PyInstaller-EXE."""
     if hasattr(sys, "_MEIPASS"):
         base_path = sys._MEIPASS  # Temp-Ordner der EXE
     else:
-        base_path = os.path.abspath(".")
+        base_path = os.path.join(SOURCE_ROOT, "assets")
     return os.path.join(base_path, relative_path)
 
 
-# Ordner der EXE (bzw. des Skripts). Früher lagen die Daten hier.
+# Ordner der EXE (bzw. der Projektordner). Früher lagen die Daten hier.
 if hasattr(sys, "_MEIPASS"):
     APP_DIR = os.path.dirname(sys.executable)
 else:
-    APP_DIR = os.path.dirname(os.path.abspath(__file__))
+    APP_DIR = SOURCE_ROOT
 
 # Daten: standardmäßig Dokumente\Zeitzeuge (im Menü änderbar)
 DATA_DIR = storage.data_dir()

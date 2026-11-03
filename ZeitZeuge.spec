@@ -1,5 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
 # Build: pyinstaller ZeitZeuge.spec  ->  dist/ZeitZeuge.exe
+# Quellcode liegt in src/, Bilder und das 3CX-Skript in assets/.
 import os
 import sys
 
@@ -7,14 +8,16 @@ from PyInstaller.utils.win32.versioninfo import (FixedFileInfo, StringFileInfo, 
                                                  StringTable, VarFileInfo, VarStruct,
                                                  VSVersionInfo)
 
-sys.path.insert(0, os.path.abspath(SPECPATH))
+SRC = os.path.join(os.path.abspath(SPECPATH), "src")
+ASSETS = os.path.join(os.path.abspath(SPECPATH), "assets")
+sys.path.insert(0, SRC)
 
 import version  # noqa: E402
 
 # Herkunft des Builds (Version z. B. 4.1.3, Buildnummer, Commit, Datum). build_info.py wird mit
 # in die EXE gepackt (version.py liest es) und am Ende wieder gelöscht.
 BUILD = version.collect_build_info()
-BUILD_INFO_FILE = os.path.join(SPECPATH, "build_info.py")
+BUILD_INFO_FILE = os.path.join(SRC, "build_info.py")
 with open(BUILD_INFO_FILE, "w", encoding="utf-8") as f:
     f.write("# Beim Bauen erzeugt (ZeitZeuge.spec), nicht von Hand ändern\n")
     f.write(f"BUILD = {BUILD!r}\n")
@@ -44,11 +47,11 @@ version_info = VSVersionInfo(
 )
 
 a = Analysis(
-    ['main_timeline.py'],
-    pathex=[],
+    [os.path.join(SRC, 'main_timeline.py')],
+    pathex=[SRC],
     binaries=[],
-    datas=[('zeitzeuge.png', '.'), ('zeitzeuge.ico', '.'), ('zeitzeuge.svg', '.'),
-           ('zeitzeuge_anrufe.user.js', '.')],
+    datas=[(os.path.join(ASSETS, name), '.') for name in
+           ('zeitzeuge.png', 'zeitzeuge.ico', 'zeitzeuge.svg', 'zeitzeuge_anrufe.user.js')],
     hiddenimports=['build_info'],
     hookspath=[],
     hooksconfig={},
@@ -79,7 +82,7 @@ options = dict(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=['zeitzeuge.ico'],
+    icon=[os.path.join(ASSETS, 'zeitzeuge.ico')],
     version=version_info,
 )
 # Kein UPX (upx=False oben): mit UPX gepackte EXE-Dateien melden Virenscanner besonders oft fälschlich.

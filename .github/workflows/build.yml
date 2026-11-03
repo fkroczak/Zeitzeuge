@@ -26,12 +26,12 @@ jobs:
       - name: Abhängigkeiten installieren
         run: pip install -r requirements.txt -r requirements-dev.txt
 
-      # Version MAJOR.MINOR.PATCH, gezählt aus der git-Geschichte von main (siehe version.py),
+      # Version MAJOR.MINOR.PATCH, gezählt aus der git-Geschichte von main (siehe src/version.py),
       # z. B. 4.1.3; nicht auf main: 4.1.3-test186. Ein Tag muss genau zur Version passen.
       - name: Versionsnummer bestimmen
         shell: pwsh
         run: |
-          $v = python version.py
+          $v = python src/version.py
           if ($LASTEXITCODE -ne 0) { Write-Host "::error::$v"; exit 1 }
           "ZZ_VERSION=$v" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           Write-Host "::notice title=Version::Zeitzeuge $v"

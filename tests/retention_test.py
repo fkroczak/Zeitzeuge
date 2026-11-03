@@ -4,7 +4,7 @@ import sys
 import tempfile
 from datetime import date
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"))
 
 import config_defaults  # noqa: E402
 import datastore  # noqa: E402

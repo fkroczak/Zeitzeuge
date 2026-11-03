@@ -22,7 +22,7 @@ import pytest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TESTS = os.path.join(ROOT, "tests")
-sys.path.insert(0, ROOT)
+sys.path.insert(0, os.path.join(ROOT, "src"))
 
 # Ohne Bildschirm testen, auch lokal ohne export
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")

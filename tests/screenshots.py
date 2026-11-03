@@ -17,7 +17,7 @@ import time
 from datetime import datetime, timedelta
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, ROOT)
+sys.path.insert(0, os.path.join(ROOT, "src"))
 
 OUT = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else "screenshots")
 DARK = "--dark" in sys.argv
