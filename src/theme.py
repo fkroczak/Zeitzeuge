@@ -180,7 +180,7 @@ QStatusBar { background-color: $bg; color: $muted; border-top: 1px solid $border
 QStatusBar QLabel { background: transparent; color: $muted; padding: 3px 8px; }
 QStatusBar QToolButton { color: $text; padding: 2px 8px; margin: 2px 4px; }
 QStatusBar::item { border: none; }
-QDateEdit, QLineEdit, QTextEdit, QComboBox, QSpinBox, QTimeEdit, QListWidget {
+QDateEdit, QLineEdit, QTextEdit, QPlainTextEdit, QComboBox, QSpinBox, QTimeEdit, QListWidget {
     background-color: $surface; color: $text; border: 1px solid $control;
     border-radius: 0; padding: 4px 6px; selection-background-color: $sel;
     selection-color: $seltext; }
@@ -199,7 +199,8 @@ QToolButton:focus, QPushButton:focus { border: 2px solid $accent; }
 QToolButton:focus { padding: 3px 5px; }
 QPushButton:focus { padding: 5px 13px; }
 QPushButton:default:focus { border-color: $text; }
-QDateEdit:focus, QTimeEdit:focus, QLineEdit:focus, QTextEdit:focus, QComboBox:focus,
+QDateEdit:focus, QTimeEdit:focus, QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus,
+QComboBox:focus,
 QSpinBox:focus, QListWidget:focus, QTableWidget:focus, QGraphicsView:focus {
     border: 1px solid $accent; }
 QToolButton#qt_toolbar_ext_button { border: 1px solid $control; background-color: $hover; }

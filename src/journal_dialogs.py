@@ -47,7 +47,7 @@ class _EntryForm(QWidget):
         self.date_edit.setCalendarPopup(True)
         if show_date:
             form.addRow("&Datum:", self.date_edit)
-        else:  # Nachfrage: der Tag steht fest, ein Feld weniger
+        else:
             self.date_edit.hide()
 
         times = QHBoxLayout()
@@ -390,7 +390,7 @@ class PromptWindow(QDialog):
             start, end, customers, categories,
             customer=suggest_customer(entry, tv_names) if customer is None else customer,
             category=suggest_category(entry, categories) if category is None else category,
-            tv_id=entry.get("tv_id"), parent=self, show_date=False,
+            tv_id=entry.get("tv_id"), parent=self,
             trace=trace, rule_subject=rule_subject,
             **{"show_ticket": False, **form_options})
         layout.addWidget(self.form)
