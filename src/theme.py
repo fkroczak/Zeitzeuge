@@ -8,8 +8,9 @@ import html
 import re
 
 from PySide6.QtCore import QLibraryInfo, QLocale, QSize, Qt, QTranslator
-from PySide6.QtGui import QColor, QFont, QFontMetrics
-from PySide6.QtWidgets import QDialogButtonBox, QHeaderView, QProxyStyle, QStyle, QStyleFactory
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QPen
+from PySide6.QtWidgets import (QDialogButtonBox, QHeaderView, QProxyStyle, QRubberBand, QStyle,
+                               QStyleFactory)
 
 
 class AppStyle(QProxyStyle):
@@ -39,6 +40,25 @@ class AppStyle(QProxyStyle):
         if isinstance(target, QHeaderView) and target.orientation() == Qt.Horizontal:
             target.setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         return super().polish(target)
+
+    def drawControl(self, element, option, painter, widget=None):
+        # Vorschau beim Ziehen der Trennleiste (QSplitter ohne opaqueResize): gestrichelte Linie
+        if element == QStyle.CE_RubberBand and isinstance(widget, QRubberBand) \
+                and widget.shape() == QRubberBand.Line:
+            painter.save()
+            pen = QPen(QColor(85, 85, 85, 179), 2)  # dunkelgrau, 30 % durchsichtig
+            pen.setDashPattern([2, 2])  # fein: 4 px Strich, 4 px Lücke
+            painter.setPen(pen)
+            r = option.rect
+            if r.width() >= r.height():
+                y = r.center().y()
+                painter.drawLine(r.left(), y, r.right(), y)
+            else:
+                x = r.center().x()
+                painter.drawLine(x, r.top(), x, r.bottom())
+            painter.restore()
+            return
+        super().drawControl(element, option, painter, widget)
 
     def styleHint(self, hint, option=None, widget=None, data=None):
         # Dialogknöpfe überall wie unter Windows: OK links von Abbrechen, ohne Symbole

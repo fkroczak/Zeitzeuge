@@ -273,3 +273,38 @@ def check_box(color, on):
         body = f'<rect x="4" y="4" width="16" height="16" rx="3" fill="none" stroke="{c}" stroke-width="2"/>'
     return _render(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">{body}</svg>',
                    (16, 20, 24, 32))
+
+
+def app_icon(resource_path):
+    """Programmsymbol für Fenster und Taskleiste.
+
+    Aus der .ico und zusätzlich aus PNG/SVG: Fehlt in der EXE das Qt-Plugin für .ico,
+    bliebe das Symbol sonst leer und die Taskleiste zeigte kein Logo.
+    """
+    result = QIcon()
+    for name in ("zeitzeuge.ico", "zeitzeuge.png"):
+        pix = QPixmap(resource_path(name))
+        if not pix.isNull():
+            result.addPixmap(pix)
+    try:
+        with open(resource_path("zeitzeuge.svg"), encoding="utf-8") as f:
+            svg = f.read()
+        logo = _render(svg, (16, 24, 32, 48, 64, 256))
+        for size in logo.availableSizes():
+            result.addPixmap(logo.pixmap(size))
+    except OSError:
+        pass
+    return result
+
+
+def set_windows_app_id():
+    """Eigene Kennung für die Windows-Taskleiste: Sonst ordnet Windows das Fenster beim Start
+    aus dem Quelltext python.exe zu und zeigt dessen (oder gar kein) Symbol."""
+    import sys
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("Zeitzeuge.Zeitzeuge")
+    except (AttributeError, OSError):
+        pass
