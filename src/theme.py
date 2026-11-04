@@ -1,7 +1,8 @@
 """Aussehen: Fusion-Stil, deutsche Qt-Texte, Farben (Tokens) und Stylesheet.
 
 Ein neues Design ändert nur die Werte in THEMES und ergänzt bei Bedarf STYLESHEET
-($name wird durch den Wert des Tokens ersetzt, siehe apply_style in app_menus.py).
+($name wird durch den Wert des Tokens ersetzt, siehe apply_style in app_menus.py;
+$checkmark ist der Pfad zum Haken-Bild aus icons.check_mark_file).
 Die Timeline (timeline_only.py) nimmt ihre Grundfarben ebenfalls aus THEMES.
 """
 import html
@@ -226,6 +227,13 @@ QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 6px; }
 QGroupBox QWidget { font-weight: normal; }
 QGroupBox QLabel, QGroupBox QCheckBox { background: transparent; }
 QCheckBox { spacing: 8px; }
+QCheckBox::indicator { width: 16px; height: 16px; border: 1px solid $control;
+                       background-color: $surface; border-radius: 0; }
+QCheckBox::indicator:hover, QCheckBox::indicator:focus { border-color: $accent; }
+QCheckBox::indicator:checked { border-color: $accent; background-color: $accent;
+                               image: url($checkmark); }
+QCheckBox::indicator:disabled { border-color: $border; }
+QCheckBox::indicator:checked:disabled { background-color: $border; border-color: $border; }
 QMenu { background-color: $surface; border: 1px solid $border; border-radius: 0; padding: 4px 0; }
 QMenu::item { padding: 6px 28px 6px 12px; border-radius: 0; }
 QMenu::item:selected { background-color: $sel; color: $seltext; }
@@ -277,7 +285,7 @@ QFrame#tile QLabel, QFrame#tile QCheckBox { background: transparent; }
 QCheckBox#switch { spacing: 6px; font-weight: bold; }
 QCheckBox#switch::indicator { width: 30px; height: 16px; border: 2px solid $muted; border-radius: 10px;
                               background-color: $surface; }
-QCheckBox#switch::indicator:checked { border-color: $accent; background-color: $accent; }
+QCheckBox#switch::indicator:checked { border-color: $accent; background-color: $accent; image: none; }
 QCheckBox#switch::indicator:focus { border-color: $text; }
 QFrame#setting_row { border: none; border-bottom: 1px solid $line; }
 QFrame#setting_row QLabel, QFrame#setting_row QCheckBox { background: transparent; }
