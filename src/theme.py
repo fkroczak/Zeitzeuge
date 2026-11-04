@@ -46,7 +46,8 @@ class AppStyle(QProxyStyle):
         if element == QStyle.CE_RubberBand and isinstance(widget, QRubberBand) \
                 and widget.shape() == QRubberBand.Line:
             painter.save()
-            pen = QPen(QColor("#555555"), 2, Qt.DashLine)  # dunkelgrau
+            pen = QPen(QColor("#555555"), 2)  # dunkelgrau
+            pen.setDashPattern([2, 2])  # fein: 4 px Strich, 4 px Lücke
             painter.setPen(pen)
             r = option.rect
             if r.width() >= r.height():
