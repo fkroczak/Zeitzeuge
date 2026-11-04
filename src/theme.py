@@ -8,7 +8,7 @@ import html
 import re
 
 from PySide6.QtCore import QLibraryInfo, QLocale, QSize, Qt, QTranslator
-from PySide6.QtGui import QColor, QFont, QFontMetrics, QPalette, QPen
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QPen
 from PySide6.QtWidgets import (QDialogButtonBox, QHeaderView, QProxyStyle, QRubberBand, QStyle,
                                QStyleFactory)
 
@@ -46,7 +46,7 @@ class AppStyle(QProxyStyle):
         if element == QStyle.CE_RubberBand and isinstance(widget, QRubberBand) \
                 and widget.shape() == QRubberBand.Line:
             painter.save()
-            pen = QPen(option.palette.color(QPalette.WindowText), 2, Qt.DashLine)
+            pen = QPen(QColor("#555555"), 2, Qt.DashLine)  # dunkelgrau
             painter.setPen(pen)
             r = option.rect
             if r.width() >= r.height():
