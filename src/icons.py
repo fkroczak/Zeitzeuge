@@ -275,6 +275,22 @@ def check_box(color, on):
                    (16, 20, 24, 32))
 
 
+def check_mark_file(color):
+    """Haken als PNG-Datei für das Stylesheet (QCheckBox::indicator braucht eine Datei).
+
+    Liegt im Temp-Ordner, je Farbe eine Datei; gibt den Pfad mit / zurück."""
+    import os
+    import tempfile
+    c = QColor(color).name()
+    path = os.path.join(tempfile.gettempdir(), f"zeitzeuge_check_{c[1:]}.png")
+    if not os.path.exists(path):
+        svg = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">'
+               f'<path d="m5 12.5 4.5 4.5 9.5-10" stroke="{c}" stroke-width="3" fill="none" '
+               'stroke-linecap="round" stroke-linejoin="round"/></svg>')
+        _render(svg, (48,)).pixmap(48, 48).save(path, "PNG")
+    return path.replace(os.sep, "/")
+
+
 def app_icon(resource_path):
     """Programmsymbol für Fenster und Taskleiste.
 
