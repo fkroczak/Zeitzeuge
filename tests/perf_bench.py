@@ -83,7 +83,6 @@ def main():
     import main_timeline
     from PySide6.QtCore import QDate
     from PySide6.QtWidgets import QApplication
-    import timeline_only
     print(f"Import                          {ms(time.perf_counter() - t0)}")
 
     app = QApplication(sys.argv)
@@ -125,7 +124,7 @@ def main():
     print(f"Tag wechseln (je Tag, 30 Tage)  {ms(per_day)}")
     w.date_edit.setDate(date)
     app.processEvents()
-    print(f"Tagesliste heute: {w.table.rowCount()} Zeilen, Timeline {len(timeline_only.__name__) and 'ok'}")
+    print(f"Tagesliste heute: {w.table.rowCount()} Zeilen")
     w.quit_app()
 
 
