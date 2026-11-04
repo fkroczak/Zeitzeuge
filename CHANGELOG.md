@@ -83,6 +83,7 @@ Testversionen aus Branches tragen die Version ihres main-Stands plus Buildnummer
 - **Remotedesktop (mstsc) aus dem Windows-Ereignisprotokoll:** Zeitzeuge liest zusätzlich `Microsoft-Windows-TerminalServices-RDPClient/Operational` (Aufbau 1024, Trennung 1026). Das füllt Zeiten, in denen Zeitzeuge nicht lief, und macht Beginn und Ende sekundengenau; mit der eigenen Aufzeichnung wird es zu einer Sitzung zusammengeführt. Abschaltbar unter Datenquellen → Remotedesktop (mstsc).
 
 ### Behoben
+- **Schnellerer Start und flüssigeres Blättern:** Zeitzeuge startet etwa viermal so schnell (Fenster mit Daten nach 0,4 s statt 1,6 s), weil das KI-Paket erst bei der ersten KI-Anfrage geladen wird. Zeichnen des heutigen Tags mit vielen Fensterwechseln braucht ein Drittel der Zeit, Tageswechsel halb so lange (Messung in `docs/BEWERTUNG-webview-asynccron-threads.md`).
 - **Nachfrage „Was hast du gemacht?“ zeigt das Datum** und lässt es ändern (Kalender), wie beim Nachtragen.
 - **Das Feld „Tätigkeit“ hat wieder einen Rahmen** und ist im dunklen Design als Eingabefeld erkennbar.
 - **Haken-Kästchen (z. B. „Kulanz“, „Reise / Anfahrt“) sind im dunklen Design sichtbar**: mit Rahmen, angehakt blau mit Haken.

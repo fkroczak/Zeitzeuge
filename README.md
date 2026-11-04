@@ -669,7 +669,7 @@ Für Tests und Hilfsskripte gibt es zwei Umgebungsvariablen: `ZEITZEUGE_DATA` se
 |---|---|
 | `src/` | Quellcode (Python-Module, siehe unten). Start aus dem Quelltext: `python src/main_timeline.py` |
 | `assets/` | Logo und Icon (`zeitzeuge.ico`, `.png`, `.svg`) und `zeitzeuge_anrufe.user.js` (liest die Anrufliste aus der 3CX-Webseite, für das Lesen über Edge) |
-| `tests/` | Tests (pytest), laufen bei jedem Build: Start, Bedienbarkeit, Infobereich, Log-Parser, VPN-Logs, 3CX und ITM mit nachgebauten Seiten, KI-Vorschläge mit nachgebauter API, Fensterabfrage, Anrufliste. Dazu `start_bench.py` (Startzeit messen) und `screenshots.sh` (Bildschirmfotos mit Demodaten) |
+| `tests/` | Tests (pytest), laufen bei jedem Build: Start, Bedienbarkeit, Infobereich, Log-Parser, VPN-Logs, 3CX und ITM mit nachgebauten Seiten, KI-Vorschläge mit nachgebauter API, Fensterabfrage, Anrufliste. Dazu `start_bench.py` (Startzeit messen), `perf_bench.py` (Zeichnen und Tageswechsel mit einem Jahr Daten) und `screenshots.sh` (Bildschirmfotos mit Demodaten) |
 | `docs/` | Entscheidungen, Übergaben, Hintergründe und Screenshots |
 | `CHANGELOG.md` | Änderungen je MAJOR.MINOR, Regeln für die Nummer |
 | `ZeitZeuge.spec` | Build-Datei für PyInstaller |

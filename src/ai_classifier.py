@@ -16,6 +16,7 @@ Satz fürs Ticket. Sie erscheinen in der Timeline als eigene Zeile "KI".
 """
 
 import hashlib
+import importlib.util
 import json
 import os
 import threading
@@ -28,10 +29,20 @@ import datastore
 import safe_io
 import storage
 
-try:
-    import anthropic
-except ImportError:  # Paket fehlt: Funktion bleibt aus
-    anthropic = None
+_sdk_module = None
+
+
+def _sdk():
+    """Paket anthropic erst beim ersten KI-Aufruf laden: Es braucht über 1 s und sonst
+    fast die ganze Startzeit. None, wenn es fehlt (Funktion bleibt dann aus)."""
+    global _sdk_module
+    if _sdk_module is None:
+        try:
+            import anthropic
+        except ImportError:
+            anthropic = False
+        _sdk_module = anthropic
+    return _sdk_module or None
 
 TIME_FMT = "%Y-%m-%d %H:%M:%S"
 AI_TYPE = "KI-Vorschlag"
@@ -291,7 +302,7 @@ class AiStore:
 
 def classify(text, categories, model, key, effort="low"):
     """Ein Aufruf der Messages-API. Gibt (Liste der Tätigkeiten, usage-dict) zurück."""
-    client = anthropic.Anthropic(api_key=key, timeout=180.0, max_retries=2)
+    client = _sdk().Anthropic(api_key=key, timeout=180.0, max_retries=2)
     request = dict(
         model=model,
         max_tokens=16000,
@@ -325,6 +336,7 @@ def classify(text, categories, model, key, effort="low"):
 
 def error_text(exc):
     """Verständliche Meldung zu einem Fehler beim Aufruf (nie ein Stacktrace)."""
+    anthropic = _sdk()
     if anthropic is not None:
         if isinstance(exc, (anthropic.APIConnectionError, anthropic.APITimeoutError)):
             if not net.reachable(api_url()):
@@ -361,7 +373,9 @@ class AiClassifier(QObject):
 
     @staticmethod
     def available():
-        return anthropic is not None
+        if _sdk_module is not None:
+            return bool(_sdk_module)
+        return importlib.util.find_spec("anthropic") is not None  # ohne das Paket zu laden
 
     def input_text(self, entries, pc_entries):
         send_pc = self.config.get("ai_send_window_titles", True)
@@ -392,7 +406,7 @@ class AiClassifier(QObject):
         if not key:
             self.failed.emit(date_str, "Kein API-Schlüssel hinterlegt (Einstellungen ▾ → KI-Vorschläge).")
             return False
-        if anthropic is None:
+        if not self.available():
             self.failed.emit(date_str, "Das Paket 'anthropic' ist nicht installiert.")
             return False
         self.running.add(date_str)

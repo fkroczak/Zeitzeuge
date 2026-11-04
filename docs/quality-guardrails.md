@@ -20,6 +20,7 @@ Qt-eigenen Mitteln.
 | Datenbank: nichts im Klartext, Schlüsselfächer, falscher Schlüssel, Migration mit Abbruch und doppeltem Start, gesperrte Dateien, Threads | `tests/datastore_test.py`, `tests/protect_start_test.py` | Schritt „Tests (pytest)“ | blockiert |
 | Export für die PAW verschlüsselt, alter Export weiter lesbar | `tests/transfer_logic_test.py` | Schritt „Tests (pytest)“ | blockiert |
 | Startzeit (Fenster sichtbar, Daten gezeichnet) | `tests/start_bench.py` | nein, von Hand | Messwert |
+| Zeichnen und Tageswechsel mit einem Jahr Logs und 1000 Fensterwechseln | `tests/perf_bench.py` | nein, von Hand | Messwert |
 
 `tests/ui_audit_test.py` öffnet Hauptfenster und alle Einstellungsdialoge ohne Bildschirm
 und prüft:
