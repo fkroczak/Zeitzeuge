@@ -725,8 +725,9 @@ class MenusMixin:
     def apply_style(self):
         theme = THEMES["dark" if self.dark_mode else "light"]
         sheet = STYLESHEET
-        for key in sorted(theme, key=len, reverse=True):  # $bandtext vor $band ersetzen
-            sheet = sheet.replace(f"${key}", theme[key])
+        tokens = {**theme, "checkmark": icons.check_mark_file(theme["onaccent"])}
+        for key in sorted(tokens, key=len, reverse=True):  # $bandtext vor $band ersetzen
+            sheet = sheet.replace(f"${key}", tokens[key])
         # Palette passend setzen, sonst nutzen Tabellen/Scrollbars die Systemfarben
         pal = QPalette()
         for role, key in [(QPalette.Window, "bg"), (QPalette.WindowText, "text"),

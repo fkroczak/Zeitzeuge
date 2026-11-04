@@ -83,6 +83,9 @@ Testversionen aus Branches tragen die Version ihres main-Stands plus Buildnummer
 - **Remotedesktop (mstsc) aus dem Windows-Ereignisprotokoll:** Zeitzeuge liest zusätzlich `Microsoft-Windows-TerminalServices-RDPClient/Operational` (Aufbau 1024, Trennung 1026). Das füllt Zeiten, in denen Zeitzeuge nicht lief, und macht Beginn und Ende sekundengenau; mit der eigenen Aufzeichnung wird es zu einer Sitzung zusammengeführt. Abschaltbar unter Datenquellen → Remotedesktop (mstsc).
 
 ### Behoben
+- **Nachfrage „Was hast du gemacht?“ zeigt das Datum** und lässt es ändern (Kalender), wie beim Nachtragen.
+- **Das Feld „Tätigkeit“ hat wieder einen Rahmen** und ist im dunklen Design als Eingabefeld erkennbar.
+- **Haken-Kästchen (z. B. „Kulanz“, „Reise / Anfahrt“) sind im dunklen Design sichtbar**: mit Rahmen, angehakt blau mit Haken.
 - **Symbol in der Taskleiste** fehlte: Das Logo kommt jetzt zusätzlich aus PNG/SVG (nicht nur aus der .ico), Dialoge vor dem Hauptfenster tragen es auch, und Windows ordnet Zeitzeuge eine eigene Kennung zu.
 - **Timeline wird nicht mehr abgeschnitten:** Sie ist mindestens so hoch, dass alle Zeilen in kleiner Höhe passen, und höchstens so hoch wie alle Zeilen in voller Höhe. Mehr oder weniger Fensterhöhe bekommt die Tagesliste.
 - **Trennleiste zwischen Timeline und Liste:** Beim Ziehen zeigt eine gestrichelte Linie die neue Größe, neu gezeichnet wird erst beim Loslassen. Auch beim Ändern der Fenstergröße zeichnet die Timeline erst, wenn die Größe kurz stillsteht – das Ziehen ruckelt nicht mehr.
