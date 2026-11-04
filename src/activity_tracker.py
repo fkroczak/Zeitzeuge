@@ -25,6 +25,7 @@ from datetime import datetime, timedelta
 
 import datastore
 import safe_io
+import timefmt
 from rules import compile_pattern
 
 TIME_FMT = "%Y-%m-%d %H:%M:%S"
@@ -254,6 +255,10 @@ def _valid_segment(seg):
             and len(seg["start"]) == 19 and len(seg["end"]) == 19)
 
 
+SEGMENT_CACHE_DAYS = 8
+_segment_cache = {}  # (Speicher, Ablage, Tag) -> (Stand der Datenbank, Abschnitte)
+
+
 def read_segments(folder, date_str):
     """Gespeicherte Abschnitte eines Tages, auch wenn die Aufzeichnung gerade pausiert ist.
     Kaputte Zeilen werden übersprungen."""
@@ -261,7 +266,16 @@ def read_segments(folder, date_str):
         return []  # Datenordner fehlt: nichts anlegen
     try:
         store, name = datastore.locate(folder, "row_files")
-        return [seg for seg in store.rows(name, date_str) if _valid_segment(seg)]
+        # Timeline, Tagesliste und Dokumentation lesen denselben Tag beim Zeichnen mehrmals:
+        # gelesene Tage merken, solange sich in der Datenbank nichts geändert hat.
+        key, version = (id(store), name, date_str), store.version()
+        hit = _segment_cache.pop(key, None)
+        if hit is None or hit[0] != version:
+            hit = (version, [seg for seg in store.rows(name, date_str) if _valid_segment(seg)])
+        _segment_cache[key] = hit  # zuletzt benutzt ans Ende
+        while len(_segment_cache) > SEGMENT_CACHE_DAYS:
+            del _segment_cache[next(iter(_segment_cache))]
+        return [dict(seg) for seg in hit[1]]  # Kopien: Aufrufer dürfen sie ändern
     except (datastore.Busy, datastore.Locked, OSError):  # gerade nicht lesbar
         return []
 
@@ -286,19 +300,21 @@ def top_apps(folder, days=7, today=None, limit=15):
     return sorted(totals.values(), key=lambda x: -x[1])[:limit]
 
 
+def _seconds(a, b):
+    """Sekunden von a bis b (beide "YYYY-MM-DD HH:MM:SS")."""
+    return (timefmt.parse(b) - timefmt.parse(a)).total_seconds()
+
+
 def merge_segments(segments, min_seconds=30, max_gap=60):
     """Gleiche Fenster mit kurzen Lücken zusammenfassen, sehr kurze weglassen."""
     merged = []
     for s in sorted(segments, key=lambda s: s["start"]):
         if (merged and merged[-1]["app"] == s["app"] and merged[-1]["title"] == s["title"]
-                and (datetime.strptime(s["start"], TIME_FMT)
-                     - datetime.strptime(merged[-1]["end"], TIME_FMT)).total_seconds() <= max_gap):
+                and _seconds(merged[-1]["end"], s["start"]) <= max_gap):
             merged[-1]["end"] = max(merged[-1]["end"], s["end"])
         else:
             merged.append(dict(s))
-    return [m for m in merged
-            if (datetime.strptime(m["end"], TIME_FMT)
-                - datetime.strptime(m["start"], TIME_FMT)).total_seconds() >= min_seconds]
+    return [m for m in merged if _seconds(m["start"], m["end"]) >= min_seconds]
 
 
 def app_label(app):

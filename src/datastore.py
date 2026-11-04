@@ -87,6 +87,7 @@ class Store:
         self._conn = None
         self._cipher = None
         self.changes = 0  # Zähler für Sicherung und Zwischenspeicher
+        self._opened = 0  # wie oft geöffnet (neue Verbindung: Zwischenspeicher ungültig)
         self._retry_at = {}  # gesperrte alte Dateien: nicht vor diesem Zeitpunkt erneut
         self._hit_lock = False
         self.migrated = []  # Meldungen der Migration (für Statuszeile/Log)
@@ -111,6 +112,7 @@ class Store:
                     conn.execute("PRAGMA synchronous = NORMAL")
                     conn.executescript(SCHEMA)
                     self._conn = conn
+                    self._opened += 1
                     break
                 except sqlite3.DatabaseError as e:
                     last = e
@@ -487,6 +489,13 @@ class Store:
         if bad:
             safe_io.report(f"Datenbank: {bad} beschädigte Zeilen in {name}/{day} übersprungen")
         return result
+
+    def version(self):
+        """Stand der Daten für Zwischenspeicher: ändert sich bei jedem Schreiben, auch
+        durch einen anderen Prozess (PRAGMA data_version) und nach neuem Öffnen."""
+        with self._lock:
+            self.open()
+            return self._opened, self.changes, self._conn.execute("PRAGMA data_version").fetchone()[0]
 
     def row_count(self, name, day=None):
         with self._lock:

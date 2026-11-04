@@ -19,14 +19,15 @@ Zeitzeuge Zeitraum und Kunden (nicht nur einen Schlüssel). Ändert sich ein Ein
 nicht noch einmal gefragt.
 """
 import re
-from datetime import datetime
+
+import timefmt
 
 TIME_FMT = "%Y-%m-%d %H:%M:%S"
 _PHONE_SUFFIX = re.compile(r"\s*\([+\d\s/-]{3,}\)\s*$")
 
 
 def _t(text):
-    return datetime.strptime(text, TIME_FMT)
+    return timefmt.parse(text)
 
 
 def customer_key(entry, index=None):

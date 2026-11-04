@@ -24,6 +24,7 @@ from datetime import datetime, timedelta
 import datastore
 import prompt_topics
 import safe_io
+import timefmt
 from tickets import format_ticket_text
 
 TIME_FMT = "%Y-%m-%d %H:%M:%S"
@@ -35,7 +36,7 @@ FLAG_NAMES = {"goodwill": "Kulanz", "travel": "Reise"}
 
 
 def _t(text):
-    return datetime.strptime(text, TIME_FMT)
+    return timefmt.parse(text)
 
 
 def sub_entries(entry):
