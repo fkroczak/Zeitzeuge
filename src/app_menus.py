@@ -218,6 +218,8 @@ class MenusMixin:
     def resizeEvent(self, event):
         super().resizeEvent(event)
         QTimer.singleShot(0, self.fit_toolbar)  # erst wenn die Leiste ihre neue Breite hat
+        if hasattr(self, "splitter"):
+            QTimer.singleShot(0, self._fit_splitter)  # Timeline wieder so hoch wie ihre Zeilen
 
     def update_view_button(self):
         """Haken an der aktuellen Ansicht und Hinweis am Knopf „Ansicht“."""

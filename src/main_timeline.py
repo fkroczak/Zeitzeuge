@@ -30,13 +30,14 @@ if __name__ == "__main__":
 from datetime import datetime
 
 from PySide6.QtCore import QDate, QLocale, Qt, QTimer
-from PySide6.QtGui import QAction, QIcon, QKeySequence
+from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (QAbstractItemView, QApplication, QHeaderView, QLabel,
                                QMainWindow, QMessageBox, QSplitter, QTableWidget, QToolButton,
                                QVBoxLayout, QWidget)
 
 from ai_classifier import AI_TYPE, AiClassifier, AiStore
 from busy_bar import BusyBar
+import icons
 from version import version_details, version_label
 from transfer import ImportStore
 from retention_dialogs import RetentionRunner
@@ -427,7 +428,7 @@ class TimelineApp(MenusMixin, DayListMixin, DayCloseMixin, DocsMixin, ReadersMix
         super().__init__()
 
         self.setWindowTitle(f"Zeitzeuge {version_label()}")
-        self.setWindowIcon(QIcon(resource_path("zeitzeuge.ico")))
+        self.setWindowIcon(icons.app_icon(resource_path))
         self.resize(1200, 720)
 
         # Daten, die noch neben der EXE liegen, in den Datenordner umziehen
@@ -535,9 +536,17 @@ class TimelineApp(MenusMixin, DayListMixin, DayCloseMixin, DocsMixin, ReadersMix
         splitter = QSplitter(Qt.Vertical, self)
         splitter.addWidget(self.timeline)
         splitter.addWidget(self.table)
-        splitter.setStretchFactor(0, 1)
-        splitter.setStretchFactor(1, 2)
-        splitter.setSizes([260, 400])
+        # Die Timeline hält ihre Höhe (zwischen Mindesthöhe aller Zeilen und voller Höhe, siehe
+        # TimelineView._fit_height_to_rows); mehr oder weniger Fensterhöhe geht an die Liste.
+        splitter.setStretchFactor(0, 0)
+        splitter.setStretchFactor(1, 1)
+        splitter.setChildrenCollapsible(False)
+        # Beim Ziehen nur eine gestrichelte Linie zeigen, neu gezeichnet wird beim Loslassen
+        splitter.setOpaqueResize(False)
+        self.splitter = splitter
+        self._timeline_wish = None  # gezogene Höhe der Timeline (None = so hoch wie die Zeilen)
+        splitter.splitterMoved.connect(self._on_splitter_moved)
+        self.timeline.height_limits_changed.connect(self._fit_splitter)
         splitter.setContentsMargins(8, 8, 8, 8)
         central = QWidget(self)
         # Ladeanzeige (Logs, 3CX, ITM, KI): drehender Kreis mit Text in der Werkzeugleiste,
@@ -660,6 +669,25 @@ class TimelineApp(MenusMixin, DayListMixin, DayCloseMixin, DocsMixin, ReadersMix
         if self._wizard_pending:
             QTimer.singleShot(800, self._start_setup_wizard)
 
+
+    def _on_splitter_moved(self, _pos, _index):
+        sizes = self.splitter.sizes()
+        # Ganz nach unten gezogen: wieder automatisch so hoch wie alle Zeilen
+        self._timeline_wish = None if sizes[0] >= self.timeline.maximumHeight() else sizes[0]
+
+    def _fit_splitter(self):
+        """Timeline-Höhe in ihre Grenzen bringen; QSplitter gibt den Rest sonst nicht an die Liste."""
+        sizes = self.splitter.sizes()
+        total = sum(sizes)
+        if total <= 0:
+            return
+        tl = self.timeline
+        want = tl.maximumHeight() if self._timeline_wish is None else self._timeline_wish
+        top = max(tl.minimumHeight(), min(want, tl.maximumHeight(),
+                                          total - self.table.minimumSizeHint().height()))
+        if top != sizes[0]:
+            self.splitter.setSizes([top, total - top])
+
     def _start_setup_wizard(self):
         """Erster Start: Datenquellen mit dem Assistenten einrichten (danach nie mehr von selbst)."""
         self._wizard_pending = False
@@ -728,7 +756,9 @@ def acquire_single_instance(path=None, wait_ms=500):
 if __name__ == "__main__":
     QLocale.setDefault(GERMAN)
     install_error_hooks()
+    icons.set_windows_app_id()  # vor dem ersten Fenster, sonst gilt die Kennung von python.exe
     app = QApplication(sys.argv)
+    app.setWindowIcon(icons.app_icon(resource_path))  # auch für Dialoge vor dem Hauptfenster
     app.setStyle(AppStyle())
     # Qt 6 folgt sonst dem Windows-Farbschema (dunkel) bei allem, was das Design nicht selbst
     # färbt (Rahmen, Schatten, Meldungen vor dem Start). Wie unter Qt 5: Systemfarben hell.

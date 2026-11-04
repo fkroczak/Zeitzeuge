@@ -455,6 +455,8 @@ class TimelineView(QGraphicsView):
     rows_menu_requested = Signal(QPoint, str)
     # Zeilen in der Legende verschoben: neue Reihenfolge (Liste der Kennungen)
     row_order_changed = Signal(list)
+    # Mindest- oder Höchsthöhe geändert (andere Zahl Zeilen): Hauptfenster passt die Aufteilung an
+    height_limits_changed = Signal()
     # Hintergrund-Thread hat TeamViewer- und RDM-Logs gelesen
     logs_loaded = Signal(object, object, object)
     # Logs werden gelesen (True) oder sind fertig (False) – für die Ladeanzeige
@@ -534,6 +536,12 @@ class TimelineView(QGraphicsView):
         self._wheel_timer.setSingleShot(True)
         self._wheel_timer.setInterval(30)
         self._wheel_timer.timeout.connect(self._apply_wheel_zoom)
+        # Fenster/Leiste in der Größe ändern: erst zeichnen, wenn die Größe kurz stillsteht
+        self._resize_timer = QTimer(self)
+        self._resize_timer.setSingleShot(True)
+        self._resize_timer.setInterval(40)
+        self._resize_timer.timeout.connect(self._apply_resize)
+        self._rendered_h = None    # Höhe der Fläche beim letzten Zeichnen
         self.fit_day = True        # ganzen Tag ins Fenster einpassen
         self._drag_start = None    # Mausposition beim Drücken (Bereich ziehen)
         self._drag_button = None   # links: Tätigkeit eintragen, rechts: Zoom
@@ -1010,6 +1018,10 @@ class TimelineView(QGraphicsView):
                   + sum(max(1, n) for _k, _p, n in fixed_layout) + n_lanes)
         fit = (free_h - top - (4 if bands else 0) - 6 - 8) / max(1, n_rows)
         lane_h, gap = type(self).LANE_H, type(self).LANE_GAP
+        # Erst merken, dann Grenzen setzen: Die können die Größe sofort ändern, dann zeichnet
+        # _apply_resize mit der neuen Höhe noch einmal
+        self._rendered_h = self.maximumViewportSize().height()
+        self._fit_height_to_rows(top + (4 if bands else 0) + 6 + 8, n_rows)
         if fit < lane_h + gap:
             gap = 4
             lane_h = max(self.MIN_LANE_H, int(fit - gap))
@@ -1293,12 +1305,29 @@ class TimelineView(QGraphicsView):
                                         if t) or a.get("type", "")
             self._add_label(label_text, x1, y, w, self.LANE_H, font, metrics, label_color)
 
+    def _fit_height_to_rows(self, fixed_h, n_rows):
+        """Höhe der Timeline an die Zeilen binden: kleinste Höhe = alle Zeilen in der
+        Mindesthöhe (nichts wird abgeschnitten), größte = alle Zeilen in voller Höhe."""
+        chrome = (self.height() - self.maximumViewportSize().height()
+                  + self.horizontalScrollBar().sizeHint().height())
+        rows = max(1, n_rows)
+        low = int(chrome + fixed_h + rows * (self.MIN_LANE_H + 4))
+        high = int(chrome + fixed_h + rows * (type(self).LANE_H + type(self).LANE_GAP))
+        if (low, high) != (self.minimumHeight(), self.maximumHeight()):
+            self.setMinimumHeight(low)
+            self.setMaximumHeight(max(low, high))
+            self.height_limits_changed.emit()
+
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        # Ganzer Tag: Breite mitziehen; sonst Höhe der Fläche an das Fenster anpassen
+        if self._ppm:
+            self._resize_timer.start()  # beim Ziehen nicht bei jedem Pixel neu zeichnen
+
+    def _apply_resize(self):
+        # Ganzer Tag: Breite mitziehen; sonst Zeilenhöhe an die neue Höhe anpassen
         if self._ppm and (
             (self.fit_day and abs(self._ppm - self._fit_ppm()) > 0.01)
-            or abs(self.sceneRect().height() - self.viewport().height()) > 30
+            or self.maximumViewportSize().height() != self._rendered_h
         ):
             self.relayout()
 
