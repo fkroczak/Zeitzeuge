@@ -124,6 +124,9 @@ READ_JS = r"""
     if (days().includes(target)) await settle();
   }
   if (!days().includes(target)) return JSON.stringify({state: "ok", url: location.href, days: days(), missing: true});
+  // Woche war schon zu sehen: FullCalendar hält die Einträge im Speicher, darum neu holen,
+  // sonst fehlen neue Buchungen, bis die Seite selbst nachlädt
+  if (!moved && api) { try { api.fullCalendar("refetchEvents"); } catch (e) {} }
   if (!moved) await settle();
 
   // Einträge lesen: Spalte i der Tabelle gehört zum Tag i im Kopf
@@ -285,6 +288,8 @@ class M42Reader(BrowserReader):
         self._week_read = 0    # Zeitpunkt, zu dem die aktuelle Woche zuletzt gelesen wurde
         # Erst über die Schnittstelle lesen; klappt das nicht, aus der Seite (wie bisher)
         self.use_api = use_api
+        self._api_wanted = use_api  # Einstellung: bei Aktualisieren die Schnittstelle erneut versuchen
+        self._refresh_count = 0     # zählt Aktualisieren (F5), siehe _read_week
         self.widget_id = (widget_id or "").strip() or DEFAULT_WIDGET
         self.source = ""       # "Schnittstelle" oder "Seite": womit zuletzt gelesen wurde
         self.user_id = ""      # eigener Matrix42-Benutzer (aus gelesenen Buchungen), zum Buchen
@@ -347,6 +352,8 @@ class M42Reader(BrowserReader):
         if date_str > date.today().isoformat():
             return
         monday = week_start(date_str)
+        self.use_api = self._api_wanted  # nach einem Aussetzer wieder über die Schnittstelle
+        self._refresh_count += 1
         self._checked.discard(monday)
         if monday == week_start(date.today().isoformat()):
             self._week_read = 0  # aktuelle Woche: beim nächsten Durchlauf gleich lesen
@@ -394,6 +401,17 @@ class M42Reader(BrowserReader):
 
     def _read_week(self, monday):
         """Eine Woche lesen und speichern. False, wenn eine Anmeldung nötig ist."""
+        count = self._refresh_count
+        ok = self._read_week_once(monday)
+        # Während des Lesens Aktualisieren gedrückt: die aktuelle Woche gleich nochmal lesen,
+        # sonst gälte sie für 10 Minuten als frisch, obwohl sie vor dem Klick gelesen wurde
+        if count != self._refresh_count and monday == week_start(date.today().isoformat()):
+            self._week_read = 0
+            self._checked.discard(monday)
+            self._wake.set()
+        return ok
+
+    def _read_week_once(self, monday):
         self._set_status(f"Matrix42: lese Woche ab {monday[8:10]}.{monday[5:7]}. …")
         if self.use_api:
             done = self._read_week_api(monday)

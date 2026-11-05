@@ -102,6 +102,8 @@ Testversionen aus Branches tragen die Version ihres main-Stands plus Buildnummer
 - Anrufe: ein Gespräch wurde von einem Versuch in derselben Minute überschrieben.
 - Eintragen: Beschriftung des Merken-Hakens landete im Textfeld.
 - PC-Verlauf wird vor dem Löschen mit Nullen überschrieben; Teams-Logs vor 1970 unter Windows.
+- Aktualisieren (F5) lädt jetzt auch die 3CX-Anrufliste sofort neu; neue Anrufe kamen sonst erst nach bis zu 6 Minuten. Die Liste wird außerdem alle 2 statt 5 Minuten neu geladen.
+- Matrix42: Aktualisieren holt die Einträge der Woche wirklich neu (vorher zeigte die Kalenderseite oft noch den alten Stand, bis 30 Minuten lang) und versucht nach einem Aussetzer wieder die Schnittstelle.
 
 ## 4.0.0 – 2026-10-22
 
