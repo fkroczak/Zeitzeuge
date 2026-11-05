@@ -210,7 +210,7 @@ python src/main_timeline.py
 Die fertige EXE liegt unter **[Releases](https://github.com/fkroczak/Zeitzeuge/releases)** (rechts auf der Startseite des Repositorys). Jeder Merge in main wird automatisch ein Release `v<Version>` mit EXE und Ordner-Variante.
 
 - **Immer die neueste Version (direkter Link):** [ZeitZeuge.exe](https://github.com/fkroczak/Zeitzeuge/releases/latest/download/ZeitZeuge.exe) · [ZeitZeuge-Ordner.zip](https://github.com/fkroczak/Zeitzeuge/releases/latest/download/ZeitZeuge-Ordner.zip)
-- **Ältere Versionen:** in der Liste unter Releases, jede mit ihrer Versionsnummer.
+- **Ältere Versionen:** in der Liste unter Releases, jede mit ihrer Versionsnummer. Es bleiben die 10 neuesten, ältere löscht der Build samt Tag.
 - **Testversionen aus Branches und PRs:** Reiter **Actions**, Lauf „EXE bauen“, unter **Artifacts** (nur angemeldet, 30 Tage).
 - **Ordner-Variante** (`ZeitZeuge-Ordner.zip`, ebenfalls unter Releases bzw. Artifacts): ZIP entpacken und `ZeitZeuge.exe` im Ordner starten. Sie entpackt beim Start nichts nach `%TEMP%` und ist für Rechner mit EDR wie Cortex XDR gedacht (z. B. die PAW). Selbst bauen: `set ZEITZEUGE_ONEDIR=1` und dann `pyinstaller ZeitZeuge.spec`.
 
