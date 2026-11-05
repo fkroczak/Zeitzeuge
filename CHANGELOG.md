@@ -18,6 +18,7 @@ Testversionen aus Branches tragen die Version ihres main-Stands plus Buildnummer
 26.10.2026 können sie nicht mehr lesen.
 
 ### Neu
+- **Ticket beim Dokumentieren suchen:** Neben dem Feld „Ticket“ sitzt der Knopf „Suchen …“. Er öffnet die Matrix42-Ticketsuche (vorbelegt mit dem Kunden), ein Doppelklick übernimmt das Ticket. So steht das passende Ticket schon vor dem Buchen in der Tätigkeit. Nur sichtbar, wenn Matrix42 eingeschaltet ist.
 - **Neues Design „Companion“** (übernommen aus dem Entwurf „Zeiterfassung Companion“): ruhige Zink-Grautöne in Hell und Dunkel, runde Ecken an Feldern, Knöpfen, Menüs und Timeline-Balken, Karten mit feinem Rand, Hauptknopf in Textfarbe, Violett für Fokus und Links.
 - **Kennzahlen über der Timeline:** Erfasst (von Soll, mit Balken), Offen („Jetzt eintragen“), Vorschläge („Ansehen“), Buchungsquote gleich hinter Erfasst (heute | 7 Tage als große Zahl in der Farbe der Stufe, bisher in der Statuszeile; Klick öffnet den Wochenabschluss) und Nach Kunde. Über der Tagesliste Chips für die Ansichten Alle, Offen / Doku, Vorschläge, Telefonate und Arbeitsblöcke.
 - **Kunden & Erkennung:** neues Fenster mit Kundenliste links (Suche, Kürzel, Merkmale, Stunden der letzten 7 Tage) und Merkmalen als Chips rechts, je Art mit Trefferzahl. Neue Merkmale: **Ordner und Dateipfade**, **Rechnernamen und Hosts** (auch `*.kunde.local`), **IP-Adressen und -Bereiche** (CIDR). Dazu Kundennummer und der Schalter „Kalendertermine“. Domains aus dem Browser-Verlauf zählen wie Mail-Domains.
