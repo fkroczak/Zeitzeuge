@@ -338,10 +338,15 @@ class DayListMixin:
 
     def refresh(self):
         self.timeline.refresh()
-        reader = getattr(self, "m42_reader", None)
-        if reader is not None and hasattr(reader, "refresh"):  # Matrix42 gleich mit (sonst alle 10 min)
-            reader.refresh(self.current_date.toString("yyyy-MM-dd"))
-            self.statusBar().showMessage("Logs und Matrix42 werden neu eingelesen …", 3000)
+        # 3CX und Matrix42 gleich mit neu lesen (sonst erst beim nächsten Durchlauf)
+        names = []
+        for attr, name in (("pbx_reader", "3CX"), ("m42_reader", "Matrix42")):
+            reader = getattr(self, attr, None)
+            if reader is not None and hasattr(reader, "refresh"):
+                reader.refresh(self.current_date.toString("yyyy-MM-dd"))
+                names.append(name)
+        if names:
+            self.statusBar().showMessage(f"Logs, {' und '.join(names)} werden neu eingelesen …", 3000)
         else:
             self.statusBar().showMessage("Logs werden neu eingelesen …", 2000)
 
