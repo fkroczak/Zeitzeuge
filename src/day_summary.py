@@ -10,7 +10,7 @@ Die Zahlen rechnet summary() ohne Qt aus (testbar), die Widgets zeigen sie nur a
 """
 from datetime import datetime
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QProgressBar, QSizePolicy,
                                QToolButton, QVBoxLayout, QWidget)
 
@@ -46,7 +46,7 @@ def hm(seconds):
     return f"{minutes // 60}:{minutes % 60:02d} h"
 
 
-def summary(doc_band, ai_entries, target_minutes, top=4):
+def summary(doc_band, ai_entries, target_minutes, top=8):
     """Kennzahlen des Tages.
 
     doc_band:   Einträge der Zeile Dokumentation (doc = eingetragen, open = offen)
@@ -71,10 +71,55 @@ def summary(doc_band, ai_entries, target_minutes, top=4):
     }
 
 
+class _CustomerLine(QLabel):
+    """Kunden nebeneinander; passt nicht alles, folgen ganze Kunden und „+2“ statt „WiRoPa 0:“."""
+
+    SEP = "  ·  "
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._parts, self._empty = [], ""
+        self.setTextFormat(Qt.PlainText)
+        self.setMinimumWidth(40)
+
+    def set_parts(self, parts, empty):
+        self._parts, self._empty = list(parts), empty
+        self.setToolTip("\n".join(self._parts))
+        self._fit()
+
+    def sizeHint(self):
+        hint = super().sizeHint()
+        text = self.SEP.join(self._parts) or self._empty
+        hint.setWidth(self.fontMetrics().horizontalAdvance(text) + 4)
+        return hint
+
+    def minimumSizeHint(self):
+        return QSize(40, super().minimumSizeHint().height())
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._fit()
+
+    def _fit(self):
+        if not self._parts:
+            self.setText(self._empty)
+            return
+        fm, room = self.fontMetrics(), self.width() - 4
+        for n in range(len(self._parts), 0, -1):
+            rest = len(self._parts) - n
+            text = self.SEP.join(self._parts[:n]) + (f"{self.SEP}+{rest}" if rest else "")
+            if fm.horizontalAdvance(text) <= room:
+                break
+        else:
+            text = fm.elidedText(self._parts[0], Qt.ElideRight, room)
+        if text != self.text():
+            self.setText(text)
+
+
 class _Kpi(QFrame):
     """Kennzahl als Karte: Name, Wert, Zusatz und optional ein Knopf."""
 
-    def __init__(self, label, parent=None, action=None):
+    def __init__(self, label, parent=None, action=None, customers=False):
         super().__init__(parent)
         self.setObjectName("card")
         layout = QVBoxLayout(self)
@@ -85,12 +130,12 @@ class _Kpi(QFrame):
         layout.addWidget(head)
         row = QHBoxLayout()
         row.setSpacing(8)
-        self.value = QLabel("–", self)
-        self.value.setObjectName("kpi_value")
-        row.addWidget(self.value)
+        self.value = _CustomerLine(self) if customers else QLabel("–", self)
+        self.value.setObjectName("card_title" if customers else "kpi_value")
+        row.addWidget(self.value, 1 if customers else 0)
         self.extra = QLabel("", self)
         self.extra.setObjectName("kpi_label")
-        row.addWidget(self.extra, 1)
+        row.addWidget(self.extra, 0 if customers else 1)
         self.button = None
         if action:
             self.button = QToolButton(self)
@@ -206,18 +251,19 @@ class DaySummary(QWidget):
         self.suggest = _Kpi("Vorschläge", self, "Ansehen")
         self.suggest.button.clicked.connect(self.suggestions_clicked)
         self.suggest.button.setAccessibleName("KI-Vorschläge ansehen")
-        self.customers = _Kpi("Nach Kunde", self)
-        self.customers.value.setObjectName("card_title")
-        self.customers.value.setTextFormat(Qt.PlainText)
+        self.customers = _Kpi("Nach Kunde", self, customers=True)
         # Buchungsquote (Matrix42 ÷ Personalzeit): week_dialogs.update_rate_button füllt die
         # Kachel und blendet sie ohne Matrix42 aus; Klick öffnet den Wochenabschluss
         self.rate = RateKpi(self)
         self.rate.hide()
-        for w, stretch in ((self.booked, 2), (self.rate, 2), (self.opened, 3), (self.suggest, 2),
-                           (self.customers, 3)):
-            # alle gleich hoch; in schmalen Fenstern dürfen die Karten schrumpfen (Reflow)
-            w.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
-            layout.addWidget(w, stretch)
+        # Zahlen-Kacheln so breit wie ihr Inhalt (keine leeren Flächen), „Nach Kunde“ füllt
+        # den Rest. Im schmalen Fenster dürfen alle schrumpfen (Reflow, Mindestbreite klein).
+        for w in (self.booked, self.rate, self.opened, self.suggest):
+            w.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Preferred)
+            w.setMinimumWidth(60)
+            layout.addWidget(w, 0)
+        self.customers.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        layout.addWidget(self.customers, 1)
         self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
 
     def show_numbers(self, data):
@@ -235,9 +281,9 @@ class DaySummary(QWidget):
         self.suggest.value.setText(str(s))
         self.suggest.extra.setText("wartet" if s == 1 else "warten")
         self.suggest.button.setVisible(bool(s))
+        self.suggest.setVisible(bool(s))  # „0 warten“ ist nur Rauschen
         parts = [f"{name} {hm(sec)}" for name, sec in data["customers"]]
-        self.customers.value.setText("  ·  ".join(parts) if parts else "noch nichts eingetragen")
-        self.customers.value.setToolTip("\n".join(parts))
+        self.customers.value.set_parts(parts, "noch nichts eingetragen")
 
 
 class ViewChips(QWidget):

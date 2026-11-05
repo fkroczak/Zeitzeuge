@@ -1606,6 +1606,15 @@ class TimelineView(QGraphicsView):
             return []
         return [f"Kunde: {escape(index.customer_for(entry))}"]
 
+    def _swatch(self, entry):
+        """Farbquadrat wie der Balken in der Timeline (Text daneben bleibt, Farbe nur zusätzlich)."""
+        try:
+            pc = entry.get("pc_block") or ("app" in entry and any(p is entry for p in self._pc_band))
+            color = self.block_color(entry) if pc else entry_color(entry, self.config)
+        except Exception:  # Anzeige darf nie am Hinweis scheitern
+            return ""
+        return f'<span style="color:{color.name()}">■</span>&nbsp;'
+
     def _hover_text(self, minute, hovered=None):
         """Hinweis zur Linie: Uhrzeit, Personalzeit und alles, was zu dieser Minute lief."""
         date_str = self.current_date.toString("yyyy-MM-dd")
@@ -1616,7 +1625,7 @@ class TimelineView(QGraphicsView):
 
         if hovered:  # Eintrag direkt unter der Maus: ausführlich
             start, end = parse_time(hovered["start"]), parse_time(hovered["end"])
-            lines += ["", f"<b>{escape(hovered.get('customer_name') or hovered.get('type'))}</b>",
+            lines += ["", f"{self._swatch(hovered)}<b>{escape(hovered.get('customer_name') or hovered.get('type'))}</b>",
                       escape(type_label(hovered)),
                       *self._customer_line(hovered),
                       f"{start:%H:%M} – {end:%H:%M}  ({format_duration((end - start).total_seconds())})"]
@@ -1631,7 +1640,8 @@ class TimelineView(QGraphicsView):
                 lines.append("<i>Nicht gebucht · Rechtsklick: Tätigkeit eintragen</i>")
             elif hovered.get("cluster"):
                 for e in hovered["cluster"][:8]:
-                    lines.append(f"{parse_time(e['start']):%H:%M}–{parse_time(e['end']):%H:%M}  "
+                    lines.append(f"{self._swatch(e.get('source_entry', e))}"
+                                 f"{parse_time(e['start']):%H:%M}–{parse_time(e['end']):%H:%M}  "
                                  f"{escape(e.get('customer_name') or type_label(e.get('source_entry', e)))}")
                 if len(hovered["cluster"]) > 8:
                     lines.append(f"<i>… und {len(hovered['cluster']) - 8} weitere</i>")
@@ -1676,7 +1686,7 @@ class TimelineView(QGraphicsView):
         if others:
             lines.append("")
             for a in others[:8]:
-                lines.append(f"{parse_time(a['start']):%H:%M}–{parse_time(a['end']):%H:%M}  "
+                lines.append(f"{self._swatch(a)}{parse_time(a['start']):%H:%M}–{parse_time(a['end']):%H:%M}  "
                              f"{escape(type_label(a))}: {escape(a.get('customer_name') or '')}")
             if len(others) > 8:
                 lines.append(f"<i>… und {len(others) - 8} weitere</i>")
