@@ -127,7 +127,7 @@ def _word_votes(entries, bookings, index):
             words.setdefault(w, set()).add(name)
     if not words:
         return {}
-    known = {rx.pattern for rx, _n in index.words}
+    known = {rx.pattern for rx, _n, _w in index.words}
     patterns = {w: re.compile(r"(?<![0-9a-z])" + re.escape(w)) for w in words}
     by_day = {}
     for b in bookings or []:

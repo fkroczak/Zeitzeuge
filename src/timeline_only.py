@@ -33,6 +33,21 @@ def parse_time(text):
     return datetime.fromisoformat(text)
 
 
+class _RoundRect(QGraphicsRectItem):
+    """Balken mit runden Ecken (Design „Companion“). Bleibt ein QGraphicsRectItem,
+    damit Treffer, Hinweis und Auswahl wie bisher über rect() laufen."""
+
+    RADIUS = 4.0
+
+    def paint(self, painter, option, widget=None):
+        r = self.rect()
+        radius = min(self.RADIUS, r.width() / 2, r.height() / 2)
+        painter.setRenderHint(QPainter.Antialiasing, True)
+        painter.setPen(self.pen())
+        painter.setBrush(self.brush())
+        painter.drawRoundedRect(r, radius, radius)
+
+
 def _first_line(text):
     """Erste nicht-leere Zeile: Balken-Beschriftungen sind einzeilig, sonst laufen
     mehrzeilige Beschreibungen über die Zeilen darunter."""
@@ -589,6 +604,14 @@ class TimelineView(QGraphicsView):
             self.non_work_color = QColor(27, 31, 36, 14)
         self.axis_bg = QColor(t["surface"])
 
+    def _add_block(self, x, y, w, h, pen, brush):
+        """Balken mit runden Ecken in die Szene legen (wie scene.addRect)."""
+        item = _RoundRect(x, y, w, h)
+        item.setPen(pen)
+        item.setBrush(brush)
+        self.scene.addItem(item)
+        return item
+
     def set_dark_mode(self, enabled: bool):
         self.dark_mode = enabled
         self.init_timeline_colors()
@@ -600,8 +623,8 @@ class TimelineView(QGraphicsView):
     def _create_tooltip(self):
         tooltip = QLabel(self.parent(), Qt.ToolTip)
         tooltip.setStyleSheet(
-            "QLabel { background-color: #1B1F24; color: #F2F4F7; "
-            "border: 1px solid #3A424C; padding: 5px 8px; border-radius: 0; }"
+            "QLabel { background-color: #18181B; color: #F4F4F5; "
+            "border: 1px solid #3F3F46; padding: 8px 10px; border-radius: 10px; }"
         )
         tooltip.hide()
         return tooltip
@@ -1131,7 +1154,7 @@ class TimelineView(QGraphicsView):
             pen = QPen(Qt.NoPen)
             label_color = readable_on(base)
 
-            rect = self.scene.addRect(x1, y, w, self.LANE_H, pen, QBrush(fill))
+            rect = self._add_block(x1, y, w, self.LANE_H, pen, QBrush(fill))
             rect.setData(0, a)
             rect.setCursor(Qt.PointingHandCursor)
             self.activity_rects[rect] = a
@@ -1155,7 +1178,7 @@ class TimelineView(QGraphicsView):
                 color = self.block_color(p)
                 # 1 px Abstand zwischen Blöcken, damit sie als einzelne Kacheln lesbar bleiben
                 w = max(1.5, x2 - x1 - (1 if p.get("pc_block") else 0))
-                rect = self.scene.addRect(x1, band_y, w, pc_h, QPen(Qt.NoPen), QBrush(color))
+                rect = self._add_block(x1, band_y, w, pc_h, QPen(Qt.NoPen), QBrush(color))
                 rect.setCursor(Qt.PointingHandCursor)
                 self.activity_rects[rect] = p
                 if p.get("pc_block"):
@@ -1281,7 +1304,7 @@ class TimelineView(QGraphicsView):
             pen = QPen(base, 1.5, Qt.DotLine)
         if fill.alpha() < 255:  # Schrift passend zur gemischten Fläche (kräftige Farben)
             label_color = readable_on(_blend(fill, self.background_color))
-        rect = self.scene.addRect(x1, y, w, self.LANE_H, pen, QBrush(fill))
+        rect = self._add_block(x1, y, w, self.LANE_H, pen, QBrush(fill))
         rect.setCursor(Qt.PointingHandCursor)
         self.activity_rects[rect] = a
         if w > 28:

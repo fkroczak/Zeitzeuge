@@ -32,6 +32,7 @@ from grouping import CREDENTIAL_TYPES, group_entries
 import customers as customer_list
 import focus
 import prompt_topics
+import range_context
 from timeline_only import (OUTLOOK_TYPES, ROW_NAMES, ActivityViewDialog, ai_copy_text, format_duration, parse_time,
                            row_kind, type_label)
 from theme import GERMAN
@@ -457,10 +458,22 @@ class DocsMixin(CustomersMixin):
             start, end = span or default_span(self.current_date.toPython(), minute)
             info, customer, category, text = "", "", "", ""
             hints = {}
+        context_for = None
+        if span:  # Zeitraum in der Timeline gezogen: Spuren dazu zeigen, Termin/Anruf vorschlagen
+            date = QDate(start.year, start.month, start.day)
+            day_acts = self.timeline.activities_for(date)
+            day_pcs = self.timeline.pc_entries_for(date, min_seconds=30)
+
+            def context_for(s, e):
+                return range_context.context(s, e, day_acts, day_pcs)
+            found = range_context.suggestion(start, end, day_acts, self.customer_index())
+            if found:
+                customer, text = found
+                info = f"Vorschlag aus deinem {'Kalender' if text != 'Telefonat' else 'Anruf'}: {text}"
         dialog = EntryDialog(start, end, self.known_customers(), categories, customer, category,
                              text, tv_id=(entry or {}).get("tv_id"), info=info, parent=self,
                              trace=hints.get("trace"), rule_subject=hints.get("rule_subject"),
-                             **self.entry_form_options(start, end))
+                             context_for=context_for, **self.entry_form_options(start, end))
         dialog.form.set_billing(self.billing())
         if dialog.exec() != QDialog.Accepted:
             return

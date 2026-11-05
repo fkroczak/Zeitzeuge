@@ -18,6 +18,11 @@ Testversionen aus Branches tragen die Version ihres main-Stands plus Buildnummer
 26.10.2026 können sie nicht mehr lesen.
 
 ### Neu
+- **Neues Design „Companion“** (übernommen aus dem Entwurf „Zeiterfassung Companion“): ruhige Zink-Grautöne in Hell und Dunkel, runde Ecken an Feldern, Knöpfen, Menüs und Timeline-Balken, Karten mit feinem Rand, Hauptknopf in Textfarbe, Violett für Fokus und Links.
+- **Kennzahlen über der Timeline:** Erfasst (von Soll, mit Balken), Offen („Jetzt eintragen“), Vorschläge („Ansehen“) und Nach Kunde. Über der Tagesliste Chips für die Ansichten Alle, Offen / Doku, Vorschläge, Telefonate und Arbeitsblöcke.
+- **Kunden & Erkennung:** neues Fenster mit Kundenliste links (Suche, Kürzel, Merkmale, Stunden der letzten 7 Tage) und Merkmalen als Chips rechts, je Art mit Trefferzahl. Neue Merkmale: **Ordner und Dateipfade**, **Rechnernamen und Hosts** (auch `*.kunde.local`), **IP-Adressen und -Bereiche** (CIDR). Dazu Kundennummer und der Schalter „Kalendertermine“. Domains aus dem Browser-Verlauf zählen wie Mail-Domains.
+- **Zeitraum nachtragen:** Beim Ziehen in der Timeline zeigt das Fenster, was Rechner, Kalender, Anrufe und Verbindungen in dieser Zeit sagen, mit −10/−1/+1/+10 für Beginn und Ende. Ein Termin oder Anruf, der den Zeitraum überwiegend füllt, wird als Kunde und Text vorgeschlagen.
+- **Leerlauf-Nachfrage:** „Du warst 42 Min. nicht am Rechner (10:15–10:57). Was hast du gemacht?“ mit Chips zur Schnellauswahl.
 - **Jede Datenquelle hat ihr eigenes Einrichtungsfenster** mit eigenem Schalter: Sophos Connect, FortiClient, weitere VPN-Logs (OpenVPN …), Outlook und Teams-Anrufe sind jetzt getrennt (bisher teilten sich je mehrere ein Fenster). Auch TeamViewer und RDM lassen sich im Fenster ein- und ausschalten.
 - **RDM Better** als Datenquelle: Zeitzeuge liest die Starts aus `%LOCALAPPDATA%\RDM Better\launcher.log` (Ziel, Benutzer; Zeit in UTC, wird in Ortszeit umgerechnet). Das Ende kommt aus der mstsc-Aufzeichnung.
 - **Remotedesktop (mstsc)** als Datenquelle: Zeitzeuge prüft alle 30 Sekunden, welche Remotedesktopverbindungen offen sind, und zeigt sie mit Ziel, Beginn und Ende wie die Verbindungen aus RDM.

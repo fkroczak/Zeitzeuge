@@ -1,4 +1,4 @@
-"""
+r"""
 Kundenliste: Welche Spur gehört zu welchem Kunden (ohne Qt).
 
 Ein Kunde hat einen Namen und beliebig viele Spuren. Eine Spur ist eine Art und ein Wert:
@@ -12,8 +12,19 @@ Ein Kunde hat einen Namen und beliebig viele Spuren. Eine Spur ist eine Art und 
     word   Stichwort              Text in Fenstertitel, Betreff oder Name, z. B. "Nordhafen"
                                   oder "SWN-" (Groß/Klein und Umlaute egal). Greift nur, wenn
                                   keine genauere Spur passt; längere Stichwörter gehen vor.
+    path   Ordner / Dateipfad     "E:\Kundenprojekte\Avangard": steht der Pfad oder sein letzter
+                                  Teil („Avangard“) im Fenstertitel (Explorer, Word, VS Code …)
+    host   Rechnername / Host     "srv01", "*.kunde.local" oder "fw-??": Name einer Verbindung
+                                  (RDP, SSH, RDM) oder im Fenstertitel; * und ? als Platzhalter
+    ip     IP-Adresse / -Bereich  "10.20.0.0/16" oder "192.168.5.10" (CIDR), in Verbindungen
+                                  und Fenstertiteln
 
-Ablage: config["customers"] = [{"name": "Müller GmbH", "traces": [{"kind", "value"}]}].
+Wie Stichwörter greifen Pfad, Host und IP nur, wenn keine genauere Spur passt (Reihenfolge:
+IP, Host, Pfad, Stichwort).
+
+Ablage: config["customers"] = [{"name": "Müller GmbH", "number": "K-10234",
+"calendar": True, "traces": [{"kind", "value"}]}]. number (Kundennummer) und calendar
+(Termine über die Mail-Domains zuordnen, Standard an) sind optional.
 Wie teamviewer_names sind das Nutzdaten: main_timeline.save_config legt sie verschlüsselt in
 die Datenbank (Ablage "kunden"), nicht in zeitzeuge_config.json.
 
@@ -25,6 +36,8 @@ einen anderen PC und „TeamViewer-ID benennen …“ unverändert weiter.
 Eine Spur gehört höchstens zu einem Kunden. learn() verschiebt sie, wenn nötig.
 """
 
+import fnmatch
+import ipaddress
 import re
 
 KINDS = {
@@ -35,8 +48,15 @@ KINDS = {
     "mail": "E-Mail-Domain",
     "net": "Netzwerk",
     "word": "Stichwort",
+    "path": "Ordner / Dateipfad",
+    "host": "Rechnername / Host",
+    "ip": "IP-Adresse / -Bereich",
 }
-KIND_ORDER = ("tv", "phone", "rdm", "vpn", "mail", "net", "word")
+KIND_ORDER = ("tv", "phone", "rdm", "vpn", "mail", "net", "word", "path", "host", "ip")
+# Arten, die im Text (Fenstertitel, Betreff, Name einer Verbindung) gesucht werden
+TEXT_KINDS = ("ip", "host", "path", "word")
+# Termine und Teams-Besprechungen: Kunde über Mail-Domain nur, wenn „Kalendertermine“ an ist
+CALENDAR_TYPES = {"Termin", "Teams-Besprechung"}
 WORD_MIN = 3  # kürzere Stichwörter träfen zu viel
 
 # RDM schreibt "<Protokoll>-Verbindung"/"-Sitzung" und Anzeigen von Zugangsdaten
@@ -83,6 +103,17 @@ def normalize(kind, value):
     if kind == "word":
         text = fold(value)
         return text if len(text) >= WORD_MIN else ""
+    if kind == "path":
+        text = fold(value).replace("/", "\\").rstrip("\\ ")
+        return text if len(text) >= WORD_MIN else ""
+    if kind == "host":
+        text = str(value or "").strip().casefold()
+        return text if re.fullmatch(r"[a-z0-9*?][a-z0-9.*?_-]*", text) and text.strip("*?.") else ""
+    if kind == "ip":
+        try:
+            return str(ipaddress.ip_network(str(value or "").strip(), strict=False))
+        except ValueError:
+            return ""
     return ""
 
 
@@ -98,8 +129,8 @@ def clean_value(kind, value):
     """Wert zum Speichern (lesbar, aber ohne überflüssige Leerzeichen)."""
     if kind == "tv":
         return normalize("tv", value)
-    if kind == "mail":
-        return normalize_domain(value)
+    if kind in ("mail", "ip", "host"):
+        return normalize(kind, value)
     return " ".join(str(value or "").split())
 
 
@@ -112,6 +143,12 @@ def display(kind, value):
         return f"{KINDS['mail']} „@{value}“"
     if kind == "word":
         return f"{KINDS['word']} „{value}“ (Fenstertitel, Betreff)"
+    if kind == "ip":
+        return f"IP „{value}“"
+    if kind == "host":
+        return f"Host „{value}“"
+    if kind == "path":
+        return f"Ordner „{value}“"
     return f"{KINDS.get(kind, kind)} „{value}“"
 
 
@@ -152,6 +189,8 @@ def traces_of(entry):
             found.append(("rdm", name))
         elif kind in ("Netzwerk", "WLAN"):
             found.append(("net", name))
+        elif kind == "Browser" and normalize_domain(name.split()[0]):  # Domain aus dem Verlauf
+            found.append(("mail", normalize_domain(name.split()[0])))
     domains = entry.get("email_domains") or []
     if isinstance(domains, str):
         domains = [domains]
@@ -180,7 +219,13 @@ def _valid_list(raw):
         for t in c.get("traces") or []:
             if isinstance(t, dict) and t.get("kind") in KINDS and normalize(t["kind"], t.get("value")):
                 traces.append({"kind": t["kind"], "value": clean_value(t["kind"], t["value"])})
-        result.append({"name": str(c["name"]).strip(), "traces": traces})
+        item = {"name": str(c["name"]).strip(), "traces": traces}
+        number = str(c.get("number") or "").strip()
+        if number:
+            item["number"] = number
+        if c.get("calendar") is False:
+            item["calendar"] = False
+        result.append(item)
     return result
 
 
@@ -280,28 +325,52 @@ def apply_list(config, customers):
 
 # ---------------------------------------------------------------- Abfrage
 
+_IPV4 = re.compile(r"(?<![\d.])(\d{1,3}(?:\.\d{1,3}){3})(?![\d.])")
+_HOST_TOKEN = re.compile(r"[a-z0-9][a-z0-9._-]*")
+
+
+def _word_rx(word):
+    """Beginnt das Wort mit Buchstabe/Ziffer, passt es nur am Wortanfang
+    („Huber“ passt auf „Huber-Server“, nicht auf „Schuber“)."""
+    return re.compile((r"(?<![0-9a-z])" if word[0].isalnum() else "") + re.escape(word))
+
+
 class Index:
     """Schnelle Abfrage Spur -> Kunde (einmal bauen, für viele Einträge nutzen)."""
 
     def __init__(self, customers, tv_names=None):
         self.exact = {}
         self.domains = {}
-        words = {}
+        self.no_calendar = set()
+        words, paths, hosts, nets = {}, {}, {}, []
         for c in customers or []:
+            if c.get("calendar") is False:
+                self.no_calendar.add(c["name"])
             for t in c.get("traces") or []:
                 key = normalize(t.get("kind"), t.get("value"))
                 if not key:
                     continue
-                if t["kind"] == "mail":
+                kind = t["kind"]
+                if kind == "mail":
                     self.domains.setdefault(key, c["name"])
-                elif t["kind"] == "word":
+                elif kind == "word":
                     words.setdefault(key, c["name"])
+                elif kind == "path":
+                    paths.setdefault(key, c["name"])
+                elif kind == "host":
+                    hosts.setdefault(key, c["name"])
+                elif kind == "ip":
+                    nets.append((ipaddress.ip_network(key), key, c["name"]))
                 else:
-                    self.exact.setdefault((t["kind"], key), c["name"])
-        # Stichwörter: längere zuerst; beginnt es mit Buchstabe/Ziffer, nur am Wortanfang
-        # („Huber“ passt auf „Huber-Server“, nicht auf „Schuber“)
-        self.words = [(re.compile((r"(?<![0-9a-z])" if w[0].isalnum() else "") + re.escape(w)), name)
-                      for w, name in sorted(words.items(), key=lambda x: -len(x[0]))]
+                    self.exact.setdefault((kind, key), c["name"])
+        # Längere (genauere) Werte zuerst
+        self.words = [(_word_rx(w), name, w) for w, name in sorted(words.items(), key=lambda x: -len(x[0]))]
+        self.paths = []
+        for p, name in sorted(paths.items(), key=lambda x: -len(x[0])):
+            last = p.rsplit("\\", 1)[-1]
+            self.paths.append((p, _word_rx(last) if len(last) >= 4 and last != p else None, name))
+        self.hosts = [(h, name) for h, name in sorted(hosts.items(), key=lambda x: (-len(x[0].strip("*?")), x[0]))]
+        self.nets = sorted(nets, key=lambda x: -x[0].prefixlen)  # engster Bereich zuerst
         for tv_id, name in (tv_names or {}).items():  # z. B. von einem anderen PC übernommen
             key = normalize("tv", tv_id)
             if key and isinstance(name, str) and name.strip():
@@ -320,25 +389,75 @@ class Index:
                 return name
         return ""
 
-    def customer_for(self, entry):
+    def match(self, entry):
+        """(Kunde, Art, Wert) der Spur, über die der Eintrag zum Kunden gehört, oder None."""
+        calendar = isinstance(entry, dict) and entry.get("type") in CALENDAR_TYPES
         for kind, value in traces_of(entry):
             name = self.lookup(kind, value)
-            if name:
-                return name
+            if name and not (calendar and kind == "mail" and name in self.no_calendar):
+                return name, kind, normalize(kind, value)
         if (isinstance(entry, dict) and not entry.get("colleague")
                 and not any(entry.get(k) for k in ("doc", "ai", "rule", "m42", "m42_gap", "work"))):
-            return self.keyword(entry.get("customer_name") or "")
-        return ""
+            return self.text_match(entry.get("customer_name") or "")
+        return None
+
+    def customer_for(self, entry):
+        found = self.match(entry)
+        return found[0] if found else ""
+
+    def text_match(self, text):
+        """(Kunde, Art, Wert) für IP, Host, Ordner oder Stichwort im Text, sonst None."""
+        if not text or not (self.words or self.paths or self.hosts or self.nets):
+            return None
+        if self.nets:
+            for ip in _IPV4.findall(text):
+                try:
+                    addr = ipaddress.ip_address(ip)
+                except ValueError:
+                    continue
+                for net, key, name in self.nets:
+                    if addr in net:
+                        return name, "ip", key
+        low = text.casefold()
+        if self.hosts:
+            tokens = _HOST_TOKEN.findall(low)
+            for pattern, name in self.hosts:
+                wild = "*" in pattern or "?" in pattern
+                for tok in tokens:
+                    tok = tok.rstrip(".")
+                    if (fnmatch.fnmatchcase(tok, pattern) if wild
+                            else tok == pattern or tok.startswith(pattern + ".")):
+                        return name, "host", pattern
+        folded = fold(text)
+        for path, last_rx, name in self.paths:
+            if path in folded.replace("/", "\\") or (last_rx and last_rx.search(folded)):
+                return name, "path", path
+        for rx, name, word in self.words:
+            if rx.search(folded):
+                return name, "word", word
+        return None
 
     def keyword(self, text):
-        """Kunde, dessen Stichwort im Text steht ('' = keiner)."""
-        if not self.words or not text:
-            return ""
-        text = fold(text)
-        for rx, name in self.words:
-            if rx.search(text):
-                return name
-        return ""
+        """Kunde, dessen Stichwort, Ordner, Host oder IP im Text steht ('' = keiner)."""
+        found = self.text_match(text)
+        return found[0] if found else ""
+
+
+def count_hits(index, entries, pc_entries=()):
+    """Wie oft jede Spur gegriffen hat: {(Art, normalisierter Wert): Anzahl}.
+
+    entries: Verbindungen, Telefonate, Mails; pc_entries: Fenster der PC-Aktivität
+    (Titel und Programm wie in rules.keyword_customer)."""
+    hits = {}
+    for e in entries or ():
+        found = index.match(e)
+        if found:
+            hits[found[1:]] = hits.get(found[1:], 0) + 1
+    for p in pc_entries or ():
+        found = index.text_match(f"{p.get('customer_name') or ''} {p.get('app') or ''}")
+        if found:
+            hits[found[1:]] = hits.get(found[1:], 0) + 1
+    return hits
 
 
 _index_cache = [None, None]  # (Schlüssel, Index): Hinweis unter der Maus fragt sehr oft

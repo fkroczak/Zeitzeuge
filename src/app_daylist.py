@@ -15,6 +15,7 @@ from grouping import format_tv_id, work_blocks
 from timeline_only import (ActivityViewDialog, ai_copy_text, entry_color, exec_entry_menu,
                            format_duration, parse_time, type_label)
 import customers
+import day_summary
 import icons
 import week_dialogs
 from theme import GERMAN
@@ -228,6 +229,7 @@ class DayListMixin:
             if itm_day.get("soll"):
                 text += f" (Soll {format_duration(itm_day['soll'] * 60)})"
             parts.append(text)
+        self.update_day_summary(doc, itm_day)
         m42 = self.m42_summary(self.current_date.toString("yyyy-MM-dd"))
         if m42:
             parts.append(m42)
@@ -235,6 +237,21 @@ class DayListMixin:
         self.info_label.setToolTip("\n".join(more + parts))
         week_dialogs.update_rate_button(self)
         self.update_source_indicators()
+
+    def update_day_summary(self, doc, itm_day=None):
+        """Kennzahlen über der Timeline und Chips über der Liste (day_summary.py)."""
+        if not hasattr(self, "day_summary"):
+            return
+        date_str = self.current_date.toString("yyyy-MM-dd")
+        if itm_day and itm_day.get("soll"):
+            target = itm_day["soll"]
+        else:
+            target = sum(max(0, e - s) for s, e in self.timeline._work_spans(self.current_date))
+        ai = self.ai_day_entries(date_str)
+        data = day_summary.summary(doc, ai, target)
+        self.day_summary.show_numbers(data)
+        self.view_chips.show_state(self.config.get("list_view", "grouped"),
+                                   {"doc": data["open"], "ai": data["suggestions"]})
 
     def update_busy_bar(self):
         """Ladeanzeige oben: alles, was gerade im Hintergrund lädt."""

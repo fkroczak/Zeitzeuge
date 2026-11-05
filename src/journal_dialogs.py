@@ -10,8 +10,9 @@ from datetime import datetime, timedelta
 
 from PySide6.QtCore import QDate, QLocale, Qt, QTime, Signal
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QDateEdit, QDialog, QDialogButtonBox,
-                               QFormLayout, QHBoxLayout, QLabel, QMenu, QPlainTextEdit,
-                               QPushButton, QSpinBox, QTimeEdit, QVBoxLayout, QWidget)
+                               QFormLayout, QFrame, QHBoxLayout, QLabel, QMenu, QPlainTextEdit,
+                               QPushButton, QSpinBox, QTimeEdit, QToolButton, QVBoxLayout,
+                               QWidget)
 
 from theme import prose
 from billing import hours_text
@@ -317,7 +318,7 @@ class EntryDialog(QDialog):
 
     def __init__(self, start, end, customers, categories, customer="", category="", text="",
                  tv_id=None, title="Tätigkeit nachtragen", info="", can_delete=False, parent=None,
-                 trace=None, rule_subject=None, **form_options):
+                 trace=None, rule_subject=None, context_for=None, **form_options):
         super().__init__(parent)
         self.setWindowTitle(title)
         self.setMinimumWidth(480)
@@ -331,6 +332,15 @@ class EntryDialog(QDialog):
             layout.addWidget(label)
         self.form = _EntryForm(start, end, customers, categories, customer, category, text,
                                tv_id, self, trace=trace, rule_subject=rule_subject, **form_options)
+        # Zeitraum nachtragen (Companion): was die Quellen in dieser Zeit sagen, Feinjustieren
+        self.context_for = context_for
+        self.context_rows = None
+        if context_for:
+            self.setMinimumWidth(560)
+            layout.addWidget(self._context_card())
+            self.form.start_edit.timeChanged.connect(lambda _t: self.update_context())
+            self.form.end_edit.timeChanged.connect(lambda _t: self.update_context())
+            self.update_context()
         layout.addWidget(self.form)
         self.buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         self.buttons.button(QDialogButtonBox.Ok).setText("&Speichern")
@@ -343,6 +353,56 @@ class EntryDialog(QDialog):
         self.form.validate_hook = self.buttons.button(QDialogButtonBox.Ok).setEnabled
         self.form.validate()
         self.form.text_edit.setFocus()
+
+    def _context_card(self):
+        card = QFrame()
+        card.setObjectName("card")
+        box = QVBoxLayout(card)
+        box.setContentsMargins(12, 10, 12, 10)
+        box.setSpacing(6)
+        head = QLabel("Was die Quellen in dieser Zeit sagen")
+        head.setObjectName("card_title")
+        box.addWidget(head)
+        self.context_rows = QFormLayout()
+        self.context_rows.setHorizontalSpacing(12)
+        self.context_rows.setVerticalSpacing(4)
+        box.addLayout(self.context_rows)
+        nudge = QHBoxLayout()
+        nudge.setSpacing(4)
+        for which, label in (("start", "Beginn"), ("end", "Ende")):
+            nudge.addWidget(QLabel(label))
+            for minutes in (-10, -1, 1, 10):
+                b = QToolButton()
+                b.setObjectName("chip")
+                b.setText(f"{minutes:+d}".replace("-", "−"))
+                b.setToolTip(f"{label} um {abs(minutes)} Minute{'n' if abs(minutes) != 1 else ''} "
+                             f"{'früher' if minutes < 0 else 'später'}")
+                b.setAccessibleName(b.toolTip())
+                b.clicked.connect(lambda _c=False, w=which, m=minutes: self.nudge(w, m))
+                nudge.addWidget(b)
+            nudge.addSpacing(12)
+        nudge.addStretch(1)
+        box.addLayout(nudge)
+        return card
+
+    def nudge(self, which, minutes):
+        """Beginn oder Ende um minutes verschieben (−10, −1, +1, +10)."""
+        edit = self.form.start_edit if which == "start" else self.form.end_edit
+        edit.setTime(edit.time().addSecs(minutes * 60))
+
+    def update_context(self):
+        if self.context_rows is None:
+            return
+        while self.context_rows.rowCount():
+            self.context_rows.removeRow(0)
+        start, end = self.form.times()
+        rows = self.context_for(start, end) if end > start else []
+        for source, text in rows or [("", "Keine Spuren in dieser Zeit.")]:
+            name = QLabel(source)
+            name.setObjectName("hint")
+            value = QLabel(text)
+            value.setWordWrap(True)
+            self.context_rows.addRow(name, value)
 
     def _delete(self):
         self.deleted = True
@@ -375,7 +435,14 @@ class PromptWindow(QDialog):
         self.setMinimumWidth(460)
         layout = QVBoxLayout(self)
 
-        head = QLabel(f"<b>Erkannt:</b> {describe(entry)}")
+        if entry.get("idle"):  # Leerlauf (Companion): Frage statt „Erkannt:“
+            start_t = datetime.strptime(entry["start"], TIME_FMT)
+            end_t = datetime.strptime(entry["end"], TIME_FMT)
+            minutes = int(round((end_t - start_t).total_seconds() / 60))
+            head = QLabel(f"Du warst <b>{minutes} Min. nicht am Rechner</b> "
+                          f"({start_t:%H:%M}–{end_t:%H:%M}). Was hast du gemacht?")
+        else:
+            head = QLabel(f"<b>Erkannt:</b> {describe(entry)}")
         head.setWordWrap(True)
         head.setTextFormat(Qt.RichText)
         layout.addWidget(head)
@@ -418,18 +485,25 @@ class PromptWindow(QDialog):
         """Abwesenheit: typische Tätigkeiten mit einem Klick (idle_watch.QUICK_CHOICES)."""
         from idle_watch import QUICK_CHOICES
         row = QHBoxLayout()
+        row.setSpacing(6)
         row.addWidget(QLabel("Was war?"))
         self.quick_buttons = []
         for label, category, text, flags in QUICK_CHOICES:
-            button = QPushButton(label)
-            button.setAutoDefault(False)
-            button.setMinimumWidth(0)
+            button = QToolButton()  # Chip wie in Companion; gewählt = gefüllt
+            button.setObjectName("chip")
+            button.setText(label)
+            button.setCheckable(True)
+            button.setAutoExclusive(True)
+            button.setCursor(Qt.PointingHandCursor)
             button.setToolTip(f"{category}: {text}" + (" (gleich speichern)" if flags.get("save") else ""))
             button.clicked.connect(lambda _c=False, a=(category, text, flags): self.quick_choice(*a))
             row.addWidget(button)
             self.quick_buttons.append(button)
         row.addStretch(1)
-        layout.addLayout(row)
+        layout.insertLayout(2, row)  # gleich unter der Frage, über dem Formular
+        note = QLabel("🔒 Bleibt verschlüsselt auf diesem PC.")
+        note.setObjectName("hint")
+        layout.addWidget(note)
 
     def quick_choice(self, category, text, flags=None):
         flags = flags or {}

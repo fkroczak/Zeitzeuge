@@ -37,6 +37,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QApplication, QHeaderView, QLa
 
 from ai_classifier import AI_TYPE, AiClassifier, AiStore
 from busy_bar import BusyBar
+from day_summary import DaySummary, ViewChips
 import icons
 from version import version_details, version_label
 from transfer import ImportStore
@@ -533,9 +534,18 @@ class TimelineApp(MenusMixin, DayListMixin, DayCloseMixin, DocsMixin, ReadersMix
         self.timeline.setAccessibleDescription(
             "Grafische Tagesübersicht. Dieselben Einträge stehen in der Tagesliste darunter.")
 
+        # Tagesliste mit Ansichts-Chips darüber (Design „Companion“)
+        list_box = QWidget(self)
+        list_layout = QVBoxLayout(list_box)
+        list_layout.setContentsMargins(0, 0, 0, 0)
+        list_layout.setSpacing(0)
+        self.view_chips = ViewChips(list_box)
+        self.view_chips.view_chosen.connect(self.change_view)
+        list_layout.addWidget(self.view_chips)
+        list_layout.addWidget(self.table, 1)
         splitter = QSplitter(Qt.Vertical, self)
         splitter.addWidget(self.timeline)
-        splitter.addWidget(self.table)
+        splitter.addWidget(list_box)
         # Die Timeline hält ihre Höhe (zwischen Mindesthöhe aller Zeilen und voller Höhe, siehe
         # TimelineView._fit_height_to_rows); mehr oder weniger Fensterhöhe geht an die Liste.
         splitter.setStretchFactor(0, 0)
@@ -557,6 +567,10 @@ class TimelineApp(MenusMixin, DayListMixin, DayCloseMixin, DocsMixin, ReadersMix
         central_layout = QVBoxLayout(central)
         central_layout.setContentsMargins(0, 0, 0, 0)
         central_layout.setSpacing(0)
+        self.day_summary = DaySummary(central)
+        self.day_summary.open_clicked.connect(self.document_next_open)
+        self.day_summary.suggestions_clicked.connect(lambda: self.change_view("ai"))
+        central_layout.addWidget(self.day_summary)
         central_layout.addWidget(splitter, 1)
         self.setCentralWidget(central)
 
