@@ -108,11 +108,37 @@ jobs:
           path: dist/ZeitZeuge.exe
           retention-days: 30
 
-      - name: Release anlegen (nur bei Tag v*)
-        if: startsWith(github.ref, 'refs/tags/v')
+      # Jeder Stand von main wird ein Release v<Version> (Tag legt die Aktion selbst an).
+      # Der feste Link .../releases/latest/download/ZeitZeuge.exe zeigt immer auf das neueste.
+      - name: Release anlegen (main oder Tag v*)
+        if: >-
+          (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+          startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ env.ZZ_VERSION }}
+          target_commitish: ${{ github.sha }}
+          name: Zeitzeuge ${{ env.ZZ_VERSION }}
           files: |
             dist/ZeitZeuge.exe
             dist/ZeitZeuge-Ordner.zip
           generate_release_notes: true
+          make_latest: true
+
+      # Nur die 10 neuesten Releases behalten; ältere samt Tag löschen.
+      - name: Alte Releases löschen (10 bleiben)
+        if: >-
+          (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+          startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $alt = gh release list --repo $env:GITHUB_REPOSITORY --limit 1000 --exclude-drafts --json tagName,createdAt |
+            ConvertFrom-Json | Sort-Object { [datetime]$_.createdAt } -Descending |
+            Select-Object -Skip 10 -ExpandProperty tagName
+          foreach ($tag in $alt) {
+            Write-Host "Lösche Release $tag"
+            gh release delete $tag --repo $env:GITHUB_REPOSITORY --yes --cleanup-tag
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
