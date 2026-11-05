@@ -90,6 +90,7 @@ Testversionen aus Branches tragen die Version ihres main-Stands plus Buildnummer
 - **Remotedesktop (mstsc) aus dem Windows-Ereignisprotokoll:** Zeitzeuge liest zusätzlich `Microsoft-Windows-TerminalServices-RDPClient/Operational` (Aufbau 1024, Trennung 1026). Das füllt Zeiten, in denen Zeitzeuge nicht lief, und macht Beginn und Ende sekundengenau; mit der eigenen Aufzeichnung wird es zu einer Sitzung zusammengeführt. Abschaltbar unter Datenquellen → Remotedesktop (mstsc).
 
 ### Behoben
+- **Erfasst zeigt die Personalzeit:** „5:53 h von 7:18 h gestempelt“ statt „von 8:00 h“ (Soll). Ohne ITM-Zeiten steht dort die eingestellte Arbeitszeit („… Arbeitszeit“).
 - **Ruhigere Kennzahlen-Leiste:** Die Kacheln sind nur so breit wie ihr Inhalt, „Nach Kunde“ nimmt den Rest und zeigt ganze Kunden plus „+2“, statt mitten im Namen abzuschneiden (alle im Hinweis). „Vorschläge“ erscheint nur, wenn welche warten.
 - **Ansichten der Tagesliste nur noch als Chips:** Über der Liste stehen alle acht Ansichten (auch „Zuordnung ohne KI“ und „Matrix42-Abgleich“), die aktive ist markiert. Im Menü **Ansicht** stehen sie nicht mehr doppelt.
 - **Timeline mit Rahmen**, damit man sieht, wo sie endet. Die Kachel Buchungsquote hat die Überschrift „Buchungsquote“ wie die anderen Kacheln. Rahmen der ausgewählten Timeline und Ladebalken sind dunkelgrau statt lila.

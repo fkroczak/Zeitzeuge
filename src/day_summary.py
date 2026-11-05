@@ -54,7 +54,7 @@ def summary(doc_band, ai_entries, target_minutes, top=8):
 
     doc_band:   Einträge der Zeile Dokumentation (doc = eingetragen, open = offen)
     ai_entries: KI-Vorschläge des Tages (status '', 'übernommen' oder 'verworfen')
-    target_minutes: Soll des Tages (Personalzeit oder Arbeitszeit), 0 = unbekannt
+    target_minutes: Bezug des Tages (gestempelte Personalzeit oder Arbeitszeit), 0 = unbekannt
     """
     done = [e for e in doc_band if e.get("doc")]
     opened = [e for e in doc_band if e.get("open")]
@@ -272,10 +272,12 @@ class DaySummary(QWidget):
     def show_numbers(self, data):
         booked, target = data["booked_s"], data["target_s"]
         self.booked.value.setText(hm(booked))
-        self.booked.extra.setText(f"von {hm(target)}" if target else "")
+        basis = data.get("target_basis", "")  # „gestempelt“ (ITM-Personalzeit) oder „Arbeitszeit“
+        self.booked.extra.setText(f"von {hm(target)} {basis}".strip() if target else "")
         self.booked.bar.setValue(int(min(100, 100 * booked / target)) if target else 0)
-        self.booked.setToolTip("Eingetragene Tätigkeiten des Tages"
-                               + (" im Verhältnis zum Soll" if target else ""))
+        tips = {"gestempelt": " im Verhältnis zur gestempelten Personalzeit (ITM)",
+                "Arbeitszeit": " im Verhältnis zur eingestellten Arbeitszeit"}
+        self.booked.setToolTip("Eingetragene Tätigkeiten des Tages" + (tips.get(basis, "") if target else ""))
         n = data["open"]
         self.opened.value.setText(str(n))
         self.opened.extra.setText("Eintrag" if n == 1 else "Einträge")
