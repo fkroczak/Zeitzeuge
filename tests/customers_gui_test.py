@@ -175,8 +175,12 @@ def gui_test():
                                         rule_subject="srv01", parent=window)
         assert d.form.text_edit.toPlainText() == "", d.form.text_edit.toPlainText()
         d.close()
+        d.deleteLater()
+    dialog.deleteLater()
+    flush_deletes()  # nichts Halbgelöschtes bis zum harten Prozessende liegen lassen
 
     window.quit_app()
+    flush_deletes()
 
 
 try:
