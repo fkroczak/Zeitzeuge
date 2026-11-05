@@ -3,7 +3,7 @@
 Umgesetzt wurden die Wünsche aus dem Gespräch vom 26.10.2026: Kundenliste, Lernen aus
 Korrekturen, Textbausteine, Outlook/Teams, Prüfung bei Feierabend, 15-Minuten-Takt,
 PC-Verlauf löschen (Standard aus), Ticketnummer als Vorschlag, Buchungsquote mit
-Wochenabschluss und „In Matrix42 buchen (kommt bald)“.
+Wochenabschluss und „Im Ticketsystem buchen (kommt bald)“.
 
 Diese Datei listet alles, was **nicht** ausdrücklich gewünscht war, sondern selbst
 entschieden wurde. Die ausführliche Liste je Thema steht in `docs/neu/`:
@@ -20,7 +20,7 @@ Jede Funktion steckt in genau einem Merge-Commit. Zurücknehmen mit
 | Textbausteine, letzte Texte, Ticket-Format, Ticketnummer-Vorschlag | `b695885` |
 | 15-Minuten-Takt, PC-Verlauf löschen | `a49e005` |
 | Kundenliste, Lernen aus Korrekturen | `7c39462` |
-| Buchungsquote, Wochenabschluss, Prüfung bei Feierabend, Matrix42 „kommt bald“ | `fc01e39` |
+| Buchungsquote, Wochenabschluss, Prüfung bei Feierabend, Ticketsystem „kommt bald“ | `fc01e39` |
 | Outlook und Teams | `a261857` |
 
 Danach kamen: `47da963` (Fehlerbehebung Eintragen-Dialog), `9874c4a` (README),
@@ -41,10 +41,10 @@ Schlüssel in `zeitzeuge_config.json` (siehe unten).
    „abgerechnet …“. Gerundet wird **je Tätigkeit**, die
    angefangene Viertelstunde zählt. Zurück: Einstellungen → Abrechnung → „Ohne Takt“
    (`billing_mode: "off"`), dann ist alles wie früher.
-2. **Feierabend-Erinnerung mit ITM-Stempelung:** Ist man ausgestempelt, kommt die
+2. **Feierabend-Erinnerung mit Stempelung:** Ist man ausgestempelt, kommt die
    Erinnerung erst ab dem geplanten Ende, ohne Plan eine Stunde nach dem Ausstempeln.
    Früher kam sie manchmal schon in der Mittagspause. Ohne Stempelung, noch eingestempelt
-   oder ohne ITM bleibt es wie früher. Zurück: `app_docs.end_of_day_reminder`.
+   oder ohne Zeiterfassung bleibt es wie früher. Zurück: `app_docs.end_of_day_reminder`.
 3. **Prüfung bei Feierabend ist an** (`day_checks_enabled: true`). Sie meldet sich auch,
    wenn Nachfragen aus sind, aber nur einmal am Tag und nur bei einem Befund.
    Zurück: Einstellungen → Nachfragen und Erinnerungen → „Bei Feierabend prüfen“.
@@ -53,7 +53,7 @@ Schlüssel in `zeitzeuge_config.json` (siehe unten).
    Zurück: `app_daylist.py`, `customers.with_customer(...)` durch `a.get("customer_name", "")`
    ersetzen.
 5. **Statuszeile zeigt die Buchungsquote** („Quote heute 72 % · 7 Tage 81 %“), nur wenn
-   Matrix42 Daten liefert. Aus: `booking_rate_status: false`.
+   Ticketsystem Daten liefert. Aus: `booking_rate_status: false`.
 6. **Wochenabschluss nur über die Oberfläche** (Knopf in der Werkzeugleiste, Klick auf die
    Quote in der Statuszeile). Auf Wunsch kein Tastenkürzel; auch F7 (Nachtragen) ist
    entfernt, damit F7–F12 für andere Werkzeuge frei bleiben.
@@ -88,19 +88,19 @@ Schlüssel in `zeitzeuge_config.json` (siehe unten).
 13. **Gelernte Regeln stehen vor den Standardregeln** und schlagen im Dialog die Kategorie
     vor. Die Standardregeln ändern den Vorschlag im Dialog nicht.
 14. **Ticketnummer:** Das Muster ist `TCK\d+`. Gesucht wird 5 Minuten vor und nach der
-    Tätigkeit, im PC-Verlauf und in Matrix42-Buchungen. Die Nummer wird nur vorgeschlagen,
+    Tätigkeit, im PC-Verlauf und in den Buchungen des Ticketsystems. Die Nummer wird nur vorgeschlagen,
     erst „Übernehmen“ setzt sie. Muster ändern: Einstellungen → Textbausteine.
 15. **Textbausteine:** Es gibt 10 Standardsätze. „Zuletzt benutzte Texte“ ist an
     (`snippets_recent`). Das Ticket-Format „- “/„-- “ ist aus (`ticket_format: ""`).
 
 ### Buchungsquote
 
-16. **Personalzeit** ist der ITM-Wert „gewertet“, solange man ausgestempelt ist; sonst
-    zählen die gestempelten Abschnitte bis jetzt. Ohne ITM gilt die Arbeitszeit aus den
+16. **Personalzeit** ist der Wert „gewertet“ aus der Zeiterfassung, solange man ausgestempelt ist; sonst
+    zählen die gestempelten Abschnitte bis jetzt. Ohne Zeiterfassung gilt die Arbeitszeit aus den
     Einstellungen. Sie ist so gekennzeichnet und zählt für den 7-Tage-Wert nur an Tagen
     mit Buchungen.
-17. **Tage ohne gelesene Matrix42-Daten** zählen im 7-Tage-Wert nicht als 0 %. Sie werden
-    als „Matrix42 nicht gelesen“ genannt.
+17. **Tage ohne gelesene Ticketsystem-Daten** zählen im 7-Tage-Wert nicht als 0 %. Sie werden
+    als „Ticketsystem nicht gelesen“ genannt.
 18. **Buchungen außerhalb der Personalzeit zählen mit.** Die Quote kann deshalb über 100 %
     liegen. Die Prüfung bei Feierabend meldet solche Buchungen.
 
@@ -122,36 +122,36 @@ Schlüssel in `zeitzeuge_config.json` (siehe unten).
 
 ## Noch offen
 
-- **In Matrix42 buchen:** wartet auf deine Angaben. Vorbereitet sind `m42_booking.py`
+- **Im Ticketsystem buchen:** wartet auf deine Angaben. Vorbereitet sind `m42_booking.py`
   (Platzhalter) und `billing.booking_span` (Ende auf den Takt gerundet).
 - **Outlook und Teams mit echtem Outlook und Teams von Hand testen:** Serientermine,
   deutsches Datumsformat beim Filtern, Sicherheitsabfrage von Outlook, Teams-Mikrofon.
 
-## Nachtrag 02.11.2026: Matrix42 über die Schnittstelle, Buchungs-Mitschnitt
+## Nachtrag 02.11.2026: Ticketsystem über die Schnittstelle, Buchungs-Mitschnitt
 
 Grundlage ist der Mitschnitt vom 02.11.2026 (nur Lesen, keine Buchung angelegt).
 
-22. **Matrix42 zuerst über die Schnittstelle lesen**, wie die Kalenderseite selbst:
-    `POST /m42Services/api/WidgetList/GetData/<Widget>` mit Datumsfilter, Anmeldung über das
+22. **Ticketsystem zuerst über die Schnittstelle lesen**, wie die Kalenderseite selbst:
+    die Widget-Schnittstelle der Seite mit Datumsfilter, Anmeldung über das
     Token der Seite. Klappt das nicht (kein Token, Fehler, unvollständige Antwort), liest
     Zeitzeuge für die Sitzung wieder aus der Seite. Grund steht in `fehler.log`.
     Zurück: `m42_api: false` in der Config, oder `M42Reader._read_week_api` entfernen.
 23. **Widget:** Zeitzeuge nimmt das Widget, das die Seite selbst abfragt. Sonst gilt das aus dem
-    Mitschnitt (`m42_widget_id`, Standard `05d8b58d-5764-ef11-debc-0050569e2f05`).
+    Mitschnitt (`m42_widget_id`).
 24. **Zusätzlich gespeichert:** Status (Neu, Freigegeben), Tätigkeitsart und gerundete
     Minuten. Sie stehen in den Details einer Buchung. Für Quote und Abgleich ändert sich nichts.
-25. **Buchungs-Mitschnitt:** neuer Knopf „Buchung mitschneiden …“ im Matrix42-Dialog. Abfragen,
+25. **Buchungs-Mitschnitt:** neuer Knopf „Buchung mitschneiden …“ im Ticketsystem-Dialog. Abfragen,
     die etwas speichern (POST, PUT, PATCH, DELETE), stehen darin ungekürzt. Geheimnisse bleiben
     geschwärzt, alles andere ist gekürzt wie bisher. Zurück: Knopf in
     `app_readers.build_reader_dialog` und `full_writes` in `request_recorder.py`.
 
-## Nachtrag 02.11.2026 (2): In Matrix42 buchen
+## Nachtrag 02.11.2026 (2): Im Ticketsystem buchen
 
-Grundlage ist der Buchungs-Mitschnitt vom 02.11.2026 (Zeiterfassung TE0000088403 angelegt).
+Grundlage ist der Buchungs-Mitschnitt vom 02.11.2026 (Zeiterfassung TE0000012345 angelegt).
 
 26. **Buchen nur nach Bestätigung:** Fenster mit Ticket, Zeit, Tätigkeitsart und Text, gebucht
-    wird erst mit „In Matrix42 buchen“. Status „Neu“ (10) wie im Matrix42-Dialog, Freigeben
-    bleibt in Matrix42. Zurück: Eintrag `m42_book` in `timeline_only.entry_menu_items`.
+    wird erst mit „Im Ticketsystem buchen“. Status „Neu“ (10) wie im Ticketsystem-Dialog, Freigeben
+    bleibt im Ticketsystem. Zurück: Eintrag `m42_book` in `timeline_only.entry_menu_items`.
 27. **Zeiten im Abrechnungstakt:** Beginn bleibt, Ende = Beginn + abgerechnete Dauer
     (`billing.booking_span`); im Fenster änderbar. „Gebucht“ und „abgerechnet“ sind dieselben
     Minuten (`WorktimeNominal` = `WorktimeRounded`). Zurück: in `m42_booking.plan` echte Zeiten.
@@ -164,15 +164,15 @@ Grundlage ist der Buchungs-Mitschnitt vom 02.11.2026 (Zeiterfassung TE0000088403
     Feld nicht, zählen die übrigen (Grund in `fehler.log`). Ohne Ticket sucht das Fenster gleich
     nach dem Kunden.
 31. **Doppelt buchen vermeiden:** Nach dem Buchen steht die Nummer (`m42_entry`) an der Tätigkeit;
-    Rechtsklick zeigt dann nur noch „In Matrix42 gebucht (TE…)“. Überschneidungen mit schon
+    Rechtsklick zeigt dann nur noch „Im Ticketsystem gebucht (TE…)“. Überschneidungen mit schon
     gebuchten Zeiten zeigt das Fenster als Hinweis, gebucht werden darf trotzdem.
 32. **Kennungen** (Ticketliste, Dialog, Datenquelle) aus dem Mitschnitt, änderbar in der Config
     unter `m42_booking_ids`; zuletzt gewählte Tätigkeitsart unter `m42_activity_type`.
-33. **Wochenabschluss:** „Tag in Matrix42 buchen …“ öffnet für jede offene Tätigkeit des markierten
+33. **Wochenabschluss:** „Tag im Ticketsystem buchen …“ öffnet für jede offene Tätigkeit des markierten
     Tags das Fenster; Abbrechen beendet die Reihe.
 34. **Ticket-Kennung (Fehlerbehebung):** Die Ticketliste liefert „Id“ (Teil des Tickets) und
-    „Sys-ObjectId“ (das Ticket). Gebucht wird mit „Sys-ObjectId“; mit „Id“ fand Matrix42 keinen
-    Ticketbezug („Matrix42 liefert keinen Ticketbezug“). Ort: `m42_booking.ticket_object_id`.
-35. **Aktualisieren (F5) liest Matrix42 mit:** die Woche des angezeigten Tags sofort, nicht erst
+    „Sys-ObjectId“ (das Ticket). Gebucht wird mit „Sys-ObjectId“; mit „Id“ fand das Ticketsystem keinen
+    Ticketbezug („Ticketsystem liefert keinen Ticketbezug“). Ort: `m42_booking.ticket_object_id`.
+35. **Aktualisieren (F5) liest das Ticketsystem mit:** die Woche des angezeigten Tags sofort, nicht erst
     nach 10 Minuten. Ort: `app_daylist.refresh`, `M42Reader.refresh`.
 

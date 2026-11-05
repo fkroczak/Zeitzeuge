@@ -27,8 +27,8 @@ Pfade stehen in `main_timeline.py` (Konstanten `*_FILE`, `*_DIR`), umziehbar üb
 |---|---|---|
 | Anrufe (3CX) | `anrufe.json`, `anrufe_stand.json` | `call_import.py`, `pbx_reader.py` (merge_calls) |
 | VPN-Aufzeichnung | `vpn_verbindungen.json` | `vpn_reader.py` |
-| ITM-Personalzeiten | `personalzeiten.json` | `itm_reader.py` (`load_days`, `_save`) |
-| Matrix42-Buchungen | `m42_buchungen.json` | `m42_data.py` (`load_store`), `m42_reader.py` (`_save`) |
+| Personalzeiten | `personalzeiten.json` | `itm_reader.py` (`load_days`, `_save`) |
+| Ticketsystem-Buchungen | `m42_buchungen.json` | `m42_data.py` (`load_store`), `m42_reader.py` (`_save`) |
 | Aktive Fenster | `aktivitaet/JJJJ-MM-TT.jsonl` (alle 5 s Anhängen!) | `activity_tracker.py` |
 | Eigene Tätigkeiten | `taetigkeiten/JJJJ-MM-TT.json` | `journal.py` |
 | KI-Vorschläge | `ki_vorschlaege/JJJJ-MM-TT.json` | `ai_classifier.py` (`AiStore`) |
@@ -46,7 +46,7 @@ Nicht in die Datenbank: Edge-Profile (`3cx_profil`, `itm_profil`, `m42_profil` u
   Schnittstellen (`Journal`, `AiStore`, `ImportStore`, `load_call_suggestions`,
   `read_segments`, `ItmReader.day`, `M42Reader.day` …), speichern aber über die Schicht.
   So bleiben Oberfläche und die meisten Tests unverändert.
-- Mehrere Threads schreiben (Fensteraufzeichnung alle 5 s, 3CX/ITM/Matrix42-Leser,
+- Mehrere Threads schreiben (Fensteraufzeichnung alle 5 s, 3CX/Zeiterfassung/Ticketsystem-Leser,
   VPN-Monitor alle 30 s): WAL-Modus, eine Verbindung je Thread oder ein Schreib-Lock,
   kurze Transaktionen, `busy_timeout`. Absturz mitten im Schreiben darf nichts zerstören.
 - Datenordner liegt oft in OneDrive-synchronisierten „Dokumenten“: WAL-/SHM-Dateien und
@@ -110,6 +110,6 @@ Nicht in die Datenbank: Edge-Profile (`3cx_profil`, `itm_profil`, `m42_profil` u
 
 ## Zuletzt erledigt (Kontext)
 
-Ladeanzeige, ausblendbare Timeline-Zeilen, „Zuordnung ohne KI“, Matrix42-Leser und -Abgleich,
+Ladeanzeige, ausblendbare Timeline-Zeilen, „Zuordnung ohne KI“, Ticketsystem-Leser und -Abgleich,
 Export/Import Arbeits-PC → PAW inkl. KI-Vorschlägen, PAW-Modus ohne Edge (Cortex XDR),
 Ordner-Build, Personalzeit als eigene Zeile. Details: `git log`, README.

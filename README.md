@@ -4,7 +4,7 @@ Im Fenster **Einstellungen → Datenquellen** schaltest du jede Quelle in ihrer 
 |---|---|
 | Fernwartung | TeamViewer, RDM, RDM Better, Remotedesktop (mstsc) |
 | VPN | Sophos Connect, FortiClient, weitere VPN-Logs (OpenVPN …) |
-| Telefon und Zeiten | 3CX-Anrufe, ITM-Personalzeiten, Matrix42, Outlook, Teams-Anrufe |
+| Telefon und Zeiten | 3CX-Anrufe, Personalzeiten, Ticketsystem, Outlook, Teams-Anrufe |
 | Dieser PC | PC gesperrt / Ruhezustand, WLAN, zuletzt geöffnete Dateien, Browser-Verlauf, SSH und PowerShell |
 
 Jede Quelle hat ihr eigenes Fenster **Einrichten …** mit eigenem Schalter; dort stellst du Pfade, Zeitzonen und Anmeldungen ein. Das Aufzeichnen der aktiven Fenster schaltest du in der Kachel „Aktive Fenster“, über den Pfeil am Knopf **Einstellungen** oder unten rechts in der Statuszeile.
@@ -19,7 +19,7 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
 
 ## Funktionen
 
-- **Kennzahlen über der Timeline** (wie in „Companion“): **Erfasst** (eingetragene Zeit von der gestempelten Personalzeit, ohne ITM von der eingestellten Arbeitszeit, mit Balken), **Offen** (noch nicht eingetragene Tätigkeiten, „Jetzt eintragen“), **Vorschläge** (wartende KI-Vorschläge, „Ansehen“), **Buchungsquote** (nur mit Matrix42, Klick öffnet den Wochenabschluss) und **Nach Kunde** (eingetragene Zeit der größten Kunden). Über der Tagesliste wechseln Chips die Ansicht: Alle, Einzeln, Arbeitsblöcke, Telefonate, Dokumentation, Zuordnung ohne KI, KI-Vorschläge, Matrix42-Abgleich (die aktive ist dunkel).
+- **Kennzahlen über der Timeline**: **Erfasst** (eingetragene Zeit von der gestempelten Personalzeit, ohne Zeiterfassung von der eingestellten Arbeitszeit, mit Balken), **Offen** (noch nicht eingetragene Tätigkeiten, „Jetzt eintragen“), **Vorschläge** (wartende KI-Vorschläge, „Ansehen“), **Buchungsquote** (nur mit angebundenem Ticketsystem, Klick öffnet den Wochenabschluss) und **Nach Kunde** (eingetragene Zeit der größten Kunden). Über der Tagesliste wechseln Chips die Ansicht: Alle, Einzeln, Arbeitsblöcke, Telefonate, Dokumentation, Zuordnung ohne KI, KI-Vorschläge, Buchungsabgleich (die aktive ist dunkel).
 - **Tages-Timeline** von 00:00 bis 24:00 mit markierter Arbeitszeit. Telefonate, VPN und TeamViewer haben je eine feste Zeile („Tel“, „VPN“, „TV“). So siehst du sofort, wann du telefoniert hast oder verbunden warst. Darunter folgen RDM und weitere Verbindungen; überlappen sie sich, rücken sie in die nächste Zeile. Zeilen ohne Einträge an diesem Tag blendet Zeitzeuge aus, damit die Timeline ruhig bleibt. Beim Start und beim Blättern zeigt sie die Arbeitszeit des Tages (± 30 Minuten); wählst du **Ganzer Tag**, merkt sie sich das. Dicht aufeinanderfolgende offene Einträge stehen in der Zeile Dokumentation als ein Block („? 3 offen“), der Hinweis listet sie einzeln. Passt ein Name nicht in einen Balken, steht dort eine kürzere Form oder nichts, statt eines abgeschnittenen „Chro…“. Links steht eine Legende mit Name und Farbe jeder Zeile; sie bleibt beim Blättern stehen. Zeilen verschiebst du, indem du ihren Namen in der Legende anfasst und an eine andere Stelle ziehst (PC-Aktivität bleibt oben, Remote / Weitere unten); **Zeilen der Timeline → Reihenfolge zurücksetzen** stellt den Standard wieder her. Alle Zeilen passen ohne senkrechte Scrollleiste ins Fenster, bei vielen Zeilen werden sie niedriger (UMSCHALT + Mausrad blättert, falls es trotzdem eng wird).
 - **TeamViewer:** liest `Connections.txt` mit Sitzungs-ID, Beginn und Ende. Verbindungen unter 1 Minute werden ausgeblendet.
   - Statt der ID kannst du einen Namen vergeben: Rechtsklick auf die Verbindung (Tagesliste oder Timeline), dann **TeamViewer-ID benennen …**.
@@ -44,50 +44,50 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
   - Steht dieselbe Verbindung auch in den Logs, zeigt Zeitzeuge nur den Eintrag aus den Logs, weil er den Namen kennt.
   - Ruhezustand, Absturz oder ein Neustart von Zeitzeuge beenden den laufenden Eintrag beim letzten Blick auf den Adapter.
   - Weitere Adapter (z. B. WireGuard) trägst du in der `zeitzeuge_config.json` unter `vpn_adapters` ein: Teil der Adapterbeschreibung und Name der Quelle. Mit `vpn_monitor_enabled: false` schaltest du die Aufzeichnung ab.
-- **VPN aus FortiClient:** Zeitzeuge liest `C:\Program Files\Fortinet\FortiClient\logs\trace\FortiVPN_1.log` (änderbar unter **Einrichten …**): jede Verbindung mit dem Namen aus FortiClient (z. B. „Tenbrink“), Beginn und Ende. Geht der PC in den Ruhezustand, endet die Verbindung dort. Fehlt die Datei, nimmt es die Adapter-Meldungen aus Sophos' `charon.log` (Zeiten ohne Namen).
+- **VPN aus FortiClient:** Zeitzeuge liest `C:\Program Files\Fortinet\FortiClient\logs\trace\FortiVPN_1.log` (änderbar unter **Einrichten …**): jede Verbindung mit dem Namen aus FortiClient (z. B. „Kunde Weber“), Beginn und Ende. Geht der PC in den Ruhezustand, endet die Verbindung dort. Fehlt die Datei, nimmt es die Adapter-Meldungen aus Sophos' `charon.log` (Zeiten ohne Namen).
   - Andere Ordner trägst du in der `zeitzeuge_config.json` unter `sophos_connect_dirs` ein.
 - **Telefonate aus 3CX:** Zeitzeuge liest die Anrufliste selbst aus dem 3CX-Webclient, ohne dass du die Webseite offen haben musst.
   - Alle gelesenen Anrufe landen in der Datenbank. So entsteht eine eigene Anrufliste, die auch offline bleibt.
   - Zeitzeuge scrollt die Liste so viele Tage zurück, wie du einstellst (Standard 14). Blätterst du in Zeitzeuge auf einen älteren Tag, liest es automatisch bis dorthin nach.
-- **Personalzeiten aus der ITM-Zeiterfassung:** Zeitzeuge liest deine gestempelten Zeiten und hebt sie in der Timeline als Arbeitszeit hervor. Pausen sind abgedunkelt. Die Statuszeile zeigt die gewertete Zeit und die Sollzeit.
+- **Personalzeiten aus der Zeiterfassung:** Zeitzeuge liest deine gestempelten Zeiten und hebt sie in der Timeline als Arbeitszeit hervor. Pausen sind abgedunkelt. Die Statuszeile zeigt die gewertete Zeit und die Sollzeit.
   - Offene oder fehlerhafte Buchungen meldet Zeitzeuge einmal im Infobereich, zum Beispiel „Buchung vom 21.10. 08:02 ist seit über 12 Stunden offen – Ausstempeln vergessen?“ oder „Ende liegt vor dem Start“.
   - Die letzten 45 Tage holt Zeitzeuge in einer Abfrage. Tage, die noch fehlen, sind damit auch offline da.
-- **Gebuchte Zeiten aus Matrix42 (nur im Firmennetz):** Zeitzeuge liest deine Buchungen aus dem Matrix42-Kalender (Service Desk → Kalender) und gleicht sie mit dem Tag ab.
-  - Einrichten: **Einstellungen → Datenquellen → Einrichten → Matrix42 …**, dort die Adresse der Kalenderseite aus der Adresszeile einfügen. Die Windows-Anmeldung klappt meist von selbst, sonst einmal **Bei Matrix42 anmelden …**.
+- **Gebuchte Zeiten aus dem Ticketsystem (nur im Firmennetz):** Zeitzeuge liest deine Buchungen aus dem Kalender des Ticketsystems und gleicht sie mit dem Tag ab.
+  - Einrichten: **Einstellungen → Datenquellen → Einrichten → Ticketsystem …**, dort die Adresse der Kalenderseite aus der Adresszeile einfügen. Die Windows-Anmeldung klappt meist von selbst, sonst einmal **Beim Ticketsystem anmelden …**.
   - Edge liest die Wochenansicht unsichtbar mit eigenem Profil (`m42_profil`): die aktuelle Woche alle 10 Minuten, die letzten 4 Wochen einmal pro Sitzung (einstellbar), ältere Wochen beim Blättern. Alles landet in der Datenbank und bleibt auch außerhalb des Firmennetzes da.
   - Zeitzeuge fragt die Buchungen dabei direkt über die Schnittstelle ab, die auch die Kalenderseite nutzt. So kennt es zusätzlich Status (Neu, Freigegeben) und Tätigkeitsart; beides steht in den Details einer Buchung. Klappt die Schnittstelle nicht, liest es wie bisher aus der Seite. Ausschalten: `m42_api: false` in der `zeitzeuge_config.json`.
-  - Außerhalb des Firmennetzes steht in der Statuszeile „M42: nicht im Firmennetz“; Zeitzeuge liest weiter, sobald du wieder im Netz oder im VPN bist.
-  - **Zeile „Matrix42“** in der Timeline: graue Blöcke sind gebucht (Kunde · Betreff), rot gestrichelte Lücken sind Personalzeit (ohne ITM: Arbeitszeit) ohne Buchung. Ein Klick auf eine Lücke trägt ab dort eine Tätigkeit ein.
-  - **Tagesliste → Matrix42-Abgleich:** Buchungen mit Ticketnummer, Lücken ohne Buchung und Verbindungen/Telefonate, die höchstens zur Hälfte gebucht sind („Nicht gebucht: TeamViewer“).
-  - Die Statuszeile zeigt z. B. „Matrix42 gebucht 7:05 h, nicht gebucht 1:55 h, 1 Verbindung ohne Buchung“.
+  - Außerhalb des Firmennetzes steht in der Statuszeile „Ticketsystem: nicht im Firmennetz“; Zeitzeuge liest weiter, sobald du wieder im Netz oder im VPN bist.
+  - **Zeile „Ticketsystem“** in der Timeline: graue Blöcke sind gebucht (Kunde · Betreff), rot gestrichelte Lücken sind Personalzeit (ohne Zeiterfassung: Arbeitszeit) ohne Buchung. Ein Klick auf eine Lücke trägt ab dort eine Tätigkeit ein.
+  - **Tagesliste → Buchungsabgleich:** Buchungen mit Ticketnummer, Lücken ohne Buchung und Verbindungen/Telefonate, die höchstens zur Hälfte gebucht sind („Nicht gebucht: TeamViewer“).
+  - Die Statuszeile zeigt z. B. „Ticketsystem gebucht 7:05 h, nicht gebucht 1:55 h, 1 Verbindung ohne Buchung“.
 - **Outlook und Teams** (standardmäßig aus): Zeitzeuge liest aus dem klassischen Outlook deine Termine, Teams-Besprechungen und gesendeten Mails. Sie stehen in der eigenen Zeile „Outlook“, in der Tagesliste als „Termin“, „Teams-Besprechung“ oder „Mail gesendet“. Eine gesendete Mail ist ein kurzer Block (3 Minuten, einstellbar). Standardmäßig zählen nur Mails an andere Firmen. Teams-Anrufe stehen in der Zeile „Tel“ wie 3CX. Danach fragt Zeitzeuge genauso „Was hast du gemacht?“. Liegt ein Anruf in einer Teams-Besprechung aus dem Kalender, trägt er deren Betreff.
   - Eingegangene Mails, auf die du geantwortet oder die du weitergeleitet hast, stehen beim Eingang als „Mail beantwortet“.
   - **Teams-Chats** (eigene Datenquelle, standardmäßig aus): Exchange legt Teams-Nachrichten auch im Postfach ab. Zeitzeuge liest daraus über Outlook nur Uhrzeit und die Domains der Gesprächspartner, keine Texte und keine Namen, und zeigt Blöcke „Chat mit kunde.de“.
   - Gespeichert werden nur Betreff, Zeit, Ort und die **Domains** der Teilnehmer oder Empfänger (z. B. „kunde.de“). Keine Adressen, keine Mailtexte. Alles liegt verschlüsselt in der Datenbank und bleibt auch ohne Outlook sichtbar.
   - Regeln ohne KI kennen die neuen Einträge (Teams-Anruf → Telefonsupport, Termin → Beratung / Abstimmung, Mail → E-Mail / Kommunikation). Die KI bekommt Termine und Mails als eigenen Abschnitt.
-- **Buchungsquote:** Zeitzeuge rechnet aus, wie viel deiner Personalzeit in Matrix42 gebucht ist. Ziel sind 80 % pro Tag. Unter 50 % ist die Quote rot (✗), bis unter dem Ziel gelb (!), ab dem Ziel bis 100 % grün (✓), darüber dunkelgrün (✓✓). Die Kachel **Buchungsquote** oben über der Timeline (gleich hinter „Erfasst“) zeigt „heute | 7 Tage“ mit großen Prozentzahlen in der Farbe der Stufe, z. B. „72 % ! | 81 % ✓“. Ein Klick öffnet den Wochenabschluss. Die Anzeige erscheint nur, wenn Matrix42 Daten liefert.
-- **7-Tage-Wert:** die letzten 7 gestempelten Tage bis heute. Heute zählt nur, wenn du gestempelt hast, und nur bis jetzt. Tage ohne Matrix42-Daten zählen nicht mit. Sie stehen als „Matrix42 nicht gelesen“ da, statt als 0 %.
+- **Buchungsquote:** Zeitzeuge rechnet aus, wie viel deiner Personalzeit im Ticketsystem gebucht ist. Ziel sind 80 % pro Tag. Unter 50 % ist die Quote rot (✗), bis unter dem Ziel gelb (!), ab dem Ziel bis 100 % grün (✓), darüber dunkelgrün (✓✓). Die Kachel **Buchungsquote** oben über der Timeline (gleich hinter „Erfasst“) zeigt „heute | 7 Tage“ mit großen Prozentzahlen in der Farbe der Stufe, z. B. „72 % ! | 81 % ✓“. Ein Klick öffnet den Wochenabschluss. Die Anzeige erscheint nur, wenn das Ticketsystem Daten liefert.
+- **7-Tage-Wert:** die letzten 7 gestempelten Tage bis heute. Heute zählt nur, wenn du gestempelt hast, und nur bis jetzt. Tage ohne Ticketsystem-Daten zählen nicht mit. Sie stehen als „Ticketsystem nicht gelesen“ da, statt als 0 %.
 - **Wochenabschluss** (Menü **Ansicht → Wochenabschluss …** oder Klick auf die Kachel Buchungsquote): Montag bis Freitag der Woche, Samstag und Sonntag nur, wenn du da gestempelt oder gebucht hast. Je Tag: Personalzeit, gebucht, Quote, Zeit ohne Buchung und offene Tätigkeiten. Darunter Hinweise wie „Dienstag: 1:20 h nicht gebucht“ und der 7-Tage-Wert. Mit ◀ ▶ (oder Bild auf/ab) blätterst du die Wochen. Enter oder Doppelklick zeigt den Tag im Hauptfenster. Das Ziel stellst du dort unter „Ziel je Tag“ ein.
 - **Prüfung bei Feierabend:** Bist du ausgestempelt und ist Feierabend, prüft Zeitzeuge den Tag einmal: mehr als 6 Stunden ohne 30 Minuten Pause (über 9 Stunden: 45 Minuten, Pausen zählen ab 15 Minuten am Stück), mehr als 6 Stunden am Stück, PC aktiv aber ausgestempelt, Buchung außerhalb der Personalzeit, Buchungen überschneiden sich, Quote unter Ziel. Die Hinweise kommen mit der Erinnerung an offene Tätigkeiten oder allein, und stehen auch im Wochenabschluss. Abschalten: Einstellungen → Nachfragen und Erinnerungen → „Bei Feierabend prüfen“.
-- **In Matrix42 buchen:** Rechtsklick auf eine eingetragene Tätigkeit → **In Matrix42 buchen …**. Zeitzeuge legt eine Zeiterfassung mit Status „Neu“ am Ticket an. Freigeben machst du wie gewohnt in Matrix42.
+- **Im Ticketsystem buchen:** Rechtsklick auf eine eingetragene Tätigkeit → **Im Ticketsystem buchen …**. Zeitzeuge legt eine Zeiterfassung mit Status „Neu“ am Ticket an. Freigeben machst du wie gewohnt im Ticketsystem.
   - **Kulanz** und **Reise** übernimmt das Fenster aus der Tätigkeit. Bei Kulanz fragt es nach dem Grund (Standard „Kulanz“) und bucht die ganze Zeit als Kulanz.
-  - Im Fenster prüfst du vorher Ticket, Von und Bis (Ende im Abrechnungstakt, änderbar), Tätigkeitsart und Beschreibung. Gebucht wird erst mit **In Matrix42 buchen**, nie von selbst.
+  - Im Fenster prüfst du vorher Ticket, Von und Bis (Ende im Abrechnungstakt, änderbar), Tätigkeitsart und Beschreibung. Gebucht wird erst mit **Im Ticketsystem buchen**, nie von selbst.
   - **Ticket suchen:** nach Kunde, Benutzer (Melder oder Bearbeiter), Ticketnummer oder Titel. Ein Klick auf einen Treffer übernimmt das Ticket. Ohne Ticket sucht Zeitzeuge gleich nach dem Kunden der Tätigkeit.
-  - Ist in Matrix42 zu der Zeit schon etwas gebucht, steht ein Hinweis im Fenster. Gebuchte Tätigkeiten merken sich die Nummer der Zeiterfassung (z. B. TE0000088403) und lassen sich nicht doppelt buchen.
-  - Im Wochenabschluss bucht **Tag in Matrix42 buchen …** alle noch offenen Tätigkeiten des markierten Tags nacheinander, jede mit eigenem Fenster.
-  - Matrix42 muss eingeschaltet und angemeldet sein (nur im Firmennetz). Zeitzeuge bucht über das unsichtbare Edge, wie die Matrix42-Seite selbst.
+  - Ist im Ticketsystem zu der Zeit schon etwas gebucht, steht ein Hinweis im Fenster. Gebuchte Tätigkeiten merken sich die Nummer der Zeiterfassung (z. B. TE0000012345) und lassen sich nicht doppelt buchen.
+  - Im Wochenabschluss bucht **Tag im Ticketsystem buchen …** alle noch offenen Tätigkeiten des markierten Tags nacheinander, jede mit eigenem Fenster.
+  - Das Ticketsystem muss eingeschaltet und angemeldet sein (nur im Firmennetz). Zeitzeuge bucht über das unsichtbare Edge, wie die Seite des Ticketsystems selbst.
 - **Tagesabschluss** (Menü **Ansicht → Tagesabschluss …**, im Wochenabschluss oder per Klick auf die Meldung bei Feierabend): Zeitzeuge stellt den Tag aus allen Spuren zu Blöcken je Kunde zusammen, mit Ticket und kurzem Tickettext. Du prüfst die Liste und bestätigst einmal für alles. Ziel: mit wenig Aufwand rund 90 % der Personalzeit erfasst.
-  - **Woher die Blöcke kommen:** deine eingetragenen Tätigkeiten, Verbindungen und Telefonate, KI-Vorschläge, die Zuordnung ohne KI und die Arbeitsblöcke am PC, in dieser Reihenfolge. Was in Matrix42 schon gebucht ist, bleibt außen vor. Gleicher Kunde hintereinander wird ein Block, kurze Lücken (bis 10 Minuten) gehören zum Block davor. PC-Aktivität zählt nur in der Personalzeit.
-  - **Ticket:** aus den Fenstertiteln im Block. Kennt Zeitzeuge zum Ticket keinen Kunden, schlägt es ihn in deinem Verlauf oder direkt in Matrix42 nach. Ohne Ticket im Fenstertitel nimmt es das Ticket, das du zuletzt (14 Tage) für den Kunden benutzt hast, als **vermutet**. **Text:** der Satz aus dem KI-Vorschlag, sonst aus der Regel, sonst kurz aus den Spuren, z. B. „Fernwartung: RDP DC01, Telefonat“.
+  - **Woher die Blöcke kommen:** deine eingetragenen Tätigkeiten, Verbindungen und Telefonate, KI-Vorschläge, die Zuordnung ohne KI und die Arbeitsblöcke am PC, in dieser Reihenfolge. Was im Ticketsystem schon gebucht ist, bleibt außen vor. Gleicher Kunde hintereinander wird ein Block, kurze Lücken (bis 10 Minuten) gehören zum Block davor. PC-Aktivität zählt nur in der Personalzeit.
+  - **Ticket:** aus den Fenstertiteln im Block. Kennt Zeitzeuge zum Ticket keinen Kunden, schlägt es ihn in deinem Verlauf oder direkt im Ticketsystem nach. Ohne Ticket im Fenstertitel nimmt es das Ticket, das du zuletzt (14 Tage) für den Kunden benutzt hast, als **vermutet**. **Text:** der Satz aus dem KI-Vorschlag, sonst aus der Regel, sonst kurz aus den Spuren, z. B. „Fernwartung: RDP DC01, Telefonat“.
   - Oben steht, wie viel der Personalzeit schon gebucht ist und wie viel es mit den angehakten Zeilen wird, z. B. „mit den angehakten Zeilen 7:20 h (92 %)“.
   - Angehakt sind Blöcke mit Kunde. Kunde, Ticket und Text änderst du per Doppelklick direkt in der Tabelle. Zeit ohne Spur steht als „nicht zugeordnet“ ohne Haken da; trägst du dort einen Kunden ein, ist sie dabei.
-  - **Dokumentieren und buchen** speichert die angehakten Zeilen als Tätigkeiten und bucht alle mit Ticket nacheinander in Matrix42 (Status „Neu“, Freigeben in Matrix42). Ohne Ticket wird nur dokumentiert. **Nur dokumentieren** bucht nichts. **Einzeln buchen …** öffnet für die markierte Zeile das Fenster „In Matrix42 buchen“ mit Ticketsuche.
-  - Der Abrechnungstakt gilt wie beim einzelnen Buchen. Reicht eine Buchung dadurch in die nächste hinein, rückt die nächste ans Ende der vorigen. Überschneidet sich eine Zeile mit einer Buchung, die schon in Matrix42 steht, bucht Zeitzeuge sie nicht und sagt es.
+  - **Dokumentieren und buchen** speichert die angehakten Zeilen als Tätigkeiten und bucht alle mit Ticket nacheinander im Ticketsystem (Status „Neu“, Freigeben im Ticketsystem). Ohne Ticket wird nur dokumentiert. **Nur dokumentieren** bucht nichts. **Einzeln buchen …** öffnet für die markierte Zeile das Fenster „Im Ticketsystem buchen“ mit Ticketsuche.
+  - Der Abrechnungstakt gilt wie beim einzelnen Buchen. Reicht eine Buchung dadurch in die nächste hinein, rückt die nächste ans Ende der vorigen. Überschneidet sich eine Zeile mit einer Buchung, die schon im Ticketsystem steht, bucht Zeitzeuge sie nicht und sagt es.
   - **Sicherheit:** Ohne Rückfrage bucht Zeitzeuge nur sichere Tickets (aus dem Fenstertitel, von Hand eingetragen oder intern). Vermutete Tickets bucht es erst, wenn du in der Rückfrage **Vermutete mitbuchen** wählst. Gehört ein Ticket laut Verlauf zu einem anderen Kunden, schlägt Zeitzeuge es nicht vor. Passt ein Kundenname auf mehrere Kunden (z. B. „Huber“), nimmt es kein Ticket statt eines falschen.
-  - **Erkennung messen …** zeigt, wie gut der Tagesabschluss die letzten 20 Tage erkannt hätte. Dazu rechnet Zeitzeuge jeden Tag nach, als wäre nichts eingetragen und gebucht, und vergleicht mit deinen echten Matrix42-Buchungen: Erkennungsgrad (Zeit mit richtigem Kunden), Kunde richtig, Ticket richtig, falsches Ticket. Ziel: Erkennungsgrad 70–90 %, falsches Ticket unter 10 %.
+  - **Erkennung messen …** zeigt, wie gut der Tagesabschluss die letzten 20 Tage erkannt hätte. Dazu rechnet Zeitzeuge jeden Tag nach, als wäre nichts eingetragen und gebucht, und vergleicht mit deinen echten Ticketsystem-Buchungen: Erkennungsgrad (Zeit mit richtigem Kunden), Kunde richtig, Ticket richtig, falsches Ticket. Ziel: Erkennungsgrad 70–90 %, falsches Ticket unter 10 %.
   - Nach dem Abschluss fragt Zeitzeuge zu diesen Zeiten nicht mehr nach.
   - Bei Feierabend nennt die Meldung den Tagesabschluss („Tagesabschluss: 5 Vorschläge bereit, danach 92 % der Personalzeit erfasst“), ein Klick öffnet ihn. Abschalten mit `day_close_end_of_day: false`, dann ist die Meldung wie vorher.
-  - Zeit ohne Kunden (E-Mail, Excel …) kann auf ein internes Ticket gehen: `day_close_internal` in der `zeitzeuge_config.json`, z. B. `{"customer": "ITM intern", "ticket": "TCK0000012345", "category": "Intern", "categories": ["E-Mail / Kommunikation", "Teams"]}`. Mit `categories` gilt es nur für diese Kategorien, sonst für alle Blöcke ohne Kunde.
+  - Zeit ohne Kunden (E-Mail, Excel …) kann auf ein internes Ticket gehen: `day_close_internal` in der `zeitzeuge_config.json`, z. B. `{"customer": "Intern", "ticket": "TCK0000012345", "category": "Intern", "categories": ["E-Mail / Kommunikation", "Teams"]}`. Mit `categories` gilt es nur für diese Kategorien, sonst für alle Blöcke ohne Kunde.
   - So sieht es aus: [Bildschirmfoto Tagesabschluss](docs/screenshots/2026-11-03/tagesabschluss.png)
 - **Aktivitätsprotokoll:** Alle 5 Sekunden merkt sich Zeitzeuge das aktive Fenster, zum Beispiel eine RDP-Sitzung, einen Browser-Tab, Outlook oder PuTTY.
   - Es erscheint oben in der Timeline als Zeile „PC-Aktivität“, zusammengefasst zu **Arbeitsblöcken** je Tätigkeit, z. B. „E-Mail“, „DC01 · Fernwartung“ oder „Excel“. Aus 180 Fensterwechseln an einem Tag werden so etwa 10 Blöcke.
@@ -126,7 +126,7 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
   - **Keine doppelten Nachfragen:** Was zur selben Arbeit gehört, ist ein Thema mit einer Nachfrage, z. B. VPN „Kanzlei Schmidt - SSL VPN“, RDP „Kanzlei Schmidt - DC01“ und ein Telefonat mit der Kanzlei 6 Minuten danach. Gleicher Kunde mit höchstens 15 Minuten Abstand gehört zusammen; ein Arbeitsblock am PC gehört zur Verbindung, in der er liegt. Verschiedene Kunden werden nie zusammengelegt. Im Fenster steht, was dazugehört („· dazu RDP-Verbindung, Telefonat“).
   - Beantwortet, ignoriert oder zurückgestellt merkt sich Zeitzeuge **Zeitraum und Kunde** des Themas. Es fragt also nicht noch einmal, wenn du eine kürzere Zeit einträgst als erkannt, wenn die Logs später nachkommen und sich Beginn oder Name leicht ändern oder wenn nach „Später“ noch ein Telefonat zum selben Kunden dazukommt. Löschst du die Tätigkeit wieder, gilt das Thema wieder als offen.
   - **Abwesenheit am PC:** Warst du 15 Minuten oder länger nicht an Maus und Tastatur (auch gesperrt oder im Ruhezustand), fragt Zeitzeuge bei der ersten Eingabe danach: „Was war in der Zeit?“. Knöpfe für typische Fälle füllen Kategorie und Text mit einem Klick: **Telefonat**, **Besprechung**, **Vor Ort**, **Fahrt / Reise** (setzt den Haken „Reise“) und **Pause** (speichert gleich). Die Dauer stellst du unter **Nachfragen und Erinnerungen …** ein, dort lässt sich die Abfrage auch abschalten.
-  - **Kulanz und Reise:** Beim Eintragen setzt du die Haken **Kulanz** (nicht berechnen) und **Reise / Anfahrt**. Sie stehen in der Ticketzeile und werden beim Buchen in Matrix42 übernommen.
+  - **Kulanz und Reise:** Beim Eintragen setzt du die Haken **Kulanz** (nicht berechnen) und **Reise / Anfahrt**. Sie stehen in der Ticketzeile und werden beim Buchen im Ticketsystem übernommen.
   - **TeamViewer-ID zum Kunden:** Bei TeamViewer kennt Zeitzeuge oft nur die ID. Trägst du beim Dokumentieren den Kunden ein, merkt es sich den Namen für diese ID. Ab dann steht überall der Name.
   - **Erinnerung:** Nach Feierabend und beim Beenden sagt Zeitzeuge, wie viele Tätigkeiten heute noch offen sind.
   - Sind Tätigkeiten offen, steht rechts unten der blaue Knopf **2 offen – jetzt eintragen**. Ein Klick öffnet die erste offene Tätigkeit zum Eintragen. Die Statuszeile zeigt daneben „dokumentiert 3:10 h“.
@@ -137,34 +137,34 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
 - **Textbausteine:** Häufige Sätze wie „Windows-Updates installiert“ fügst du beim Eintragen mit **Text einfügen** (Alt+E) ein. Steht der Cursor am Ende einer Zeile, kommt der Baustein in eine neue Zeile. Die Bausteine 1 bis 9 wählst du im Menü direkt mit der Zahl. Die Liste pflegst du unter Einstellungen → **Textbausteine …**.
 - **Zuletzt benutzte Texte:** Im selben Menü stehen die letzten Texte zum gewählten Kunden (aus den letzten 60 Tagen). Wechselst du den Kunden, wechseln auch die Vorschläge.
 - **Ticket-Format „- “ / „-- “:** Auf Wunsch kopiert Zeitzeuge die Dokumentation im Format der Ticket-Doku: erste Zeile (oder erster Satz) als Haupttätigkeit „- …“, alle weiteren als Untertätigkeiten „-- …“. Das gilt für STRG + C in der Ansicht „Dokumentation“ und für „Kopieren“ im Rechtsklick-Menü. Einschalten unter Einstellungen → Textbausteine. Im Eintragen-Dialog gliedert **Text einfügen → Als Ticket-Doku gliedern** den Text sofort.
-- **Ticketnummer als Vorschlag:** Zeitzeuge sucht in den Fenstertiteln (PC-Verlauf) und in den Matrix42-Buchungen rund um die Tätigkeit (5 Minuten davor und danach) nach Ticketnummern wie `TCK0000049374`. Die häufigste steht im Feld **Ticket** als Vorschlag, z. B. „Gefunden: TCK0000049374 (Outlook, 12 min)“. Erst mit **Übernehmen** (oder Auswahl in der Liste) landet sie in der Tätigkeit. Das Ticket erscheint dann in der Ansicht „Dokumentation“ und in der kopierten Ticketzeile. Im kleinen Nachfrage-Fenster erscheint das Feld nur, wenn etwas gefunden wurde.
+- **Ticketnummer als Vorschlag:** Zeitzeuge sucht in den Fenstertiteln (PC-Verlauf) und in den Ticketsystem-Buchungen rund um die Tätigkeit (5 Minuten davor und danach) nach Ticketnummern wie `TCK0000049374`. Die häufigste steht im Feld **Ticket** als Vorschlag, z. B. „Gefunden: TCK0000049374 (Outlook, 12 min)“. Erst mit **Übernehmen** (oder Auswahl in der Liste) landet sie in der Tätigkeit. Das Ticket erscheint dann in der Ansicht „Dokumentation“ und in der kopierten Ticketzeile. Im kleinen Nachfrage-Fenster erscheint das Feld nur, wenn etwas gefunden wurde.
 - **Kundenliste: ein Kunde, alle Spuren.** Unter *Einstellungen → Kundenliste …* legst du Kunden an und ordnest ihnen ihre Spuren zu: TeamViewer-ID, RDM-Eintrag, VPN-Verbindung, Telefonnummer und E-Mail-Domain. Telefonnummern passen in jeder Schreibweise („+49 711 123456“ = „0711 123456“). Eine Domain wie „@kunde.de“ gilt auch für „mail.kunde.de“. Zeitzeuge schlägt den Kunden dann beim Eintragen und in der Nachfrage vor. In der Tagesliste steht er vor dem Namen der Verbindung („Müller GmbH · srv01“), in der Timeline im Hinweis. Eine Spur gehört immer genau einem Kunden.
   - **Anrufer sind keine Kunden.** Bei einem Telefonat kommt der Kunde nur aus der Kundenliste. Der Name des Anrufers (Ansprechpartner oder Kollege) steht weiter am Anruf, wird aber nie als Kunde vorgeschlagen oder gebucht. Auch die KI nimmt keine Personennamen mehr als Kunden.
   - **Kollegen erkennt Zeitzeuge selbst:** Durchwahlen (bis 4 Ziffern), Handys von Kollegen, die auch intern anrufen, und eure Zentrale samt allen Durchwahlen dahinter. Anrufe von Kollegen bleiben in der Timeline, Zeitzeuge fragt weiter nach („Kollege“ steht im Hinweis). Den Kunden trägst du ein, wenn du einem Kollegen bei einem Kunden geholfen hast. Weitere Nummern: `colleague_numbers`.
-  - **Lernt aus Matrix42:** Rufst du dieselbe Nummer immer wieder an, während du auf denselben Kunden buchst, ordnet Zeitzeuge die Nummer diesem Kunden zu, ebenso TeamViewer-IDs, RDM-Einträge und VPN-Verbindungen. Sicher heißt: mindestens 3 Buchungen, davon 60 % beim selben Kunden. Das läuft nach dem Start und nach dem Lesen von Matrix42 von selbst, die Statuszeile meldet „Kundenliste: 2 Spuren aus Matrix42 gelernt“. In der Kundenliste steht dahinter „(aus Matrix42 gelernt)“. Entfernst du eine solche Spur, lernt Zeitzeuge sie nicht wieder. Abschalten: `customers_auto_learn: false`.
-  - **Neu entdeckt:** Heißt ein Kunde in Matrix42 anders („Holger Tenbrink“ → „H.Tenbrink Montage GmbH“), steht oben in der Kundenliste ein Vorschlag mit **Umbenennen** und **Ignorieren**. Umbenannt wird nur auf Klick.
-  - Kundennamen gelten als gleich, auch wenn ein Leerzeichen fehlt („Münsterlandpflege“ = „Münsterland Pflege GmbH“).
-  - **Stichwörter:** Spur-Art „Stichwort“, z. B. „Nordhafen“ oder „SWN-“. Steht es in einem Fenstertitel, Mail- oder Terminbetreff oder im Namen einer Verbindung, gehört der Eintrag zum Kunden (Groß/Klein und Umlaute egal, Wörter nur am Wortanfang: „Huber“ passt nicht auf „Schuber“). Genauere Spuren wie Telefonnummer oder TeamViewer-ID gehen vor, längere Stichwörter vor kürzeren. Damit bekommen auch Arbeitsblöcke am PC und die Zuordnung ohne KI einen Kunden, und der Tagesabschluss schlägt ihn vor.
-  - **Ordner, Rechnernamen und IP-Adressen** (wie in „Companion“): Ein Ordner wie `E:\Kundenprojekte\Avangard` passt, wenn der Pfad oder sein letzter Teil („Avangard“) im Fenstertitel steht. Ein Rechnername passt auf Verbindungen (RDP, SSH, RDM) und Fenstertitel, auch mit Platzhaltern: `*.kunde.local`, `fw-??`. Ohne Platzhalter passt `srv01` auch auf `srv01.kunde.local`. IP-Adressen und Bereiche (`10.20.0.0/16`) passen auf Adressen in Verbindungen und Fenstertiteln, der engste Bereich gewinnt. Diese Merkmale greifen wie Stichwörter erst, wenn keine genauere Spur passt (Reihenfolge: IP, Rechnername, Ordner, Stichwort). Domains aus dem Browser-Verlauf zählen wie Mail-Domains.
+  - **Lernt aus dem Ticketsystem:** Rufst du dieselbe Nummer immer wieder an, während du auf denselben Kunden buchst, ordnet Zeitzeuge die Nummer diesem Kunden zu, ebenso TeamViewer-IDs, RDM-Einträge und VPN-Verbindungen. Sicher heißt: mindestens 3 Buchungen, davon 60 % beim selben Kunden. Das läuft nach dem Start und nach dem Lesen des Ticketsystems von selbst, die Statuszeile meldet „Kundenliste: 2 Spuren aus dem Ticketsystem gelernt“. In der Kundenliste steht dahinter „(aus dem Ticketsystem gelernt)“. Entfernst du eine solche Spur, lernt Zeitzeuge sie nicht wieder. Abschalten: `customers_auto_learn: false`.
+  - **Neu entdeckt:** Heißt ein Kunde im Ticketsystem anders („Peter Weber“ → „P. Weber Haustechnik GmbH“), steht oben in der Kundenliste ein Vorschlag mit **Umbenennen** und **Ignorieren**. Umbenannt wird nur auf Klick.
+  - Kundennamen gelten als gleich, auch wenn ein Leerzeichen fehlt („Sonnenhofpflege“ = „Sonnenhof Pflege GmbH“).
+  - **Stichwörter:** Spur-Art „Stichwort“, z. B. „Lindenhof“ oder „LDH-“. Steht es in einem Fenstertitel, Mail- oder Terminbetreff oder im Namen einer Verbindung, gehört der Eintrag zum Kunden (Groß/Klein und Umlaute egal, Wörter nur am Wortanfang: „Huber“ passt nicht auf „Schuber“). Genauere Spuren wie Telefonnummer oder TeamViewer-ID gehen vor, längere Stichwörter vor kürzeren. Damit bekommen auch Arbeitsblöcke am PC und die Zuordnung ohne KI einen Kunden, und der Tagesabschluss schlägt ihn vor.
+  - **Ordner, Rechnernamen und IP-Adressen**: Ein Ordner wie `E:\Kundenprojekte\Beispielkunde` passt, wenn der Pfad oder sein letzter Teil („Beispielkunde“) im Fenstertitel steht. Ein Rechnername passt auf Verbindungen (RDP, SSH, RDM) und Fenstertitel, auch mit Platzhaltern: `*.kunde.local`, `fw-??`. Ohne Platzhalter passt `srv01` auch auf `srv01.kunde.local`. IP-Adressen und Bereiche (`10.20.0.0/16`) passen auf Adressen in Verbindungen und Fenstertiteln, der engste Bereich gewinnt. Diese Merkmale greifen wie Stichwörter erst, wenn keine genauere Spur passt (Reihenfolge: IP, Rechnername, Ordner, Stichwort). Domains aus dem Browser-Verlauf zählen wie Mail-Domains.
   - **Kundennummer und Kalendertermine:** Je Kunde gibt es ein Feld Kundennummer (die Suche findet sie auch) und den Schalter „Kalendertermine“. Ist er aus, ordnet Zeitzeuge Termine und Teams-Besprechungen nicht über die Mail-Domains diesem Kunden zu, gesendete Mails schon.
   - **Fenster „Kunden & Erkennung“:** links die Kunden mit Suche, Kürzel, Zahl der Merkmale und eingetragenen Stunden der letzten 7 Tage. Rechts je Art die Merkmale als Chips mit „+ Hinzufügen“ und daneben, wie oft sie in den letzten 7 Tagen gegriffen haben („3×“). Ein Klick auf einen Chip entfernt das Merkmal.
-  - Stichwörter lernt Zeitzeuge ebenfalls aus Matrix42: Ein Wort aus dem Matrix42-Namen des Kunden („Tuxhorn“), das in deinen Fenstertiteln steht, während du auf diesen Kunden buchst. Mindestens 30 Minuten an 2 Tagen und 80 % beim selben Kunden: von selbst; ab 10 Minuten: Vorschlag unter „Neu entdeckt“ mit **Übernehmen**. Orte nach dem Komma und allgemeine Wörter („Systems“, „Service“, „Technik“ …) nimmt es nie.
+  - Stichwörter lernt Zeitzeuge ebenfalls aus dem Ticketsystem: Ein Wort aus dem Namen im Ticketsystem des Kunden („Weber“), das in deinen Fenstertiteln steht, während du auf diesen Kunden buchst. Mindestens 30 Minuten an 2 Tagen und 80 % beim selben Kunden: von selbst; ab 10 Minuten: Vorschlag unter „Neu entdeckt“ mit **Übernehmen**. Orte nach dem Komma und allgemeine Wörter („Systems“, „Service“, „Technik“ …) nimmt es nie.
 - **Kunde zuordnen per Rechtsklick.** Hat eine Verbindung, ein Telefonat oder eine Mail noch keinen Kunden, wählst du im Rechtsklick-Menü *Kunde zuordnen …*. „TeamViewer-ID benennen …“ gibt es weiter, es landet in derselben Kundenliste.
 - **Zeitzeuge lernt aus deinen Korrekturen.** Änderst du beim Eintragen den vorgeschlagenen Kunden, merkt Zeitzeuge ihn zur Spur („Kunde für RDM-Eintrag „srv01“ merken“ ist angehakt). Änderst du die Kategorie, bietet der Dialog „Als Regel merken: „srv01“ → Beratung“ an. Dieser Haken ist aus: Nur wenn du ihn setzt, entsteht eine Regel in der *Zuordnung ohne KI*. Sie steht vor den Standardregeln und schlägt beim nächsten Mal auch im Dialog die Kategorie vor. Doppelte Regeln legt Zeitzeuge nicht an.
 - **Abrechnungstakt:** Zeitzeuge zeigt zu jeder Tätigkeit auch die abgerechnete Zeit. Standard ist der 15-Minuten-Takt: Jede angefangene Viertelstunde wird abgerechnet. Beim Kopieren stehen echte und abgerechnete Zeiten mit Beginn und Ende in der Zeile, z. B. `10:05–10:17 (12 min) → abgerechnet 10:05–10:20 (0:15 h)  Müller GmbH · Fernwartung: Drucker eingerichtet`. Der Beginn bleibt, das Ende rückt auf den Takt. Du siehst sie auch in der Ansicht „Dokumentation“, in der Statuszeile („dokumentiert 3:10 h, abgerechnet 3:30 h“) und im Eintragen-Fenster neben der Dauer. Jede Tätigkeit wird für sich gerundet. Unter **Einstellungen → Abrechnung …** stellst du den Takt (Minuten) und die Rundung ein: „Angefangener Takt zählt“, „Auf den nächsten Takt runden“ oder „Ohne Takt“ (dann ist alles wie früher). Für einzelne Kunden kannst du einen anderen Takt oder eine andere Rundung festlegen.
 - **Jede Zeile der Timeline ein- und ausblenden:** PC-Aktivität, Dokumentation, Zuordnung ohne KI, KI-Vorschläge, Telefon, Outlook, VPN, TeamViewer und Remote / Weitere schaltest du einzeln unter **Ansicht → Zeilen der Timeline** oder per Rechtsklick auf die Legende links in der Timeline. **Alle Zeilen einblenden** holt alles zurück. Die Tagesliste zeigt weiter alle Einträge.
-- **Verschlüsselte Datenbank:** Alle Daten (Anrufe, Fenster, Tätigkeiten, KI-Vorschläge, Personalzeit, Matrix42, VPN, Kundennamen) liegen in einer Datei `zeitzeuge.db`, verschlüsselt mit AES-256. Auf deinem PC öffnet sie deine Windows-Anmeldung ohne Abfrage. Für einen neuen PC gibt es einen Wiederherstellungsschlüssel, den du in RDM ablegst. Siehe [Schutz der Daten](#schutz-der-daten).
-- **Ladeanzeige:** Solange Zeitzeuge etwas lädt (Logs, 3CX, ITM, Matrix42 oder KI-Vorschläge), läuft in der Werkzeugleiste rechts neben „Arbeitszeit“ ein drehender Kreis mit Text, dazu ein dünner Streifen über die ganze Fensterbreite oben über der Timeline (beides schwebt, nichts verschiebt sich), z. B. „Lädt: 3CX-Anrufe · KI-Vorschläge (Claude ordnet 25.10. ein) …“. Kurze Lesevorgänge im Hintergrund erscheinen erst nach 1,5 Sekunden, damit nichts flackert.
-- **Zustand der Datenquellen in der Statusleiste:** Rechts unten stehen 3CX und ITM nebeneinander, jeweils mit Symbol:
+- **Verschlüsselte Datenbank:** Alle Daten (Anrufe, Fenster, Tätigkeiten, KI-Vorschläge, Personalzeit, Ticketsystem, VPN, Kundennamen) liegen in einer Datei `zeitzeuge.db`, verschlüsselt mit AES-256. Auf deinem PC öffnet sie deine Windows-Anmeldung ohne Abfrage. Für einen neuen PC gibt es einen Wiederherstellungsschlüssel, den du in RDM ablegst. Siehe [Schutz der Daten](#schutz-der-daten).
+- **Ladeanzeige:** Solange Zeitzeuge etwas lädt (Logs, 3CX, Zeiterfassung, Ticketsystem oder KI-Vorschläge), läuft in der Werkzeugleiste rechts neben „Arbeitszeit“ ein drehender Kreis mit Text, dazu ein dünner Streifen über die ganze Fensterbreite oben über der Timeline (beides schwebt, nichts verschiebt sich), z. B. „Lädt: 3CX-Anrufe · KI-Vorschläge (Claude ordnet 25.10. ein) …“. Kurze Lesevorgänge im Hintergrund erscheinen erst nach 1,5 Sekunden, damit nichts flackert.
+- **Zustand der Datenquellen in der Statusleiste:** Rechts unten stehen 3CX und Zeiterfassung nebeneinander, jeweils mit Symbol:
   - grüner Haken und Uhrzeit: zuletzt erfolgreich gelesen, z. B. „3CX 17:53“
-  - gelbes Dreieck mit Ausrufezeichen und Grund: es kommen keine Daten, z. B. „3CX: Anmeldung nötig“, „ITM: offline“ oder „Fehler“
+  - gelbes Dreieck mit Ausrufezeichen und Grund: es kommen keine Daten, z. B. „3CX: Anmeldung nötig“, „Zeiterfassung: offline“ oder „Fehler“
   - graue Uhr: liest gerade
   - Fehlt eine TeamViewer- oder RDM-Logdatei, erscheint „Logs: TeamViewer fehlt“ mit gelbem Dreieck.
   - Ein Klick führt direkt zur Lösung: zur Anmeldung oder zu den Einstellungen. Fährst du mit der Maus darüber, steht dort der genaue Stand.
 - **Zeitlinie unter der Maus:** Eine gestrichelte senkrechte Linie folgt der Maus, oben steht die genaue Uhrzeit. Der Hinweis daneben zeigt, welche Einträge gerade liefen.
-- **Zeile „Personalzeit“:** Jeder gestempelte Abschnitt ist ein Block mit Beginn und Ende, z. B. „08:10 – 12:39“, Pausen sind Lücken. Bist du noch eingestempelt, steht dort „08:02 – jetzt“. Ohne ITM heißt die Zeile „Arbeitszeit“ und zeigt gestrichelt die Arbeitszeit aus den Einstellungen; eine dort eingetragene Pause (Einstellungen → Allgemein → Arbeitszeiten) ist eine Lücke. Der helle Hintergrund markiert dieselben Zeiten. Blendest du die Zeile aus, steht die Personalzeit wieder im Hinweis unter der Maus.
+- **Zeile „Personalzeit“:** Jeder gestempelte Abschnitt ist ein Block mit Beginn und Ende, z. B. „08:10 – 12:39“, Pausen sind Lücken. Bist du noch eingestempelt, steht dort „08:02 – jetzt“. Ohne Zeiterfassung heißt die Zeile „Arbeitszeit“ und zeigt gestrichelt die Arbeitszeit aus den Einstellungen; eine dort eingetragene Pause (Einstellungen → Allgemein → Arbeitszeiten) ist eine Lücke. Der helle Hintergrund markiert dieselben Zeiten. Blendest du die Zeile aus, steht die Personalzeit wieder im Hinweis unter der Maus.
 - **Details:** Fährst du über einen Eintrag, siehst du Kunde, Zeitraum und Dauer. Ein Klick in der Timeline, ein Doppelklick oder **Enter** in der Liste öffnet die Details.
-- **Immer aktuell:** Die Logs werden alle 2 Minuten geprüft. Mit F5 (Aktualisieren) liest du sie sofort neu ein, 3CX und Matrix42 gleich mit (Anrufliste neu laden, Woche des angezeigten Tags). Neue Anrufe brauchen danach etwa 10–15 Sekunden. Gelesen werden nur Dateien, die sich geändert haben.
+- **Immer aktuell:** Die Logs werden alle 2 Minuten geprüft. Mit F5 (Aktualisieren) liest du sie sofort neu ein, 3CX und Ticketsystem gleich mit (Anrufliste neu laden, Woche des angezeigten Tags). Neue Anrufe brauchen danach etwa 10–15 Sekunden. Gelesen werden nur Dateien, die sich geändert haben.
 - **Bedienung:**
   - Die rote Linie zeigt die aktuelle Uhrzeit, die Arbeitszeit aus den Einstellungen ist hervorgehoben.
   - Die Timeline zeigt zuerst den ganzen Tag (0–24 Uhr) ohne Scrollen.
@@ -174,7 +174,7 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
   - Der Hinweis an der Maus zeigt beim Ziehen Beginn, Ende und Dauer. **ESC** bricht das Ziehen ab.
   - Ein Doppelklick auf eine freie Stelle oder **Ganzer Tag** führt zurück zur Tagesansicht. **Arbeitszeit** zeigt die Arbeitszeit des Tages.
   - STRG + Mausrad zoomt an der Mausposition, das Mausrad allein blättert durch den Tag.
-  - Design „Companion“: ruhige Zink-Grautöne, runde Ecken, Karten mit feinem Rand, Balken mit runden Ecken, Hauptknopf in Textfarbe, Violett für Fokus, Häkchen und Links. Gestaltet nach 16 UI-Design-Regeln (Kontrast, eine Schrift, keine Großbuchstaben, siehe `docs/quality-guardrails.md`). Hell und dunkel (Pfeil am Knopf **Einstellungen → Dunkles Design**), eigene Aktivitätstypen mit frei wählbaren Farben.
+  - Design: ruhige Zink-Grautöne, runde Ecken, Karten mit feinem Rand, Balken mit runden Ecken, Hauptknopf in Textfarbe, Violett für Fokus, Häkchen und Links. Gestaltet nach 16 UI-Design-Regeln (Kontrast, eine Schrift, keine Großbuchstaben, siehe `docs/quality-guardrails.md`). Hell und dunkel (Pfeil am Knopf **Einstellungen → Dunkles Design**), eigene Aktivitätstypen mit frei wählbaren Farben.
 
 ### Tastenkürzel
 
@@ -258,7 +258,7 @@ pytest                     # alles (Qt- und Browser-Tests laufen je in eigenem P
 pytest -m "not skript"     # nur die schnellen Logik-Tests
 ```
 
-Browser-Tests (3CX, ITM, Mitschnitt) brauchen Edge oder Chrome; ohne Browser werden sie lokal übersprungen. Die Einstellungsdatei `zeitzeuge_config.json` legt Zeitzeuge beim ersten Start unter `Dokumente\Zeitzeuge` an.
+Browser-Tests (3CX, Zeiterfassung, Mitschnitt) brauchen Edge oder Chrome; ohne Browser werden sie lokal übersprungen. Die Einstellungsdatei `zeitzeuge_config.json` legt Zeitzeuge beim ersten Start unter `Dokumente\Zeitzeuge` an.
 
 ## Einrichtung
 
@@ -274,7 +274,7 @@ Fährst du über einen Knopf, erklärt ein Hinweis, was er tut. Im schmalen Fens
 
 Alles, was nur die Anzeige ändert, nie die Daten:
 
-- **Tagesliste:** Die Ansichten (Alle, Einzeln, Arbeitsblöcke, Telefonate – nur 3CX- und Teams-Anrufe, jeder einzeln –, Dokumentation, Zuordnung ohne KI, KI-Vorschläge, Matrix42-Abgleich) wählst du über die Chips über der Liste. Fährst du über einen Chip, steht dort, was die Ansicht zeigt. Im Menü stehen **PC-Verlauf in der Liste** und **Was zeigen die Ansichten? …** (F1), das alle mit Beispielen erklärt.
+- **Tagesliste:** Die Ansichten (Alle, Einzeln, Arbeitsblöcke, Telefonate – nur 3CX- und Teams-Anrufe, jeder einzeln –, Dokumentation, Zuordnung ohne KI, KI-Vorschläge, Buchungsabgleich) wählst du über die Chips über der Liste. Fährst du über einen Chip, steht dort, was die Ansicht zeigt. Im Menü stehen **PC-Verlauf in der Liste** und **Was zeigen die Ansichten? …** (F1), das alle mit Beispielen erklärt.
 - **Zeilen der Timeline** (Untermenü, auch per Rechtsklick auf die Legende links): jede Zeile mit einem Kästchen in ihrer Farbe zum Ein- und Ausblenden, dazu **Alle Zeilen einblenden**. Leere Zeilen blendet Zeitzeuge von selbst aus.
 - **PC-Aktivität als Arbeitsblöcke:** an = Blöcke je Tätigkeit, aus = jedes Fenster einzeln.
 - **Übersichten:** Wochenabschluss, Offene Tätigkeiten.
@@ -286,7 +286,7 @@ Ganzer Tag und Arbeitszeit stehen in der Werkzeugleiste, **Dunkles Design** im P
 
 Ein Klick auf **Einstellungen** (oder STRG + ,) öffnet ein eigenes Fenster. Es bleibt offen, während du weiterarbeitest, und alles gilt sofort.
 
-- **Links die Bereiche:** Allgemein, Ansicht, Datenquellen, Nachfragen & Grenzwerte, Zuordnung & KI, Matrix42 & Abrechnung, Kunden & Texte, Daten & Schutz, Über Zeitzeuge.
+- **Links die Bereiche:** Allgemein, Ansicht, Datenquellen, Nachfragen & Grenzwerte, Zuordnung & KI, Ticketsystem & Abrechnung, Kunden & Texte, Daten & Schutz, Über Zeitzeuge.
 - **Oben die Suche:** z. B. „Minuten“ zeigt alle Grenzwerte aus allen Bereichen, und du änderst sie direkt dort.
 - **Ansicht mit Vorschau:** Alle Einstellungen zur Darstellung an einer Stelle: Dunkles Design, Tagesliste, PC-Verlauf in der Liste, PC-Aktivität als Arbeitsblöcke, kurze Sprünge, Zeitraum beim Start, Zeilen der Timeline, Zusammenfassen und Arbeitsblock (Pausen), gesendete Mail als Block, Typen und Farben. Oben zeigt eine **Vorschau** einen erfundenen Beispieltag mit Timeline und Tagesliste, so wie Zeitzeuge sie mit deinen Einstellungen zeichnet. Fährst du über einen Schalter, zeigt sie schon, wie es nach dem Umschalten aussähe („So sähe es aus mit „PC-Aktivität als Arbeitsblöcke“ aus“), ohne etwas zu speichern. In Auswahllisten siehst du jede Möglichkeit, während du durch die Liste gehst. Zahlen wirken beim Ändern sofort. Erreichbar auch über **Ansicht → Anpassen mit Vorschau …**.
 - **Datenquellen als Kacheln:** je Quelle ihr Zeichen in der Farbe des Herstellers, ein Schalter An/Aus, der Zustand („läuft“, „Logdatei nicht gefunden“, „Anmeldung nötig“) und **Einrichten …**.
@@ -298,7 +298,7 @@ Der kleine Pfeil am Knopf **Einstellungen** zeigt Schnellzugriffe: Aufzeichnung 
 
 Beim allerersten Start öffnet sich der Assistent **Zeitzeuge einrichten**. Er geht alle Datenquellen mit dir durch:
 
-1. **Auswahl:** Eine Liste aller Quellen (TeamViewer, RDM, Sophos Connect, FortiClient, weitere VPN-Logs, 3CX, ITM-Zeiterfassung, Matrix42, Outlook, Teams-Anrufe, aktive Fenster) und dazu Arbeitszeiten, KI-Vorschläge und der Wiederherstellungsschlüssel. Vorausgewählt ist, was Zeitzeuge auf dem PC gefunden hat, z. B. „TeamViewer (gefunden)“. Was du hier abwählst, schaltet Zeitzeuge aus.
+1. **Auswahl:** Eine Liste aller Quellen (TeamViewer, RDM, Sophos Connect, FortiClient, weitere VPN-Logs, 3CX, Zeiterfassung, Ticketsystem, Outlook, Teams-Anrufe, aktive Fenster) und dazu Arbeitszeiten, KI-Vorschläge und der Wiederherstellungsschlüssel. Vorausgewählt ist, was Zeitzeuge auf dem PC gefunden hat, z. B. „TeamViewer (gefunden)“. Was du hier abwählst, schaltet Zeitzeuge aus.
 2. **Ein Schritt je gewählter Quelle:** was die Quelle liest, was auf dem PC gefunden wurde (Pfad, Browser) und ein Knopf zur Einrichtung, z. B. **3CX einrichten und anmelden …**. Das sind dieselben Dialoge wie unter **Einrichten …** in den Kacheln der Datenquellen. Mit **Weiter** gilt das Häkchen „… verwenden“.
 3. **Übersicht:** welche Quelle jetzt an oder aus ist.
 
@@ -312,7 +312,7 @@ Unter **Einstellungen → Datenquellen** schaltest du jede Quelle mit einem Klic
 |---|---|
 | Fernwartung | TeamViewer, RDM, RDM Better, Remotedesktop (mstsc) |
 | VPN | Sophos Connect, FortiClient, weitere VPN-Logs (OpenVPN …) |
-| Telefon und Zeiten | 3CX-Anrufe, ITM-Personalzeiten |
+| Telefon und Zeiten | 3CX-Anrufe, Personalzeiten |
 
 Pfade, Zeitzonen und Anmeldungen stellst du unter **Einstellungen → Datenquellen** über **Einrichten …** in der Kachel ein. Das Aufzeichnen der aktiven Fenster schaltest du direkt im Menü **Einstellungen** oder unten rechts in der Statuszeile.
 
@@ -370,19 +370,19 @@ Die Einstellungen für Telefonate stehen in `zeitzeuge_config.json`:
 | `pbx_reader_enabled` | `false` | Zeitzeuge liest 3CX selbst |
 | `calls_days_back` | `14` | So viele Tage liest Zeitzeuge zurück |
 
-### Personalzeiten aus der ITM-Zeiterfassung
+### Personalzeiten aus der Zeiterfassung
 
-Zeitzeuge fragt deine Personalzeiten direkt bei der Schnittstelle der ITM-Zeiterfassung ab, ohne die Webseite offen zu halten. Heute liest es alle 5 Minuten, andere Tage einmal, sobald du sie anzeigst. Klappt die Direkt-Abfrage nicht, liest Zeitzeuge wie früher über die Webseite.
+Zeitzeuge fragt deine Personalzeiten direkt bei der Schnittstelle der Zeiterfassung ab, ohne die Webseite offen zu halten. Heute liest es alle 5 Minuten, andere Tage einmal, sobald du sie anzeigst. Klappt die Direkt-Abfrage nicht, liest Zeitzeuge wie früher über die Webseite.
 
 **Anmelden mit Passwort (ohne Edge):**
 
-1. **Einstellungen → Datenquellen → Einrichten → ITM-Personalzeiten …** öffnen.
-2. Benutzername und Mandant eintragen, dann **Bei ITM anmelden …** klicken.
+1. **Einstellungen → Datenquellen → Einrichten → Personalzeiten …** öffnen.
+2. Benutzername und Mandant eintragen, dann **Bei der Zeiterfassung anmelden …** klicken.
 3. Passwort eingeben. Zeitzeuge speichert es nicht.
 
-**Anmelden im Edge-Fenster:** Benutzername leer lassen und **Bei ITM anmelden …** klicken. Im Edge-Fenster anmelden. Sobald die Tagesübersicht geladen ist, schließt Zeitzeuge das Fenster selbst.
+**Anmelden im Edge-Fenster:** Benutzername leer lassen und **Bei der Zeiterfassung anmelden …** klicken. Im Edge-Fenster anmelden. Sobald die Tagesübersicht geladen ist, schließt Zeitzeuge das Fenster selbst.
 
-Auf beiden Wegen erneuert Zeitzeuge die Anmeldung danach selbst, ohne Edge zu starten. Dafür merkt es sich das Erneuerungs-Token der ITM-Anmeldung. Es gilt 7 Tage und verlängert sich bei jeder Abfrage. Solange Zeitzeuge mindestens einmal pro Woche läuft, musst du dich nicht neu anmelden. Nimmt die Tagesübersicht dieses Token nicht an, startet Edge wie früher kurz und unsichtbar.
+Auf beiden Wegen erneuert Zeitzeuge die Anmeldung danach selbst, ohne Edge zu starten. Dafür merkt es sich das Erneuerungs-Token der Anmeldung bei der Zeiterfassung. Es gilt 7 Tage und verlängert sich bei jeder Abfrage. Solange Zeitzeuge mindestens einmal pro Woche läuft, musst du dich nicht neu anmelden. Nimmt die Tagesübersicht dieses Token nicht an, startet Edge wie früher kurz und unsichtbar.
 
 Lässt der Mandant Anmeldungen nur aus dem Firmennetz zu, klappt die Anmeldung mit Passwort nur dort oder über VPN. **Anmeldung löschen** im selben Dialog entfernt das gespeicherte Token.
 
@@ -414,18 +414,18 @@ Gut zu wissen:
   Gegenüber kennt Teams hier nicht.
 - Auf der PAW bleiben Outlook und Teams aus.
 
-### Abfragen mitschneiden (3CX, ITM und Matrix42)
+### Abfragen mitschneiden (3CX, Zeiterfassung und Ticketsystem)
 
 Mit einem Mitschnitt lässt sich prüfen, ob Zeitzeuge die Daten später direkt beim Server abfragen kann, ohne die Seite dauerhaft in Edge offen zu halten. Das spart viel Arbeitsspeicher.
 
 Im Alltag brauchst du das nicht. Die Knöpfe stehen deshalb nicht in den Einrichtungsdialogen, sondern in einem eigenen Bereich für tiefergehende Analysen.
 
 1. **Einstellungen → Fehlersuche & Analyse** öffnen (die Quelle muss eingerichtet sein).
-2. **3CX: Abfragen mitschneiden**, **ITM: Abfragen mitschneiden** oder **Matrix42: Abfragen mitschneiden** öffnen. Ein Edge-Fenster öffnet sich.
-3. Falls nötig anmelden. Bei 3CX die Anrufliste ein Stück nach unten scrollen, bei ITM zwei oder drei andere Tage aufrufen.
+2. **3CX: Abfragen mitschneiden**, **Zeiterfassung: Abfragen mitschneiden** oder **Ticketsystem: Abfragen mitschneiden** öffnen. Ein Edge-Fenster öffnet sich.
+3. Falls nötig anmelden. Bei 3CX die Anrufliste ein Stück nach unten scrollen, bei der Zeiterfassung zwei oder drei andere Tage aufrufen.
 4. Das Fenster schließen. Zeitzeuge speichert `mitschnitt_pbx_….json`, `mitschnitt_itm_….json` oder `mitschnitt_m42_….json` im Datenordner.
 
-**Buchung mitschneiden (Matrix42):** Für „In Matrix42 buchen“ muss Zeitzeuge wissen, wie Matrix42 eine Zeiterfassung speichert. Unter **Einstellungen → Fehlersuche & Analyse** öffnest du **Matrix42: Buchung mitschneiden**, legst im Edge-Fenster eine Zeiterfassung an, öffnest sie noch einmal, änderst etwas und speicherst. Dann das Fenster schließen. Zeitzeuge speichert `mitschnitt_m42_buchung_….json`. Darin stehen Abfragen, die etwas speichern, vollständig. Passwörter und Token bleiben geschwärzt.
+**Buchung mitschneiden (Ticketsystem):** Für „Im Ticketsystem buchen“ muss Zeitzeuge wissen, wie das Ticketsystem eine Zeiterfassung speichert. Unter **Einstellungen → Fehlersuche & Analyse** öffnest du **Ticketsystem: Buchung mitschneiden**, legst im Edge-Fenster eine Zeiterfassung an, öffnest sie noch einmal, änderst etwas und speicherst. Dann das Fenster schließen. Zeitzeuge speichert `mitschnitt_m42_buchung_….json`. Darin stehen Abfragen, die etwas speichern, vollständig. Passwörter und Token bleiben geschwärzt.
 
 Aufgezeichnet werden nur Datenabfragen, keine Bilder oder Skripte. Passwörter, Token und Cookie-Werte sind geschwärzt. Von Token und Cookies bleiben Name, Länge und Ablaufzeit, damit man sieht, wie lange eine Anmeldung hält. Antworten sind gekürzt (die ersten drei Einträge einer Liste). Darin können trotzdem Namen und Telefonnummern stehen, schau die Datei also vor dem Weitergeben durch.
 
@@ -464,8 +464,8 @@ Unter **Einstellungen → Nachfragen und Erinnerungen …** legst du fest, wann 
 | `idle_prompt_minutes` | `15` | Nach so vielen Minuten ohne Maus und Tastatur bei der ersten Eingabe fragen, was in der Zeit war. 0 = aus |
 | `prompt_end_of_day` | `true` | Nach Feierabend einmal an Offenes erinnern |
 | `prompt_on_quit` | `true` | Beim Beenden an Offenes erinnern |
-| `m42_url` | ITM-Kalenderseite (support.itm-gruppe.com) | Adresse der Matrix42-Kalenderseite |
-| `m42_reader_enabled` | `false` | Gebuchte Zeiten aus Matrix42 lesen |
+| `m42_url` | vorbelegt (anpassen) | Adresse der Kalenderseite des Ticketsystems |
+| `m42_reader_enabled` | `false` | Gebuchte Zeiten aus dem Ticketsystem lesen |
 | `m42_weeks_back` | `4` | So viele Wochen zurück einmal pro Sitzung lesen |
 | `m42_gap_minutes` | `5` | Kürzere Lücken ohne Buchung zählen nicht |
 | `pc_blocks` | `true` | PC-Aktivität als Arbeitsblöcke je Tätigkeit statt jedes Fenster einzeln |
@@ -473,7 +473,7 @@ Unter **Einstellungen → Nachfragen und Erinnerungen …** legst du fest, wann 
 | `day_close_end_of_day` | `true` | Meldung bei Feierabend nennt den Tagesabschluss, ein Klick öffnet ihn (`false`: Meldung wie früher) |
 | `day_close_gap_minutes` | `10` | Tagesabschluss: kürzere Lücken in der Personalzeit gehören zum Nachbarblock |
 | `day_close_min_minutes` | `5` | Tagesabschluss: kürzere Blöcke gehen im Nachbarn auf, kürzere freie Zeit fällt weg |
-| `day_close_internal` | `{}` | Tagesabschluss: Zeit ohne Kunden auf ein internes Ticket, z. B. `{"customer": "ITM intern", "ticket": "TCK…", "category": "Intern", "categories": ["E-Mail / Kommunikation"]}` |
+| `day_close_internal` | `{}` | Tagesabschluss: Zeit ohne Kunden auf ein internes Ticket, z. B. `{"customer": "Intern", "ticket": "TCK…", "category": "Intern", "categories": ["E-Mail / Kommunikation"]}` |
 | `timeline_range` | `work` | Zeitraum beim Start und beim Blättern: `work` (Arbeitszeit) oder `day` (ganzer Tag); merkt sich den zuletzt gewählten |
 | `timeline_rows` | alle an außer `rule` | Sichtbare Zeilen der Timeline: `pc`, `work` (Personalzeit), `doc`, `m42`, `rule` (Zuordnung ohne KI), `ai`, `call`, `vpn`, `tv`, `other` (Remote / Weitere) |
 
@@ -487,7 +487,7 @@ Unter **Einstellungen → Textbausteine …** stellst du ein:
 - **Zuletzt benutzte Texte zum gewählten Kunden anbieten:** an (Standard) oder aus.
 - **Beim Kopieren als Ticket-Doku gliedern:** aus (Standard). An: „- “ / „-- “.
 - **Ticketnummern erkennen:** ein Muster (regulärer Ausdruck) je Zeile. Standard `TCK\d+`
-  (Matrix42). Weitere Beispiele: `Ticket #(\d+)` (die Klammer ist die Nummer). Leer = keine
+  (Ticketsystem). Weitere Beispiele: `Ticket #(\d+)` (die Klammer ist die Nummer). Leer = keine
   Vorschläge. Ein fehlerhaftes Muster wird mit Zeilennummer gemeldet, OK ist dann gesperrt.
 
 ### Zuordnung ohne KI (Regeln)
@@ -532,9 +532,9 @@ Unter **Einstellungen → Abrechnung …** stellst du Takt und Rundung ein, auch
 
 Zeitzeuge soll nie Daten verlieren und nie dauerhaft hängen. Das passiert bei Problemen:
 
-- **Kein Internet:** Zeitzeuge prüft kurz, ob der 3CX- oder ITM-Server erreichbar ist. Wenn nicht, startet es kein Edge. Die Statuszeile zeigt dann zum Beispiel „3CX: offline, nächster Versuch 10:42“. Nach jedem Fehlversuch wartet Zeitzeuge länger: 20 Sekunden, 40 Sekunden, 80 Sekunden und so weiter, höchstens 10 Minuten. Ist das Netz wieder da, liest es sofort weiter. Klappt es fünfmal hintereinander nicht, meldet sich Zeitzeuge einmal im Infobereich.
-- **Edge abgestürzt oder beendet:** Hast du Edge im Task-Manager beendet oder ist er abgestürzt, merkt Zeitzeuge das. Es räumt auf und startet Edge beim nächsten Durchlauf neu. Hängt ein Durchlauf länger als 15 Minuten, beendet Zeitzeuge Edge hart und fängt neu an. Jede Minute prüft ein Wächter, ob die Leser für 3CX und ITM noch laufen, und startet sie bei Bedarf neu.
-- **Anmeldefenster:** Meldest du dich 10 Minuten lang nicht an, schließt sich das Fenster von selbst. In der Statuszeile steht dann „Anmeldung abgebrochen (Zeitüberschreitung)“. Über die Meldung im Infobereich öffnest du es wieder. Schaltest du 3CX oder ITM unter **Datenquellen** aus, gehen auch ihr Edge und ihr Anmeldefenster zu.
+- **Kein Internet:** Zeitzeuge prüft kurz, ob der 3CX- oder Server der Zeiterfassung erreichbar ist. Wenn nicht, startet es kein Edge. Die Statuszeile zeigt dann zum Beispiel „3CX: offline, nächster Versuch 10:42“. Nach jedem Fehlversuch wartet Zeitzeuge länger: 20 Sekunden, 40 Sekunden, 80 Sekunden und so weiter, höchstens 10 Minuten. Ist das Netz wieder da, liest es sofort weiter. Klappt es fünfmal hintereinander nicht, meldet sich Zeitzeuge einmal im Infobereich.
+- **Edge abgestürzt oder beendet:** Hast du Edge im Task-Manager beendet oder ist er abgestürzt, merkt Zeitzeuge das. Es räumt auf und startet Edge beim nächsten Durchlauf neu. Hängt ein Durchlauf länger als 15 Minuten, beendet Zeitzeuge Edge hart und fängt neu an. Jede Minute prüft ein Wächter, ob die Leser für 3CX und Zeiterfassung noch laufen, und startet sie bei Bedarf neu.
+- **Anmeldefenster:** Meldest du dich 10 Minuten lang nicht an, schließt sich das Fenster von selbst. In der Statuszeile steht dann „Anmeldung abgebrochen (Zeitüberschreitung)“. Über die Meldung im Infobereich öffnest du es wieder. Schaltest du 3CX oder Zeiterfassung unter **Datenquellen** aus, gehen auch ihr Edge und ihr Anmeldefenster zu.
 - **Edge-Reste:** Beim Start und beim Beenden schließt Zeitzeuge alle Edge-Fenster mit seinen eigenen Profilen (`3cx_profil`, `itm_profil`, `m42_profil`). Dein normaler Edge bleibt immer offen.
 - **Daten gesperrt:** Öffnet deine Windows-Anmeldung die Datenbank nicht (neuer PC, anderes Konto), fragt Zeitzeuge nach dem Wiederherstellungsschlüssel aus RDM. Brichst du ab, beendet sich Zeitzeuge und ändert nichts. Es legt nie eine neue, leere Datenbank über die alte.
 - **Absturz beim Schreiben:** Die Datenbank schreibt jede Änderung als Ganzes oder gar nicht (SQLite mit WAL). Bricht der Strom mitten im Schreiben weg, fehlt höchstens die letzte Änderung.
@@ -641,11 +641,11 @@ Damit Zeitzeuge mit Windows startet:
 
 ### Zwei PCs: Arbeits-PC und PAW
 
-Auf einer PAW (Privileged Access Workstation) laufen oft nur RDM-Verbindungen, ohne 3CX, ITM, Matrix42 und ohne Laufwerksfreigabe zum Arbeits-PC. So kommt trotzdem alles an einer Stelle zusammen:
+Auf einer PAW (Privileged Access Workstation) laufen oft nur RDM-Verbindungen, ohne 3CX, Zeiterfassung, Ticketsystem und ohne Laufwerksfreigabe zum Arbeits-PC. So kommt trotzdem alles an einer Stelle zusammen:
 
-1. **Auf der PAW einmal einrichten:** **Einstellungen → Datenspeicher → Dieser PC ist eine PAW (nur RDM sammeln)**. Zeitzeuge sammelt dort nur die RDM-Verbindungen. TeamViewer, VPN, 3CX, ITM, Matrix42, Fensteraufzeichnung und Nachfragen sind aus.
+1. **Auf der PAW einmal einrichten:** **Einstellungen → Datenspeicher → Dieser PC ist eine PAW (nur RDM sammeln)**. Zeitzeuge sammelt dort nur die RDM-Verbindungen. TeamViewer, VPN, 3CX, Zeiterfassung, Ticketsystem, Fensteraufzeichnung und Nachfragen sind aus.
 2. **Auf dem Arbeits-PC exportieren:** **Einstellungen → Datenspeicher → Daten exportieren …**, Zeitraum wählen (Standard 31 Tage). **Als Datei speichern** erzeugt eine einzige Datei `Zeitzeuge-Export_<PC>_<Datum>.zeitzeuge`. Darf keine Datei auf die PAW, nimm **In Zwischenablage kopieren**: Der Export wird Text, der auch über eine RDP-Zwischenablage passt, die nur Text erlaubt. Beim ersten Export erzeugst du einen **Übertragungsschlüssel** (oder gibst einen vorhandenen ein) und legst ihn in RDM ab („Zeitzeuge Übertragung“).
-3. **Auf der PAW übernehmen:** **Daten übernehmen …** → **Datei wählen** oder **Aus Zwischenablage**. Beim ersten Mal fragt Zeitzeuge nach dem Übertragungsschlüssel aus RDM und merkt ihn sich. Die PAW zeigt dann ihre RDM-Verbindungen zusammen mit Anrufen, Personalzeit, Matrix42-Abgleich, VPN, TeamViewer, Fenstern, Tätigkeiten und den schon erstellten KI-Vorschlägen vom Arbeits-PC.
+3. **Auf der PAW übernehmen:** **Daten übernehmen …** → **Datei wählen** oder **Aus Zwischenablage**. Beim ersten Mal fragt Zeitzeuge nach dem Übertragungsschlüssel aus RDM und merkt ihn sich. Die PAW zeigt dann ihre RDM-Verbindungen zusammen mit Anrufen, Personalzeit, Buchungsabgleich, VPN, TeamViewer, Fenstern, Tätigkeiten und den schon erstellten KI-Vorschlägen vom Arbeits-PC.
 
 - Übernommenes steht in der Datenbank der PAW und ist mit „von <PC>“ gekennzeichnet. Ein neuerer Export ersetzt die Tage des älteren; ein älterer überschreibt nichts Neueres.
 - KI-Vorschläge vom Arbeits-PC erscheinen in der Zeile „KI“ (die PAW erreicht Claude meist nicht). **Als Tätigkeit eintragen** geht auch auf der PAW; verwerfen nur auf dem Arbeits-PC. Verworfene Vorschläge kommen nicht mit.
@@ -677,7 +677,7 @@ Für Tests und Hilfsskripte gibt es zwei Umgebungsvariablen: `ZEITZEUGE_DATA` se
 |---|---|
 | `src/` | Quellcode (Python-Module, siehe unten). Start aus dem Quelltext: `python src/main_timeline.py` |
 | `assets/` | Logo und Icon (`zeitzeuge.ico`, `.png`, `.svg`) und `zeitzeuge_anrufe.user.js` (liest die Anrufliste aus der 3CX-Webseite, für das Lesen über Edge) |
-| `tests/` | Tests (pytest), laufen bei jedem Build: Start, Bedienbarkeit, Infobereich, Log-Parser, VPN-Logs, 3CX und ITM mit nachgebauten Seiten, KI-Vorschläge mit nachgebauter API, Fensterabfrage, Anrufliste. Dazu `start_bench.py` (Startzeit messen), `perf_bench.py` (Zeichnen und Tageswechsel mit einem Jahr Daten) und `screenshots.sh` (Bildschirmfotos mit Demodaten) |
+| `tests/` | Tests (pytest), laufen bei jedem Build: Start, Bedienbarkeit, Infobereich, Log-Parser, VPN-Logs, 3CX und Zeiterfassung mit nachgebauten Seiten, KI-Vorschläge mit nachgebauter API, Fensterabfrage, Anrufliste. Dazu `start_bench.py` (Startzeit messen), `perf_bench.py` (Zeichnen und Tageswechsel mit einem Jahr Daten) und `screenshots.sh` (Bildschirmfotos mit Demodaten) |
 | `docs/` | Entscheidungen, Übergaben, Hintergründe und Screenshots |
 | `CHANGELOG.md` | Änderungen je MAJOR.MINOR, Regeln für die Nummer |
 | `ZeitZeuge.spec` | Build-Datei für PyInstaller |
@@ -695,14 +695,14 @@ Module in `src/`:
 | `focus.py` | PC-Aktivität zu Arbeitsblöcken zusammenfassen (kurze Sprünge, Splitter, Anteile) |
 | `app_docs.py` | Tätigkeiten dokumentieren, Nachfragen, KI-Vorschläge |
 | `day_close.py` | Tagesabschluss: Vorschläge je Kunde aus allen Spuren, Lücken, Ticket und Text (ohne Qt) |
-| `day_close_eval.py` | Tagesabschluss: Erkennung an den echten Matrix42-Buchungen messen (ohne Qt) |
+| `day_close_eval.py` | Tagesabschluss: Erkennung an den echten Ticketsystem-Buchungen messen (ohne Qt) |
 | `app_day_close.py` | Hauptfenster: Spuren für den Tagesabschluss sammeln, Hinweis bei Feierabend |
-| `day_close_dialog.py` | Fenster Tagesabschluss: prüfen, dokumentieren, nacheinander in Matrix42 buchen |
+| `day_close_dialog.py` | Fenster Tagesabschluss: prüfen, dokumentieren, nacheinander im Ticketsystem buchen |
 | `idle_watch.py` | Abwesenheit am PC erkennen (für die Nachfrage) |
 | `prompt_topics.py` | Nachfragen zu Themen zusammenfassen, Beantwortetes wiedererkennen (keine Doppelten) |
 | `settings_window.py` | Fenster Einstellungen: Bereiche, Suche, Kacheln der Datenquellen |
 | `view_help.py` | Hilfe zu den Ansichten der Tagesliste |
-| `app_readers.py` | 3CX- und ITM-Leser im Hauptfenster |
+| `app_readers.py` | 3CX- und Leser der Zeiterfassung im Hauptfenster |
 | `app_tray.py` | Infobereich, Fensteraufzeichnung, Beenden |
 | `theme.py` | Design: Farben (hell/dunkel), Stylesheet, Qt-Stil, deutsche Dialogknöpfe |
 | `day_summary.py` | Kennzahlen über der Timeline (Erfasst, Offen, Vorschläge, Nach Kunde) und Ansichts-Chips über der Liste |
@@ -716,20 +716,20 @@ Module in `src/`:
 | `call_import.py` | Empfang der 3CX-Anrufe, Auslieferung des Browser-Skripts |
 | `activity_tracker.py` | Aktivitätsprotokoll (aktives Fenster, Leerlauf) |
 | `pbx_reader.py` | Edge im Hintergrund steuern (DevTools-Protokoll), 3CX direkt auslesen |
-| `itm_reader.py` | Personalzeiten aus der ITM-Zeiterfassung lesen |
-| `itm_auth.py` | ITM-Anmeldung ohne Edge, eigene Buchungen aus dem alten Backend, fehlerhafte Buchungen |
+| `itm_reader.py` | Personalzeiten aus der Zeiterfassung lesen |
+| `itm_auth.py` | Anmeldung bei der Zeiterfassung ohne Edge, eigene Buchungen aus dem alten Backend, fehlerhafte Buchungen |
 | `request_recorder.py` | Mitschnitt der Abfragen einer Seite, mit Schwärzen von Geheimnissen |
 | `ai_classifier.py` | KI-Vorschläge über die Anthropic-API |
 | `journal.py` | Eigene Tätigkeiten speichern, offene erkennen |
 | `journal_dialogs.py` | Dialoge zum Nachtragen, Nachfrage-Fenster, Einstellungen dazu |
-| `m42_reader.py` | Matrix42: Kalender im unsichtbaren Edge lesen (Wochenansicht, Blättern, Anmeldung) |
-| `m42_data.py` | Matrix42: Einträge umwandeln, Abgleich gebucht / nicht gebucht (ohne Qt) |
+| `m42_reader.py` | Ticketsystem: Kalender im unsichtbaren Edge lesen (Wochenansicht, Blättern, Anmeldung) |
+| `m42_data.py` | Ticketsystem: Einträge umwandeln, Abgleich gebucht / nicht gebucht (ohne Qt) |
 | `busy_bar.py` | Ladeanzeige: drehender Kreis mit Text in der Werkzeugleiste, Streifen über die ganze Breite |
 | `transfer.py` | Export/Import zwischen zwei PCs (Arbeits-PC → PAW), übernommene Daten (ohne Qt) |
 | `app_transfer.py` | Hauptfenster: Export- und Import-Dialog, PAW-Modus |
 | `rules.py` | Klassifizierung ohne KI: Regeln, Blöcke bilden, Vorrang (ohne Qt) |
 | `colleagues.py` | Kollegen in der Anrufliste erkennen (ohne Qt) |
-| `customer_discovery.py` | Kundenliste aus den Matrix42-Buchungen lernen, Umbenennen vorschlagen (ohne Qt) |
+| `customer_discovery.py` | Kundenliste aus den Ticketsystem-Buchungen lernen, Umbenennen vorschlagen (ohne Qt) |
 | `storage.py` | Speicherort: Datenordner, Datenbank, Sicherung, Umziehen |
 | `datastore.py` | Verschlüsselte SQLite-Datenbank: Ablagen je Tag, Zeilen, Schlüsselfächer, Migration der alten Dateien, Sicherung (ohne Qt) |
 | `datakey.py` | Schlüssel: AES-256-GCM, Ziffernschlüssel (Wiederherstellung, Übertragung), Windows-Anmeldung (DPAPI), PIN (Argon2id) (ohne Qt) |
@@ -747,7 +747,7 @@ Zeitzeuge arbeitet nur auf deinem eigenen Rechner. Es liest lokale Logdateien un
 
 **KI-Vorschläge:** Dabei gehen die Einträge des Tages an Anthropic: Uhrzeiten, Kunden- und Verbindungsnamen, Anrufer und, wenn eingeschaltet, die Fenstertitel. Passwörter selbst stehen nicht in den Logs und werden nicht gesendet. Fenster aus `tracking_ignore` gehen nur als „(ausgeblendet)“ mit. Prüfe vorher, ob das zu deinen Verträgen mit Kunden passt. Wenn nicht: Fenstertitel ausschalten oder die Funktion nicht nutzen.
 
-**Was wo liegt:** Fenstertitel, Kundennamen, Telefonate, Tätigkeiten und alle anderen Daten stehen verschlüsselt in `zeitzeuge.db` (siehe [Schutz der Daten](#schutz-der-daten)). In den Ordnern `3cx_profil`, `itm_profil` und `m42_profil` und in `itm_anmeldung.json` liegen deine Anmeldungen bei 3CX, ITM und Matrix42. Sie sind zu schützen wie ein Browserprofil. `itm_anmeldung.json` ist unter Windows mit deiner Windows-Anmeldung verschlüsselt.
+**Was wo liegt:** Fenstertitel, Kundennamen, Telefonate, Tätigkeiten und alle anderen Daten stehen verschlüsselt in `zeitzeuge.db` (siehe [Schutz der Daten](#schutz-der-daten)). In den Ordnern `3cx_profil`, `itm_profil` und `m42_profil` und in `itm_anmeldung.json` liegen deine Anmeldungen bei 3CX, Zeiterfassung und Ticketsystem. Sie sind zu schützen wie ein Browserprofil. `itm_anmeldung.json` ist unter Windows mit deiner Windows-Anmeldung verschlüsselt.
 
 **Logs:** `fehler.log` und `haenger.log` enthalten nur Uhrzeiten, Dateinamen, Programmzeilen und Fehlerarten. Bei internen Fehlern schreibt Zeitzeuge die Art und die Stelle im Programm, aber nicht den Text der Ausnahme, weil darin Daten stehen könnten. Ausnahme: Mitschnitte (`mitschnitt_*.json`) und der 3CX-Prüfbericht, die du nur selbst anstößt. Darin sind Geheimnisse geschwärzt (im Prüfbericht auch Namen und Nummern), ein Mitschnitt kann aber Daten der Seite enthalten. Lösche ihn nach der Auswertung.
 

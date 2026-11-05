@@ -21,7 +21,7 @@
 - `pywebview`: braucht eine eigene Ereignisschleife im Hauptthread und verträgt sich nicht mit Qt.
   **Nicht geeignet.**
 
-**Warum QtWebView die Edge-Steuerung nicht ersetzen kann.** Die Leser (3CX, Matrix42, ITM)
+**Warum QtWebView die Edge-Steuerung nicht ersetzen kann.** Die Leser (3CX, Ticketsystem, Zeiterfassung)
 steuern Edge über das DevTools-Protokoll. Davon brauchen sie mehr, als `QWebView` anbietet:
 
 | Wird gebraucht | Edge über DevTools (heute) | QWebView |
@@ -37,10 +37,10 @@ Ein Umbau würde alle drei Leser neu schreiben, aus dem eigenen Thread in den Fe
 holen und Mitschnitt und Profiltrennung verlieren. Die PAW-Regel („kein Edge im Hintergrund“)
 gilt für WebView2 genauso, denn es startet ebenfalls `msedgewebview2.exe`.
 
-**Wo es sinnvoll wäre:** das **Anmeldefenster** (3CX, Matrix42, ITM) im Zeitzeuge-Fenster
+**Wo es sinnvoll wäre:** das **Anmeldefenster** (3CX, Ticketsystem, Zeiterfassung) im Zeitzeuge-Fenster
 statt eines eigenen Edge-Fensters. Dafür müsste die Anmeldung im WebView2-Datenordner landen und
 von dort an das Profil des Lesers kommen. Das geht nicht ohne Weiteres, weil die Profile getrennt
-sind. Vorher wäre auf einem Windows-PC zu prüfen, ob die Windows-Anmeldung (SSO) bei Matrix42
+sind. Vorher wäre auf einem Windows-PC zu prüfen, ob die Windows-Anmeldung (SSO) beim Ticketsystem
 in WebView2 über Qt klappt. Auf dem Linux-Prüfstand geht das nicht.
 
 ## asynccron
@@ -63,11 +63,11 @@ Diese Arbeit läuft schon in eigenen Threads:
 
 | Thread | Datei |
 |---|---|
-| Leser 3CX, Matrix42, ITM (je einer, mit Backoff) | `pbx_reader.py` (`BrowserReader._loop`), `m42_reader.py`, `itm_reader.py` |
+| Leser 3CX, Ticketsystem, Zeiterfassung (je einer, mit Backoff) | `pbx_reader.py` (`BrowserReader._loop`), `m42_reader.py`, `itm_reader.py` |
 | Leser Outlook / Teams | `outlook_reader.py` |
 | Logs von TeamViewer, RDM und VPN einlesen | `timeline_only.py` (`refresh`) |
 | langsame Spuren vom PC (Browser-Verlauf, Dateien) | `local_sources.py` |
-| KI-Vorschläge, Matrix42 buchen und Tickets suchen | `ai_classifier.py`, `m42_reader.py` |
+| KI-Vorschläge, Ticketsystem buchen und Tickets suchen | `ai_classifier.py`, `m42_reader.py` |
 | Hänger-Wächter | `hang_watch.py` |
 
 Python hat eine globale Sperre (GIL), PySide6 läuft noch nicht ohne sie. Mehr Threads machen
