@@ -526,6 +526,7 @@ class DocsMixin(CustomersMixin):
                              item.get("text", ""), title="Tätigkeit bearbeiten",
                              can_delete=True, parent=self,
                              goodwill=item.get("goodwill", False), travel=item.get("travel", False),
+                             no_surcharge=item.get("no_surcharge", False),
                              **self.entry_form_options(start, end, item.get("ticket", "")))
         dialog.form.set_billing(self.billing())
         if dialog.exec() != QDialog.Accepted:

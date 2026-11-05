@@ -79,6 +79,7 @@ def plan(item, bill=None, ticket_format=""):
         "minutes": max(1, int((end - start).total_seconds() // 60)),
         "text": format_ticket_text(item.get("text", ""), ticket_format) or item.get("text", ""),
         "goodwill": bool(item.get("goodwill")), "travel": bool(item.get("travel")),
+        "no_surcharge": bool(item.get("no_surcharge")),
         "customer": item.get("customer", ""),
     }
 
@@ -201,13 +202,18 @@ def _utc(value):
     return value.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
 
+SURCHARGE_REASON = "Zuschlag ignoriert"  # Grund, wenn keiner angegeben ist
+
+
 def time_entry(template, target, sla, user, start, end, minutes, text,
                activity_type=DEFAULT_ACTIVITY_TYPE, time_zone="Europe/Berlin",
-               goodwill=False, travel=False, goodwill_reason=""):
+               goodwill=False, travel=False, goodwill_reason="",
+               no_surcharge=False, surcharge_reason=""):
     """Zeiterfassung zum Speichern, Felder wie im Mitschnitt. template: Entity aus GetNewData.
 
     goodwill: Kulanz, die ganze Zeit wird nicht berechnet (IsGoodwill, GoodwillAmount in Minuten,
-    Grund Pflicht wie im Dialog). travel: Reise (IsTravel)."""
+    Grund Pflicht wie im Dialog). travel: Reise (IsTravel). no_surcharge: Zuschlag ignorieren
+    (IgnoreSurcharge, mit Grund)."""
     if not isinstance(template, dict) or not template.get("ID"):
         raise BookingError("Matrix42 liefert keine Vorlage für eine neue Zeiterfassung.")
     if not user:
@@ -231,6 +237,9 @@ def time_entry(template, target, sla, user, start, end, minutes, text,
         base.update({"IsGoodwill": True, "GoodwillAmount": int(minutes),
                      "GoodwillAmountRounded": int(minutes),
                      "GoodwillReason": (goodwill_reason or "").strip() or "Kulanz"})
+    if no_surcharge:
+        base.update({"IgnoreSurcharge": True,
+                     "IgnoreSurchargeReason": (surcharge_reason or "").strip() or SURCHARGE_REASON})
     entity_id = template["ID"]
     return {
         "Sys-Entity": "ITMTimeEntryType", "ID": entity_id, "Sys-IsNew": True,

@@ -29,7 +29,7 @@ class _EntryForm(QWidget):
     def __init__(self, start, end, customers, categories, customer="", category="", text="",
                  tv_id=None, parent=None, show_date=True, snippets=(), recent_texts=None,
                  ticket="", ticket_suggestions=(), show_ticket=True, trace=None, rule_subject=None,
-                 goodwill=False, travel=False, ticket_search=None):
+                 goodwill=False, travel=False, no_surcharge=False, ticket_search=None):
         super().__init__(parent)
         # ticket_search: Funktion (Suchtext, Fenster) -> Ticket-dict oder None (Matrix42-Suche)
         self.ticket_search = ticket_search
@@ -120,9 +120,14 @@ class _EntryForm(QWidget):
         self.travel_box = QCheckBox("&Reise / Anfahrt")
         self.travel_box.setToolTip("Fahrzeit. Wird beim Buchen in Matrix42 als Reise übernommen.")
         self.travel_box.setChecked(bool(travel))
+        self.surcharge_box = QCheckBox("&Zuschlag ignorieren")
+        self.surcharge_box.setToolTip("Keine Zuschläge (z. B. außerhalb der Servicezeit). "
+                                      "Wird beim Buchen in Matrix42 übernommen.")
+        self.surcharge_box.setChecked(bool(no_surcharge))
         flags = QHBoxLayout()
         flags.addWidget(self.goodwill_box)
         flags.addWidget(self.travel_box)
+        flags.addWidget(self.surcharge_box)
         flags.addStretch(1)
         form.addRow("", flags)
 
@@ -331,6 +336,7 @@ class _EntryForm(QWidget):
             "ticket": self.ticket_edit.currentText().strip(),
             "goodwill": self.goodwill_box.isChecked(),
             "travel": self.travel_box.isChecked(),
+            "no_surcharge": self.surcharge_box.isChecked(),
         }
 
 

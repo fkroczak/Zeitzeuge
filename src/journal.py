@@ -5,7 +5,8 @@ Pro Tag ein Eintrag in der Datenbank (Ablage "taetigkeiten", früher
 taetigkeiten/JJJJ-MM-TT.json):
     {"items": [{"id", "start", "end", "customer", "category", "text",
                 "source", "created", "updated", "ticket" (optional),
-                "goodwill" / "travel" (optional, True: Kulanz / Reise)}],
+                "goodwill" / "travel" / "no_surcharge" (optional, True: Kulanz / Reise /
+                Zuschlag ignorieren)}],
      "ignored": ["<Schlüssel eines Eintrags, nach dem nicht mehr gefragt wird>"],
      "ignored_spans": [{"start", "end", "customer"}]}  (Zeitraum + Kunde, prompt_topics.py)
 
@@ -31,8 +32,8 @@ TIME_FMT = "%Y-%m-%d %H:%M:%S"
 DOC_TYPE = "Dokumentiert"
 OPEN_TYPE = "Undokumentiert"
 # Merker einer Tätigkeit wie in der Matrix42-Zeiterfassung: Kulanz, Reise
-FLAGS = ("goodwill", "travel")
-FLAG_NAMES = {"goodwill": "Kulanz", "travel": "Reise"}
+FLAGS = ("goodwill", "travel", "no_surcharge")
+FLAG_NAMES = {"goodwill": "Kulanz", "travel": "Reise", "no_surcharge": "ohne Zuschlag"}
 
 
 def _t(text):
@@ -131,7 +132,7 @@ class Journal:
             item["ticket"] = (item.get("ticket") or "").strip()
             if not item["ticket"]:
                 del item["ticket"]
-        for flag in FLAGS:  # Kulanz / Reise nur speichern, wenn angehakt
+        for flag in FLAGS:  # Kulanz / Reise / Zuschlag nur speichern, wenn angehakt
             if item.get(flag):
                 item[flag] = True
             else:

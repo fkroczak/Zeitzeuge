@@ -105,8 +105,12 @@ class BookingDialog(QDialog):
         self.travel_box = QCheckBox("&Reise")
         self.travel_box.setChecked(bool(plan.get("travel")))
         self.travel_box.setToolTip("Die Zeit wird als Reise (Anfahrt) gebucht.")
+        self.surcharge_box = QCheckBox("&Zuschlag ignorieren")
+        self.surcharge_box.setChecked(bool(plan.get("no_surcharge")))
+        self.surcharge_box.setToolTip("Zuschläge (z. B. außerhalb der Servicezeit) nicht berechnen.")
         flags.addWidget(self.goodwill_box)
         flags.addWidget(self.travel_box)
+        flags.addWidget(self.surcharge_box)
         flags.addStretch(1)
         form.addRow("", flags)
         self.goodwill_reason = QLineEdit("Kulanz" if plan.get("goodwill") else "")
@@ -117,6 +121,14 @@ class BookingDialog(QDialog):
         form.addRow(self.goodwill_label, self.goodwill_reason)
         self.goodwill_box.toggled.connect(self._goodwill_toggled)
         self._goodwill_toggled(self.goodwill_box.isChecked())
+        self.surcharge_reason = QLineEdit(mb.SURCHARGE_REASON if plan.get("no_surcharge") else "")
+        self.surcharge_reason.setPlaceholderText("Grund, warum kein Zuschlag berechnet wird")
+        self.surcharge_reason.setAccessibleName("Grund für Zuschlag ignorieren")
+        self.surcharge_label = QLabel("Zuschlagsgrun&d:")
+        self.surcharge_label.setBuddy(self.surcharge_reason)
+        form.addRow(self.surcharge_label, self.surcharge_reason)
+        self.surcharge_box.toggled.connect(self._surcharge_toggled)
+        self._surcharge_toggled(self.surcharge_box.isChecked())
 
         self.text_edit = QPlainTextEdit(plan.get("text", ""))
         self.text_edit.setTabChangesFocus(True)
@@ -167,6 +179,12 @@ class BookingDialog(QDialog):
         self.goodwill_label.setVisible(on)
         if on and not self.goodwill_reason.text().strip():
             self.goodwill_reason.setText("Kulanz")
+
+    def _surcharge_toggled(self, on):
+        self.surcharge_reason.setVisible(on)
+        self.surcharge_label.setVisible(on)
+        if on and not self.surcharge_reason.text().strip():
+            self.surcharge_reason.setText(mb.SURCHARGE_REASON)
 
     def on_activity_types(self, types):
         self.set_activity_types(types, self.type_edit.currentData())
@@ -247,7 +265,9 @@ class BookingDialog(QDialog):
                 "text": self.text_edit.toPlainText().strip(),
                 "activity_type": self.type_edit.currentData(), "ids": self.ids,
                 "goodwill": self.goodwill_box.isChecked(), "travel": self.travel_box.isChecked(),
-                "goodwill_reason": self.goodwill_reason.text().strip()}
+                "goodwill_reason": self.goodwill_reason.text().strip(),
+                "no_surcharge": self.surcharge_box.isChecked(),
+                "surcharge_reason": self.surcharge_reason.text().strip()}
 
     def book(self):
         if not self.validate():

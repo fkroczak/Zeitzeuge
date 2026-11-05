@@ -75,6 +75,23 @@ def test_kulanz_und_reise_in_matrix42():
     assert p["goodwill"] and not p["travel"]
 
 
+def test_zuschlag_ignorieren(tmp_path):
+    j = Journal(str(tmp_path))
+    item = j.add({"start": "2026-11-02 10:00:00", "end": "2026-11-02 11:00:00", "text": "x",
+                  "no_surcharge": True})
+    assert item["no_surcharge"] is True and "ohne Zuschlag" in ticket_line(item)
+    assert "no_surcharge" not in j.update(item, {"no_surcharge": False})
+    template = {"ID": "x", "ITMTimeEntryClassBase": {}}
+    start, end = datetime(2026, 11, 2, 10, 0), datetime(2026, 11, 2, 10, 30)
+    plain = mb.time_entry(template, "t", "s", "u", start, end, 30, "x")["ITMTimeEntryClassBase"]
+    assert plain["IgnoreSurcharge"] is False and plain["IgnoreSurchargeReason"] is None
+    base = mb.time_entry(template, "t", "s", "u", start, end, 30, "x",
+                         no_surcharge=True)["ITMTimeEntryClassBase"]
+    assert base["IgnoreSurcharge"] is True and base["IgnoreSurchargeReason"] == mb.SURCHARGE_REASON
+    assert mb.plan({"start": "2026-11-02 10:00:00", "end": "2026-11-02 10:30:00",
+                    "no_surcharge": True})["no_surcharge"]
+
+
 
 def test_bekannte_anrufrichtung_bleibt(tmp_path):
     """Liest 3CX einen Anruf später ohne Richtung, bleibt die bekannte Richtung erhalten."""

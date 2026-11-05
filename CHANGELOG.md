@@ -18,6 +18,7 @@ Testversionen aus Branches tragen die Version ihres main-Stands plus Buildnummer
 26.10.2026 können sie nicht mehr lesen.
 
 ### Neu
+- **Zuschlag ignorieren:** neuer Haken neben Kulanz und Reise beim Dokumentieren und im Fenster „In Matrix42 buchen“ (dort mit Grund, vorbelegt „Zuschlag ignoriert“). Beim Buchen setzt Zeitzeuge in Matrix42 „Zuschlag ignorieren“, auch beim Buchen aus dem Tagesabschluss.
 - **Ticket beim Dokumentieren suchen:** Neben dem Feld „Ticket“ sitzt der Knopf „Suchen …“. Er öffnet die Matrix42-Ticketsuche (vorbelegt mit dem Kunden), ein Doppelklick übernimmt das Ticket. So steht das passende Ticket schon vor dem Buchen in der Tätigkeit. Nur sichtbar, wenn Matrix42 eingeschaltet ist.
 - **Neues Design „Companion“** (übernommen aus dem Entwurf „Zeiterfassung Companion“): ruhige Zink-Grautöne in Hell und Dunkel, runde Ecken an Feldern, Knöpfen, Menüs und Timeline-Balken, Karten mit feinem Rand, Hauptknopf in Textfarbe, Violett für Fokus und Links.
 - **Kennzahlen über der Timeline:** Erfasst (von Soll, mit Balken), Offen („Jetzt eintragen“), Vorschläge („Ansehen“), Buchungsquote gleich hinter Erfasst (heute | 7 Tage als große Zahl in der Farbe der Stufe, bisher in der Statuszeile; Klick öffnet den Wochenabschluss) und Nach Kunde. Über der Tagesliste Chips für die Ansichten Alle, Offen / Doku, Vorschläge, Telefonate und Arbeitsblöcke.
