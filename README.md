@@ -207,11 +207,12 @@ python src/main_timeline.py
 
 ### EXE herunterladen
 
-GitHub baut die EXE bei jeder Änderung automatisch:
+Die fertige EXE liegt unter **[Releases](https://github.com/fkroczak/Zeitzeuge/releases)** (rechts auf der Startseite des Repositorys). Jeder Merge in main wird automatisch ein Release `v<Version>` mit EXE und Ordner-Variante.
 
-- **Neuester Stand:** Öffne im Repository den Reiter **Actions**, dann den obersten Lauf „EXE bauen“. Unter **Artifacts** liegt die `ZeitZeuge.exe` als ZIP.
-- **Feste Version:** Bei einem Tag wie `v4.0.0` entsteht ein Eintrag unter **Releases**, mit der EXE als Download.
-- **Ordner-Variante** (`ZeitZeuge-Ordner.zip`, ebenfalls unter Artifacts bzw. Releases): ZIP entpacken und `ZeitZeuge.exe` im Ordner starten. Sie entpackt beim Start nichts nach `%TEMP%` und ist für Rechner mit EDR wie Cortex XDR gedacht (z. B. die PAW). Selbst bauen: `set ZEITZEUGE_ONEDIR=1` und dann `pyinstaller ZeitZeuge.spec`.
+- **Immer die neueste Version (direkter Link):** [ZeitZeuge.exe](https://github.com/fkroczak/Zeitzeuge/releases/latest/download/ZeitZeuge.exe) · [ZeitZeuge-Ordner.zip](https://github.com/fkroczak/Zeitzeuge/releases/latest/download/ZeitZeuge-Ordner.zip)
+- **Ältere Versionen:** in der Liste unter Releases, jede mit ihrer Versionsnummer.
+- **Testversionen aus Branches und PRs:** Reiter **Actions**, Lauf „EXE bauen“, unter **Artifacts** (nur angemeldet, 30 Tage).
+- **Ordner-Variante** (`ZeitZeuge-Ordner.zip`, ebenfalls unter Releases bzw. Artifacts): ZIP entpacken und `ZeitZeuge.exe` im Ordner starten. Sie entpackt beim Start nichts nach `%TEMP%` und ist für Rechner mit EDR wie Cortex XDR gedacht (z. B. die PAW). Selbst bauen: `set ZEITZEUGE_ONEDIR=1` und dann `pyinstaller ZeitZeuge.spec`.
 
 ### EXE selbst bauen
 
@@ -238,7 +239,7 @@ Die Nummer steht im Fenstertitel, unter **Info**, in `fehler.log`, in den Dateie
 | `build.bat` | Zeitzeuge 4.1.3-local |
 | aus dem Quelltext | Zeitzeuge 4.1.3-dev |
 
-Release veröffentlichen: Tag `v<Version>` auf den Stand von main pushen, z. B. `v4.1.3`. Passt der Tag nicht zur gezählten Version, bricht der Build ab; sonst legt GitHub ein Release mit EXE an.
+Release veröffentlichen: passiert von selbst mit jedem Merge in main (Tag `v<Version>` legt GitHub an). Von Hand geht es weiterhin mit einem Tag `v<Version>` auf den Stand von main, z. B. `v4.1.3`; passt der Tag nicht zur gezählten Version, bricht der Build ab.
 
 **Signieren:** Unsignierte EXE-Dateien melden Virenscanner und Windows SmartScreen öfter als verdächtig. Hinterlegst du im Repository unter **Settings → Secrets and variables → Actions** ein Code-Signing-Zertifikat als `SIGN_PFX_BASE64` (PFX-Datei Base64-kodiert) und `SIGN_PFX_PASSWORD`, signiert GitHub die EXE automatisch. Ohne Zertifikat bleibt sie unsigniert.
 
