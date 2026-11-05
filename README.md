@@ -246,6 +246,8 @@ Die Nummer steht im Fenstertitel, unter **Info**, in `fehler.log`, in den Dateie
 
 Release veröffentlichen: passiert von selbst mit jedem Merge in main (Tag `v<Version>` legt GitHub an). Von Hand geht es weiterhin mit einem Tag `v<Version>` auf den Stand von main, z. B. `v4.1.3`; passt der Tag nicht zur gezählten Version, bricht der Build ab.
 
+**Fehlalarm „Virus gefunden“:** Der Build kompiliert den Startteil (Bootloader) von PyInstaller selbst, weil der fertige auch in Schadprogrammen steckt und Defender ihn deshalb oft meldet. Meldet Chrome oder Defender die EXE trotzdem, hilft die Ordner-Variante oder eine Meldung als Fehlalarm bei Microsoft (https://www.microsoft.com/wdsi/filesubmission). Dauerhaft hilft nur eine Signatur.
+
 **Signieren:** Unsignierte EXE-Dateien melden Virenscanner und Windows SmartScreen öfter als verdächtig. Hinterlegst du im Repository unter **Settings → Secrets and variables → Actions** ein Code-Signing-Zertifikat als `SIGN_PFX_BASE64` (PFX-Datei Base64-kodiert) und `SIGN_PFX_PASSWORD`, signiert GitHub die EXE automatisch. Ohne Zertifikat bleibt sie unsigniert.
 
 ### Tests
