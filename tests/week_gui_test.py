@@ -153,7 +153,7 @@ personal.clear()
 m42.clear()
 personal.update(saved[0])
 m42.update(saved[1])
-assert button.objectName() == "rate_low" and "Wochenabschluss" in button.accessibleName()
+assert button.level == "low" and "Wochenabschluss" in button.accessibleName()
 window.m42_reader = None
 saved_imported, window.imported = window.imported, None
 window.update_status_text()

@@ -81,42 +81,59 @@ def install_translator(app):
 
 GERMAN = QLocale(QLocale.German, QLocale.Germany)
 
-# Design "Metro Klar": Form aus Metro (eckig, volle Balken; Überschriften ohne Großbuchstaben),
-# Farben aus "Klar" (ruhige Flächen, tonale Auswahl). Zusätzliche Tokens gegenüber früher:
-#   band/bandtext/bandhover/bandpressed  Werkzeugleiste (in "Klar"-Farben: ruhig wie der Hintergrund)
+# Design "Companion": ruhige Zink-Grautöne wie shadcn/ui, runde Ecken, Karten mit feinem Rand.
+# Hauptknopf in Textfarbe (hell auf dunkel, dunkel auf hell), Violett für Bedienbares, Fokus
+# und Vorschläge. Tokens:
+#   band/bandtext/bandhover/bandpressed  Werkzeugleiste (ruhig wie der Hintergrund)
 #   sel/seltext                          markierte Zeile (tonal statt Vollton)
-#   onaccent                             Schrift auf Akzentfarbe (Standardknopf, "offen"-Knopf)
+#   accent/onaccent                      Fokus, Häkchen, Links, Vorschläge (Violett)
+#   primary/onprimary                    Hauptknopf (Standardknopf, „Neuer Kunde“)
 #   line                                 feine Linie zwischen den Zeilen der Tagesliste
 #   now                                  Jetzt-Linie in der Timeline
 #   control                              Rahmen von Feldern und Knöpfen (mind. 3 : 1 zum Grund)
+#   chip/chiptext                        Merkmal-Chips (Kundenerkennung), Filter-Chips
+#   good                                 „gilt“, „bleibt auf diesem Gerät“ (Grün)
 THEMES = {
     "dark": {
-        "bg": "#12161B", "surface": "#181D23", "bar": "#181D23",
-        "border": "#2A323C", "text": "#E6EAF0", "muted": "#9AA4B1",
-        "accent": "#4EA1FF", "onaccent": "#06121F", "hover": "#222A33", "pressed": "#2B3440",
-        "alt": "#181D23", "handle": "#6B7682", "line": "#20262E", "control": "#6B7682",
-        "band": "#12161B", "bandtext": "#E6EAF0", "bandhover": "#222A33", "bandpressed": "#2B3440",
-        "sel": "#1F3B5C", "seltext": "#FFFFFF", "now": "#FF6369",
+        "bg": "#0C0C0E", "surface": "#151517", "bar": "#151517",
+        "border": "#27272A", "text": "#FAFAFA", "muted": "#A1A1AA",
+        "accent": "#A78BFA", "onaccent": "#1A1033", "hover": "#1F1F23", "pressed": "#2A2A2F",
+        "alt": "#151517", "handle": "#6B6B74", "line": "#1F1F23", "control": "#6B6B74",
+        "band": "#0C0C0E", "bandtext": "#FAFAFA", "bandhover": "#1F1F23", "bandpressed": "#2A2A2F",
+        "sel": "#2A2A2F", "seltext": "#FFFFFF", "now": "#F43F5E",
+        "primary": "#FAFAFA", "onprimary": "#18181B",
+        "chip": "#1F1F23", "chiptext": "#E4E4E7", "good": "#4ADE80",
         # Buchungsquote (booking_rate.py): Fläche und Schrift je Stufe
         "rate_low": "#4A1C1F", "rate_low_text": "#FFB4B6", "rate_mid": "#463708", "rate_mid_text": "#FFE08A",
         "rate_ok": "#173D27", "rate_ok_text": "#9BE8B8", "rate_over": "#0E6B34", "rate_over_text": "#FFFFFF",
+        # Kachel Buchungsquote: farbige Zahl direkt auf der Karte
+        "rate_value_low": "#FF8A8E", "rate_value_mid": "#FACC15", "rate_value_ok": "#4ADE80",
     },
     "light": {
-        "bg": "#F4F6F8", "surface": "#FFFFFF", "bar": "#FFFFFF",
-        "border": "#DDE2E8", "text": "#1B1F24", "muted": "#5F6873",
-        "accent": "#0067C0", "onaccent": "#FFFFFF", "hover": "#E9EDF2", "pressed": "#DDE3EA",
-        "alt": "#FFFFFF", "handle": "#858F9B", "line": "#EEF1F4", "control": "#858F9B",
-        "band": "#F4F6F8", "bandtext": "#1B1F24", "bandhover": "#E9EDF2", "bandpressed": "#DDE3EA",
-        "sel": "#DCEBFA", "seltext": "#0A3B6B", "now": "#E5484D",
+        "bg": "#F7F7F8", "surface": "#FFFFFF", "bar": "#FFFFFF",
+        "border": "#E4E4E7", "text": "#18181B", "muted": "#62626B",
+        "accent": "#6D28D9", "onaccent": "#FFFFFF", "hover": "#F1F1F3", "pressed": "#E6E6EA",
+        "alt": "#FFFFFF", "handle": "#85858D", "line": "#F0F0F2", "control": "#85858D",
+        "band": "#F7F7F8", "bandtext": "#18181B", "bandhover": "#ECECEF", "bandpressed": "#E2E2E6",
+        "sel": "#ECE8FB", "seltext": "#2E1065", "now": "#E11D48",
+        "primary": "#18181B", "onprimary": "#FAFAFA",
+        "chip": "#F4F4F5", "chiptext": "#27272A", "good": "#15803D",
         # Buchungsquote (booking_rate.py): Fläche und Schrift je Stufe
         "rate_low": "#FCE4E4", "rate_low_text": "#9F1D20", "rate_mid": "#FFF1BF", "rate_mid_text": "#6B4E00",
         "rate_ok": "#DDF3E4", "rate_ok_text": "#1E6B3A", "rate_over": "#0F5E2E", "rate_over_text": "#FFFFFF",
+        # Kachel Buchungsquote: farbige Zahl direkt auf der Karte (große Schrift 20 px fett: mind. 3 : 1)
+        "rate_value_low": "#DC2626", "rate_value_mid": "#D97706", "rate_value_ok": "#16A34A",
     },
 }
 
+# Rundungen (px): Felder und Knöpfe, Karten und Menüs, Chips
+RADIUS = 6
+RADIUS_CARD = 10
+RADIUS_CHIP = 11
+
 # Eine Schrift für die ganze Oberfläche (Stylesheet, Timeline, Legende). Nur zwei Schnitte:
 # normal und fett. Feste Breite nur für Schlüssel und Beispiele.
-FONT_FAMILIES = ["Segoe UI Variable Text", "Segoe UI", "Inter", "Arial", "sans-serif"]
+FONT_FAMILIES = ["Segoe UI Variable Text", "Segoe UI", "Geist", "Inter", "Arial", "sans-serif"]
 FONT_CSS = ", ".join(f'"{f}"' if " " in f else f for f in FONT_FAMILIES)
 
 
@@ -162,7 +179,7 @@ QToolBar { background-color: $bar; border: none; padding: 6px 8px; spacing: 4px;
 QToolBar::separator { background: $border; width: 1px; margin: 6px 6px; }
 QToolBar#tools, QToolBar#fixed { border: none; padding: 0; background: transparent; }
 QToolButton { background: transparent; border: 1px solid transparent;
-              border-radius: 0; padding: 4px 6px; }
+              border-radius: 6px; padding: 4px 8px; }
 QToolButton:hover { background-color: $hover; }
 QToolButton:pressed, QToolButton:checked { background-color: $pressed; border-color: $border; }
 QToolButton::menu-indicator { image: none; }
@@ -183,7 +200,7 @@ QStatusBar QToolButton { color: $text; padding: 2px 8px; margin: 2px 4px; }
 QStatusBar::item { border: none; }
 QDateEdit, QLineEdit, QTextEdit, QPlainTextEdit, QComboBox, QSpinBox, QTimeEdit, QListWidget {
     background-color: $surface; color: $text; border: 1px solid $control;
-    border-radius: 0; padding: 4px 6px; selection-background-color: $sel;
+    border-radius: 6px; padding: 5px 8px; selection-background-color: $sel;
     selection-color: $seltext; }
 QDateEdit, QComboBox { min-height: 22px; }
 QDateEdit { font-weight: bold; }
@@ -192,14 +209,15 @@ QAbstractSpinBox::up-button, QAbstractSpinBox::down-button { width: 0; border: n
     subcontrol-origin: content; subcontrol-position: center left; } /* sonst Text ohne Rand links (Qt 6.12) */
 QDateEdit { min-width: 102px; } /* + 18 px Kalenderpfeil (Qt 6) = 120 px wie bisher */
 QComboBox QAbstractItemView { padding: 4px; outline: none; }
-QPushButton { background-color: $hover; color: $text; border: 1px solid $control;
-              border-radius: 0; padding: 6px 14px; min-width: 80px; }
-QPushButton:hover { background-color: $pressed; }
-QPushButton:default { background-color: $accent; color: $onaccent; border-color: $accent; font-weight: bold; }
+QPushButton { background-color: $surface; color: $text; border: 1px solid $control;
+              border-radius: 6px; padding: 6px 14px; min-width: 80px; }
+QPushButton:hover { background-color: $hover; }
+QPushButton:default { background-color: $primary; color: $onprimary; border-color: $primary; font-weight: bold; }
+QPushButton:default:hover { background-color: $muted; border-color: $muted; }
 QToolButton:focus, QPushButton:focus { border: 2px solid $accent; }
 QToolButton:focus { padding: 3px 5px; }
 QPushButton:focus { padding: 5px 13px; }
-QPushButton:default:focus { border-color: $text; }
+QPushButton:default:focus { border-color: $accent; }
 QDateEdit:focus, QTimeEdit:focus, QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus,
 QComboBox:focus,
 QSpinBox:focus, QListWidget:focus, QTableWidget:focus, QGraphicsView:focus {
@@ -208,41 +226,52 @@ QToolButton#qt_toolbar_ext_button { border: 1px solid $control; background-color
 QLabel#hint { color: $muted; }
 QTableWidget QLabel { padding: 2px 8px; }
 QLabel#busy_text { color: $bandtext; background: transparent; font-weight: bold; padding: 2px 0; }
-QStatusBar QToolButton#cta { background-color: $accent; color: $onaccent; font-weight: bold;
-                             border-radius: 0; padding: 2px 12px; }
-QStatusBar QToolButton#cta:hover { background-color: $accent; border-color: $text; }
+QStatusBar QToolButton#cta { background-color: $primary; color: $onprimary; font-weight: bold;
+                             border-radius: 6px; padding: 2px 12px; }
+QStatusBar QToolButton#cta:hover { background-color: $primary; border-color: $accent; }
 QStatusBar QToolButton#cta_secondary { background: transparent; color: $accent; font-weight: bold;
                                        border: 1px solid $accent; padding: 2px 12px; }
 QStatusBar QToolButton#cta_secondary:hover { background-color: $hover; }
-QStatusBar QToolButton#rate_low, QLabel#rate_low { background-color: $rate_low; color: $rate_low_text; font-weight: bold; }
-QStatusBar QToolButton#rate_mid, QLabel#rate_mid { background-color: $rate_mid; color: $rate_mid_text; font-weight: bold; }
-QStatusBar QToolButton#rate_ok, QLabel#rate_ok { background-color: $rate_ok; color: $rate_ok_text; font-weight: bold; }
-QStatusBar QToolButton#rate_over, QLabel#rate_over { background-color: $rate_over; color: $rate_over_text; font-weight: bold; }
+QToolButton#rate_low, QLabel#rate_low { background-color: $rate_low; color: $rate_low_text; font-weight: bold; }
+QToolButton#rate_mid, QLabel#rate_mid { background-color: $rate_mid; color: $rate_mid_text; font-weight: bold; }
+QToolButton#rate_ok, QLabel#rate_ok { background-color: $rate_ok; color: $rate_ok_text; font-weight: bold; }
+QToolButton#rate_over, QLabel#rate_over { background-color: $rate_over; color: $rate_over_text; font-weight: bold; }
+/* Kachel Buchungsquote: Zahl groß in der Farbe der Stufe (Text-Farbe der Stufe) */
+QLabel#rate_value_low, QLabel#rate_value_mid, QLabel#rate_value_ok, QLabel#rate_value_over,
+QLabel#rate_value_none { background: transparent; font-size: 20px; font-weight: bold; }
+QLabel#rate_value_low { color: $rate_value_low; }
+QLabel#rate_value_mid { color: $rate_value_mid; }
+QLabel#rate_value_ok, QLabel#rate_value_over { color: $rate_value_ok; }
+QLabel#rate_value_none { color: $muted; }
+QFrame#divider { background-color: $border; border: none; }
+QFrame#card:focus { border: 2px solid $accent; }
+QToolButton#rate_low, QToolButton#rate_mid, QToolButton#rate_ok, QToolButton#rate_over {
+    border-radius: 6px; padding: 3px 10px; }
 QPushButton:disabled, QToolButton:disabled, QLineEdit:disabled, QDateEdit:disabled,
 QTimeEdit:disabled, QSpinBox:disabled, QCheckBox:disabled { color: $muted; }
 QPushButton:disabled { background-color: $surface; }
-QGroupBox { border: none; border-radius: 0; margin-top: 1.4em;
+QGroupBox { border: 1px solid $border; border-radius: 10px; margin-top: 1.4em;
             padding: 12px 8px 8px 8px; background-color: $surface; font-weight: bold; }
 QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 6px; }
 QGroupBox QWidget { font-weight: normal; }
 QGroupBox QLabel, QGroupBox QCheckBox { background: transparent; }
 QCheckBox { spacing: 8px; }
 QCheckBox::indicator { width: 16px; height: 16px; border: 1px solid $control;
-                       background-color: $surface; border-radius: 0; }
+                       background-color: $surface; border-radius: 4px; }
 QCheckBox::indicator:hover, QCheckBox::indicator:focus { border-color: $accent; }
 QCheckBox::indicator:checked { border-color: $accent; background-color: $accent;
                                image: url($checkmark); }
 QCheckBox::indicator:disabled { border-color: $border; }
 QCheckBox::indicator:checked:disabled { background-color: $border; border-color: $border; }
-QMenu { background-color: $surface; border: 1px solid $border; border-radius: 0; padding: 4px 0; }
-QMenu::item { padding: 6px 28px 6px 12px; border-radius: 0; }
+QMenu { background-color: $surface; border: 1px solid $border; border-radius: 8px; padding: 4px; }
+QMenu::item { padding: 6px 28px 6px 12px; border-radius: 4px; }
 QMenu::item:selected { background-color: $sel; color: $seltext; }
 QMenu::item:disabled { color: $muted; }
 QMenu::separator { height: 1px; background: $border; margin: 4px 0; }
 QMenu::icon { padding-left: 6px; }
-QGraphicsView { border: none; border-radius: 0; }
+QGraphicsView { border: none; border-radius: 10px; }
 QTableWidget { background-color: $surface; alternate-background-color: $alt;
-               border: none; border-radius: 0; gridline-color: transparent;
+               border: 1px solid $border; border-radius: 10px; gridline-color: transparent;
                selection-background-color: $sel; selection-color: $seltext; }
 QTableWidget::item { padding: 2px 8px; border: none; border-bottom: 1px solid $line; }
 QTableWidget::item:selected { background-color: $sel; color: $seltext; }
@@ -254,7 +283,7 @@ QSplitter::handle { background: transparent; }
 QSplitter::handle:vertical { height: 8px; }
 QScrollBar:horizontal { height: 10px; background: transparent; margin: 0; }
 QScrollBar:vertical { width: 10px; background: transparent; margin: 0; }
-QScrollBar::handle { background: $handle; border-radius: 0; min-width: 30px; min-height: 30px; }
+QScrollBar::handle { background: $handle; border-radius: 3px; min-width: 30px; min-height: 30px; }
 QScrollBar::handle:horizontal { margin: 2px 0; }
 QScrollBar::handle:vertical { margin: 0 2px; }
 QScrollBar::add-line, QScrollBar::sub-line { width: 0; height: 0; }
@@ -276,11 +305,11 @@ QLabel#row_page { color: $muted; font-size: 12px; font-weight: bold; }
 QLabel#row_value { color: $text; font-weight: bold; }
 QListWidget#settings_nav { border: none; border-right: 1px solid $border; background-color: $surface;
                            padding: 6px 0; outline: none; }
-QListWidget#settings_nav::item { padding: 4px 10px; border-left: 3px solid transparent; }
+QListWidget#settings_nav::item { padding: 6px 10px; margin: 1px 6px; border-radius: 6px; border-left: 3px solid transparent; }
 QListWidget#settings_nav::item:selected { background-color: $sel; color: $seltext;
                                           border-left: 3px solid $accent; font-weight: bold; }
 QListWidget#settings_nav::item:hover:!selected { background-color: $hover; }
-QFrame#tile { background-color: $surface; border: 1px solid $border; }
+QFrame#tile { background-color: $surface; border: 1px solid $border; border-radius: 10px; }
 QFrame#tile QLabel, QFrame#tile QCheckBox { background: transparent; }
 QCheckBox#switch { spacing: 6px; font-weight: bold; }
 QCheckBox#switch::indicator { width: 30px; height: 16px; border: 2px solid $muted; border-radius: 10px;
@@ -289,9 +318,45 @@ QCheckBox#switch::indicator:checked { border-color: $accent; background-color: $
 QCheckBox#switch::indicator:focus { border-color: $text; }
 QFrame#setting_row { border: none; border-bottom: 1px solid $line; }
 QFrame#setting_row QLabel, QFrame#setting_row QCheckBox { background: transparent; }
-QPushButton#result_link { text-align: left; background: transparent; border: 1px solid $control; padding: 8px 12px; }
-QToolTip { background-color: #1B1F24; color: #F2F4F7; border: 1px solid #3A424C; border-radius: 0;
-           padding: 4px 6px; }
+QPushButton#result_link { text-align: left; background: transparent; border: 1px solid $control; border-radius: 8px; padding: 8px 12px; }
+QToolTip { background-color: #18181B; color: #F4F4F5; border: 1px solid #3F3F46; border-radius: 6px;
+           padding: 5px 8px; }
+/* Companion-Bausteine: Karten, Chips, Kennzahlen, Hinweisboxen */
+QFrame#card { background-color: $surface; border: 1px solid $border; border-radius: 10px; }
+QFrame#card QLabel, QFrame#card QCheckBox { background: transparent; }
+QFrame#card_row { background: transparent; border: none; border-bottom: 1px solid $line; }
+QFrame#card_row QLabel { background: transparent; }
+QLabel#card_title { font-weight: bold; }
+QLabel#section_title { font-weight: bold; font-size: 14px; }
+QLabel#kpi_label { color: $muted; background: transparent; font-size: 12px; }
+QLabel#kpi_value { color: $text; background: transparent; font-size: 18px; font-weight: bold; }
+QLabel#avatar { background-color: $chip; color: $chiptext; border: 1px solid $border;
+                border-radius: 8px; font-size: 12px; font-weight: bold; padding: 0; }
+QLabel#count { color: $muted; background: transparent; font-size: 12px; }
+QLabel#good { color: $good; background: transparent; }
+QToolButton#chip { background-color: $chip; color: $chiptext; border: 1px solid $border;
+                   border-radius: 11px; padding: 2px 10px; }
+QToolButton#chip:hover { border-color: $control; }
+QToolButton#chip:checked { background-color: $primary; color: $onprimary; border-color: $primary; }
+QToolButton#chip:focus { border: 2px solid $accent; padding: 1px 9px; }
+QToolButton#chip_add { background: transparent; color: $muted; border: 1px dashed $control;
+                       border-radius: 11px; padding: 2px 10px; }
+QToolButton#chip_add:hover { color: $text; }
+QToolButton#chip_add:focus { border: 2px solid $accent; padding: 1px 9px; }
+QToolButton#link { background: transparent; color: $accent; border: none; padding: 2px 4px; }
+QToolButton#link:hover { text-decoration: underline; }
+QToolButton#link:focus { border: 1px solid $accent; padding: 1px 3px; }
+QFrame#notice { background-color: $chip; border: 1px solid $border; border-radius: 10px; }
+QFrame#notice QLabel { background: transparent; }
+QProgressBar { background-color: $chip; border: none; border-radius: 2px; }
+QProgressBar::chunk { background-color: $good; border-radius: 2px; }
+QWidget#chips { background: transparent; }
+QWidget#customer_detail { background-color: $surface; }
+QScrollArea { background: transparent; border: none; }
+QListWidget#nav_list { border: none; background: transparent; outline: none; padding: 4px; }
+QListWidget#nav_list::item { border-radius: 8px; padding: 6px 8px; margin: 1px 0; }
+QListWidget#nav_list::item:selected { background-color: $sel; color: $seltext; }
+QListWidget#nav_list::item:hover:!selected { background-color: $hover; }
 """.replace("$font", FONT_CSS)
 
 

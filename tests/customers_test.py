@@ -208,3 +208,42 @@ def test_export_nimmt_kundenliste_mit(tmp_path):
     old.pop("kunden")
     store.add(old, own_pc="PAW")
     assert store.customers() == kunden
+
+
+def test_ordner_host_ip_und_kalender():
+    customers = [
+        {"name": "Avangard", "number": "K-10234",
+         "traces": [{"kind": "path", "value": "E:\\Kundenprojekte\\Avangard"}]},
+        {"name": "Schmidt", "calendar": False,
+         "traces": [{"kind": "host", "value": "*.schmidt.local"}, {"kind": "mail", "value": "schmidt.de"}]},
+        {"name": "Weber", "traces": [{"kind": "host", "value": "fw-weber"}, {"kind": "ip", "value": "10.20.0.0/16"}]},
+        {"name": "Weber DC", "traces": [{"kind": "ip", "value": "10.20.5.7"}]},
+    ]
+    index = cl.Index(cl._valid_list(customers))
+    assert cl.normalize("ip", "10.20.1.2/16") == "10.20.0.0/16"
+    assert cl.normalize("ip", "999.1.1.1") == "" and cl.normalize("host", "a b") == ""
+    # Ordner: ganzer Pfad oder letzter Teil im Fenstertitel
+    assert index.keyword("E:\\Kundenprojekte\\Avangard\\Angebot.docx - Word") == "Avangard"
+    assert index.keyword("Avangard - Datei-Explorer") == "Avangard"
+    # Host: Muster mit *, ohne Muster auch mit Domain dahinter
+    rdp = e(type="RDP-Verbindung", customer_name="DC01.schmidt.local")
+    assert index.customer_for(rdp) == "Schmidt"
+    assert index.keyword("root@fw-weber: ~") == "Weber"
+    assert index.keyword("fw-weber.intern - PuTTY") == "Weber"
+    assert index.keyword("fw-webern") == ""
+    # IP: engster Bereich gewinnt
+    assert index.keyword("mstsc 10.20.5.7") == "Weber DC"
+    assert index.keyword("ping 10.20.9.9") == "Weber"
+    assert index.keyword("10.21.0.1") == ""
+    # Kalendertermine aus: Termin über Domain zählt nicht, Mail schon
+    termin = e(type="Termin", customer_name="Abstimmung", email_domains=["schmidt.de"])
+    assert index.customer_for(termin) == ""
+    assert index.customer_for(dict(termin, type="E-Mail")) == "Schmidt"
+    # Kundennummer und Kalender bleiben beim Speichern erhalten
+    kept = cl._valid_list(customers)
+    assert kept[0]["number"] == "K-10234" and kept[1]["calendar"] is False and "calendar" not in kept[2]
+    # Browser-Verlauf: Domain zählt wie eine Mail-Domain
+    assert index.customer_for(e(type="Browser", customer_name="portal.schmidt.de")) == "Schmidt"
+    # Treffer je Merkmal
+    hits = cl.count_hits(index, [rdp, termin], [{"app": "winword.exe", "customer_name": "Avangard - Word"}])
+    assert hits == {("host", "*.schmidt.local"): 1, ("path", "e:\\kundenprojekte\\avangard"): 1}

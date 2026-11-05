@@ -176,6 +176,8 @@ for theme_name, t in main_timeline.THEMES.items():
     check_contrast(area, t["accent"], t["bg"])  # umrandeter Knopf in der Statuszeile (cta_secondary)
     for lvl in ("low", "mid", "ok", "over"):  # Buchungsquote (Statuszeile, Wochenabschluss)
         check_contrast(area, t[f"rate_{lvl}_text"], t[f"rate_{lvl}"])
+    for lvl in ("low", "mid", "ok"):  # Kachel Buchungsquote: farbige Zahl auf der Karte
+        check_contrast(area, t[f"rate_value_{lvl}"], t["surface"], minimum=3.0)  # 20 px fett = groß
     # Bedienelemente (WCAG 1.4.11): Rahmen von Feldern/Knöpfen und Scrollbalken mind. 3 : 1
     for token in ("control", "handle"):
         for ground in ("bg", "surface"):
