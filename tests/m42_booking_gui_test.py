@@ -114,6 +114,35 @@ def gui_test():
                                         if isinstance(w, m42_booking_dialogs.BookingDialog)
                                         and w.isVisible()).reject())
     assert window.book_in_m42(other) is None and len(reader.requests) == 1
+
+    # Beim Dokumentieren: Knopf „Suchen …“ am Ticket öffnet die Matrix42-Suche
+    from datetime import datetime
+    from journal_dialogs import EntryDialog
+    start, end = datetime(2026, 10, 19, 11, 0), datetime(2026, 10, 19, 11, 30)
+    doc = EntryDialog(start, end, ["Systems"], ["Fernwartung"], customer="Systems",
+                      **window.entry_form_options(start, end))
+    assert doc.form.ticket_search_button is not None and doc.form.ticket_edit.isVisibleTo(doc)
+
+    def pick():
+        search = next(w for w in app.topLevelWidgets()
+                      if isinstance(w, m42_booking_dialogs.TicketSearchDialog) and w.isVisible())
+        app.processEvents()
+        seen["doc_search"] = search.search_edit.text()
+        seen["doc_rows"] = search.results.count()
+        search.take_button.click()
+
+    reader.searches.clear()
+    QTimer.singleShot(300, pick)
+    doc.form.ticket_search_button.click()
+    assert seen["doc_search"] == "Systems" and seen["doc_rows"] == 1, seen
+    assert reader.searches == ["Systems"], reader.searches
+    assert doc.item()["ticket"] == "TCK0000049374", doc.item()
+    doc.deleteLater()
+
+    # Ohne Matrix42 kein Knopf
+    window.m42_reader = None
+    assert window.entry_form_options(start, end)["ticket_search"] is None
+    window.m42_reader = reader
     assert QDialog  # (Import für den Typ oben)
     window.quit_app()
 

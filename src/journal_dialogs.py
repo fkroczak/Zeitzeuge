@@ -29,8 +29,10 @@ class _EntryForm(QWidget):
     def __init__(self, start, end, customers, categories, customer="", category="", text="",
                  tv_id=None, parent=None, show_date=True, snippets=(), recent_texts=None,
                  ticket="", ticket_suggestions=(), show_ticket=True, trace=None, rule_subject=None,
-                 goodwill=False, travel=False):
+                 goodwill=False, travel=False, no_surcharge=False, ticket_search=None):
         super().__init__(parent)
+        # ticket_search: Funktion (Suchtext, Fenster) -> Ticket-dict oder None (Matrix42-Suche)
+        self.ticket_search = ticket_search
         # trace: (Art, Wert) der Spur, zu der der Kunde gemerkt werden kann (customers.py).
         # rule_subject: Name, zu dem eine geänderte Kategorie als Regel gemerkt werden kann.
         if trace is None and tv_id:
@@ -118,9 +120,14 @@ class _EntryForm(QWidget):
         self.travel_box = QCheckBox("&Reise / Anfahrt")
         self.travel_box.setToolTip("Fahrzeit. Wird beim Buchen in Matrix42 als Reise übernommen.")
         self.travel_box.setChecked(bool(travel))
+        self.surcharge_box = QCheckBox("&Zuschlag ignorieren")
+        self.surcharge_box.setToolTip("Keine Zuschläge (z. B. außerhalb der Servicezeit). "
+                                      "Wird beim Buchen in Matrix42 übernommen.")
+        self.surcharge_box.setChecked(bool(no_surcharge))
         flags = QHBoxLayout()
         flags.addWidget(self.goodwill_box)
         flags.addWidget(self.travel_box)
+        flags.addWidget(self.surcharge_box)
         flags.addStretch(1)
         form.addRow("", flags)
 
@@ -190,7 +197,16 @@ class _EntryForm(QWidget):
         ticket_row = QHBoxLayout()
         ticket_row.addWidget(self.ticket_edit, 1)
         ticket_row.addWidget(self.ticket_take)
-        if show_ticket or ticket or self.ticket_suggestions:
+        self.ticket_search_button = None
+        if self.ticket_search:
+            self.ticket_search_button = QPushButton("Su&chen …")
+            self.ticket_search_button.setAutoDefault(False)
+            self.ticket_search_button.setAccessibleName("Ticket in Matrix42 suchen")
+            self.ticket_search_button.setToolTip("Ticket in Matrix42 nach Kunde, Benutzer, "
+                                                 "Ticketnummer oder Titel suchen")
+            self.ticket_search_button.clicked.connect(self._search_ticket)
+            ticket_row.addWidget(self.ticket_search_button)
+        if show_ticket or ticket or self.ticket_suggestions or self.ticket_search:
             label = QLabel("T&icket:")
             label.setBuddy(self.ticket_edit)
             form.addRow(label, ticket_row)
@@ -206,6 +222,16 @@ class _EntryForm(QWidget):
         if self.ticket_suggestions:
             self.ticket_edit.setCurrentText(self.ticket_suggestions[0]["ticket"])
             self.text_edit.setFocus()
+
+    def _search_ticket(self):
+        """Matrix42-Suche öffnen, vorbelegt mit dem Kunden; gewähltes Ticket übernehmen."""
+        row = self.ticket_search(self.customer_edit.currentText().strip(), self.window())
+        if not row or not row.get("ticket"):
+            return
+        self.ticket_edit.setCurrentText(row["ticket"])
+        if not self.customer_edit.currentText().strip() and row.get("customer"):
+            self.customer_edit.setCurrentText(row["customer"])
+        self.text_edit.setFocus()
 
     def _fill_insert_menu(self):
         """Menü beim Öffnen neu füllen: Bausteine und die letzten Texte zum gewählten Kunden."""
@@ -310,6 +336,7 @@ class _EntryForm(QWidget):
             "ticket": self.ticket_edit.currentText().strip(),
             "goodwill": self.goodwill_box.isChecked(),
             "travel": self.travel_box.isChecked(),
+            "no_surcharge": self.surcharge_box.isChecked(),
         }
 
 
