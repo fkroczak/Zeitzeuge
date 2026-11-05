@@ -26,6 +26,18 @@ jobs:
       - name: Abhängigkeiten installieren
         run: pip install -r requirements.txt -r requirements-dev.txt
 
+      # Der fertige Bootloader aus dem PyInstaller-Paket steckt auch in vielen Schadprogrammen,
+      # Defender (und damit Chrome) meldet EXE-Dateien damit oft fälschlich als Virus.
+      # Selbst kompiliert ist er einzigartig und fällt deutlich seltener auf.
+      - name: PyInstaller-Bootloader selbst kompilieren
+        shell: pwsh
+        env:
+          PYINSTALLER_COMPILE_BOOTLOADER: "1"
+        run: |
+          $pin = (Select-String -Path requirements.txt -Pattern '^pyinstaller==').Line
+          pip install --force-reinstall --no-deps --no-cache-dir --no-binary pyinstaller $pin
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       # Version MAJOR.MINOR.PATCH, gezählt aus der git-Geschichte von main (siehe src/version.py),
       # z. B. 4.1.3; nicht auf main: 4.1.3-test186. Ein Tag muss genau zur Version passen.
       - name: Versionsnummer bestimmen
