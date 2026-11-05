@@ -55,6 +55,9 @@ def _billing_summary(main):
 #   check:  Ziel = Config-Schlüssel, Zusatz = Standardwert
 #   choice: Ziel = Config-Schlüssel, Zusatz = ([(Wert, Text)] oder Funktion main -> Liste, Nachlauf)
 ROWS = [
+    ("general", "toggle", "power", "Mit Windows starten",
+     "Startet beim Anmelden an Windows im Infobereich, damit nichts unaufgezeichnet bleibt.",
+     "autostart_action", None),
     ("general", "button", "clock", "Arbeitszeiten", "Arbeitstage und Zeiten, wenn keine ITM-Personalzeit da ist.",
      "edit_work_hours", None),
     # Ein/Aus und Fenster-Filter stehen auf der Kachel „Aktive Fenster“ (SOURCE_TILES), hier nur der Rest

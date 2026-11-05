@@ -529,6 +529,13 @@ class MenusMixin:
         self.tracking_action.setChecked(self.config.get("tracking_enabled", True))
         self.tracking_action.toggled.connect(self.toggle_tracking)
         self._icon_actions.append((self.tracking_action, "monitor"))
+        # Mit Windows starten (autostart.py): Schalter im Einstellungsfenster, Stand aus der Registry
+        import autostart
+        self.autostart_action = QAction("Mit &Windows starten", self)
+        self.autostart_action.setCheckable(True)
+        self.autostart_action.setChecked(autostart.is_enabled())
+        self.autostart_action.setEnabled(autostart.supported())
+        self.autostart_action.toggled.connect(self.toggle_autostart)
         self._add_check(menu, self._ensure_dark_action(), THEMES["dark" if self.dark_mode else "light"]["accent"])
         # Datenquellen: im Einstellungsfenster (Kacheln mit Zustand); das Untermenü nutzt der Infobereich
         self.sources_menu = self._build_sources_menu()
@@ -765,6 +772,22 @@ class MenusMixin:
             self.timeline.show_work_time()
         else:
             self.timeline.show_whole_day()
+
+    def toggle_autostart(self, on):
+        import autostart
+        if autostart.is_enabled() == on:
+            return
+        if not autostart.set_enabled(on):
+            QMessageBox.warning(self, "Mit Windows starten",
+                                "Der Autostart ließ sich nicht ändern (Richtlinie oder fehlende Rechte).")
+            self.autostart_action.blockSignals(True)
+            self.autostart_action.setChecked(autostart.is_enabled())
+            self.autostart_action.blockSignals(False)
+            return
+        self.config["auto_start"] = on
+        mt.save_config(self.config)
+        self.statusBar().showMessage("Zeitzeuge startet " + ("ab jetzt mit Windows im Infobereich" if on
+                                                             else "nicht mehr mit Windows"), 4000)
 
     def _ensure_dark_action(self):
         """Schalter „Dunkles Design“ (Menüs Ansicht und Einstellungen, Einstellungsfenster)."""

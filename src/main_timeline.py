@@ -751,6 +751,26 @@ def install_error_hooks():
 _instance_lock = None
 
 
+def splash_text(text):
+    """Fortschritt im Startbild der EXE (ZeitZeuge.spec, Splash); ohne Startbild nichts."""
+    try:
+        import pyi_splash
+        if pyi_splash.is_alive():
+            pyi_splash.update_text(text)
+    except Exception:  # Quelltext-Start oder Startbild schon zu: nicht wichtig
+        pass
+
+
+def close_splash():
+    """Startbild schließen: sobald das Fenster steht oder eine Rückfrage kommt."""
+    try:
+        import pyi_splash
+        if pyi_splash.is_alive():
+            pyi_splash.close()
+    except Exception:
+        pass
+
+
 def acquire_single_instance(path=None, wait_ms=500):
     """Nur eine Instanz: zwei würden sich gegenseitig die Dateien überschreiben.
     Die Sperre liegt lokal (nicht im oft mit OneDrive synchronisierten Datenordner).
@@ -768,6 +788,7 @@ def acquire_single_instance(path=None, wait_ms=500):
 
 
 if __name__ == "__main__":
+    splash_text("Zeitzeuge startet …")
     QLocale.setDefault(GERMAN)
     install_error_hooks()
     icons.set_windows_app_id()  # vor dem ersten Fenster, sonst gilt die Kennung von python.exe
@@ -780,20 +801,24 @@ if __name__ == "__main__":
     install_translator(app)
     app.setQuitOnLastWindowClosed(False)
     if not acquire_single_instance(wait_ms=20000 if "--neustart" in sys.argv else 500):
+        close_splash()
         if "--minimized" not in sys.argv:
             QMessageBox.information(None, "Zeitzeuge",
                                     "Zeitzeuge läuft schon. Du findest es im Infobereich neben der Uhr.")
         sys.exit(0)
     from protect_dialogs import ask_unlock
+    splash_text("Datenbank öffnen …")
     try:
-        open_store(ask=ask_unlock)
+        open_store(ask=lambda store: (close_splash(), ask_unlock(store))[1])
     except StoreLocked:
         sys.exit(0)  # gesperrt gelassen: nichts anlegen, nichts überschreiben
     except datastore.Busy as e:
+        close_splash()
         QMessageBox.critical(None, "Zeitzeuge", f"Die Datenbank lässt sich nicht öffnen.\n\n{e}\n\n"
                              "Zeitzeuge beendet sich, ohne etwas zu ändern. Details in fehler.log.")
         safe_io.log(f"Datenbank nicht geöffnet: {e}")
         sys.exit(1)
+    splash_text("Fenster aufbauen …")
     window = TimelineApp()
     from hang_watch import HangWatch
     hang_watch = HangWatch(os.path.join(DATA_DIR, "haenger.log"), app)
@@ -802,6 +827,9 @@ if __name__ == "__main__":
             window.showMinimized()
     else:
         window.show()
+    close_splash()
+    import autostart
+    autostart.refresh()  # EXE umgezogen oder ersetzt: Autostart zeigt auf diese
     code = app.exec()
     if not window._quitting:  # z. B. Windows-Abmeldung: laufenden Abschnitt trotzdem speichern
         window.quit_app()

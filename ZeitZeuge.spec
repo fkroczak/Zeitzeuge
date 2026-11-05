@@ -61,6 +61,21 @@ a = Analysis(
 )
 pyz = PYZ(a.pure)
 
+# Startbild: zeigt der Bootloader sofort beim Doppelklick, noch während sich die EXE entpackt
+# (das dauert mit Virenscanner mehrere Sekunden). Zeitzeuge schreibt unten links den Fortschritt
+# hinein und schließt es, sobald das Fenster steht (main_timeline.py). Bild: tests/make_splash.py
+splash = Splash(
+    os.path.join(ASSETS, 'splash.png'),
+    binaries=a.binaries,
+    datas=a.datas,
+    text_pos=(26, 152),
+    text_size=10,
+    text_font='Segoe UI',
+    text_color='#62626B',
+    text_default='Zeitzeuge startet …',
+    always_on_top=False,  # Rückfragen beim Start (Entsperren) dürfen nicht dahinter liegen
+)
+
 # Zwei Varianten:
 # - Standard: eine einzelne ZeitZeuge.exe. Sie entpackt sich bei jedem Start nach %TEMP%.
 # - ZEITZEUGE_ONEDIR=1: Ordner mit ZeitZeuge.exe und _internal (nichts wird entpackt).
@@ -88,9 +103,10 @@ options = dict(
 # Kein UPX (upx=False oben): mit UPX gepackte EXE-Dateien melden Virenscanner besonders oft fälschlich.
 
 if ONEDIR:
-    exe = EXE(pyz, a.scripts, [], exclude_binaries=True, **options)
-    coll = COLLECT(exe, a.binaries, a.datas, strip=False, upx=False, name='ZeitZeuge-Ordner')
+    exe = EXE(pyz, a.scripts, splash, [], exclude_binaries=True, **options)
+    coll = COLLECT(exe, a.binaries, a.datas, splash.binaries, strip=False, upx=False,
+                   name='ZeitZeuge-Ordner')
 else:
-    exe = EXE(pyz, a.scripts, a.binaries, a.datas, [], **options)
+    exe = EXE(pyz, a.scripts, splash, splash.binaries, a.binaries, a.datas, [], **options)
 
 os.remove(BUILD_INFO_FILE)  # sonst zeigte der Start aus dem Quelltext die Angaben dieses Builds

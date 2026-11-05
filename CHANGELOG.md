@@ -18,6 +18,9 @@ Testversionen aus Branches tragen die Version ihres main-Stands plus Buildnummer
 26.10.2026 können sie nicht mehr lesen.
 
 ### Neu
+- **Startbild:** Die EXE zeigt sofort beim Doppelklick ein Startbild mit Fortschritt, bis das Fenster steht. Bisher sah man mehrere Sekunden nichts und war versucht, Zeitzeuge ein zweites Mal zu starten.
+- **Mit Windows starten:** neuer Schalter unter Einstellungen → Allgemein. Trägt Zeitzeuge für deinen Benutzer in den Autostart ein (im Infobereich, ohne Adminrechte) und zieht den Eintrag nach, wenn die EXE umzieht. Die Verknüpfung in `shell:startup` braucht es nicht mehr.
+- **Einrichtungsassistent, 3CX und Matrix42:** „Weiter“ geht erst nach „einrichten und anmelden“ (oder wenn du das Häkchen „verwenden“ herausnimmst). Der Anmeldeknopf ist dort der Hauptknopf.
 - **Hell/Dunkel im Menü Ansicht:** „Dunkles Design“ lässt sich jetzt direkt im Menü Ansicht umschalten, nicht nur unter Einstellungen.
 - **Anruffarben je Richtung:** Unter Ansicht → Zeilen der Timeline → Farben der Zeilen (und per Rechtsklick auf „Telefon“ in der Legende) gibt es getrennte Farben für eingehende und ausgehende Anrufe. Eine bisher gewählte Farbe für die ganze Zeile bleibt für die andere Richtung erhalten.
 - **Zuschlag ignorieren:** neuer Haken neben Kulanz und Reise beim Dokumentieren und im Fenster „In Matrix42 buchen“ (dort mit Grund, vorbelegt „Zuschlag ignoriert“). Beim Buchen setzt Zeitzeuge in Matrix42 „Zuschlag ignorieren“, auch beim Buchen aus dem Tagesabschluss.

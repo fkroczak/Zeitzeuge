@@ -633,11 +633,9 @@ Aufgezeichnet wird nur, solange Zeitzeuge läuft. Schließt du das Fenster, läu
 
 Das Menü im Infobereich enthält: **Zeitzeuge öffnen** (auch per Klick auf das Symbol), den Zustand der Aufzeichnung mit **pausieren / fortsetzen**, **Logs neu einlesen**, **Datenquellen**, **Datenordner öffnen** und **Beenden**.
 
-Damit Zeitzeuge mit Windows startet:
+Damit Zeitzeuge mit Windows startet: **Einstellungen → Allgemein → Mit Windows starten**. Zeitzeuge trägt sich dann für deinen Windows-Benutzer in den Autostart ein (ohne Adminrechte) und startet beim Anmelden direkt im Infobereich. Liegt die EXE später woanders, zieht Zeitzeuge den Eintrag beim nächsten Start selbst nach. Hattest du früher eine Verknüpfung in `shell:startup` angelegt, lösch sie, sonst startet Zeitzeuge zweimal (der zweite Start beendet sich still).
 
-1. Drück `Win + R`, gib `shell:startup` ein und drück Enter.
-2. Leg in dem Ordner eine Verknüpfung zu `ZeitZeuge.exe` an.
-3. Häng in den Eigenschaften der Verknüpfung unter **Ziel** ` --minimized` an. Dann startet Zeitzeuge direkt im Infobereich.
+Beim Start der EXE erscheint sofort ein **Startbild** mit dem Fortschritt (Entpacken, Datenbank, Fenster). Es verschwindet, sobald das Fenster steht. So siehst du gleich, dass Zeitzeuge schon lädt.
 
 ### Zwei PCs: Arbeits-PC und PAW
 
