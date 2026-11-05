@@ -603,7 +603,17 @@ class DocsMixin(CustomersMixin):
                 return snippets.recent_texts(items, customer)
         return {"snippets": snippets.from_config(self.config), "recent_texts": recent,
                 "ticket": ticket, "ticket_suggestions": self.ticket_suggestions(start, end),
-                "ticket_search": self.search_m42_ticket if getattr(self, "m42_reader", None) else None}
+                "ticket_search": self.search_m42_ticket if getattr(self, "m42_reader", None) else None,
+                "ticket_lookup": self.m42_ticket_lookup if getattr(self, "m42_reader", None) else None}
+
+    def m42_ticket_lookup(self, parent):
+        """Suche beim Tippen im Feld „Ticket“ (m42_booking_dialogs.TicketLookup) oder None."""
+        import m42_booking
+        from m42_booking_dialogs import TicketLookup
+        reader = getattr(self, "m42_reader", None)
+        if reader is None:
+            return None
+        return TicketLookup(reader, m42_booking.ids(self.config).get("ticket_list"), parent)
 
     def search_m42_ticket(self, text="", parent=None):
         """Ticket in Matrix42 suchen (Knopf „Suchen …“ beim Ticket). Ticket-dict oder None."""

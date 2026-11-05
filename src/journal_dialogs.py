@@ -8,8 +8,11 @@ Dialoge zum Eintragen von Tätigkeiten.
 
 from datetime import datetime, timedelta
 
-from PySide6.QtCore import QDate, QLocale, Qt, QTime, Signal
-from PySide6.QtWidgets import (QCheckBox, QComboBox, QDateEdit, QDialog, QDialogButtonBox,
+import re
+
+from PySide6.QtCore import QDate, QLocale, QModelIndex, Qt, QTime, QTimer, Signal
+from PySide6.QtGui import QStandardItem, QStandardItemModel
+from PySide6.QtWidgets import (QCheckBox, QComboBox, QCompleter, QDateEdit, QDialog, QDialogButtonBox,
                                QFormLayout, QFrame, QHBoxLayout, QLabel, QMenu, QPlainTextEdit,
                                QPushButton, QSpinBox, QTimeEdit, QToolButton, QVBoxLayout,
                                QWidget)
@@ -20,6 +23,7 @@ import customers as customer_list
 from grouping import format_tv_id
 from journal import TIME_FMT, describe, suggest_category, suggest_customer
 import snippets as snippet_logic
+from m42_booking import ticket_label as mb_ticket_label
 from tickets import format_ticket_text
 
 
@@ -29,10 +33,13 @@ class _EntryForm(QWidget):
     def __init__(self, start, end, customers, categories, customer="", category="", text="",
                  tv_id=None, parent=None, show_date=True, snippets=(), recent_texts=None,
                  ticket="", ticket_suggestions=(), show_ticket=True, trace=None, rule_subject=None,
-                 goodwill=False, travel=False, no_surcharge=False, ticket_search=None):
+                 goodwill=False, travel=False, no_surcharge=False, ticket_search=None,
+                 ticket_lookup=None):
         super().__init__(parent)
         # ticket_search: Funktion (Suchtext, Fenster) -> Ticket-dict oder None (Matrix42-Suche)
+        # ticket_lookup: Funktion (Elternobjekt) -> TicketLookup, Suche beim Tippen im Feld Ticket
         self.ticket_search = ticket_search
+        self.ticket_lookup = ticket_lookup
         # trace: (Art, Wert) der Spur, zu der der Kunde gemerkt werden kann (customers.py).
         # rule_subject: Name, zu dem eine geänderte Kategorie als Regel gemerkt werden kann.
         if trace is None and tv_id:
@@ -206,13 +213,86 @@ class _EntryForm(QWidget):
                                                  "Ticketnummer oder Titel suchen")
             self.ticket_search_button.clicked.connect(self._search_ticket)
             ticket_row.addWidget(self.ticket_search_button)
+        self.ticket_status = QLabel()
+        self.ticket_status.setObjectName("hint")
+        self.ticket_status.setWordWrap(True)
+        self.ticket_status.hide()
+        self._setup_ticket_lookup()
         if show_ticket or ticket or self.ticket_suggestions or self.ticket_search:
             label = QLabel("T&icket:")
             label.setBuddy(self.ticket_edit)
             form.addRow(label, ticket_row)
+            form.addRow("", self.ticket_status)
         else:  # kleines Nachfrage-Fenster: ohne Vorschlag keine Zeile
             self.ticket_edit.hide()
         self._update_ticket_take()
+
+    # Suche beim Tippen: „Lesana Telefon“ ins Feld Ticket, Treffer aus Matrix42 darunter
+    LOOKUP_DELAY_MS = 500
+    TICKET_NUMBER = re.compile(r"^[A-Za-z]{2,5}\d{4,}$")
+
+    def _setup_ticket_lookup(self):
+        self._lookup = self.ticket_lookup(self) if self.ticket_lookup else None
+        if self._lookup is None:
+            return
+        self.ticket_edit.lineEdit().setPlaceholderText(
+            self.ticket_edit.lineEdit().placeholderText() + " · oder Kunde/Titel tippen (Matrix42)")
+        self._lookup_model = QStandardItemModel(self)
+        self._completer = QCompleter(self._lookup_model, self)
+        self._completer.setCompletionMode(QCompleter.UnfilteredPopupCompletion)
+        self._completer.setWidget(self.ticket_edit.lineEdit())
+        self._completer.activated[QModelIndex].connect(self._pick_lookup)
+        self._lookup_timer = QTimer(self)
+        self._lookup_timer.setSingleShot(True)
+        self._lookup_timer.setInterval(self.LOOKUP_DELAY_MS)
+        self._lookup_timer.timeout.connect(self._start_lookup)
+        self._lookup.found.connect(self._on_lookup)
+        self.ticket_edit.lineEdit().textEdited.connect(self._ticket_typed)
+
+    def _ticket_typed(self, text):
+        text = text.strip()
+        if len(text) < 3 or self.TICKET_NUMBER.match(text):  # Nummer: nichts zu suchen
+            self._lookup_timer.stop()
+            self._completer.popup().hide()
+            self.ticket_status.hide()
+            return
+        self._lookup_timer.start()
+
+    def _start_lookup(self):
+        text = self.ticket_edit.currentText().strip()
+        self.ticket_status.setText(f"Suche „{text}“ in Matrix42 …")
+        self.ticket_status.show()
+        self._lookup.lookup(text)
+
+    def _on_lookup(self, text, rows, error):
+        if text != self.ticket_edit.currentText().strip():
+            return  # inzwischen weitergetippt: die neuere Suche kommt noch
+        self._lookup_model.clear()
+        for row in rows:
+            item = QStandardItem(mb_ticket_label(row))
+            item.setData(row, Qt.UserRole)
+            item.setToolTip(mb_ticket_label(row))
+            self._lookup_model.appendRow(item)
+        if rows:
+            self.ticket_status.setText(f"{len(rows)} Ticket{'s' if len(rows) != 1 else ''} in Matrix42. "
+                                       "Auswählen übernimmt die Nummer.")
+            self._completer.complete()
+        else:
+            self.ticket_status.setText(f"Kein Ticket in Matrix42 gefunden{': ' + error if error else '.'}")
+
+    def _pick_lookup(self, index):
+        row = index.data(Qt.UserRole) or {}
+        if not row.get("ticket"):
+            return
+        # erst nach dem Completer setzen, der sonst den ganzen Eintrag ins Feld schreibt
+        QTimer.singleShot(0, lambda: self._take_found_ticket(row))
+
+    def _take_found_ticket(self, row):
+        self.ticket_edit.setCurrentText(row["ticket"])
+        if not self.customer_edit.currentText().strip() and row.get("customer"):
+            self.customer_edit.setCurrentText(row["customer"])
+        self.ticket_status.hide()
+        self.text_edit.setFocus()
 
     def _update_ticket_take(self, *_args):
         self.ticket_take.setVisible(bool(self.ticket_suggestions)
@@ -225,7 +305,9 @@ class _EntryForm(QWidget):
 
     def _search_ticket(self):
         """Matrix42-Suche öffnen, vorbelegt mit dem Kunden; gewähltes Ticket übernehmen."""
-        row = self.ticket_search(self.customer_edit.currentText().strip(), self.window())
+        typed = self.ticket_edit.currentText().strip()
+        text = typed if typed and not self.TICKET_NUMBER.match(typed) else ""
+        row = self.ticket_search(text or self.customer_edit.currentText().strip(), self.window())
         if not row or not row.get("ticket"):
             return
         self.ticket_edit.setCurrentText(row["ticket"])

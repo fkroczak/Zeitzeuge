@@ -6,7 +6,7 @@ Die Abfragen schickt M42Reader.book aus dem angemeldeten Edge.
 """
 from datetime import datetime
 
-from PySide6.QtCore import Qt, QTime
+from PySide6.QtCore import QObject, Qt, QTime, Signal
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFormLayout, QHBoxLayout,
                                QLabel, QLineEdit, QListWidget, QListWidgetItem, QPlainTextEdit,
                                QPushButton, QTimeEdit, QVBoxLayout)
@@ -376,6 +376,38 @@ class TicketSearchDialog(QDialog):
             return
         self.row = item.data(Qt.UserRole) or {}
         self.accept()
+
+
+class TicketLookup(QObject):
+    """Ticketsuche beim Tippen (Feld „Ticket“ im Eintragen-Fenster): immer nur eine Suche
+    zugleich; was währenddessen getippt wird, wird danach gesucht. Ergebnis über found."""
+
+    found = Signal(str, list, str)  # Suchtext, Tickets, Fehler
+
+    def __init__(self, reader, ticket_list=None, parent=None):
+        super().__init__(parent)
+        self.reader = reader
+        self.ticket_list = ticket_list
+        self._running = None  # Suchtext der laufenden Suche
+        self._pending = None
+        reader.tickets_found.connect(self._on_result, Qt.QueuedConnection)
+
+    def lookup(self, text):
+        text = (text or "").strip()
+        if self._running is not None:
+            self._pending = text
+            return
+        self._running = text
+        self.reader.search_tickets(text, self.ticket_list)
+
+    def _on_result(self, result):
+        if self._running is None or result.get("text") != self._running:
+            return  # Suche aus einem anderen Fenster
+        self._running = None
+        self.found.emit(result["text"], result.get("rows") or [], result.get("error", ""))
+        pending, self._pending = self._pending, None
+        if pending is not None and pending != result["text"]:
+            self.lookup(pending)
 
 
 def search_ticket(reader, text="", ticket_list=None, parent=None):

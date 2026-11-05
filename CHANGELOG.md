@@ -18,6 +18,7 @@ Testversionen aus Branches tragen die Version ihres main-Stands plus Buildnummer
 26.10.2026 können sie nicht mehr lesen.
 
 ### Neu
+- **Ticket direkt im Feld suchen:** Beim Dokumentieren Kunde, Titel oder Benutzer ins Feld „Ticket“ tippen (ab 3 Zeichen). Die Treffer aus Matrix42 erscheinen darunter, die Auswahl setzt die Ticketnummer (und den Kunden, wenn er noch fehlt). „Suchen …“ übernimmt den getippten Text.
 - **Startbild:** Die EXE zeigt sofort beim Doppelklick ein Startbild mit Fortschritt, bis das Fenster steht. Bisher sah man mehrere Sekunden nichts und war versucht, Zeitzeuge ein zweites Mal zu starten.
 - **Mit Windows starten:** neuer Schalter unter Einstellungen → Allgemein. Trägt Zeitzeuge für deinen Benutzer in den Autostart ein (im Infobereich, ohne Adminrechte) und zieht den Eintrag nach, wenn die EXE umzieht. Die Verknüpfung in `shell:startup` braucht es nicht mehr.
 - **Einrichtungsassistent, 3CX und Matrix42:** „Weiter“ geht erst nach „einrichten und anmelden“ (oder wenn du das Häkchen „verwenden“ herausnimmst). Der Anmeldeknopf ist dort der Hauptknopf.
