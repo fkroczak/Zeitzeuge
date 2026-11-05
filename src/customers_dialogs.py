@@ -113,8 +113,7 @@ class _Section(QFrame):
             w = item.widget()
             if w is not None and w not in (self.add_button, self.edit):
                 w.hide()
-                w.setParent(None)
-                w.deleteLater()
+                w.deleteLater()  # bleibt bis dahin Kind von chips_box, kein eigenes Fenster
         total = 0
         for t in traces:
             n = hits.get((t["kind"], cl.normalize(t["kind"], t["value"])), 0)

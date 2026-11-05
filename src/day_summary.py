@@ -14,6 +14,8 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QProgressBar, QSizePolicy,
                                QToolButton, QVBoxLayout, QWidget)
 
+from flow_layout import FlowLayout
+
 TIME_FMT = "%Y-%m-%d %H:%M:%S"
 
 # Ansichten, die als Chip über der Liste stehen (Schlüssel aus DayListMixin.VIEWS)
@@ -245,13 +247,14 @@ class ViewChips(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        layout = QHBoxLayout(self)
+        # Fließend: im schmalen Fenster rücken die Chips in die nächste Zeile, statt dem
+        # ganzen Fenster eine Mindestbreite aufzuzwingen (Reflow)
+        layout = FlowLayout(self, spacing=6)
         layout.setContentsMargins(4, 6, 4, 6)
-        layout.setSpacing(6)
         title = QLabel("Einträge", self)
         title.setObjectName("section_title")
+        title.setContentsMargins(0, 0, 6, 0)
         layout.addWidget(title)
-        layout.addSpacing(6)
         self.buttons = {}
         for key, text in CHIP_VIEWS:
             b = QToolButton(self)
@@ -263,7 +266,6 @@ class ViewChips(QWidget):
             b.clicked.connect(lambda _c=False, k=key: self.view_chosen.emit(k))
             layout.addWidget(b)
             self.buttons[key] = (b, text)
-        layout.addStretch(1)
 
     def show_state(self, view, counts=None):
         counts = counts or {}
