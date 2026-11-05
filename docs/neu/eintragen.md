@@ -16,7 +16,7 @@
   „Kopieren“ im Rechtsklick-Menü. Einschalten unter Einstellungen → Textbausteine.
   Im Eintragen-Dialog gliedert **Text einfügen → Als Ticket-Doku gliedern** den Text sofort.
 - **Ticketnummer als Vorschlag:** Zeitzeuge sucht in den Fenstertiteln (PC-Verlauf) und in
-  den Matrix42-Buchungen rund um die Tätigkeit (5 Minuten davor und danach) nach
+  den Ticketsystem-Buchungen rund um die Tätigkeit (5 Minuten davor und danach) nach
   Ticketnummern wie `TCK0000049374`. Die häufigste steht im Feld **Ticket** als Vorschlag,
   z. B. „Gefunden: TCK0000049374 (Outlook, 12 min)“. Erst mit **Übernehmen** (oder Auswahl
   in der Liste) landet sie in der Tätigkeit. Das Ticket erscheint dann in der Ansicht
@@ -31,7 +31,7 @@ Einstellungen → **Textbausteine …**:
 - **Zuletzt benutzte Texte zum gewählten Kunden anbieten:** an (Standard) oder aus.
 - **Beim Kopieren als Ticket-Doku gliedern:** aus (Standard). An: „- “ / „-- “.
 - **Ticketnummern erkennen:** ein Muster (regulärer Ausdruck) je Zeile. Standard `TCK\d+`
-  (Matrix42). Weitere Beispiele: `Ticket #(\d+)` (die Klammer ist die Nummer). Leer = keine
+  (Ticketsystem). Weitere Beispiele: `Ticket #(\d+)` (die Klammer ist die Nummer). Leer = keine
   Vorschläge. Ein fehlerhaftes Muster wird mit Zeilennummer gemeldet, OK ist dann gesperrt.
 
 ## Eigene Entscheidungen
@@ -62,7 +62,7 @@ Einstellungen → **Textbausteine …**:
 7. **Ticket nur gespeichert, wenn eines da ist** (`journal.add` entfernt ein leeres `ticket`).
    Alte Daten bleiben gleich, `_valid`/`load` unverändert.
 8. **Ticket-Vorschlag:** ±5 Minuten Rand (`tickets.MARGIN_MINUTES`), sortiert nach Dauer
-   im Zeitraum, Quellen Fenstertitel (Programmname) und Matrix42-Buchungen (Feld `ticket`
+   im Zeitraum, Quellen Fenstertitel (Programmname) und Ticketsystem-Buchungen (Feld `ticket`
    und `title`). Muster ohne Groß-/Kleinschreibung, nicht mitten in Wörtern. Config
    `ticket_patterns` (Standard `["TCK\\d+"]`), leere Liste = aus.
 9. **Nachfrage-Fenster:** Feld „Ticket“ nur bei einem Vorschlag (sonst eine Zeile weniger);

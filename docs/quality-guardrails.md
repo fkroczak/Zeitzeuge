@@ -58,7 +58,7 @@ So setzt Zeitzeuge sie um:
 | 3 | Was gleich aussieht, funktioniert gleich | Akzentfarbe nur für Bedienbares und Auswahl. Werte in den Einstellungen (`row_value`) in Textfarbe, weil sie nicht anklickbar sind. |
 | 4 | Klare Hierarchie | Seitentitel 20 px fett, Abschnittsköpfe fett, Hinweise grau (`hint`). Ein Hauptknopf je Dialog (Test). |
 | 5 | Unnötiges weglassen | Gruppen ohne Rahmen, Tabellenkopf mit 1-px-Linie, Werkzeugleiste ohne Rahmen. |
-| 6 | Farbe mit Absicht | Violett = bedienbar/Fokus/Vorschlag, Hauptknopf in Textfarbe (Design „Companion“), Rot = Fehler/Jetzt, Ampelfarben nur für die Buchungsquote. |
+| 6 | Farbe mit Absicht | Violett = bedienbar/Fokus/Vorschlag, Hauptknopf in Textfarbe, Rot = Fehler/Jetzt, Ampelfarben nur für die Buchungsquote. |
 | 7 | Bedienelemente mind. 3 : 1 | Token `control` für Rahmen von Feldern und Knöpfen, `handle` für Scrollbalken; Timeline-Farben in beiden Designs ≥ 3 : 1 zum Grund. |
 | 8 | Text mind. 4,5 : 1 | Alle Textfarben beider Designs und die Schrift auf Balken (Test). |
 | 9 | Nicht nur Farbe | Zustände mit Zeichen oder Text (Pause-Zeichen, „frei“/Fehlertext, Prozent der Buchungsquote, gestrichelte Lücken). |

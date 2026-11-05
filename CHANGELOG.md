@@ -19,15 +19,15 @@ Testversionen aus Branches tragen die Version ihres main-Stands plus Buildnummer
 
 ### Neu
 - **Installationsassistent** (`Zeitzeuge-Setup.exe`, unter Releases): installiert ohne Adminrechte, aktualisiert eine vorhandene Installation, findet alte `ZeitZeuge.exe` (Desktop, OneDrive-Desktop, Downloads, Autostart) und ersetzt sie durch Verknüpfungen. Einstellungen und Datenbank werden weiter genutzt und vor dem Update gesichert. Die installierte Version startet schneller (kein Entpacken nach `%TEMP%`).
-- **Ticket direkt im Feld suchen:** Beim Dokumentieren Kunde, Titel oder Benutzer ins Feld „Ticket“ tippen (ab 3 Zeichen). Die Treffer aus Matrix42 erscheinen darunter, die Auswahl setzt die Ticketnummer (und den Kunden, wenn er noch fehlt). „Suchen …“ übernimmt den getippten Text.
+- **Ticket direkt im Feld suchen:** Beim Dokumentieren Kunde, Titel oder Benutzer ins Feld „Ticket“ tippen (ab 3 Zeichen). Die Treffer aus dem Ticketsystem erscheinen darunter, die Auswahl setzt die Ticketnummer (und den Kunden, wenn er noch fehlt). „Suchen …“ übernimmt den getippten Text.
 - **Startbild:** Die EXE zeigt sofort beim Doppelklick ein Startbild mit Fortschritt, bis das Fenster steht. Bisher sah man mehrere Sekunden nichts und war versucht, Zeitzeuge ein zweites Mal zu starten.
 - **Mit Windows starten:** neuer Schalter unter Einstellungen → Allgemein. Trägt Zeitzeuge für deinen Benutzer in den Autostart ein (im Infobereich, ohne Adminrechte) und zieht den Eintrag nach, wenn die EXE umzieht. Die Verknüpfung in `shell:startup` braucht es nicht mehr.
-- **Einrichtungsassistent, 3CX und Matrix42:** „Weiter“ geht erst nach „einrichten und anmelden“ (oder wenn du das Häkchen „verwenden“ herausnimmst). Der Anmeldeknopf ist dort der Hauptknopf.
+- **Einrichtungsassistent, 3CX und Ticketsystem:** „Weiter“ geht erst nach „einrichten und anmelden“ (oder wenn du das Häkchen „verwenden“ herausnimmst). Der Anmeldeknopf ist dort der Hauptknopf.
 - **Hell/Dunkel im Menü Ansicht:** „Dunkles Design“ lässt sich jetzt direkt im Menü Ansicht umschalten, nicht nur unter Einstellungen.
 - **Anruffarben je Richtung:** Unter Ansicht → Zeilen der Timeline → Farben der Zeilen (und per Rechtsklick auf „Telefon“ in der Legende) gibt es getrennte Farben für eingehende und ausgehende Anrufe. Eine bisher gewählte Farbe für die ganze Zeile bleibt für die andere Richtung erhalten.
-- **Zuschlag ignorieren:** neuer Haken neben Kulanz und Reise beim Dokumentieren und im Fenster „In Matrix42 buchen“ (dort mit Grund, vorbelegt „Zuschlag ignoriert“). Beim Buchen setzt Zeitzeuge in Matrix42 „Zuschlag ignorieren“, auch beim Buchen aus dem Tagesabschluss.
-- **Ticket beim Dokumentieren suchen:** Neben dem Feld „Ticket“ sitzt der Knopf „Suchen …“. Er öffnet die Matrix42-Ticketsuche (vorbelegt mit dem Kunden), ein Doppelklick übernimmt das Ticket. So steht das passende Ticket schon vor dem Buchen in der Tätigkeit. Nur sichtbar, wenn Matrix42 eingeschaltet ist.
-- **Neues Design „Companion“** (übernommen aus dem Entwurf „Zeiterfassung Companion“): ruhige Zink-Grautöne in Hell und Dunkel, runde Ecken an Feldern, Knöpfen, Menüs und Timeline-Balken, Karten mit feinem Rand, Hauptknopf in Textfarbe, Violett für Fokus und Links.
+- **Zuschlag ignorieren:** neuer Haken neben Kulanz und Reise beim Dokumentieren und im Fenster „Im Ticketsystem buchen“ (dort mit Grund, vorbelegt „Zuschlag ignoriert“). Beim Buchen setzt Zeitzeuge im Ticketsystem „Zuschlag ignorieren“, auch beim Buchen aus dem Tagesabschluss.
+- **Ticket beim Dokumentieren suchen:** Neben dem Feld „Ticket“ sitzt der Knopf „Suchen …“. Er öffnet die Ticketsuche des Ticketsystems (vorbelegt mit dem Kunden), ein Doppelklick übernimmt das Ticket. So steht das passende Ticket schon vor dem Buchen in der Tätigkeit. Nur sichtbar, wenn das Ticketsystem eingeschaltet ist.
+- **Neues Design**: ruhige Zink-Grautöne in Hell und Dunkel, runde Ecken an Feldern, Knöpfen, Menüs und Timeline-Balken, Karten mit feinem Rand, Hauptknopf in Textfarbe, Violett für Fokus und Links.
 - **Kennzahlen über der Timeline:** Erfasst (von Soll, mit Balken), Offen („Jetzt eintragen“), Vorschläge („Ansehen“), Buchungsquote gleich hinter Erfasst (heute | 7 Tage als große Zahl in der Farbe der Stufe, bisher in der Statuszeile; Klick öffnet den Wochenabschluss) und Nach Kunde. Über der Tagesliste Chips für die Ansichten Alle, Offen / Doku, Vorschläge, Telefonate und Arbeitsblöcke.
 - **Kunden & Erkennung:** neues Fenster mit Kundenliste links (Suche, Kürzel, Merkmale, Stunden der letzten 7 Tage) und Merkmalen als Chips rechts, je Art mit Trefferzahl. Neue Merkmale: **Ordner und Dateipfade**, **Rechnernamen und Hosts** (auch `*.kunde.local`), **IP-Adressen und -Bereiche** (CIDR). Dazu Kundennummer und der Schalter „Kalendertermine“. Domains aus dem Browser-Verlauf zählen wie Mail-Domains.
 - **Zeitraum nachtragen:** Beim Ziehen in der Timeline zeigt das Fenster, was Rechner, Kalender, Anrufe und Verbindungen in dieser Zeit sagen. Ein Termin oder Anruf, der den Zeitraum überwiegend füllt, wird als Kunde und Text vorgeschlagen.
@@ -35,7 +35,7 @@ Testversionen aus Branches tragen die Version ihres main-Stands plus Buildnummer
 - **Jede Datenquelle hat ihr eigenes Einrichtungsfenster** mit eigenem Schalter: Sophos Connect, FortiClient, weitere VPN-Logs (OpenVPN …), Outlook und Teams-Anrufe sind jetzt getrennt (bisher teilten sich je mehrere ein Fenster). Auch TeamViewer und RDM lassen sich im Fenster ein- und ausschalten.
 - **RDM Better** als Datenquelle: Zeitzeuge liest die Starts aus `%LOCALAPPDATA%\RDM Better\launcher.log` (Ziel, Benutzer; Zeit in UTC, wird in Ortszeit umgerechnet). Das Ende kommt aus der mstsc-Aufzeichnung.
 - **Remotedesktop (mstsc)** als Datenquelle: Zeitzeuge prüft alle 30 Sekunden, welche Remotedesktopverbindungen offen sind, und zeigt sie mit Ziel, Beginn und Ende wie die Verbindungen aus RDM.
-- **FortiClient** liest `logs\trace\FortiVPN_1.log`: jede Verbindung mit ihrem Namen aus FortiClient (z. B. „Tenbrink“), Beginn und Ende; Ruhezustand beendet sie. Bisher kamen aus Sophos' `charon.log` nur Zeiten ohne Namen; das bleibt als Ersatz, wenn die Datei fehlt.
+- **FortiClient** liest `logs\trace\FortiVPN_1.log`: jede Verbindung mit ihrem Namen aus FortiClient (z. B. „Kunde Weber“), Beginn und Ende; Ruhezustand beendet sie. Bisher kamen aus Sophos' `charon.log` nur Zeiten ohne Namen; das bleibt als Ersatz, wenn die Datei fehlt.
 - **Spuren vom eigenen PC** als neue Datenquellen, jede einzeln schaltbar und mit eigenem Fenster:
   - **PC gesperrt / Ruhezustand:** Sperren prüft Zeitzeuge alle 30 Sekunden selbst. Ruhezustand, ausgeschaltet und abgemeldet liest es aus dem Windows-Ereignisprotokoll, auch für Zeiten, in denen Zeitzeuge nicht lief. Eigene Zeile „PC-Zustand“.
   - **SSH und PowerShell:** offene Sitzungen von ssh.exe, PuTTY, KiTTY, plink, WinSCP und PowerShell-Fernsitzungen (Enter-PSSession) mit Ziel, Beginn und Ende, bei den Verbindungen wie RDM.
@@ -52,24 +52,24 @@ Testversionen aus Branches tragen die Version ihres main-Stands plus Buildnummer
 - **Pausen bei den Arbeitszeiten:** je Wochentag eine Pause (von – bis). Sie ist in der Timeline abgedunkelt und zählt nicht als Arbeitszeit. Das Fenster ist breiter und nicht mehr gestaucht.
 - Einstellungen: „Aktive Fenster aufzeichnen“, Fenster-Filter und Leerlauf stehen jetzt unter **Datenquellen**. Knöpfe heißen nach dem, was sie tun („Beenden …“, „Exportieren …“, „Im Explorer zeigen“ statt immer „Öffnen …“). **Zeitzeuge beenden** fragt vorher nach.
 - **Bessere Kundenerkennung:** Anrufer (Ansprechpartner oder Kollegen) werden nicht mehr als Kunde vorgeschlagen; der Kunde eines Telefonats kommt nur aus der Kundenliste. Gemessen an echten Buchungen sanken falsch vorgeschlagene Kunden im Tagesabschluss von 40 % auf 14 % der gebuchten Zeit.
-- **Stichwörter je Kunde:** Text in Fenstertitel, Betreff oder Verbindungsname („Nordhafen“, „SWN-“) ordnet den Eintrag dem Kunden zu, auch in Arbeitsblöcken am PC, in der Zuordnung ohne KI und im Tagesabschluss. Zeitzeuge lernt Stichwörter aus deinen Matrix42-Buchungen oder schlägt sie unter „Neu entdeckt“ vor.
+- **Stichwörter je Kunde:** Text in Fenstertitel, Betreff oder Verbindungsname („Lindenhof“, „LDH-“) ordnet den Eintrag dem Kunden zu, auch in Arbeitsblöcken am PC, in der Zuordnung ohne KI und im Tagesabschluss. Zeitzeuge lernt Stichwörter aus deinen Ticketsystem-Buchungen oder schlägt sie unter „Neu entdeckt“ vor.
 - **Regeln mit mehreren Bedingungen** (z. B. Programm *und* Fenstertitel), dazu Spalte „7 Tage“ mit den Treffern jeder Regel und eine Vorschau „Passt auf 14 Einträge der letzten 7 Tage, z. B. …“ beim Bearbeiten.
 - **Kollegen erkennen:** Durchwahlen, Handys von Kollegen und die Zentrale erkennt Zeitzeuge selbst. Anrufe von Kollegen bleiben sichtbar und werden nachgefragt, nur der Kollege ist nie der Kunde.
-- **Kundenliste lernt aus Matrix42:** Telefonnummern, TeamViewer-IDs, RDM-Einträge und VPN-Verbindungen, die immer wieder mit Buchungen auf denselben Kunden zusammenfallen, ordnet Zeitzeuge von selbst zu. Heißt ein Kunde in Matrix42 anders, schlägt die Kundenliste unter „Neu entdeckt“ das Umbenennen vor.
+- **Kundenliste lernt aus dem Ticketsystem:** Telefonnummern, TeamViewer-IDs, RDM-Einträge und VPN-Verbindungen, die immer wieder mit Buchungen auf denselben Kunden zusammenfallen, ordnet Zeitzeuge von selbst zu. Heißt ein Kunde im Ticketsystem anders, schlägt die Kundenliste unter „Neu entdeckt“ das Umbenennen vor.
 - **Maus in der Timeline:** Mit links ziehen markiert einen Zeitraum und öffnet „Tätigkeit nachtragen“ mit genau diesen Zeiten. Mit rechts ziehen zoomt auf den Zeitraum (bisher die linke Taste). Einfacher Rechtsklick öffnet weiter das Menü, ESC bricht das Ziehen ab.
-- **Tagesabschluss** (Menü Ansicht, Wochenabschluss, Meldung bei Feierabend): Zeitzeuge stellt den Tag aus eigenen Tätigkeiten, Verbindungen, Telefonaten, KI-Vorschlägen, Regeln und PC-Aktivität zu Blöcken je Kunde zusammen, mit Ticket (aus Fenstertiteln oder zuletzt für den Kunden benutzt) und kurzem Tickettext. Ein Klick dokumentiert alles und bucht die Zeilen mit Ticket nacheinander in Matrix42. Oben steht, wie viel Prozent der Personalzeit danach erfasst sind. Ohne Rückfrage werden nur sichere Tickets gebucht. **Erkennung messen …** vergleicht die Vorschläge der letzten 20 Tage mit deinen echten Buchungen.
+- **Tagesabschluss** (Menü Ansicht, Wochenabschluss, Meldung bei Feierabend): Zeitzeuge stellt den Tag aus eigenen Tätigkeiten, Verbindungen, Telefonaten, KI-Vorschlägen, Regeln und PC-Aktivität zu Blöcken je Kunde zusammen, mit Ticket (aus Fenstertiteln oder zuletzt für den Kunden benutzt) und kurzem Tickettext. Ein Klick dokumentiert alles und bucht die Zeilen mit Ticket nacheinander im Ticketsystem. Oben steht, wie viel Prozent der Personalzeit danach erfasst sind. Ohne Rückfrage werden nur sichere Tickets gebucht. **Erkennung messen …** vergleicht die Vorschläge der letzten 20 Tage mit deinen echten Buchungen.
 - Zwei Menüs: **Ansicht** (Tagesliste, Zeilen der Timeline, Zeitraum, Übersichten, Design) und **Einstellungen** als eigenes Fenster mit Bereichen, Suche und Datenquellen als Kacheln mit Zustand. Schnellzugriffe (Tag, Heute, Ganzer Tag, Arbeitszeit …) bleiben in der Werkzeugleiste.
-- **Mehrzeilige Timeline:** Überschneiden sich Einträge in einer Zeile (Matrix42, Dokumentation, Telefon, Outlook, VPN, TeamViewer …), steht der spätere in einer weiteren Zeile darunter statt verdeckt. Was nur aneinanderstößt, bleibt in einer Zeile.
-- **Buchungsquote wie in Matrix42:** gebucht ÷ gestempelt, gebucht mit der gerundeten Arbeitszeit jeder Buchung aus Matrix42, Überschneidungen zählen voll. Bisher wurden Buchungen zeitlich zusammengelegt und ungerundet gezählt (Beispiel 19.10.: 88 % statt 96 %). „Matrix42 gebucht … h“ in der Statuszeile zeigt dieselbe Zahl.
+- **Mehrzeilige Timeline:** Überschneiden sich Einträge in einer Zeile (Ticketsystem, Dokumentation, Telefon, Outlook, VPN, TeamViewer …), steht der spätere in einer weiteren Zeile darunter statt verdeckt. Was nur aneinanderstößt, bleibt in einer Zeile.
+- **Buchungsquote wie im Ticketsystem:** gebucht ÷ gestempelt, gebucht mit der gerundeten Arbeitszeit jeder Buchung aus dem Ticketsystem, Überschneidungen zählen voll. Bisher wurden Buchungen zeitlich zusammengelegt und ungerundet gezählt (Beispiel 19.10.: 88 % statt 96 %). „Ticketsystem gebucht … h“ in der Statuszeile zeigt dieselbe Zahl.
 - **Buchungsquote in der Statuszeile** gilt für den gewählten Tag: Am 02.11. steht dort „Quote 02.11. … · 7 Tage …“ mit den 7 gestempelten Tagen bis zu diesem Tag. Für heute bleibt es „Quote heute“.
 - Hilfe zu den Ansichten der Tagesliste (Zusammengefasst, Einzeln …) mit Beispielen, F1.
 - Symbole überall, Datenquellen mit Zeichen in der Farbe des Herstellers.
 - Anrufe: eingehend blau ↙, ausgehend orange ↗. Die Richtung aus 3CX wird zuverlässiger erkannt.
 - Nachfrage nach Abwesenheit am PC: ab 15 Minuten ohne Eingabe (einstellbar) fragt Zeitzeuge bei der ersten Eingabe, was war. Schnellauswahl Telefonat, Besprechung, Vor Ort, Fahrt / Reise, Pause.
-- Kulanz und Reise an jeder Tätigkeit, beim Buchen in Matrix42 übernommen. Neue Kategorien „Vor-Ort-Einsatz“ und „Fahrt / Reise“.
-- Timeline kräftiger: weniger Transparenz bei Regeln, KI und offenen Einträgen, bunte Programmfarben, Matrix42-Buchungen blau statt grau.
+- Kulanz und Reise an jeder Tätigkeit, beim Buchen im Ticketsystem übernommen. Neue Kategorien „Vor-Ort-Einsatz“ und „Fahrt / Reise“.
+- Timeline kräftiger: weniger Transparenz bei Regeln, KI und offenen Einträgen, bunte Programmfarben, Ticketsystem-Buchungen blau statt grau.
 - Daten verschlüsselt in einer Datenbank statt vieler Dateien, PIN beim Start (schützt auch vor Domänen-Admins).
-- Matrix42: gebuchte Zeiten lesen und abgleichen, Buchungen über die Schnittstelle, Buchungsquote und Wochenabschluss, Prüfung bei Feierabend.
+- Ticketsystem: gebuchte Zeiten lesen und abgleichen, Buchungen über die Schnittstelle, Buchungsquote und Wochenabschluss, Prüfung bei Feierabend.
 - Outlook (Termine, Teams-Besprechungen, gesendete Mails) und Teams-Anrufe als Quellen.
 - Kundenliste mit allen Spuren, Lernen aus Korrekturen.
 - Eintragen: Textbausteine, letzte Texte je Kunde, Ticket-Format und Ticketnummer-Vorschlag; Ticketzeile mit echten und abgerechneten Zeiten.
@@ -78,7 +78,7 @@ Testversionen aus Branches tragen die Version ihres main-Stands plus Buildnummer
 - Personalzeit als eigene Zeile mit Beginn und Ende.
 - Tagesliste: neue Ansicht **Telefonate** (Menü Ansicht): nur Anrufe aus 3CX und Teams, jeder einzeln.
 - Einstellungen: Einrichtungsassistent oben auf „Datenquellen“; Vorschau unter „Ansicht“ kleiner und schemenhaft, beim Darüberfahren kräftig.
-- Einstellungen → **Fehlersuche & Analyse**: Mitschnitte (3CX, Matrix42, ITM, Matrix42-Buchung) und die 3CX-Direkt-Abfrage stehen jetzt dort statt in den Einrichtungsdialogen.
+- Einstellungen → **Fehlersuche & Analyse**: Mitschnitte (3CX, Ticketsystem, Zeiterfassung, Buchung im Ticketsystem) und die 3CX-Direkt-Abfrage stehen jetzt dort statt in den Einrichtungsdialogen.
 - Jede Zeile der Timeline ausblendbar; „Regeln“ heißt jetzt „Zuordnung ohne KI“.
 - Design „Metro Klar“ (hell und dunkel), Werkzeugleiste in Klar-Farben, Timeline ohne senkrechte Scrollleiste.
 - Nachfragen zu mehr Themen: Arbeitsblöcke am PC (z. B. M365-Admin, Remotedesktop), Teams-Besprechungen mit erkennbarer Teilnahme, Mails an Kunden aus der Kundenliste; auf Wunsch angezeigte Zugangsdaten.
@@ -88,7 +88,7 @@ Testversionen aus Branches tragen die Version ihres main-Stands plus Buildnummer
 - Timeline startet in der Arbeitszeit (merkt sich „Ganzer Tag“), offene Einträge dicht hintereinander als ein Block „? 3 offen“, keine abgeschnittenen Mini-Beschriftungen mehr.
 - Aufgeräumt: Leere Zeilen der Timeline verschwinden von selbst, „Zuordnung ohne KI“ fließt in die Zeile Dokumentation ein (eigene Zeile standardmäßig aus). Menü **Ansicht** von rund 30 auf 13 Einträge: Zeilen der Timeline als Untermenü und per Rechtsklick auf die Legende, Dunkles Design und Datenquellen direkt im Pfeil-Menü der Einstellungen. Tagesliste ohne doppelte Details, kürzere Statuszeile, Zoom per STRG + Mausrad statt Lupen-Knöpfen.
 - Besser lesbar nach 16 UI-Design-Regeln: Spaltenköpfe und Menü-Überschriften ohne Großbuchstaben, nur noch normal und fett, kräftigere Rahmen um Felder und Knöpfe (3 : 1), Gruppen ohne Rahmen, Erklärtexte mit mehr Zeilenabstand, eine Schrift auch in der Timeline. Sechs Timeline-Farben (u. a. RDP, Mail gesendet, Teams-Anruf) etwas kräftiger, damit sie sich in beiden Designs abheben; selbst gewählte Farben bleiben.
-- ITM: Anmeldung ohne Edge, eigene Buchungen aus dem alten Backend, fehlerhafte Buchungen werden gemeldet.
+- Zeiterfassung: Anmeldung ohne Edge, eigene Buchungen aus dem alten Backend, fehlerhafte Buchungen werden gemeldet.
 - Nachfragen ab 1 Minute, Schwelle je Art einstellbar.
 - Ladeanzeige: drehender Kreis mit Text neben „Arbeitszeit“ und Streifen über die ganze Breite; Timeline springt beim Laden nicht mehr.
 - Versionsnummer zählt von selbst (4.1.0, 4.1.1, …); steht im Fenstertitel, unter **Info**, in fehler.log, in der EXE und im Namen der Downloads.
@@ -99,9 +99,9 @@ Testversionen aus Branches tragen die Version ihres main-Stands plus Buildnummer
 ### Behoben
 - **Einstellungen → Ansicht hing bis zu einer Minute:** Die Vorschau maß bei jeder Zelle der Beispielliste alle Spalten neu. Mit „PC-Verlauf in der Liste“ und Fenstern einzeln sind das über 100 Zeilen bei jedem Darüberfahren. Jetzt einmal nach dem Füllen (2,6 s → 0,1 s).
 - **Einstellungsfenster träge:** Die Vorschau zeichnet nur noch, wenn sie zu sehen ist, beim schnellen Darüberwischen nur für die Zeile, auf der die Maus bleibt. Die Kacheln der Datenquellen bauen sich alle 3 s nur noch neu auf, wenn sich ihr Zustand geändert hat. Seitenwechsel 60–80 ms → unter 30 ms.
-- **Erfasst zeigt die Personalzeit:** „5:53 h von 7:18 h gestempelt“ statt „von 8:00 h“ (Soll). Ohne ITM-Zeiten steht dort die eingestellte Arbeitszeit („… Arbeitszeit“).
+- **Erfasst zeigt die Personalzeit:** „5:53 h von 7:18 h gestempelt“ statt „von 8:00 h“ (Soll). Ohne Zeiterfassung steht dort die eingestellte Arbeitszeit („… Arbeitszeit“).
 - **Ruhigere Kennzahlen-Leiste:** Die Kacheln sind nur so breit wie ihr Inhalt, „Nach Kunde“ nimmt den Rest und zeigt ganze Kunden plus „+2“, statt mitten im Namen abzuschneiden (alle im Hinweis). „Vorschläge“ erscheint nur, wenn welche warten.
-- **Ansichten der Tagesliste nur noch als Chips:** Über der Liste stehen alle acht Ansichten (auch „Zuordnung ohne KI“ und „Matrix42-Abgleich“), die aktive ist markiert. Im Menü **Ansicht** stehen sie nicht mehr doppelt.
+- **Ansichten der Tagesliste nur noch als Chips:** Über der Liste stehen alle acht Ansichten (auch „Zuordnung ohne KI“ und „Buchungsabgleich“), die aktive ist markiert. Im Menü **Ansicht** stehen sie nicht mehr doppelt.
 - **Timeline mit Rahmen**, damit man sieht, wo sie endet. Die Kachel Buchungsquote hat die Überschrift „Buchungsquote“ wie die anderen Kacheln. Rahmen der ausgewählten Timeline und Ladebalken sind dunkelgrau statt lila.
 - **Farben im Hinweis der Timeline:** Vor jedem Eintrag steht ein Quadrat in der Farbe seines Balkens, so siehst du, aus welcher Zeile er kommt.
 - **Schmales Fenster:** Die Chips über der Tagesliste („Alle“, „Offen / Doku“ …) rücken in eine zweite Zeile, statt das Fenster auf mindestens ~600 px Breite festzuhalten. Damit passt Zeitzeuge wieder in einen halben Bildschirm und bei 200 % Anzeige.
@@ -119,17 +119,17 @@ Testversionen aus Branches tragen die Version ihres main-Stands plus Buildnummer
 - Tagesliste: Die Spalte „Dauer“ zeigt nur noch die echte Dauer („35 min“) statt „35 min → abgerechnet 0:45 h“. Die abgerechnete Zeit steht im Hinweis beim Darüberfahren und weiter in der Statuszeile.
 - Einstellungen: kein Fokusrahmen mehr um den gewählten Bereich links. Der Datenordner steht mit `\` statt gemischten Schrägstrichen da, lange Pfade werden in der Mitte gekürzt (ganzer Pfad im Tooltip).
 - **Zeile Dokumentation leer** und wiederholt „Interner Fehler (AttributeError)“, sobald ein PC-Arbeitsblock noch offen war: der Text der Nachfrage las die Programmliste des Blocks als Einträge. Auch die Nachfrage selbst stürzte deshalb ab.
-- Matrix42: „Bei Matrix42 anmelden“ öffnete das Fenster nur kurz und schloss es gleich wieder. Es bleibt jetzt offen, bis die Anmeldung wirklich geklappt hat.
+- Ticketsystem: „Beim Ticketsystem anmelden“ öffnete das Fenster nur kurz und schloss es gleich wieder. Es bleibt jetzt offen, bis die Anmeldung wirklich geklappt hat.
 - Absturz beim Start, wenn „3CX direkt auslesen“ eingeschaltet ist.
 - Anrufe: ein Gespräch wurde von einem Versuch in derselben Minute überschrieben.
 - Eintragen: Beschriftung des Merken-Hakens landete im Textfeld.
 - PC-Verlauf wird vor dem Löschen mit Nullen überschrieben; Teams-Logs vor 1970 unter Windows.
 - Aktualisieren (F5) lädt jetzt auch die 3CX-Anrufliste sofort neu; neue Anrufe kamen sonst erst nach bis zu 6 Minuten. Die Liste wird außerdem alle 2 statt 5 Minuten neu geladen.
-- Matrix42: Aktualisieren holt die Einträge der Woche wirklich neu (vorher zeigte die Kalenderseite oft noch den alten Stand, bis 30 Minuten lang) und versucht nach einem Aussetzer wieder die Schnittstelle.
+- Ticketsystem: Aktualisieren holt die Einträge der Woche wirklich neu (vorher zeigte die Kalenderseite oft noch den alten Stand, bis 30 Minuten lang) und versucht nach einem Aussetzer wieder die Schnittstelle.
 
 ## 4.0.0 – 2026-10-22
 
 - Umstieg von PyQt5 auf PySide6 (Qt 6), PyInstaller 6.22.3.
 - Versionsangaben in der EXE, kein UPX mehr, optionale Signierung.
-- Ein Rechtsklick-Menü für Timeline und Liste, Statussymbole für 3CX/ITM/Logs, Knopf für offene Tätigkeiten.
+- Ein Rechtsklick-Menü für Timeline und Liste, Statussymbole für 3CX/Zeiterfassung/Logs, Knopf für offene Tätigkeiten.
 - Tests mit pytest.

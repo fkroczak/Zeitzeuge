@@ -16,9 +16,9 @@ Branch: `claude/zeitzeuge-auto-ticket-booking-4gc5t4` (noch nicht in main, kein 
 | `app_day_close.py` (neu) | Mixin am Hauptfenster: Spuren einsammeln, Fenster öffnen, Text für die Feierabend-Meldung |
 | `day_close_dialog.py` (neu) | Fenster „Tagesabschluss“: Tabelle, Haken, Bearbeiten, Sammelbuchung, Einzeln buchen |
 | `tests/day_close_test.py` (neu) | 20 Logik-Tests |
-| `day_close_eval.py` (neu) | Erkennung an echten Matrix42-Buchungen messen |
+| `day_close_eval.py` (neu) | Erkennung an echten Ticketsystem-Buchungen messen |
 | `tests/day_close_benchmark_test.py` (neu) | Prüfstand: 40 nachgebaute Tage, Mindestwerte |
-| `tests/day_close_gui_test.py` (neu) | Oberflächentest mit nachgebautem Matrix42 (Sammelbuchung, Wiederholung, nur dokumentieren, Meldung) |
+| `tests/day_close_gui_test.py` (neu) | Oberflächentest mit nachgebautem Ticketsystem (Sammelbuchung, Wiederholung, nur dokumentieren, Meldung) |
 | `main_timeline.py` | Mixin `DayCloseMixin` eingehängt (1 Import, 1 Klassenname) |
 | `app_menus.py` | Eintrag **Ansicht → Übersichten → Tagesabschluss …** |
 | `week_dialogs.py` | Knopf **Tagesabschluss …** im Wochenabschluss (für den markierten Tag) |
@@ -31,14 +31,14 @@ Branch: `claude/zeitzeuge-auto-ticket-booking-4gc5t4` (noch nicht in main, kein 
 | `README.md`, `CHANGELOG.md` | Abschnitt Tagesabschluss, Config-Tabelle, Projektstruktur |
 
 Unverändert geblieben: Nachfragen, Eintragen-Dialog, KI, Regeln, Ticketvorschlag, das Fenster
-„In Matrix42 buchen“ und `book_in_m42` / `book_day_in_m42`, `m42_booking.py`, `m42_reader.py`,
+„Im Ticketsystem buchen“ und `book_in_m42` / `book_day_in_m42`, `m42_booking.py`, `m42_reader.py`,
 Journal-Format (nur neue Werte in bestehenden Feldern, siehe E6).
 
 ## Entscheidungen
 
 **E1 – Eigenes Fenster „Tagesabschluss“ statt Automatik ohne Rückfrage.**
 Zeitzeuge bucht auch hier nie von selbst. „Teilautomatisiert“ heißt: Vorschläge sind fertig
-vorbereitet und vorausgewählt, ein Klick dokumentiert und bucht alle. Grund: Buchungen in Matrix42
+vorbereitet und vorausgewählt, ein Klick dokumentiert und bucht alle. Grund: Buchungen im Ticketsystem
 gehen an Kunden; eine stille Fehlbuchung kostet mehr als ein Klick.
 *Rückweg:* Fenster nicht nutzen; oder komplett entfernen (siehe „Ganz zurücknehmen“).
 
@@ -48,7 +48,7 @@ bringt den besten Text, PC-Aktivität ist nur Auffüllmaterial.
 *Rückweg/Anpassen:* Reihenfolge in `app_day_close.day_close_evidence` (Stufenzahlen 1–4).
 
 **E3 – Regeln und PC-Aktivität zählen nur in der Personalzeit.** Verbindungen und Telefonate zählen
-immer (auch abends: Bereitschaft). Ohne ITM gilt die Arbeitszeit aus den Einstellungen.
+immer (auch abends: Bereitschaft). Ohne Zeiterfassung gilt die Arbeitszeit aus den Einstellungen.
 *Rückweg:* In `day_close.build` `work_only=tier >= 3` auf `False` setzen.
 
 **E4 – Blöcke je Kunde, kurze Lücken auffüllen.** Gleicher Kunde hintereinander ist ein Block
@@ -57,7 +57,7 @@ immer (auch abends: Bereitschaft). Ohne ITM gilt die Arbeitszeit aus den Einstel
 **nicht** angeknabbert, sie stehen als „nicht zugeordnet“ (ohne Haken) da.
 *Anpassen:* `day_close_gap_minutes`, `day_close_min_minutes` in der Config.
 
-**E5 – Ticket: Fenstertitel/Matrix42 rund um den Block, sonst zuletzt für den Kunden (14 Tage).**
+**E5 – Ticket: Fenstertitel/Ticketsystem rund um den Block, sonst zuletzt für den Kunden (14 Tage).**
 Der zweite Weg ist neu und eine Vermutung; er wird im Hinweis als Quelle „zuletzt für den Kunden“
 angezeigt und senkt die Sicherheit auf „mittel“.
 *Rückweg:* in `day_close._draft` den Block `if not ticket and customer and last_ticket…` löschen,
@@ -73,7 +73,7 @@ diesen Zeiten entfallen (gleiches Feld `answered` wie bei der Nachfrage). Gebuch
 bisher `m42_booking.plan` (Beginn bleibt, Ende im Takt). Ragt eine Buchung dadurch in die nächste,
 rückt die nächste ans Ende der vorigen (`day_close.sequence_plans`), die abgerechnete Dauer bleibt.
 Der Hinweis in der Zeile sagt „verschoben“. Zeilen, die sich mit einer schon vorhandenen
-Matrix42-Buchung überschneiden, werden nicht gebucht („Einzeln buchen …“).
+Ticketsystem-Buchung überschneiden, werden nicht gebucht („Einzeln buchen …“).
 Grund: Die Prüfung bei Feierabend meldet sonst „Buchungen überschneiden sich“.
 *Rückweg:* Aufruf `dc.sequence_plans(...)` in `day_close_dialog.run` entfernen.
 
@@ -133,11 +133,11 @@ Namens müssen im längeren stehen). Mehrdeutige Treffer ergeben kein Ticket.
 anderen Kunden als der Block, wird es nicht vorgeschlagen.
 
 **E18 – Ticketarbeit am PC je Ticket getrennt, Kunde aus dem Ticket.** Blöcke ohne Kunde werden
-nach Ticket aus dem Fenstertitel getrennt; der Kunde kommt aus dem Verlauf (Matrix42-Buchungen und
-Tätigkeiten der letzten 14 Tage) oder, im Fenster, über die Ticketsuche in Matrix42.
+nach Ticket aus dem Fenstertitel getrennt; der Kunde kommt aus dem Verlauf (Ticketsystem-Buchungen und
+Tätigkeiten der letzten 14 Tage) oder, im Fenster, über die Ticketsuche im Ticketsystem.
 
 **E19 – Ticketvorschlag im Tagesabschluss nur aus Fenstertiteln**, nicht aus angrenzenden
-Matrix42-Buchungen (die würden über den 5-Minuten-Rand ein fremdes Ticket vererben). Das Fenster
+Ticketsystem-Buchungen (die würden über den 5-Minuten-Rand ein fremdes Ticket vererben). Das Fenster
 „Tätigkeit eintragen“ ist davon nicht betroffen.
 
 **E20 – Internes Ticket je Kategorie** (`categories` in `day_close_internal`), damit z. B.
@@ -152,7 +152,7 @@ messen …“), `tests/day_close_benchmark_test.py` sichert Mindestwerte bei jed
   4 Prüfstand-Tests, 1 Oberflächentest). Browser-Tests (Edge) liefen hier nicht.
 - `tests/readability_check.py`: README 65, UI-Texte 63 (Grenzen 55 / 50).
 - Bildschirmfoto mit Beispieldaten: `docs/screenshots/2026-11-03/tagesabschluss.png`.
-- **Nicht** geprüft: echte Buchung gegen Matrix42 (nur im Firmennetz möglich). Die Sammelbuchung
+- **Nicht** geprüft: echte Buchung gegen das Ticketsystem (nur im Firmennetz möglich). Die Sammelbuchung
   nutzt aber ausschließlich den vorhandenen, schon erprobten Weg `M42Reader.book`.
 
 ## Für die Abnahme
@@ -162,7 +162,7 @@ messen …“), `tests/day_close_benchmark_test.py` sichert Mindestwerte bei jed
 3. Prüfen: Stimmen die Blöcke je Kunde? Passen Ticket und Text? Wie hoch ist „mit den angehakten
    Zeilen … %“?
 4. Erst **Nur dokumentieren** testen (bucht nichts), dann an einem Tag **Dokumentieren und buchen**
-   und in Matrix42 nachsehen (Status „Neu“).
+   und im Ticketsystem nachsehen (Status „Neu“).
 
 ## Ideen für danach (nicht umgesetzt)
 
