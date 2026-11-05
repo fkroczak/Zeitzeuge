@@ -220,8 +220,9 @@ QPushButton:focus { padding: 5px 13px; }
 QPushButton:default:focus { border-color: $accent; }
 QDateEdit:focus, QTimeEdit:focus, QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus,
 QComboBox:focus,
-QSpinBox:focus, QListWidget:focus, QTableWidget:focus, QGraphicsView:focus {
+QSpinBox:focus, QListWidget:focus, QTableWidget:focus {
     border: 1px solid $accent; }
+QGraphicsView:focus { border: 1px solid $muted; }  /* Timeline ausgewählt: dunkelgrau statt Akzent */
 QToolButton#qt_toolbar_ext_button { border: 1px solid $control; background-color: $hover; }
 QLabel#hint { color: $muted; }
 QTableWidget QLabel { padding: 2px 8px; }
@@ -269,7 +270,7 @@ QMenu::item:selected { background-color: $sel; color: $seltext; }
 QMenu::item:disabled { color: $muted; }
 QMenu::separator { height: 1px; background: $border; margin: 4px 0; }
 QMenu::icon { padding-left: 6px; }
-QGraphicsView { border: none; border-radius: 10px; }
+QGraphicsView { border: 1px solid $border; border-radius: 10px; }  /* sichtbares Ende der Timeline */
 QTableWidget { background-color: $surface; alternate-background-color: $alt;
                border: 1px solid $border; border-radius: 10px; gridline-color: transparent;
                selection-background-color: $sel; selection-color: $seltext; }

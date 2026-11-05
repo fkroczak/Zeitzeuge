@@ -18,9 +18,12 @@ from flow_layout import FlowLayout
 
 TIME_FMT = "%Y-%m-%d %H:%M:%S"
 
-# Ansichten, die als Chip über der Liste stehen (Schlüssel aus DayListMixin.VIEWS)
-CHIP_VIEWS = [("grouped", "Alle"), ("doc", "Offen / Doku"), ("ai", "Vorschläge"),
-              ("calls", "Telefonate"), ("blocks", "Arbeitsblöcke")]
+# Alle Ansichten der Tagesliste als Chips (Schlüssel aus DayListMixin.VIEWS); das Menü
+# „Ansicht“ führt sie nicht noch einmal. Nach „Telefonate“ eine Lücke: Logs | Tätigkeiten.
+CHIP_VIEWS = [("grouped", "Alle"), ("single", "Einzeln"), ("blocks", "Arbeitsblöcke"),
+              ("calls", "Telefonate"), ("doc", "Dokumentation"), ("rules", "Zuordnung ohne KI"),
+              ("ai", "KI-Vorschläge"), ("m42", "Matrix42-Abgleich")]
+GROUP_GAP_AFTER = "calls"
 
 
 def _seconds(entries):
@@ -156,8 +159,8 @@ class _Kpi(QFrame):
 
 
 class RateKpi(QFrame):
-    """Kachel Buchungsquote:   heute | 7 Tage
-                              64 % ! | 87 % ✓   (Zahl in der Farbe der Stufe, groß wie Erfasst)
+    """Kachel Buchungsquote:   Buchungsquote
+                              64 % ! heute | 87 % ✓ 7 Tage   (Zahl in der Farbe der Stufe)
 
     Anklickbar (Maus, Enter, Leertaste) wie ein Knopf: Signal clicked."""
 
@@ -174,26 +177,26 @@ class RateKpi(QFrame):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(14, 10, 14, 10)
         layout.setSpacing(2)
+        title = QLabel("Buchungsquote", self)  # Überschrift wie bei den anderen Kacheln
+        title.setObjectName("kpi_label")
+        layout.addWidget(title)
         row = QHBoxLayout()
-        row.setSpacing(0)
+        row.setSpacing(6)
         self.columns = {}
         for i, key in enumerate(("today", "seven")):
             if i:
                 line = QFrame(self)
                 line.setObjectName("divider")
                 line.setFixedWidth(1)
-                row.addSpacing(12)
+                row.addSpacing(8)
                 row.addWidget(line)
-                row.addSpacing(12)
-            col = QVBoxLayout()
-            col.setSpacing(2)
-            head = QLabel("heute" if key == "today" else "7 Tage", self)
-            head.setObjectName("kpi_label")
+                row.addSpacing(8)
             value = QLabel("–", self)
             value.setObjectName("rate_value_none")
-            col.addWidget(head)
-            col.addWidget(value)
-            row.addLayout(col)
+            head = QLabel("heute" if key == "today" else "7 Tage", self)  # klein neben der Zahl
+            head.setObjectName("kpi_label")
+            row.addWidget(value)
+            row.addWidget(head, 0, Qt.AlignBottom)
             self.columns[key] = (head, value)
         row.addStretch(1)
         layout.addLayout(row)
@@ -312,10 +315,20 @@ class ViewChips(QWidget):
             b.clicked.connect(lambda _c=False, k=key: self.view_chosen.emit(k))
             layout.addWidget(b)
             self.buttons[key] = (b, text)
+            if key == GROUP_GAP_AFTER:  # sichtbare Lücke zwischen den beiden Gruppen
+                gap = QWidget(self)
+                gap.setFixedWidth(8)
+                layout.addWidget(gap)
 
     def show_state(self, view, counts=None):
         counts = counts or {}
         for key, (button, text) in self.buttons.items():
             n = counts.get(key)
             button.setText(f"{text}  {n}" if n else text)
-            button.setChecked(key == view or (key == "grouped" and view == "single"))
+            button.setChecked(key == view)
+
+    def set_tips(self, tips):
+        """Erklärung je Ansicht beim Darüberfahren (view_help.help_text)."""
+        for key, (button, _text) in self.buttons.items():
+            if key in tips:
+                button.setToolTip(tips[key])
