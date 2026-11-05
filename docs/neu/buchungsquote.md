@@ -2,16 +2,16 @@
 
 ## README-Text
 
-### Funktionsliste (nach „Matrix42“ einfügen)
+### Funktionsliste (nach „Ticketsystem“ einfügen)
 
-- **Buchungsquote:** Zeitzeuge rechnet aus, wie viel deiner Personalzeit in Matrix42 gebucht ist.
+- **Buchungsquote:** Zeitzeuge rechnet aus, wie viel deiner Personalzeit im Ticketsystem gebucht ist.
   Ziel sind 80 % pro Tag. Unter 50 % ist die Quote rot (✗), bis unter dem Ziel gelb (!), ab dem
   Ziel bis 100 % grün (✓), darüber dunkelgrün (✓✓). Die Statuszeile zeigt „Quote heute 72 % ·
-  7 Tage 81 %“. Ein Klick öffnet den Wochenabschluss. Die Anzeige erscheint nur, wenn Matrix42
+  7 Tage 81 %“. Ein Klick öffnet den Wochenabschluss. Die Anzeige erscheint nur, wenn das Ticketsystem
   Daten liefert.
 - **7-Tage-Wert:** die letzten 7 gestempelten Tage bis heute. Heute zählt nur, wenn du gestempelt
-  hast, und nur bis jetzt. Tage ohne Matrix42-Daten zählen nicht mit. Sie stehen als
-  „Matrix42 nicht gelesen“ da, statt als 0 %.
+  hast, und nur bis jetzt. Tage ohne Ticketsystem-Daten zählen nicht mit. Sie stehen als
+  „Ticketsystem nicht gelesen“ da, statt als 0 %.
 - **Wochenabschluss (F8):** Montag bis Freitag der Woche, Samstag und Sonntag nur, wenn du da
   gestempelt oder gebucht hast. Je Tag: Personalzeit, gebucht, Quote, Zeit ohne Buchung und offene
   Tätigkeiten. Darunter Hinweise wie „Dienstag: 1:20 h nicht gebucht“ und der 7-Tage-Wert.
@@ -23,7 +23,7 @@
   der Personalzeit, Buchungen überschneiden sich, Quote unter Ziel. Die Hinweise kommen mit der
   Erinnerung an offene Tätigkeiten oder allein, und stehen auch im Wochenabschluss. Abschalten:
   Einstellungen → Nachfragen und Erinnerungen → „Bei Feierabend prüfen“.
-- **In Matrix42 buchen:** kommt bald. Rechtsklick auf eine Tätigkeit und der Wochenabschluss
+- **Im Ticketsystem buchen:** kommt bald. Rechtsklick auf eine Tätigkeit und der Wochenabschluss
   zeigen den Befehl schon, noch ausgegraut.
 
 ### Tastenkürzel (Tabelle ergänzen)
@@ -32,22 +32,22 @@
 
 ## Eigene Entscheidungen
 
-1. **Personalzeit = ITM „gewertet“, solange du ausgestempelt bist.** Das ist die Zeit, die ITM nach
+1. **Personalzeit = „gewertet“ aus der Zeiterfassung, solange du ausgestempelt bist.** Das ist die Zeit, die die Zeiterfassung nach
    Abzug der Pause wertet. Bist du noch eingestempelt (heute), zählen die gestempelten Abschnitte
-   bis jetzt, weil „gewertet“ dann veraltet ist. Ohne „gewertet“ (z. B. Tage aus dem alten ITM-Backend)
+   bis jetzt, weil „gewertet“ dann veraltet ist. Ohne „gewertet“ (z. B. Tage aus dem alten Backend der Zeiterfassung)
    zählen ebenfalls die Abschnitte. Rückgängig: `booking_rate.personal_seconds` immer
    `seconds(spans)` zurückgeben lassen.
-2. **Ohne ITM:** Personalzeit ist die Arbeitszeit aus den Einstellungen, überall als
+2. **Ohne Zeiterfassung:** Personalzeit ist die Arbeitszeit aus den Einstellungen, überall als
    „Arbeitszeit (lt. Einstellungen)“ gekennzeichnet. Ein solcher Tag zählt für den 7-Tage-Wert nur,
    wenn es an dem Tag Buchungen gibt, sonst wäre jeder Urlaubstag 0 %. Die Prüfungen von Pausen,
-   PC-Aktivität und Buchungen außerhalb entfallen ohne ITM (die geplante Arbeitszeit ist keine
+   PC-Aktivität und Buchungen außerhalb entfallen ohne Zeiterfassung (die geplante Arbeitszeit ist keine
    Stempelung). Rückgängig: `DayRate.stamped` in `booking_rate.py`, `check_day(from_itm=…)` in
    `day_checks.py`.
-3. **ITM-Tag ohne Zeiten** (gelesen, aber nicht gestempelt, z. B. Urlaub) gilt als Tag ohne
+3. **Tag der Zeiterfassung ohne Zeiten** (gelesen, aber nicht gestempelt, z. B. Urlaub) gilt als Tag ohne
    Personalzeit, nicht als Arbeitszeit aus den Einstellungen. Rückgängig: `week_dialogs.day_inputs`
    (Bedingung `itm_day is not None` → `itm_day and itm_day.get("zeiten")`).
-4. **7-Tage-Wert und fehlende Matrix42-Daten:** Der Zeitraum sind die letzten 7 gestempelten Tage
-   (gesucht bis 31 Tage zurück). Tage darin ohne Matrix42-Daten zählen weder bei gebucht noch bei
+4. **7-Tage-Wert und fehlende Ticketsystem-Daten:** Der Zeitraum sind die letzten 7 gestempelten Tage
+   (gesucht bis 31 Tage zurück). Tage darin ohne Ticketsystem-Daten zählen weder bei gebucht noch bei
    Personalzeit und werden mit Datum genannt. Es wird nicht weiter zurückgesucht, damit der Wert
    wirklich „die letzten 7 Tage“ bleibt. Rückgängig: `booking_rate.seven_days`, `LOOKBACK_DAYS`.
 5. **Buchungen zählen ganz**, auch außerhalb der Personalzeit (Quote kann so über 100 % gehen).
@@ -59,11 +59,11 @@
    Rückgängig: `week_dialogs.status_text`. Ausblenden: Config `"booking_rate_status": false`.
 7. **Tastenkürzel F8** statt STRG+W: F5–F7 sind schon Befehle der Werkzeugleiste, STRG+W heißt in
    Windows meist „Fenster schließen“. Rückgängig: `app_menus._build_toolbar` (`self.week_action`).
-8. **Feierabend mit ITM** (Fehlerbehebung, betrifft auch die bisherige Erinnerung an offene
+8. **Feierabend mit Zeiterfassung** (Fehlerbehebung, betrifft auch die bisherige Erinnerung an offene
    Tätigkeiten): Bisher kam die Erinnerung, sobald das letzte Ende der Personalzeit vorbei war. Weil
    ein offener Abschnitt bis „jetzt“ reicht, kam sie schon eingestempelt, und ausgestempelt in der
    Mittagspause. Jetzt: nur ausgestempelt und ab dem geplanten Ende aus den Einstellungen (später
-   ausgestempelt: gleich danach), ohne geplantes Ende eine Stunde nach dem Ausstempeln. Ohne ITM
+   ausgestempelt: gleich danach), ohne geplantes Ende eine Stunde nach dem Ausstempeln. Ohne Zeiterfassung
    bleibt alles wie bisher. Rückgängig: `app_docs.end_of_day_reminder`, `day_checks.after_hours`.
 9. **Feierabend-Meldung:** Mit offenen Tätigkeiten bleiben Titel und erster Satz wie bisher, dazu
    „Außerdem:“ und bis zu 4 Befunde. Ohne offene Tätigkeiten kommt einmal „Feierabend: bitte prüfen“;
@@ -76,14 +76,14 @@
     Konstanten oben in `day_checks.py`.
 11. **Pausenprüfung:** Zählt die Lücken zwischen gestempelten Abschnitten (ab 15 Minuten). Fehlt
     insgesamt Pause, kommt nur dieser Hinweis, sonst auch „mehr als 6 Stunden am Stück“. Eine von
-    ITM automatisch abgezogene Pause gilt nicht als gestempelt. Fehler der Stempelungen selbst
-    (offen seit 12 Stunden, Ende vor Start) meldet weiter nur der ITM-Leser (`itm_auth.booking_issues`).
+    der Zeiterfassung automatisch abgezogene Pause gilt nicht als gestempelt. Fehler der Stempelungen selbst
+    (offen seit 12 Stunden, Ende vor Start) meldet weiter nur der Leser der Zeiterfassung (`itm_auth.booking_issues`).
 12. **Quote-Zelle im Wochenabschluss** ist ein `QLabel` mit Objektname `rate_<stufe>`, weil das
     Stylesheet (`QTableWidget::item`) die Hintergrundfarbe von Tabellenzellen überdeckt. Der Text
     steht zusätzlich in der Zelle selbst (Screenreader, Tests).
 13. **Ziel** stellst du direkt im Wochenabschluss ein (Feld „Ziel je Tag“, 1–200 %), kein eigener
     Eintrag im Menü Einstellungen. Config `"booking_target_percent"`.
-14. **„In Matrix42 buchen“** im Rechtsklick-Menü als deaktivierter Eintrag ohne `&`-Buchstaben
+14. **„Im Ticketsystem buchen“** im Rechtsklick-Menü als deaktivierter Eintrag ohne `&`-Buchstaben
     (Regel: reine Anzeigen brauchen keinen). `entry_menu_items` kann dafür einen dritten Wert
     `False` (= deaktiviert) liefern. Rückgängig: Eintrag `"m42_book"` in `timeline_only.entry_menu_items`.
 
@@ -93,7 +93,7 @@ Neu:
 - `booking_rate.py` – Quote, Stufen, 7-Tage-Wert (ohne Qt)
 - `day_checks.py` – Prüfung bei Feierabend (ohne Qt)
 - `week_dialogs.py` – Wochenabschluss-Dialog, Daten sammeln, Knopf in der Statuszeile
-- `m42_booking.py` – Platzhalter „In Matrix42 buchen – kommt bald“
+- `m42_booking.py` – Platzhalter „Im Ticketsystem buchen – kommt bald“
 - `tests/booking_rate_test.py`, `tests/day_checks_test.py` (pytest, ohne Qt)
 - `tests/week_gui_test.py` (Skript: Dialog, Statuszeile, Feierabend-Meldung, Menü, Einstellung)
 

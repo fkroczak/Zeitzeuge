@@ -72,7 +72,7 @@ Gut zu wissen:
    (`has_outlook`). Zeile sitzt direkt unter „Tel“. Menütext „Telefon (3CX)“ heißt jetzt
    „Telefon (3CX, Teams)“. `timeline_rows` hat den Schlüssel `outlook` (Standard an).
 5. **Keine Nachfrage für Termine und Mails** und sie zählen nicht als „Verbindungen ohne
-   Buchung“ im Matrix42-Abgleich: Ein Kalendereintrag beweist nicht, dass du daran
+   Buchung“ im Buchungsabgleich: Ein Kalendereintrag beweist nicht, dass du daran
    gearbeitet hast, und jede Mail würde nachgefragt. `app_docs.doc_candidates` und
    `m42_unbooked` (`row_kind(e) != "outlook"`). Rückgängig: die beiden Bedingungen löschen.
 6. **Nur das klassische Outlook, nur wenn es läuft.** `GetActiveObject` statt Outlook zu

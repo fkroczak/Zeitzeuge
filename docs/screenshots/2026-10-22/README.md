@@ -12,7 +12,7 @@ Zum Vergleich liegen fünf Bilder des alten Stands in [`vorher/`](vorher/).
 |---|---|---|
 | [01_hauptfenster.png](01_hauptfenster.png) | Hauptfenster im normalen Zustand | Werkzeugleiste mit einheitlichen Linien-Icons statt Zeichen (◀ ▶ ⟳ − +), in Gruppen: Tag · Aktualisieren · Ausschnitt · Liste · Einstellungen. „Dunkel“ ist ins Menü gewandert, dadurch passt die Leiste auch bei 1200 px. Timeline-Balken mit ruhigem, durchgezogenem Rand. Rechts unten neu: Zustand der Fensteraufzeichnung. |
 | [02_hauptmenue.png](02_hauptmenue.png) | Menü „Einstellungen“ geöffnet | Nach Aufgaben gegliedert: Ansicht (Dunkles Design) · Aufzeichnung · häufige Einstellungen (Arbeitszeiten, Typen und Farben) · Untermenüs für Seltenes · Info und Beenden. Vorher 12 Einträge flach in einer Liste. |
-| [03_menue_1_datenquellen.png](03_menue_1_datenquellen.png) | Untermenü „Datenquellen“ | TeamViewer, RDM, 3CX (zwei Wege), ITM gebündelt: richtet man einmal ein, braucht man selten. |
+| [03_menue_1_datenquellen.png](03_menue_1_datenquellen.png) | Untermenü „Datenquellen“ | TeamViewer, RDM, 3CX (zwei Wege), Zeiterfassung gebündelt: richtet man einmal ein, braucht man selten. |
 | [03_menue_2_datenspeicher.png](03_menue_2_datenspeicher.png) | Untermenü „Datenspeicher“ | Datenordner öffnen, Speicherort ändern. |
 | [04_tagesliste_kontextmenue.png](04_tagesliste_kontextmenue.png) | Rechtsklick in der Tagesliste | Gleiche Icon-Sprache, Alt-Buchstaben, Kürzel auf Deutsch („Strg+C“). |
 | [05_dialog_arbeitszeiten.png](05_dialog_arbeitszeiten.png) | Dialog Arbeitszeiten | Knöpfe auf Deutsch („Abbrechen“ statt „Cancel“), OK als hervorgehobener Hauptknopf, Zeitfelder ohne die zuvor kaputt gezeichneten Pfeile (Eingabe per Tastatur, Pfeiltasten oder Mausrad). |

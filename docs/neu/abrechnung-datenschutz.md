@@ -55,7 +55,7 @@
 7. **Statuszeile:** „abgerechnet …“ erscheint nur, wenn mindestens eine Regel aktiv ist
    (`Billing.any_active`). Dokumentiert ist die zusammengeführte Zeit (wie bisher),
    abgerechnet die Summe je Tätigkeit. Ort: `app_daylist.update_status_text`.
-8. **Für Matrix42 (später):** `billing.booking_span(item, billing)` / `booking_item` – Beginn
+8. **Für das Ticketsystem (später):** `billing.booking_span(item, billing)` / `booking_item` – Beginn
    bleibt (auf die Minute), Ende = Beginn + abgerechnete Dauer. Überschneidungen mit der
    nächsten Tätigkeit prüft die Funktion nicht – das muss der Buchungs-Code entscheiden.
 9. **Icon „tag“** für den Menüeintrag „Abre&chnung …“ (Preisschild). Ort: `app_menus.py`.

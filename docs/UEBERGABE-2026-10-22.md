@@ -26,7 +26,7 @@ externen Dienste oder Config-Formate angefasst.
 | Beim Start wurden TeamViewer- und RDM-Logs **komplett und blockierend** gelesen, bevor das Fenster erschien. `strptime` kostete ~75 % davon. | Schnelles Datumslesen, Lesen im Hintergrund-Thread, erstes Zeichnen erst nach dem Anzeigen. |
 | Die Aktualisierung alle 2 Minuten las geänderte Logs ebenfalls blockierend (bei RDM-Logs, die sich oft ändern, ruckelte die Oberfläche; bei Netzwerkpfaden länger). | Läuft jetzt ebenfalls im Hintergrund. |
 | Parser holten ihre Config, indem sie alle offenen Fenster nach einem `config`-Attribut durchsuchten. Zwei fast gleiche Einlese-Schleifen. | Config wird direkt übergeben, eine gemeinsame Schleife (−200 Zeilen). Ergebnis auf 126.000 Logzeilen **identisch** zum alten Parser geprüft. |
-| Edge-Steuerung (`websocket`, `psutil`, `urllib`) wurde immer geladen, obwohl 3CX/ITM standardmäßig aus sind. | Lädt erst bei Bedarf (−35 ms Import). |
+| Edge-Steuerung (`websocket`, `psutil`, `urllib`) wurde immer geladen, obwohl 3CX/Zeiterfassung standardmäßig aus sind. | Lädt erst bei Bedarf (−35 ms Import). |
 | Dialogknöpfe englisch („Cancel“, „Close“), weil keine Qt-Übersetzung geladen war. | `qtbase_de` wird geladen; fehlt die Datei, bleibt es wie bisher (kein Fehler). |
 | Pfeile in Zeit- und Zahlenfeldern wurden durch das Stylesheet kaputt gezeichnet. | Pfeile ausgeblendet; Eingabe per Tastatur, Pfeiltasten, Mausrad. |
 | Menü „Einstellungen“: 12 Einträge flach. Werkzeugleiste mit Unicode-Zeichen, bei 1200 px rutschte „Einstellungen“ in den Überlauf. | Menü nach Aufgaben, Icons, „Dunkel“ ins Menü, „Aktualisieren“ nur als Icon (Tooltip + F5). |
@@ -92,7 +92,7 @@ Unter Windows ist alles langsamer (Virenscanner, EXE-Entpacken), das Verhältnis
 | neu: `tests/tray_test.py` (Menü, pausieren/fortsetzen über Infobereich und Statuszeile, Zustand gespeichert, PC-Daten bei Pause sichtbar) | grün |
 | neu: `tests/parser_test.py` (Zeitzone, zu kurze/ungültige Zeilen, Cache, strenges Zeitformat) | grün |
 | Alter vs. neuer Parser auf 126.000 Logzeilen | identisch |
-| Windows-CI (GitHub Actions, windows-latest): alle 15 Schritte inkl. neuer Tests, 3CX/ITM mit echtem Edge und EXE-Bau | grün: Läufe 33–37, 41, 42 (alle 15 Schritte inkl. EXE). Läufe 38–40 rot durch Absturz beim Beenden, mit `d588166` behoben |
+| Windows-CI (GitHub Actions, windows-latest): alle 15 Schritte inkl. neuer Tests, 3CX/Zeiterfassung mit echtem Edge und EXE-Bau | grün: Läufe 33–37, 41, 42 (alle 15 Schritte inkl. EXE). Läufe 38–40 rot durch Absturz beim Beenden, mit `d588166` behoben |
 | Echtes Beenden (`Beenden` im Menü, 10× alt und 10× neu) | 0 Abstürze |
 | Sichtprüfung hell und dunkel per Screenshots | ok |
 | Unabhängiges Code-Review durch einen zweiten Agenten (Parser alt/neu mit je 20.000 Zufallszeilen inkl. ungültiger Daten, Stresstest Neu-Einlesen während Pfad- und Datumswechsel, Start/Beenden, Lazy Imports) | keine Fehler gefunden |
