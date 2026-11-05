@@ -108,6 +108,83 @@ class _Kpi(QFrame):
         self.layout().addWidget(self.bar)
 
 
+class RateKpi(QFrame):
+    """Kachel Buchungsquote:   heute | 7 Tage
+                              64 % ! | 87 % ✓   (Zahl in der Farbe der Stufe, groß wie Erfasst)
+
+    Anklickbar (Maus, Enter, Leertaste) wie ein Knopf: Signal clicked."""
+
+    clicked = Signal()
+    SYMBOLS = {"low": "✗", "mid": "!", "ok": "✓", "over": "✓✓", "none": ""}
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("card")
+        self.setCursor(Qt.PointingHandCursor)
+        self.setFocusPolicy(Qt.StrongFocus)
+        self.level = "none"
+        self._text = ""
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(14, 10, 14, 10)
+        layout.setSpacing(2)
+        row = QHBoxLayout()
+        row.setSpacing(0)
+        self.columns = {}
+        for i, key in enumerate(("today", "seven")):
+            if i:
+                line = QFrame(self)
+                line.setObjectName("divider")
+                line.setFixedWidth(1)
+                row.addSpacing(12)
+                row.addWidget(line)
+                row.addSpacing(12)
+            col = QVBoxLayout()
+            col.setSpacing(2)
+            head = QLabel("heute" if key == "today" else "7 Tage", self)
+            head.setObjectName("kpi_label")
+            value = QLabel("–", self)
+            value.setObjectName("rate_value_none")
+            col.addWidget(head)
+            col.addWidget(value)
+            row.addLayout(col)
+            self.columns[key] = (head, value)
+        row.addStretch(1)
+        layout.addLayout(row)
+
+    def show_rate(self, info):
+        """info: week_dialogs.rate_info (label, today, today_level, seven, seven_level, text, tip)."""
+        self._text = info["text"]
+        self.level = info["level"]
+        for key in ("today", "seven"):
+            head, value = self.columns[key]
+            percent, lvl = info[key], info[f"{key}_level"]
+            if key == "today":
+                head.setText(info["label"])
+            value.setText(f"{int(round(percent))} % {self.SYMBOLS[lvl]}".strip() if percent is not None else "–")
+            name = f"rate_value_{lvl}"
+            if value.objectName() != name:
+                value.setObjectName(name)
+                value.style().unpolish(value)
+                value.style().polish(value)
+        self.setToolTip(info["tip"])
+        self.setAccessibleName(f"Buchungsquote: {info['text']}. Wochenabschluss öffnen")
+
+    def text(self):
+        """Ganzer Text, z. B. „Quote heute 64 % · 7 Tage 87 %  ✓“ (Hinweis, Tests)."""
+        return self._text
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.LeftButton and self.rect().contains(event.position().toPoint()):
+            self.clicked.emit()
+        super().mouseReleaseEvent(event)
+
+    def keyPressEvent(self, event):
+        if event.key() in (Qt.Key_Return, Qt.Key_Enter, Qt.Key_Space):
+            self.clicked.emit()
+            return
+        super().keyPressEvent(event)
+
+
 class DaySummary(QWidget):
     """Kennzahlen-Leiste über der Timeline."""
 
@@ -130,27 +207,16 @@ class DaySummary(QWidget):
         self.customers = _Kpi("Nach Kunde", self)
         self.customers.value.setObjectName("card_title")
         self.customers.value.setTextFormat(Qt.PlainText)
-        # Buchungsquote (Matrix42 ÷ Personalzeit): Knopf kommt aus dem Hauptfenster (attach_rate),
-        # week_dialogs.update_rate_button füllt ihn und blendet die Kachel ein oder aus
-        self.rate = _Kpi("Buchungsquote", self)
-        self.rate.value.hide()
-        self.rate.extra.hide()
+        # Buchungsquote (Matrix42 ÷ Personalzeit): week_dialogs.update_rate_button füllt die
+        # Kachel und blendet sie ohne Matrix42 aus; Klick öffnet den Wochenabschluss
+        self.rate = RateKpi(self)
         self.rate.hide()
-        for w, stretch in ((self.booked, 2), (self.opened, 3), (self.suggest, 2), (self.rate, 3),
+        for w, stretch in ((self.booked, 2), (self.rate, 2), (self.opened, 3), (self.suggest, 2),
                            (self.customers, 3)):
             # alle gleich hoch; in schmalen Fenstern dürfen die Karten schrumpfen (Reflow)
             w.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
             layout.addWidget(w, stretch)
         self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
-
-    def attach_rate(self, button):
-        """Knopf „Quote heute 64 % · 7 Tage 87 % ✓“ in die Kachel Buchungsquote setzen."""
-        button.setParent(self.rate)
-        button.setCursor(Qt.PointingHandCursor)
-        self.rate.layout().itemAt(1).layout().insertWidget(0, button)
-
-    def show_rate(self, visible):
-        self.rate.setVisible(visible)
 
     def show_numbers(self, data):
         booked, target = data["booked_s"], data["target_s"]

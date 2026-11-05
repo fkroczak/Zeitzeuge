@@ -106,6 +106,8 @@ THEMES = {
         # Buchungsquote (booking_rate.py): Fläche und Schrift je Stufe
         "rate_low": "#4A1C1F", "rate_low_text": "#FFB4B6", "rate_mid": "#463708", "rate_mid_text": "#FFE08A",
         "rate_ok": "#173D27", "rate_ok_text": "#9BE8B8", "rate_over": "#0E6B34", "rate_over_text": "#FFFFFF",
+        # Kachel Buchungsquote: farbige Zahl direkt auf der Karte
+        "rate_value_low": "#FF8A8E", "rate_value_mid": "#FACC15", "rate_value_ok": "#4ADE80",
     },
     "light": {
         "bg": "#F7F7F8", "surface": "#FFFFFF", "bar": "#FFFFFF",
@@ -119,6 +121,8 @@ THEMES = {
         # Buchungsquote (booking_rate.py): Fläche und Schrift je Stufe
         "rate_low": "#FCE4E4", "rate_low_text": "#9F1D20", "rate_mid": "#FFF1BF", "rate_mid_text": "#6B4E00",
         "rate_ok": "#DDF3E4", "rate_ok_text": "#1E6B3A", "rate_over": "#0F5E2E", "rate_over_text": "#FFFFFF",
+        # Kachel Buchungsquote: farbige Zahl direkt auf der Karte (große Schrift 20 px fett: mind. 3 : 1)
+        "rate_value_low": "#DC2626", "rate_value_mid": "#D97706", "rate_value_ok": "#16A34A",
     },
 }
 
@@ -232,6 +236,15 @@ QToolButton#rate_low, QLabel#rate_low { background-color: $rate_low; color: $rat
 QToolButton#rate_mid, QLabel#rate_mid { background-color: $rate_mid; color: $rate_mid_text; font-weight: bold; }
 QToolButton#rate_ok, QLabel#rate_ok { background-color: $rate_ok; color: $rate_ok_text; font-weight: bold; }
 QToolButton#rate_over, QLabel#rate_over { background-color: $rate_over; color: $rate_over_text; font-weight: bold; }
+/* Kachel Buchungsquote: Zahl groß in der Farbe der Stufe (Text-Farbe der Stufe) */
+QLabel#rate_value_low, QLabel#rate_value_mid, QLabel#rate_value_ok, QLabel#rate_value_over,
+QLabel#rate_value_none { background: transparent; font-size: 20px; font-weight: bold; }
+QLabel#rate_value_low { color: $rate_value_low; }
+QLabel#rate_value_mid { color: $rate_value_mid; }
+QLabel#rate_value_ok, QLabel#rate_value_over { color: $rate_value_ok; }
+QLabel#rate_value_none { color: $muted; }
+QFrame#divider { background-color: $border; border: none; }
+QFrame#card:focus { border: 2px solid $accent; }
 QToolButton#rate_low, QToolButton#rate_mid, QToolButton#rate_ok, QToolButton#rate_over {
     border-radius: 6px; padding: 3px 10px; }
 QPushButton:disabled, QToolButton:disabled, QLineEdit:disabled, QDateEdit:disabled,

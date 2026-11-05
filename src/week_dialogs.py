@@ -106,7 +106,14 @@ def selected_day(window, now):
 
 
 def status_text(window, now=None, day=None):
-    """(Text, Stufe, Hinweis) für die Statuszeile oder None, wenn Matrix42 nichts liefert.
+    """(Text, Stufe, Hinweis) für die Quote oder None, wenn Matrix42 nichts liefert."""
+    info = rate_info(window, now, day)
+    return None if info is None else (info["text"], info["level"], info["tip"])
+
+
+def rate_info(window, now=None, day=None):
+    """Quote für die Kachel Buchungsquote oder None, wenn Matrix42 nichts liefert:
+    {label ("heute"/"20.10."), today, today_level, seven, seven_level, level, text, tip}.
 
     Gilt für den gewählten Tag: Quote des Tages und 7 Tage bis zu diesem Tag."""
     now = now or datetime.now()
@@ -136,36 +143,25 @@ def status_text(window, now=None, day=None):
     if seven.unread:
         tip.append(f"{len(seven.unread)} Tag(e) ohne Matrix42-Daten zählen nicht mit")
     tip.append("Klick: Wochenabschluss")
-    return text, lvl, "\n".join(tip)
+    return {"label": label, "today": today.percent, "today_level": br.level(today.percent, goal),
+            "seven": seven.percent, "seven_level": br.level(seven.percent, goal),
+            "level": lvl, "text": text, "tip": "\n".join(tip)}
 
 
 def update_rate_button(window):
-    """Knopf "Quote heute … · 7 Tage …" in der Statuszeile setzen oder ausblenden."""
-    button = getattr(window, "rate_button", None)
-    if button is None:
+    """Kachel Buchungsquote (heute | 7 Tage) setzen oder ausblenden."""
+    tile = getattr(window, "rate_button", None)
+    if tile is None:
         return
     info = None
     if window.config.get("booking_rate_status", True) and has_m42(window):
         try:
-            info = status_text(window)
+            info = rate_info(window)
         except (KeyError, TypeError, ValueError):
             info = None
-    button.setVisible(info is not None)
-    summary = getattr(window, "day_summary", None)
-    if summary is not None:  # Kachel „Buchungsquote“ oben (day_summary.py)
-        summary.show_rate(info is not None)
-    if info is None:
-        return
-    text, lvl, tip = info
-    button.setText(text)
-    button.setToolTip(tip)
-    button.setAccessibleName(f"Buchungsquote: {text.rsplit('  ', 1)[0]}, "
-                             f"{br.LEVELS[lvl][1]}. Wochenabschluss öffnen")
-    name = f"rate_{lvl}" if lvl != "none" else ""
-    if button.objectName() != name:
-        button.setObjectName(name)
-        button.style().unpolish(button)
-        button.style().polish(button)
+    tile.setVisible(info is not None)
+    if info is not None:
+        tile.show_rate(info)
 
 
 # ------------------------------------------------------------------ Dialog
