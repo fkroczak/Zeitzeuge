@@ -243,12 +243,16 @@ class DayListMixin:
         if not hasattr(self, "day_summary"):
             return
         date_str = self.current_date.toString("yyyy-MM-dd")
-        if itm_day and itm_day.get("soll"):
-            target = itm_day["soll"]
+        # Erfasst „von“: gestempelte Personalzeit (ITM), ohne ITM die eingestellte Arbeitszeit.
+        # Nicht das Soll: Mehr als gestempelt lässt sich nicht eintragen.
+        if itm_day and itm_day.get("gewertet"):
+            target, basis = itm_day["gewertet"], "gestempelt"
         else:
             target = sum(max(0, e - s) for s, e in self.timeline._work_spans(self.current_date))
+            basis = "Arbeitszeit"
         ai = self.ai_day_entries(date_str)
         data = day_summary.summary(doc, ai, target)
+        data["target_basis"] = basis
         self.day_summary.show_numbers(data)
         self.view_chips.show_state(self.config.get("list_view", "grouped"),
                                    {"doc": data["open"], "ai": data["suggestions"]})
