@@ -346,7 +346,7 @@ class _Row(QFrame):
             self.control = _switch(title)
             self.control.setChecked(action.isChecked())
             self.control.toggled.connect(lambda on: action.isChecked() != on and action.setChecked(on))
-            action.toggled.connect(self._sync_toggle)
+            action.toggled.connect(self._on_action_toggled)
         elif kind == "check":
             self.control = _switch(title)
             self.control.setChecked(bool(main.config.get(target, extra)))
@@ -388,6 +388,9 @@ class _Row(QFrame):
     def _sync_toggle(self, on):
         if self.control.isChecked() != on:
             _set_quiet(self.control, on)
+
+    def _on_action_toggled(self, on):
+        self._sync_toggle(on)
         self.window.refresh_preview_later()
 
     # Vorschau: beim Darüberfahren zeigen, wie es nach dem Umschalten aussähe
@@ -510,6 +513,9 @@ class _Tile(QFrame):
         state, text = tile_state(self.window.main, key, kind)
         if self.action is not None and self.switch.isChecked() != self.action.isChecked():
             _set_quiet(self.switch, self.action.isChecked())
+        if (state, text) == getattr(self, "_shown", None):
+            return  # unverändert: Zeichen und Stil nicht alle 3 s neu aufbauen
+        self._shown = (state, text)
         if state == "off":
             self.state_icon.clear()
         else:
@@ -524,6 +530,8 @@ class _Tile(QFrame):
 
 class SettingsWindow(QDialog):
     """Alle Einstellungen in einem Fenster. Bleibt offen, während du weiterarbeitest."""
+
+    HOVER_DELAY_MS = 120
 
     def __init__(self, main):
         super().__init__(main)
@@ -540,6 +548,14 @@ class SettingsWindow(QDialog):
         self._preview_timer.setSingleShot(True)
         self._preview_timer.setInterval(0)
         self._preview_timer.timeout.connect(self._refresh_preview)
+        self._preview_stale = False  # Änderung, während die Seite „Ansicht“ nicht zu sehen war
+        # Darüberfahren: erst zeichnen, wenn die Maus kurz auf einer Zeile bleibt. Beim Wischen
+        # über viele Zeilen sonst eine volle Neuzeichnung je Zeile (Fenster wirkt zäh).
+        self._hover_pending = None
+        self._hover_timer = QTimer(self)
+        self._hover_timer.setSingleShot(True)
+        self._hover_timer.setInterval(self.HOVER_DELAY_MS)
+        self._hover_timer.timeout.connect(self._apply_hover)
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -682,8 +698,21 @@ class SettingsWindow(QDialog):
                 changes, caption = {key: on}, f"So sähe es aus mit „{title}“ {'an' if on else 'aus'}"
             elif kind == "choice" and value is not None and value != main.config.get(target):
                 changes, caption = {key: value}, f"So sähe es aus mit „{title}: {text}“"
-        if changes or self.preview.variant:
-            self.preview.show_variant(changes, caption)
+        self._hover_pending = (changes, caption)
+        self._hover_timer.start()  # neu starten: nur die Zeile zählt, auf der die Maus bleibt
+
+    def _apply_hover(self):
+        if self.preview is None or self._hover_pending is None:
+            return
+        changes, caption = self._hover_pending
+        self._hover_pending = None
+        current = self.preview.variant
+        if (changes or None) == (current[0] if current else None):
+            return  # zeigt schon genau das
+        if not self.preview.isVisible():
+            self._preview_stale = True
+            return
+        self.preview.show_variant(changes, caption)
 
     def refresh_preview_later(self):
         """Nach einer Änderung (auch aus dem Hauptfenster) die Vorschau einmal neu zeichnen."""
@@ -691,8 +720,13 @@ class SettingsWindow(QDialog):
             self._preview_timer.start()
 
     def _refresh_preview(self):
-        if self.preview is not None:
-            self.preview.show_variant(None)
+        if self.preview is None:
+            return
+        if not self.preview.isVisible():  # erst zeichnen, wenn die Seite „Ansicht“ gezeigt wird
+            self._preview_stale = True
+            return
+        self._preview_stale = False
+        self.preview.show_variant(None)
 
     def _results_page(self):
         page = QWidget()
@@ -719,6 +753,8 @@ class SettingsWindow(QDialog):
         key = self.nav.item(row).data(Qt.UserRole)
         self.stack.setCurrentIndex(self.pages[key])
         self.refresh()
+        if key == "view" and self._preview_stale:
+            self._refresh_preview()
 
     def show_page(self, key):
         """Bereich zeigen, z. B. show_page("sources")."""
@@ -771,3 +807,5 @@ class SettingsWindow(QDialog):
     def showEvent(self, event):
         super().showEvent(event)
         self.refresh()
+        if self._preview_stale and self.current_page() == "view":
+            self.refresh_preview_later()

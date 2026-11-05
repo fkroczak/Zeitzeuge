@@ -21,7 +21,7 @@ from vpn_reader import DEFAULT_DIRS as VPN_DEFAULT_DIRS, FORTI_TRACE_PATHS, vpn_
 from settings_dialogs import ActivityTypeSettingsDialog, ConnectionSettingsDialog, WorkHoursDialog
 from theme import GERMAN, STYLESHEET, THEMES
 from timeline_only import (COLOR_ROWS, DEFAULT_CALL_COLORS, LEGEND_BANDS, LEGEND_FIXED, ROW_NAMES,
-                           TIMELINE_ROWS)
+                           TIMELINE_ROWS, entry_color)
 from view_help import VIEW_HELP, ViewHelpDialog, help_text
 from version import build_details, full_version
 import main_timeline as mt  # Pfade und save_config zur Laufzeit von dort (Tests ersetzen sie dort)
@@ -322,8 +322,11 @@ class MenusMixin:
         menu.addAction(self.day_close_action)
         self._icon_actions.append((self.day_close_action, "check"))
         self._icon_actions.append((menu.addAction("&Offene Tätigkeiten …", self.show_open_docs), "alert"))
-        # Zeitraum (Ganzer Tag, Arbeitszeit) steht in der Werkzeugleiste, Design in den Einstellungen
+        # Zeitraum (Ganzer Tag, Arbeitszeit) steht in der Werkzeugleiste
         menu.addSeparator()
+        # Hell/Dunkel: schnell erreichbar hier, dieselbe Aktion wie im Menü Einstellungen
+        self._view_dark_proxy = self._add_check(menu, self._ensure_dark_action(), accent)
+        self._check_proxies.pop(self.dark_action)  # Eintrag im Menü Einstellungen bleibt dort registriert
         self._icon_actions.append((menu.addAction("An&passen mit Vorschau …",
                                                   lambda: self.show_settings("view")), "eye"))
 
@@ -367,6 +370,11 @@ class MenusMixin:
         for key in COLOR_ROWS:
             if key in ("doc", "call", "pcstate"):  # Gruppen wie oben im Menü
                 colors.addSeparator()
+            if key == "call":  # Telefon: Farbe je Richtung, nicht eine für alle Anrufe
+                for direction, text in self.CALL_COLOR_TEXTS:
+                    colors.addAction(f"{ROW_NAMES[key]} {text} …",
+                                     lambda d=direction: self.choose_call_color(d))
+                continue
             colors.addAction(f"{ROW_NAMES[key]} …", lambda k=key: self.choose_row_color(k))
         colors.addSeparator()
         colors.addAction("Alle &Standardfarben", lambda: self.set_row_color(None, None))
@@ -392,14 +400,23 @@ class MenusMixin:
         extra = []
         if key in COLOR_ROWS:  # nur für diesen Aufruf oben einfügen
             name = ROW_NAMES[key]
-            pick = QAction(f"&Farbe für „{name}“ ändern …", menu)
-            pick.triggered.connect(lambda: self.choose_row_color(key))
+            if key == "call":
+                picks = []
+                for direction, text in self.CALL_COLOR_TEXTS:
+                    pick = QAction(f"Farbe für Anrufe {text} ändern …", menu)
+                    pick.triggered.connect(lambda _c=False, d=direction: self.choose_call_color(d))
+                    picks.append(pick)
+                own = bool(self.config.get("call_colors"))
+            else:
+                pick = QAction(f"&Farbe für „{name}“ ändern …", menu)
+                pick.triggered.connect(lambda: self.choose_row_color(key))
+                picks, own = [pick], False
             default = QAction(f"Standardfarbe für „{name}“", menu)
             default.triggered.connect(lambda: self.set_row_color(key, None))
-            default.setEnabled(key in (self.config.get("row_colors") or {}))
+            default.setEnabled(own or key in (self.config.get("row_colors") or {}))
             sep = QAction(menu)
             sep.setSeparator(True)
-            extra = [pick, default, sep]
+            extra = picks + [default, sep]
             first = menu.actions()[0] if menu.actions() else None
             menu.insertActions(first, extra)
         try:
@@ -421,6 +438,39 @@ class MenusMixin:
         legend = LEGEND_BANDS.get(key) or LEGEND_FIXED.get(key)
         return colors.get(legend[1], "#4682B4") if legend else "#4682B4"
 
+    CALL_COLOR_TEXTS = [("Eingehend", "eingehend"), ("Ausgehend", "ausgehend")]
+
+    def call_color(self, direction):
+        """Farbe der Anrufe einer Richtung, wie die Timeline sie zeichnet."""
+        return entry_color({"type": "Telefonat", "direction": direction}, self.config).name()
+
+    def choose_call_color(self, direction):
+        text = dict(self.CALL_COLOR_TEXTS)[direction]
+        color = QColorDialog.getColor(QColor(self.call_color(direction)), self, f"Farbe für Anrufe {text}")
+        if color.isValid():
+            self.set_call_color(direction, color.name())
+
+    def set_call_color(self, direction, color):
+        """Eigene Farbe für ein- oder ausgehende Anrufe (config["call_colors"]).
+
+        Eine ältere Farbe der ganzen Zeile Telefon galt für alle Anrufe: sie bleibt für die
+        andere Richtung erhalten, damit sich dort nichts ändert."""
+        rows = dict(self.config.get("row_colors") or {})
+        calls = dict(self.config.get("call_colors") or {})
+        old = rows.pop("call", None)
+        if old:
+            for d, _t in self.CALL_COLOR_TEXTS:
+                calls.setdefault(d, old)
+        calls[direction] = color
+        self.config["call_colors"] = calls
+        if rows:
+            self.config["row_colors"] = rows
+        else:
+            self.config.pop("row_colors", None)
+        mt.save_config(self.config)
+        self.update_row_icons()
+        self.timeline.draw_timeline(self.current_date)
+
     def choose_row_color(self, key):
         color = QColorDialog.getColor(QColor(self.row_color(key)), self, f"Farbe für „{ROW_NAMES[key]}“")
         if color.isValid():
@@ -429,6 +479,8 @@ class MenusMixin:
     def set_row_color(self, key, color):
         """Eigene Farbe einer Zeile (None = Standard); key None = alle zurücksetzen."""
         own = dict(self.config.get("row_colors") or {})
+        if key in (None, "call") and not color:
+            self.config.pop("call_colors", None)  # Standard: auch die Farben je Richtung
         if key is None:
             own = {}
         elif color:
@@ -477,11 +529,7 @@ class MenusMixin:
         self.tracking_action.setChecked(self.config.get("tracking_enabled", True))
         self.tracking_action.toggled.connect(self.toggle_tracking)
         self._icon_actions.append((self.tracking_action, "monitor"))
-        self.dark_action = QAction("&Dunkles Design", self)
-        self.dark_action.setCheckable(True)
-        self.dark_action.setChecked(self.dark_mode)
-        self.dark_action.toggled.connect(self.toggle_dark_mode)
-        self._add_check(menu, self.dark_action, THEMES["dark" if self.dark_mode else "light"]["accent"])
+        self._add_check(menu, self._ensure_dark_action(), THEMES["dark" if self.dark_mode else "light"]["accent"])
         # Datenquellen: im Einstellungsfenster (Kacheln mit Zustand); das Untermenü nutzt der Infobereich
         self.sources_menu = self._build_sources_menu()
         self._icon_actions.append(
@@ -718,6 +766,15 @@ class MenusMixin:
         else:
             self.timeline.show_whole_day()
 
+    def _ensure_dark_action(self):
+        """Schalter „Dunkles Design“ (Menüs Ansicht und Einstellungen, Einstellungsfenster)."""
+        if getattr(self, "dark_action", None) is None:
+            self.dark_action = QAction("&Dunkles Design", self)
+            self.dark_action.setCheckable(True)
+            self.dark_action.setChecked(self.dark_mode)
+            self.dark_action.toggled.connect(self.toggle_dark_mode)
+        return self.dark_action
+
     def toggle_dark_mode(self, enabled: bool):
         self.dark_mode = enabled
         self.config["dark_mode"] = enabled
@@ -751,7 +808,8 @@ class MenusMixin:
         self.update_view_button()
         for action in (self.pc_list_action, self.dark_action, self.pc_blocks_action):
             for proxy in (self._check_proxies.get(action),
-                          self._rows_blocks_proxy if action is self.pc_blocks_action else None):
+                          self._rows_blocks_proxy if action is self.pc_blocks_action else None,
+                          self._view_dark_proxy if action is self.dark_action else None):
                 if proxy is not None:
                     proxy.setData(theme["accent"])
                     proxy.setIcon(icons.check_box(theme["accent"], action.isChecked()))

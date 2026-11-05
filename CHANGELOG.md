@@ -18,6 +18,8 @@ Testversionen aus Branches tragen die Version ihres main-Stands plus Buildnummer
 26.10.2026 können sie nicht mehr lesen.
 
 ### Neu
+- **Hell/Dunkel im Menü Ansicht:** „Dunkles Design“ lässt sich jetzt direkt im Menü Ansicht umschalten, nicht nur unter Einstellungen.
+- **Anruffarben je Richtung:** Unter Ansicht → Zeilen der Timeline → Farben der Zeilen (und per Rechtsklick auf „Telefon“ in der Legende) gibt es getrennte Farben für eingehende und ausgehende Anrufe. Eine bisher gewählte Farbe für die ganze Zeile bleibt für die andere Richtung erhalten.
 - **Zuschlag ignorieren:** neuer Haken neben Kulanz und Reise beim Dokumentieren und im Fenster „In Matrix42 buchen“ (dort mit Grund, vorbelegt „Zuschlag ignoriert“). Beim Buchen setzt Zeitzeuge in Matrix42 „Zuschlag ignorieren“, auch beim Buchen aus dem Tagesabschluss.
 - **Ticket beim Dokumentieren suchen:** Neben dem Feld „Ticket“ sitzt der Knopf „Suchen …“. Er öffnet die Matrix42-Ticketsuche (vorbelegt mit dem Kunden), ein Doppelklick übernimmt das Ticket. So steht das passende Ticket schon vor dem Buchen in der Tätigkeit. Nur sichtbar, wenn Matrix42 eingeschaltet ist.
 - **Neues Design „Companion“** (übernommen aus dem Entwurf „Zeiterfassung Companion“): ruhige Zink-Grautöne in Hell und Dunkel, runde Ecken an Feldern, Knöpfen, Menüs und Timeline-Balken, Karten mit feinem Rand, Hauptknopf in Textfarbe, Violett für Fokus und Links.
@@ -90,6 +92,8 @@ Testversionen aus Branches tragen die Version ihres main-Stands plus Buildnummer
 - **Remotedesktop (mstsc) aus dem Windows-Ereignisprotokoll:** Zeitzeuge liest zusätzlich `Microsoft-Windows-TerminalServices-RDPClient/Operational` (Aufbau 1024, Trennung 1026). Das füllt Zeiten, in denen Zeitzeuge nicht lief, und macht Beginn und Ende sekundengenau; mit der eigenen Aufzeichnung wird es zu einer Sitzung zusammengeführt. Abschaltbar unter Datenquellen → Remotedesktop (mstsc).
 
 ### Behoben
+- **Einstellungen → Ansicht hing bis zu einer Minute:** Die Vorschau maß bei jeder Zelle der Beispielliste alle Spalten neu. Mit „PC-Verlauf in der Liste“ und Fenstern einzeln sind das über 100 Zeilen bei jedem Darüberfahren. Jetzt einmal nach dem Füllen (2,6 s → 0,1 s).
+- **Einstellungsfenster träge:** Die Vorschau zeichnet nur noch, wenn sie zu sehen ist, beim schnellen Darüberwischen nur für die Zeile, auf der die Maus bleibt. Die Kacheln der Datenquellen bauen sich alle 3 s nur noch neu auf, wenn sich ihr Zustand geändert hat. Seitenwechsel 60–80 ms → unter 30 ms.
 - **Ruhigere Kennzahlen-Leiste:** Die Kacheln sind nur so breit wie ihr Inhalt, „Nach Kunde“ nimmt den Rest und zeigt ganze Kunden plus „+2“, statt mitten im Namen abzuschneiden (alle im Hinweis). „Vorschläge“ erscheint nur, wenn welche warten.
 - **Ansichten der Tagesliste nur noch als Chips:** Über der Liste stehen alle acht Ansichten (auch „Zuordnung ohne KI“ und „Matrix42-Abgleich“), die aktive ist markiert. Im Menü **Ansicht** stehen sie nicht mehr doppelt.
 - **Timeline mit Rahmen**, damit man sieht, wo sie endet. Die Kachel Buchungsquote hat die Überschrift „Buchungsquote“ wie die anderen Kacheln. Rahmen der ausgewählten Timeline und Ladebalken sind dunkelgrau statt lila.
