@@ -70,7 +70,9 @@ splash = Splash(
     datas=a.datas,
     text_pos=(26, 152),
     text_size=10,
-    text_font='Segoe UI',
+    # Geschweifte Klammern: PyInstaller setzt den Namen ungeschützt ins Tcl-Skript. Ohne sie bricht
+    # „Segoe UI“ (mit Leerzeichen) das Skript ab und es bleibt ein leeres Fenster „tk“ stehen.
+    text_font='{Segoe UI}',
     text_color='#62626B',
     text_default='Zeitzeuge startet …',
     always_on_top=False,  # Rückfragen beim Start (Entsperren) dürfen nicht dahinter liegen
