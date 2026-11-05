@@ -130,11 +130,27 @@ class DaySummary(QWidget):
         self.customers = _Kpi("Nach Kunde", self)
         self.customers.value.setObjectName("card_title")
         self.customers.value.setTextFormat(Qt.PlainText)
-        for w, stretch in ((self.booked, 2), (self.opened, 2), (self.suggest, 2), (self.customers, 4)):
+        # Buchungsquote (Matrix42 ÷ Personalzeit): Knopf kommt aus dem Hauptfenster (attach_rate),
+        # week_dialogs.update_rate_button füllt ihn und blendet die Kachel ein oder aus
+        self.rate = _Kpi("Buchungsquote", self)
+        self.rate.value.hide()
+        self.rate.extra.hide()
+        self.rate.hide()
+        for w, stretch in ((self.booked, 2), (self.opened, 3), (self.suggest, 2), (self.rate, 3),
+                           (self.customers, 3)):
             # alle gleich hoch; in schmalen Fenstern dürfen die Karten schrumpfen (Reflow)
             w.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
             layout.addWidget(w, stretch)
         self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+
+    def attach_rate(self, button):
+        """Knopf „Quote heute 64 % · 7 Tage 87 % ✓“ in die Kachel Buchungsquote setzen."""
+        button.setParent(self.rate)
+        button.setCursor(Qt.PointingHandCursor)
+        self.rate.layout().itemAt(1).layout().insertWidget(0, button)
+
+    def show_rate(self, visible):
+        self.rate.setVisible(visible)
 
     def show_numbers(self, data):
         booked, target = data["booked_s"], data["target_s"]

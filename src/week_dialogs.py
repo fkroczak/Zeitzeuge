@@ -151,6 +151,9 @@ def update_rate_button(window):
         except (KeyError, TypeError, ValueError):
             info = None
     button.setVisible(info is not None)
+    summary = getattr(window, "day_summary", None)
+    if summary is not None:  # Kachel „Buchungsquote“ oben (day_summary.py)
+        summary.show_rate(info is not None)
     if info is None:
         return
     text, lvl, tip = info

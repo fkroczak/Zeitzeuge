@@ -228,10 +228,12 @@ QStatusBar QToolButton#cta:hover { background-color: $primary; border-color: $ac
 QStatusBar QToolButton#cta_secondary { background: transparent; color: $accent; font-weight: bold;
                                        border: 1px solid $accent; padding: 2px 12px; }
 QStatusBar QToolButton#cta_secondary:hover { background-color: $hover; }
-QStatusBar QToolButton#rate_low, QLabel#rate_low { background-color: $rate_low; color: $rate_low_text; font-weight: bold; }
-QStatusBar QToolButton#rate_mid, QLabel#rate_mid { background-color: $rate_mid; color: $rate_mid_text; font-weight: bold; }
-QStatusBar QToolButton#rate_ok, QLabel#rate_ok { background-color: $rate_ok; color: $rate_ok_text; font-weight: bold; }
-QStatusBar QToolButton#rate_over, QLabel#rate_over { background-color: $rate_over; color: $rate_over_text; font-weight: bold; }
+QToolButton#rate_low, QLabel#rate_low { background-color: $rate_low; color: $rate_low_text; font-weight: bold; }
+QToolButton#rate_mid, QLabel#rate_mid { background-color: $rate_mid; color: $rate_mid_text; font-weight: bold; }
+QToolButton#rate_ok, QLabel#rate_ok { background-color: $rate_ok; color: $rate_ok_text; font-weight: bold; }
+QToolButton#rate_over, QLabel#rate_over { background-color: $rate_over; color: $rate_over_text; font-weight: bold; }
+QToolButton#rate_low, QToolButton#rate_mid, QToolButton#rate_ok, QToolButton#rate_over {
+    border-radius: 6px; padding: 3px 10px; }
 QPushButton:disabled, QToolButton:disabled, QLineEdit:disabled, QDateEdit:disabled,
 QTimeEdit:disabled, QSpinBox:disabled, QCheckBox:disabled { color: $muted; }
 QPushButton:disabled { background-color: $surface; }

@@ -595,7 +595,7 @@ class TimelineApp(MenusMixin, DayListMixin, DayCloseMixin, DocsMixin, ReadersMix
         self.rate_button.setToolButtonStyle(Qt.ToolButtonTextOnly)
         self.rate_button.clicked.connect(self.show_week)
         self.rate_button.hide()
-        self.statusBar().addPermanentWidget(self.rate_button)
+        self.day_summary.attach_rate(self.rate_button)  # als Kachel oben in der Kennzahlen-Leiste
         # Wichtigste Aufgabe sichtbar machen: offene Tätigkeiten, ein Klick trägt die erste ein
         self.open_docs_button = QToolButton(self)
         self.open_docs_button.setObjectName("cta")
