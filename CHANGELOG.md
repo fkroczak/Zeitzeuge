@@ -90,6 +90,10 @@ Testversionen aus Branches tragen die Version ihres main-Stands plus Buildnummer
 - **Remotedesktop (mstsc) aus dem Windows-Ereignisprotokoll:** Zeitzeuge liest zusätzlich `Microsoft-Windows-TerminalServices-RDPClient/Operational` (Aufbau 1024, Trennung 1026). Das füllt Zeiten, in denen Zeitzeuge nicht lief, und macht Beginn und Ende sekundengenau; mit der eigenen Aufzeichnung wird es zu einer Sitzung zusammengeführt. Abschaltbar unter Datenquellen → Remotedesktop (mstsc).
 
 ### Behoben
+- **Ruhigere Kennzahlen-Leiste:** Die Kacheln sind nur so breit wie ihr Inhalt, „Nach Kunde“ nimmt den Rest und zeigt ganze Kunden plus „+2“, statt mitten im Namen abzuschneiden (alle im Hinweis). „Vorschläge“ erscheint nur, wenn welche warten.
+- **Ansichten der Tagesliste nur noch als Chips:** Über der Liste stehen alle acht Ansichten (auch „Zuordnung ohne KI“ und „Matrix42-Abgleich“), die aktive ist markiert. Im Menü **Ansicht** stehen sie nicht mehr doppelt.
+- **Timeline mit Rahmen**, damit man sieht, wo sie endet. Die Kachel Buchungsquote hat die Überschrift „Buchungsquote“ wie die anderen Kacheln. Rahmen der ausgewählten Timeline und Ladebalken sind dunkelgrau statt lila.
+- **Farben im Hinweis der Timeline:** Vor jedem Eintrag steht ein Quadrat in der Farbe seines Balkens, so siehst du, aus welcher Zeile er kommt.
 - **Schmales Fenster:** Die Chips über der Tagesliste („Alle“, „Offen / Doku“ …) rücken in eine zweite Zeile, statt das Fenster auf mindestens ~600 px Breite festzuhalten. Damit passt Zeitzeuge wieder in einen halben Bildschirm und bei 200 % Anzeige.
 - **Schnellerer Start und flüssigeres Blättern:** Zeitzeuge startet etwa viermal so schnell (Fenster mit Daten nach 0,4 s statt 1,6 s), weil das KI-Paket erst bei der ersten KI-Anfrage geladen wird. Zeichnen des heutigen Tags mit vielen Fensterwechseln braucht ein Drittel der Zeit, Tageswechsel halb so lange (Messung in `docs/BEWERTUNG-webview-asynccron-threads.md`).
 - **Nachfrage „Was hast du gemacht?“ zeigt das Datum** und lässt es ändern (Kalender), wie beim Nachtragen.

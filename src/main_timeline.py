@@ -541,6 +541,8 @@ class TimelineApp(MenusMixin, DayListMixin, DayCloseMixin, DocsMixin, ReadersMix
         list_layout.setSpacing(0)
         self.view_chips = ViewChips(list_box)
         self.view_chips.view_chosen.connect(self.change_view)
+        if hasattr(self, "view_actions"):
+            self.update_view_button()  # Hinweise an die Chips
         list_layout.addWidget(self.view_chips)
         list_layout.addWidget(self.table, 1)
         splitter = QSplitter(Qt.Vertical, self)

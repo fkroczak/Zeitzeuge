@@ -240,6 +240,9 @@ class MenusMixin:
             font = action.font()
             font.setBold(k == key)
             action.setFont(font)
+        chips = getattr(self, "view_chips", None)
+        if chips is not None:
+            chips.set_tips({k: help_text(k, self.config) for k in self.view_actions})
 
     def show_view_help(self):
         """Erklärung der Ansichten der Tagesliste mit Beispielen."""
@@ -284,18 +287,17 @@ class MenusMixin:
         menu.setToolTipsVisible(True)  # Hilfe zu den Ansichten beim Darüberfahren
         self._check_proxies = {}
         accent = THEMES["dark" if self.dark_mode else "light"]["accent"]
+        # Die Ansichten selbst wählt man über die Chips über der Tagesliste (day_summary.ViewChips);
+        # view_actions bleiben als Aktionen ohne Menüeintrag (Einstellungsfenster, Hinweise).
         self._menu_header(menu, "Tagesliste")
-        group = QActionGroup(menu)
+        group = QActionGroup(self)
         self.view_actions = {}
         for key, text in self.VIEWS:
-            if key == "doc":  # Trennlinie: Einträge aus den Logs | eingeordnete Tätigkeiten
-                menu.addSeparator()
-            action = menu.addAction(self.VIEW_MNEMONICS.get(key, text))
+            action = QAction(self.VIEW_MNEMONICS.get(key, text), self)
             action.setCheckable(True)
             action.setActionGroup(group)
             action.triggered.connect(lambda _c=False, k=key: self.change_view(k))
             self.view_actions[key] = action
-        menu.addSeparator()
         self._add_check(menu, self.pc_list_action, accent, "PC-&Verlauf in der Liste")
         help_action = menu.addAction("&Was zeigen die Ansichten? …", self.show_view_help)
         help_action.setShortcut(QKeySequence("F1"))
@@ -763,7 +765,7 @@ class MenusMixin:
             self._settings_window = None
             if page:
                 QTimer.singleShot(0, lambda: self.show_settings(page))
-        self.busy_bar.set_color(theme["accent"])
+        self.busy_bar.set_color(theme["muted"])  # Ladebalken dunkelgrau, nicht in Akzentfarbe
         self.update_tracking_state()
         self.timeline.set_dark_mode(self.dark_mode)
 

@@ -42,15 +42,21 @@ def gui_test():
     assert bar.index(window.doc_button_action) < bar.index(window.ai_button_action)
     assert window.tools_bar.widgetForAction(window.whole_day_action).toolButtonStyle() == Qt.ToolButtonIconOnly
 
-    # Ansicht: Ansichten mit Hilfe, Zeilen als Untermenü (auch per Rechtsklick auf die Legende).
-    # Zeitraum steht nur in der Werkzeugleiste, Design in den Einstellungen.
+    # Ansicht: Hilfe zu den Ansichten, Zeilen als Untermenü (auch per Rechtsklick auf die Legende).
+    # Die Ansichten selbst stehen nur als Chips über der Liste, Zeitraum nur in der Werkzeugleiste,
+    # Design in den Einstellungen.
     menu = window.view_button.menu()
     texts = [a.text().replace("&", "").split("\t")[0] for a in menu.actions()]
-    for text in ("Zusammengefasst", "Einzeln", "Was zeigen die Ansichten? …", "Zeilen der Timeline",
-                 "Wochenabschluss …"):
+    for text in ("Was zeigen die Ansichten? …", "Zeilen der Timeline", "Wochenabschluss …"):
         assert text in texts, (text, texts)
-    for text in ("Dunkles Design", "Ganzer Tag", "Arbeitszeit"):
+    for text in ("Zusammengefasst", "Einzeln", "Dunkles Design", "Ganzer Tag", "Arbeitszeit"):
         assert text not in texts, (text, texts)
+    chips = window.view_chips.buttons
+    assert set(chips) == set(dict(window.VIEWS)), "jede Ansicht hat einen Chip"
+    chips["rules"][0].click()
+    assert window.config["list_view"] == "rules" and chips["rules"][0].isChecked()
+    assert not chips["grouped"][0].isChecked()
+    window.change_view("grouped")
     # Einträge ohne Überschriften. 15 seit dem Tagesabschluss (Gruppe „Übersichten“ hat 3 von 5),
     # 16 seit der Ansicht „Telefonate“
     assert len([t for t in texts if t]) <= 16, texts
