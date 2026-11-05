@@ -106,6 +106,41 @@ jobs:
           }
           Compress-Archive -Path dist\ZeitZeuge-Ordner\* -DestinationPath dist\ZeitZeuge-Ordner.zip -Force
 
+      # Installationsassistent (installer/zeitzeuge.iss) aus der Ordner-Variante: installiert ohne
+      # Adminrechte, aktualisiert vorhandene Installationen und ersetzt alte Einzeldateien
+      - name: Installationsassistent bauen
+        shell: pwsh
+        env:
+          SIGN_PFX_BASE64: ${{ secrets.SIGN_PFX_BASE64 }}
+          SIGN_PFX_PASSWORD: ${{ secrets.SIGN_PFX_PASSWORD }}
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup -y --no-progress
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          $nums = python -c "import sys; sys.path.insert(0, 'src'); import version; print('.'.join(map(str, version.file_version())))"
+          & $iscc /Qp "/DAppVersion=$env:ZZ_VERSION" "/DFileVersion=$nums" installer\zeitzeuge.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($env:SIGN_PFX_BASE64) {
+            $pfx = Join-Path $env:RUNNER_TEMP "signatur.pfx"
+            [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:SIGN_PFX_BASE64))
+            $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" |
+              Sort-Object FullName -Descending | Select-Object -First 1
+            & $signtool.FullName sign /f $pfx /p $env:SIGN_PFX_PASSWORD /fd SHA256 `
+              /tr http://timestamp.digicert.com /td SHA256 /d "Zeitzeuge einrichten" dist\Zeitzeuge-Setup.exe
+            $code = $LASTEXITCODE
+            Remove-Item $pfx -Force
+            if ($code -ne 0) { exit $code }
+          }
+
+      - name: Installationsassistent als Download bereitstellen
+        uses: actions/upload-artifact@v6
+        with:
+          name: Zeitzeuge-Setup-${{ env.ZZ_VERSION }}
+          path: dist/Zeitzeuge-Setup.exe
+          retention-days: 30
+
       - name: Ordner-Variante als Download bereitstellen
         uses: actions/upload-artifact@v6
         with:
@@ -132,6 +167,7 @@ jobs:
           target_commitish: ${{ github.sha }}
           name: Zeitzeuge ${{ env.ZZ_VERSION }}
           files: |
+            dist/Zeitzeuge-Setup.exe
             dist/ZeitZeuge.exe
             dist/ZeitZeuge-Ordner.zip
           generate_release_notes: true

@@ -210,9 +210,19 @@ pip install -r requirements.txt
 python src/main_timeline.py
 ```
 
+### Mit dem Installationsassistenten (empfohlen)
+
+Lade **[Zeitzeuge-Setup.exe](https://github.com/fkroczak/Zeitzeuge/releases/latest/download/Zeitzeuge-Setup.exe)** und starte sie. Adminrechte brauchst du nicht: Zeitzeuge landet nur für dich unter `%LOCALAPPDATA%\Programs\Zeitzeuge`, mit Eintrag im Startmenü und auf Wunsch auf dem Desktop und im Autostart.
+
+- **Update:** Neue `Zeitzeuge-Setup.exe` starten. Der Assistent erkennt die vorhandene Installation und aktualisiert sie im selben Ordner. Den Autostart lässt er so, wie du ihn in Zeitzeuge eingestellt hast.
+- **Alte Einzeldatei:** Liegt noch eine `ZeitZeuge.exe` auf dem Desktop (auch OneDrive-Desktop), in Downloads oder im Autostart, zeigt der Assistent sie an und ersetzt sie auf Wunsch durch eine Verknüpfung zur installierten Version.
+- **Deine Daten:** Einstellungen (Datenordner, Standard `Dokumente\Zeitzeuge`) und Datenbank (`%LOCALAPPDATA%\Zeitzeuge`) bleiben, wo sie sind, und die neue Version nutzt sie weiter. Vor jedem Update legt der Assistent eine Kopie unter `%LOCALAPPDATA%\Zeitzeuge\vor-update` an. Auch Deinstallieren (Windows-Einstellungen → Apps) lässt die Daten stehen.
+- **Läuft Zeitzeuge noch,** bittet der Assistent dich, es über das Symbol im Infobereich zu beenden. So speichert Zeitzeuge den laufenden Abschnitt sauber.
+- Die installierte Version ist die Ordner-Variante: Sie startet schneller als die Einzeldatei, weil sie sich nicht bei jedem Start nach `%TEMP%` entpacken muss.
+
 ### EXE herunterladen
 
-Die fertige EXE liegt unter **[Releases](https://github.com/fkroczak/Zeitzeuge/releases)** (rechts auf der Startseite des Repositorys). Jeder Merge in main wird automatisch ein Release `v<Version>` mit EXE und Ordner-Variante.
+Die fertige EXE liegt unter **[Releases](https://github.com/fkroczak/Zeitzeuge/releases)** (rechts auf der Startseite des Repositorys). Jeder Merge in main wird automatisch ein Release `v<Version>` mit Installationsassistent, EXE und Ordner-Variante.
 
 - **Immer die neueste Version (direkter Link):** [ZeitZeuge.exe](https://github.com/fkroczak/Zeitzeuge/releases/latest/download/ZeitZeuge.exe) · [ZeitZeuge-Ordner.zip](https://github.com/fkroczak/Zeitzeuge/releases/latest/download/ZeitZeuge-Ordner.zip)
 - **Ältere Versionen:** in der Liste unter Releases, jede mit ihrer Versionsnummer. Es bleiben die 10 neuesten, ältere löscht der Build samt Tag.

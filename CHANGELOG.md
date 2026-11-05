@@ -18,6 +18,7 @@ Testversionen aus Branches tragen die Version ihres main-Stands plus Buildnummer
 26.10.2026 können sie nicht mehr lesen.
 
 ### Neu
+- **Installationsassistent** (`Zeitzeuge-Setup.exe`, unter Releases): installiert ohne Adminrechte, aktualisiert eine vorhandene Installation, findet alte `ZeitZeuge.exe` (Desktop, OneDrive-Desktop, Downloads, Autostart) und ersetzt sie durch Verknüpfungen. Einstellungen und Datenbank werden weiter genutzt und vor dem Update gesichert. Die installierte Version startet schneller (kein Entpacken nach `%TEMP%`).
 - **Ticket direkt im Feld suchen:** Beim Dokumentieren Kunde, Titel oder Benutzer ins Feld „Ticket“ tippen (ab 3 Zeichen). Die Treffer aus Matrix42 erscheinen darunter, die Auswahl setzt die Ticketnummer (und den Kunden, wenn er noch fehlt). „Suchen …“ übernimmt den getippten Text.
 - **Startbild:** Die EXE zeigt sofort beim Doppelklick ein Startbild mit Fortschritt, bis das Fenster steht. Bisher sah man mehrere Sekunden nichts und war versucht, Zeitzeuge ein zweites Mal zu starten.
 - **Mit Windows starten:** neuer Schalter unter Einstellungen → Allgemein. Trägt Zeitzeuge für deinen Benutzer in den Autostart ein (im Infobereich, ohne Adminrechte) und zieht den Eintrag nach, wenn die EXE umzieht. Die Verknüpfung in `shell:startup` braucht es nicht mehr.
