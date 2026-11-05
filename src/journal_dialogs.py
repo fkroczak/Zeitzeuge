@@ -394,28 +394,7 @@ class EntryDialog(QDialog):
         self.context_rows.setHorizontalSpacing(12)
         self.context_rows.setVerticalSpacing(4)
         box.addLayout(self.context_rows)
-        nudge = QHBoxLayout()
-        nudge.setSpacing(4)
-        for which, label in (("start", "Beginn"), ("end", "Ende")):
-            nudge.addWidget(QLabel(label))
-            for minutes in (-10, -1, 1, 10):
-                b = QToolButton()
-                b.setObjectName("chip")
-                b.setText(f"{minutes:+d}".replace("-", "−"))
-                b.setToolTip(f"{label} um {abs(minutes)} Minute{'n' if abs(minutes) != 1 else ''} "
-                             f"{'früher' if minutes < 0 else 'später'}")
-                b.setAccessibleName(b.toolTip())
-                b.clicked.connect(lambda _c=False, w=which, m=minutes: self.nudge(w, m))
-                nudge.addWidget(b)
-            nudge.addSpacing(12)
-        nudge.addStretch(1)
-        box.addLayout(nudge)
         return card
-
-    def nudge(self, which, minutes):
-        """Beginn oder Ende um minutes verschieben (−10, −1, +1, +10)."""
-        edit = self.form.start_edit if which == "start" else self.form.end_edit
-        edit.setTime(edit.time().addSecs(minutes * 60))
 
     def update_context(self):
         if self.context_rows is None:
