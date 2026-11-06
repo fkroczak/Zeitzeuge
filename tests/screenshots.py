@@ -81,7 +81,7 @@ with open(os.path.join(DATA, "aktivitaet", f"{DAY:%Y-%m-%d}.jsonl"), "w", encodi
 with open(os.path.join(DATA, "zeitzeuge_config.json"), "w", encoding="utf-8") as f:
     json.dump({"teamviewer_paths": [os.path.join(LOGS, "Connections.txt")],
                "rdm_paths": [os.path.join(LOGS, "Connections.log")],
-               "teamviewer_timezone_correction": 1,
+               "teamviewer_timezone_correction": 1, "teamviewer_utc_auto": False,
                "teamviewer_names": {"1076789144": "Müller GmbH"},
                "dark_mode": DARK, "close_to_tray": True}, f)
 os.environ["ZEITZEUGE_DATA"] = DATA

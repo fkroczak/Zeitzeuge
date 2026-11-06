@@ -16,8 +16,10 @@ class ConnectionSettingsDialog(QDialog):
     def __init__(self, config, config_key, default_paths, title, parent=None,
                  enabled_text=None, folders=False, hint=None, paths_key=None,
                  timezone=True, files=True, paths=True, path_title="Logdatei-Pfade",
-                 enabled_key=None, checks=()):
+                 enabled_key=None, checks=(), utc_auto_key=None):
         super().__init__(parent)
+        self.utc_auto_key = utc_auto_key  # Schalter „von UTC automatisch umrechnen“ (TeamViewer)
+        self.utc_auto_box = None
         self.checks = list(checks)        # weitere Schalter: [(Config-Schlüssel, Text, Standard)]
         self.check_boxes = {}
         self.config = config
@@ -116,6 +118,13 @@ class ConnectionSettingsDialog(QDialog):
         self.tz_spinbox.setRange(-12, 14)
         self.tz_spinbox.setValue(saved_tz_correction)
         
+        if self.utc_auto_key:
+            auto = self.config.get(self.utc_auto_key)
+            self.utc_auto_box = QCheckBox("Sommer- und Winterzeit automatisch (Log in UTC)")
+            self.utc_auto_box.setChecked(saved_tz_correction in (1, 2) if auto is None else bool(auto))
+            self.tz_spinbox.setEnabled(not self.utc_auto_box.isChecked())
+            self.utc_auto_box.toggled.connect(lambda on: self.tz_spinbox.setEnabled(not on))
+            tz_layout.addRow(self.utc_auto_box)
         tz_layout.addRow("Zeitzonenkorrektur (Stunden):", self.tz_spinbox)
         tz_group.setLayout(tz_layout)
         layout.addWidget(tz_group)
@@ -139,6 +148,8 @@ class ConnectionSettingsDialog(QDialog):
             result[key] = box.isChecked()
         if self.tz_spinbox:
             result[f"{self.config_key}_timezone_correction"] = self.get_timezone_correction()
+        if self.utc_auto_box:
+            result[self.utc_auto_key] = self.utc_auto_box.isChecked()
         return result
     
     def add_path(self):
