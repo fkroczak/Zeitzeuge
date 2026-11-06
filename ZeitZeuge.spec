@@ -64,11 +64,15 @@ pyz = PYZ(a.pure)
 # Startbild: zeigt der Bootloader sofort beim Doppelklick, noch während sich die EXE entpackt
 # (das dauert mit Virenscanner mehrere Sekunden). Zeitzeuge schreibt unten links den Fortschritt
 # hinein und schließt es, sobald das Fenster steht (main_timeline.py). Bild: tests/make_splash.py
+# Ladebalken und Text: eigener Tcl-Teil statt der PyInstaller-Textzeile (src/splash_screen.py).
+# Der Balken läuft beim Entpacken über die Zahl der Dateien, danach melden die Startschritte.
+import splash_screen  # noqa: E402
+splash_screen.install(len(a.binaries) + len(a.datas))
 splash = Splash(
     os.path.join(ASSETS, 'splash.png'),
     binaries=a.binaries,
     datas=a.datas,
-    text_pos=(26, 152),
+    text_pos=(26, 146),
     text_size=10,
     # Geschweifte Klammern: PyInstaller setzt den Namen ungeschützt ins Tcl-Skript. Ohne sie bricht
     # „Segoe UI“ (mit Leerzeichen) das Skript ab und es bleibt ein leeres Fenster „tk“ stehen.

@@ -645,7 +645,7 @@ Das Menü im Infobereich enthält: **Zeitzeuge öffnen** (auch per Klick auf das
 
 Damit Zeitzeuge mit Windows startet: **Einstellungen → Allgemein → Mit Windows starten**. Zeitzeuge trägt sich dann für deinen Windows-Benutzer in den Autostart ein (ohne Adminrechte) und startet beim Anmelden direkt im Infobereich. Liegt die EXE später woanders, zieht Zeitzeuge den Eintrag beim nächsten Start selbst nach. Hattest du früher eine Verknüpfung in `shell:startup` angelegt, lösch sie, sonst startet Zeitzeuge zweimal (der zweite Start beendet sich still).
 
-Beim Start der EXE erscheint sofort ein **Startbild** mit dem Fortschritt (Entpacken, Datenbank, Fenster). Es verschwindet, sobald das Fenster steht. So siehst du gleich, dass Zeitzeuge schon lädt.
+Beim Start der EXE erscheint sofort ein **Startbild** mit Ladebalken. Darunter steht, was Zeitzeuge gerade tut: Programm entpacken, Programm laden, Datenbank öffnen, Fenster aufbauen. Es verschwindet, sobald das Fenster steht. So siehst du gleich, dass Zeitzeuge schon lädt.
 
 ### Zwei PCs: Arbeits-PC und PAW
 

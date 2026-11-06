@@ -2,8 +2,8 @@
 
 Aufruf:  python tests/make_splash.py
 PyInstaller zeigt das Bild sofort beim Start der EXE, noch während sie sich entpackt
-(ZeitZeuge.spec, Splash). Unten links schreibt Zeitzeuge den Fortschritt hinein
-(main_timeline.py, splash_text), deshalb bleibt dort Platz.
+(ZeitZeuge.spec, Splash). Unten zeichnet das Startbild Text und Ladebalken
+(src/splash_screen.py), deshalb bleibt dort Platz.
 """
 import os
 import sys
