@@ -378,7 +378,9 @@ class DayListMixin:
         except Exception as e:
             print(f"Fehler beim Lesen der VPN-Logs: {e}")
         if self.current_date == QDate.currentDate():
-            self.timeline.refresh()
+            # Im Infobereich oder minimiert nur lesen (für die Nachfragen), nicht zeichnen:
+            # spart Rechenzeit und Akku, beim Öffnen wird einmal nachgezeichnet
+            self.timeline.refresh(draw=self.isVisible() and not self.isMinimized())
 
     def apply_vpn_monitor(self):
         """Eigene VPN-Aufzeichnung nur, wenn Sophos Connect oder FortiClient eingeschaltet ist."""

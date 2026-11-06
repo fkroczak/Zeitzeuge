@@ -4,7 +4,7 @@ Teil von TimelineApp (main_timeline.py), nur über main_timeline laden.
 """
 from datetime import datetime
 
-from PySide6.QtCore import QDate
+from PySide6.QtCore import QDate, QEvent
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QApplication, QDialog, QMenu, QSystemTrayIcon
 
@@ -37,7 +37,7 @@ class TrayMixin:
             # Ansicht höchstens alle 30 s neu zeichnen, und nur, wenn heute angezeigt wird
             now = datetime.now()
             last = getattr(self, "_last_track_draw", None)
-            if (self.current_date == QDate.currentDate() and self.isVisible()
+            if (self.current_date == QDate.currentDate() and self.isVisible() and not self.isMinimized()
                     and (last is None or (now - last).total_seconds() > 30)):
                 self._last_track_draw = now
                 self.timeline.draw_timeline(self.current_date)
@@ -174,6 +174,19 @@ class TrayMixin:
                 reader.stop()
         self.close_store()
         QApplication.instance().quit()
+
+    def showEvent(self, event):
+        """Aus dem Infobereich (oder anders) wieder gezeigt: ausgefallenes Zeichnen nachholen."""
+        super().showEvent(event)
+        if self.timeline.draw_stale and not self.isMinimized():
+            self.timeline.draw_timeline(self.current_date)
+
+    def changeEvent(self, event):
+        """Aus der Taskleiste wiederhergestellt: Zeichnen nachholen, das im Hintergrund ausfiel."""
+        super().changeEvent(event)
+        if event.type() == QEvent.WindowStateChange and not self.isMinimized() \
+                and self.timeline.draw_stale:
+            self.timeline.draw_timeline(self.current_date)
 
     def closeEvent(self, event):
         if self.tray and self.config.get("close_to_tray", True) and not self._quitting:

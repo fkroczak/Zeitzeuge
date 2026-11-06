@@ -539,6 +539,9 @@ class TimelineView(QGraphicsView):
         self._vpn_index = None
         self.loading = False    # Logs werden gerade im Hintergrund gelesen
         self._reload = False    # während des Lesens erneut angefordert
+        self._skip_draw = False  # refresh(draw=False): nach dem Lesen nicht zeichnen
+        self._reload_draw = False  # erneutes Lesen soll danach zeichnen
+        self.draw_stale = False  # Daten neuer als die gezeichnete Timeline (Fenster war versteckt)
         self._thread = None
         self._threads = []      # alle gestarteten Einlese-Threads (zum Abwarten beim Beenden)
         self._closing = False   # beim Beenden: Thread darf nichts mehr melden
@@ -628,15 +631,18 @@ class TimelineView(QGraphicsView):
 
     # ----------------------------- Daten laden --------------------------------
 
-    def refresh(self):
+    def refresh(self, draw=True):
         """Logdateien im Hintergrund neu einlesen (nur geänderte Dateien werden wirklich gelesen).
 
         Große Logs oder Netzwerkpfade blockieren so weder den Start noch die Bedienung.
-        Danach wird die Timeline neu gezeichnet.
+        Danach wird die Timeline neu gezeichnet; mit draw=False nur gelesen (Fenster versteckt:
+        Nachfragen brauchen die Daten, das Zeichnen holt draw_stale beim Öffnen nach).
         """
         if self.loading:
             self._reload = True
+            self._reload_draw = self._reload_draw or draw
             return
+        self._skip_draw = not draw
         self.loading = True
         self.loading_changed.emit(True)
         self._thread = threading.Thread(target=self._load_logs, daemon=True)
@@ -693,7 +699,12 @@ class TimelineView(QGraphicsView):
         self.loading_changed.emit(False)
         if self._reload:
             self._reload = False
-            self.refresh()
+            draw, self._reload_draw = self._reload_draw, False
+            self.refresh(draw=draw)
+        if self._skip_draw:
+            self._skip_draw = False
+            self.draw_stale = True
+            return
         self.draw_timeline(self.current_date)
 
     def load_remote_connections(self, date: QDate):
@@ -958,6 +969,7 @@ class TimelineView(QGraphicsView):
 
     def draw_timeline(self, date: QDate):
         """Daten des Tages neu lesen und zeichnen (nach Änderungen an den Daten)."""
+        self.draw_stale = False
         self._day_data = self._collect(date)
         self._render()
         self.day_loaded.emit(self._day_data["activities"], self.pc_entries_for(date))
