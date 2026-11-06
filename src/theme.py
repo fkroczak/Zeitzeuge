@@ -299,7 +299,7 @@ QGroupBox { border: 1px solid $border; border-radius: $radius_cardpx; margin-top
             padding: 12px 8px 8px 8px; background-color: $surface; font-weight: bold; }
 QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 6px; }
 QGroupBox QWidget { font-weight: normal; }
-QGroupBox QLabel, QGroupBox QCheckBox { background: transparent; }
+QGroupBox QLabel, QGroupBox QCheckBox, QGroupBox QRadioButton { background: transparent; }
 QCheckBox { spacing: 8px; }
 QCheckBox::indicator { width: 16px; height: 16px; border: 1px solid $control;
                        background-color: $surface; border-radius: $radius_smpx; }
