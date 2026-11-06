@@ -26,10 +26,10 @@ def spec_value(name):
     return eval(m.group(1))  # nur Literale aus der eigenen spec
 
 
-def build_script():
+def build_script(assets=None):
     """Tcl-Skript wie beim Bauen (ZeitZeuge.spec → Splash.generate_script)."""
     splash_mod = pytest.importorskip("PyInstaller.building.splash")
-    splash_screen.install(TOTAL)
+    splash_screen.install(TOTAL, assets)
     s = object.__new__(splash_mod.Splash)  # nur generate_script, ohne Tcl/Tk-Suche beim Bauen
     s.text_pos = spec_value("text_pos")
     s.text_size = spec_value("text_size")
@@ -66,7 +66,8 @@ def pump(root, seconds):
 
 
 def test_script_runs_with_progress(tk_root):
-    script = build_script()
+    tk_root.tk.call("tk", "scaling", 96 / 72)  # 100 %
+    script = build_script(os.path.join(ROOT, "assets"))
     w, h = 420, 170
     # Bilddaten wie im Bootloader, hier als weiße Fläche in Bildgröße
     row = "{" + " ".join(["#ffffff"] * w) + "}"
@@ -101,3 +102,35 @@ def test_script_runs_with_progress(tk_root):
     # Ein kleinerer Wert setzt den Balken nicht zurück
     tk_root.tk.call("set", "status_text", "60|Später …")
     assert float(tk_root.tk.eval("set zz_goal")) == 84
+
+
+def test_bild_je_skalierung(tk_root):
+    """Bei 150 % nimmt das Startbild das größere Bild, mittig, Balken und Text wachsen mit."""
+    tk_root.tk.call("tk", "scaling", 1.5 * 96 / 72)
+    script = build_script(os.path.join(ROOT, "assets"))
+    with open(os.path.join(ROOT, "assets", "splash.png"), "rb") as f:
+        tk_root.tk.call("set", "_image_data", f.read())  # wie der Bootloader: PNG-Daten
+    tk_root.tk.eval(script)
+    w, h = splash_screen.SIZE
+    assert tk_root.tk.eval("set zz_s") == "150"
+    assert (int(tk_root.tk.eval("image width splash_image")),
+            int(tk_root.tk.eval("image height splash_image"))) == (round(w * 1.5), round(h * 1.5))
+    x0, y0, x1, y1 = splash_screen.BAR
+    coords = [float(v) for v in tk_root.tk.eval(".root.canvas coords zz_track").split()]
+    assert coords == [round(x0 * 1.5), round(y0 * 1.5), round(x1 * 1.5), round(y1 * 1.5)]
+    width = float(tk_root.tk.eval("set display_width"))
+    assert float(tk_root.tk.eval("set x_position")) == pytest.approx((width - w * 1.5) / 2, abs=1)
+
+
+def test_bilder_fuer_alle_skalierungen():
+    for scale in splash_screen.SCALES:
+        assert os.path.exists(splash_screen.image_path(os.path.join(ROOT, "assets"), scale)), scale
+
+
+def test_manifest_dpi_bewusst():
+    """EXE ist DPI-bewusst wie Qt, sonst springt das Startbild beim Start von Qt."""
+    pytest.importorskip("PyInstaller")
+    from PyInstaller.utils.win32 import winmanifest
+    xml = winmanifest.create_application_manifest(splash_screen.manifest()).decode()
+    assert "PerMonitorV2" in xml and "true/pm" in xml and "longPathAware" in xml
+    assert "Microsoft.Windows.Common-Controls" in xml

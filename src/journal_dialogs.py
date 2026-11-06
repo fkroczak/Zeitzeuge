@@ -673,7 +673,7 @@ def prompt_thresholds(config):
 
 
 class DocPromptDialog(QDialog):
-    """Einstellungen: Nachfragen nach erkannten Tätigkeiten und Erinnerungen."""
+    """Einstellungen: Nachfragen nach erkannten Tätigkeiten, Erinnerungen und Benachrichtigungen."""
 
     MODES = [("window", "Kleines Fenster unten rechts"), ("tray", "Nur Meldung im Infobereich"),
              ("off", "Aus (nur in der Zeile „Doku“ zeigen)")]
@@ -688,7 +688,7 @@ class DocPromptDialog(QDialog):
     def __init__(self, config, parent=None):
         super().__init__(parent)
         self.config = config
-        self.setWindowTitle("Nachfragen und Erinnerungen")
+        self.setWindowTitle("Nachfragen und Benachrichtigungen")
         self.setMinimumWidth(480)
         layout = QVBoxLayout(self)
         info = QLabel("Erkennt Zeitzeuge eine Tätigkeit ohne Dokumentation, fragt es nach: "
@@ -765,6 +765,13 @@ class DocPromptDialog(QDialog):
                                    "Buchungen überschneiden sich, Quote unter Ziel")
         self.day_checks.setChecked(config.get("day_checks_enabled", True))
         form.addRow("", self.day_checks)
+
+        # Meldungen unten rechts (Windows-Benachrichtigungen), die nur informieren
+        self.close_hint = QCheckBox("Hinweis „Zeitzeuge &läuft weiter“ beim Schließen des Fensters")
+        self.close_hint.setToolTip("Erscheint einmal je Start, wenn du das Fenster schließt und "
+                                   "Zeitzeuge im Infobereich weiter aufzeichnet")
+        self.close_hint.setChecked(config.get("tray_hint_on_close", True))
+        form.addRow("Benachrichtigungen:", self.close_hint)
         layout.addLayout(form)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -781,3 +788,4 @@ class DocPromptDialog(QDialog):
         self.config["prompt_end_of_day"] = self.end_of_day.isChecked()
         self.config["prompt_on_quit"] = self.on_quit.isChecked()
         self.config["day_checks_enabled"] = self.day_checks.isChecked()
+        self.config["tray_hint_on_close"] = self.close_hint.isChecked()

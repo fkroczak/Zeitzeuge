@@ -542,7 +542,7 @@ class MenusMixin:
             (menu.addAction("Daten&quellen …", lambda: self.show_settings("sources")), "plug"))
         menu.addSeparator()
         self._icon_actions += [
-            (menu.addAction("&Nachfragen und Erinnerungen …", self.edit_prompt_settings), "bell"),
+            (menu.addAction("&Nachfragen und Benachrichtigungen …", self.edit_prompt_settings), "bell"),
             (menu.addAction("Kunden&liste …", self.edit_customers), "users"),
             (menu.addAction("Text&bausteine …", self.edit_snippets), "edit"),
         ]

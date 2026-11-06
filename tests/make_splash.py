@@ -1,6 +1,8 @@
-"""Startbild der EXE (assets/splash.png) aus dem Logo erzeugen.
+"""Startbild der EXE (assets/splash.png und splash_<prozent>.png) aus dem Logo erzeugen.
 
 Aufruf:  python tests/make_splash.py
+Je Bildschirmskalierung (splash_screen.SCALES, z. B. 125 %, 150 %) ein eigenes, scharfes Bild:
+Die EXE ist DPI-bewusst, Windows vergrößert das Startbild also nicht mehr selbst.
 PyInstaller zeigt das Bild sofort beim Start der EXE, noch während sie sich entpackt
 (ZeitZeuge.spec, Splash). Unten zeichnet das Startbild Text und Ladebalken
 (src/splash_screen.py), deshalb bleibt dort Platz.
@@ -14,15 +16,21 @@ from PySide6.QtGui import QColor, QFont, QGuiApplication, QImage, QPainter, QPen
 from PySide6.QtSvg import QSvgRenderer
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-W, H = 420, 170
+sys.path.insert(0, os.path.join(ROOT, "src"))
+import splash_screen  # noqa: E402
+
+W, H = splash_screen.SIZE
 
 
-def main():
-    app = QGuiApplication(sys.argv)  # noqa: F841 (Schriften brauchen eine Anwendung)
-    img = QImage(W, H, QImage.Format_RGB32)
+def render(scale):
+    """Startbild für eine Skalierung in Prozent (100 = 420 × 170)."""
+    s = scale / 100
+    img = QImage(round(W * s), round(H * s), QImage.Format_RGB32)
     img.fill(QColor("#FFFFFF"))
     p = QPainter(img)
     p.setRenderHint(QPainter.Antialiasing)
+    p.setRenderHint(QPainter.TextAntialiasing)
+    p.scale(s, s)
     p.setPen(QPen(QColor("#E4E4E7"), 2))
     p.drawRect(QRectF(1, 1, W - 2, H - 2))
     QSvgRenderer(os.path.join(ROOT, "assets", "zeitzeuge.svg")).render(p, QRectF(26, 26, 72, 72))
@@ -38,9 +46,15 @@ def main():
     p.setPen(QPen(QColor("#E4E4E7"), 1))
     p.drawLine(26, 120, W - 26, 120)
     p.end()
-    out = os.path.join(ROOT, "assets", "splash.png")
-    img.save(out)
-    print(out)
+    return img
+
+
+def main():
+    app = QGuiApplication(sys.argv)  # noqa: F841 (Schriften brauchen eine Anwendung)
+    for scale in splash_screen.SCALES:
+        out = splash_screen.image_path(os.path.join(ROOT, "assets"), scale)
+        render(scale).save(out)
+        print(out)
 
 
 if __name__ == "__main__":
