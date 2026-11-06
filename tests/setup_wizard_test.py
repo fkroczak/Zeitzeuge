@@ -77,7 +77,15 @@ def gui_test():
     assert calls == ["pbx"]
     assert window.config["pbx_reader_enabled"] is False and window.pbx_reader is None
     assert "noch nicht eingerichtet" in wizard.step_pages["pbx"].state.text()
+    # Edge-Quelle: erst anmelden, Weiter gesperrt, Einrichten ist der Hauptknopf
+    page = wizard.step_pages["pbx"]
+    assert not wizard.next_button.isEnabled() and page.setup_button.isDefault()
+    assert not page.gate.isHidden()
+    before = wizard.index
+    wizard.next()
+    assert wizard.index == before, "Weiter ohne Anmeldung"
     wizard.step_pages["pbx"].use.setChecked(False)  # doch nicht: Weiter lässt 3CX aus
+    assert wizard.next_button.isEnabled() and page.gate.isHidden()
     wizard.next()
     assert window.pbx_reader is None and not window.config["pbx_reader_enabled"]
 

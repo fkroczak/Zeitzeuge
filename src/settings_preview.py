@@ -191,7 +191,9 @@ class PreviewPane(QFrame):
         self.table.setSelectionMode(QAbstractItemView.NoSelection)
         self.table.setFocusPolicy(Qt.NoFocus)
         self.table.verticalHeader().setDefaultSectionSize(24)
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        # Breiten einmal nach dem Füllen messen: ResizeToContents misst bei jedem setItem die
+        # ganze Tabelle neu (bei 100+ Zeilen hing das Fenster dadurch fast eine Minute)
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
         self.table.horizontalHeader().setStretchLastSection(True)
         self.table.setFixedHeight(26 + self.LIST_ROWS * 24 + 4)
         layout.addWidget(self.table)
@@ -229,7 +231,9 @@ class PreviewPane(QFrame):
     def _fill_list(self, cfg):
         from app_daylist import new_details  # erst hier: app_daylist lädt das Hauptfenster
         entries = list_entries(self.timeline, cfg)
-        self.table.setRowCount(len(entries))
+        table = self.table
+        table.setUpdatesEnabled(False)
+        table.setRowCount(len(entries))
         for row, a in enumerate(entries):
             start, end = datetime.strptime(a["start"], FMT), datetime.strptime(a["end"], FMT)
             kind = type_label(a) if "app" not in a or a.get("pc_block") else f"PC: {app_label(a['app'])}"
@@ -237,4 +241,7 @@ class PreviewPane(QFrame):
             values = [f"{start:%H:%M}", f"{end:%H:%M}", kind, who,
                       new_details(a.get("details", ""), kind, who)]
             for col, text in enumerate(values):
-                self.table.setItem(row, col, QTableWidgetItem(text))
+                table.setItem(row, col, QTableWidgetItem(text))
+        for col in range(table.columnCount() - 1):  # letzte Spalte füllt den Rest
+            table.resizeColumnToContents(col)
+        table.setUpdatesEnabled(True)

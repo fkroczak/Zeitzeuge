@@ -26,6 +26,8 @@ import warnings
 # save_config über "import main_timeline": ohne den Eintrag würde es ein zweites Mal geladen.
 if __name__ == "__main__":
     sys.modules.setdefault("main_timeline", sys.modules[__name__])
+    import splash_screen
+    splash_screen.step(58, "Programm laden …")  # die Importe darunter dauern am längsten
 
 from datetime import datetime
 
@@ -768,6 +770,7 @@ def acquire_single_instance(path=None, wait_ms=500):
 
 
 if __name__ == "__main__":
+    splash_screen.step(72, "Oberfläche vorbereiten …")
     QLocale.setDefault(GERMAN)
     install_error_hooks()
     icons.set_windows_app_id()  # vor dem ersten Fenster, sonst gilt die Kennung von python.exe
@@ -780,21 +783,26 @@ if __name__ == "__main__":
     install_translator(app)
     app.setQuitOnLastWindowClosed(False)
     if not acquire_single_instance(wait_ms=20000 if "--neustart" in sys.argv else 500):
+        splash_screen.close()
         if "--minimized" not in sys.argv:
             QMessageBox.information(None, "Zeitzeuge",
                                     "Zeitzeuge läuft schon. Du findest es im Infobereich neben der Uhr.")
         sys.exit(0)
     from protect_dialogs import ask_unlock
+    splash_screen.step(78, "Datenbank öffnen …")
     try:
-        open_store(ask=ask_unlock)
+        open_store(ask=lambda store: (splash_screen.close(), ask_unlock(store))[1])
     except StoreLocked:
         sys.exit(0)  # gesperrt gelassen: nichts anlegen, nichts überschreiben
     except datastore.Busy as e:
+        splash_screen.close()
         QMessageBox.critical(None, "Zeitzeuge", f"Die Datenbank lässt sich nicht öffnen.\n\n{e}\n\n"
                              "Zeitzeuge beendet sich, ohne etwas zu ändern. Details in fehler.log.")
         safe_io.log(f"Datenbank nicht geöffnet: {e}")
         sys.exit(1)
+    splash_screen.step(84, "Fenster aufbauen …")
     window = TimelineApp()
+    splash_screen.step(96, "Tag anzeigen …")
     from hang_watch import HangWatch
     hang_watch = HangWatch(os.path.join(DATA_DIR, "haenger.log"), app)
     if "--minimized" in sys.argv or window.config.get("start_minimized", False):
@@ -802,6 +810,9 @@ if __name__ == "__main__":
             window.showMinimized()
     else:
         window.show()
+    splash_screen.close()
+    import autostart
+    autostart.refresh()  # EXE umgezogen oder ersetzt: Autostart zeigt auf diese
     code = app.exec()
     if not window._quitting:  # z. B. Windows-Abmeldung: laufenden Abschnitt trotzdem speichern
         window.quit_app()

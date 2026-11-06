@@ -88,6 +88,7 @@ run("http://127.0.0.1:8812", lambda r: len(calls()) >= 8, "Anmeldung nach Neusta
 # 4. Erster Lauf liest 14 Tage zurück, Blättern auf ältere Tage liest nach
 from datetime import date, timedelta
 
+START_DAY = date.today()  # Läuft der Test über Mitternacht, lädt der Leser die Seite neu (s. u.)
 
 def days_back(n):
     return (date.today() - timedelta(days=n)).isoformat()
@@ -134,8 +135,10 @@ checks = [
     (by_name["Info Cafeteria"]["direction"], "Ausgehend"),
     (by_name["Carla Test"]["direction"], "Verpasst"),
     # verschiedene Anrufer zählen: läuft der Test über Mitternacht, verschiebt die
-    # nachgebaute Seite "Heute"/"Gestern" und dieselben Anrufe kommen mit neuem Datum
-    (len({c["name"] for c in calls() if c["duration_s"] > 0 and c["name"] != "Alt Kunde"}), 7),
+    # nachgebaute Seite "Heute"/"Gestern" und dieselben Anrufe kommen mit neuem Datum.
+    # Außerdem lädt der Leser dann neu, und der Nachbau zeigt schon "Neu Anrufer" (Schritt 5).
+    (len({c["name"] for c in calls() if c["duration_s"] > 0
+          and c["name"] not in ("Alt Kunde", "Neu Anrufer")}), 7),
 ]
 for got, want in checks:
     if got != want:
@@ -143,7 +146,8 @@ for got, want in checks:
         sys.exit(1)
 
 # 5. Neue Anrufe kommen nur nach echtem Neuladen der Seite (3CX aktualisiert sich nicht selbst)
-assert "Neu Anrufer" not in {c["name"] for c in calls()}, "neuer Anruf schon vor dem Neuladen"
+if date.today() == START_DAY:  # nach Mitternacht hat der Leser schon neu geladen (gewollt)
+    assert "Neu Anrufer" not in {c["name"] for c in calls()}, "neuer Anruf schon vor dem Neuladen"
 PbxReader.RELOAD_INTERVAL = 3
 run("http://127.0.0.1:8812", lambda r: "Neu Anrufer" in {c["name"] for c in calls()},
     "nach dem Neuladen neuen Anruf gelesen")

@@ -47,10 +47,19 @@ def gui_test():
     # Design in den Einstellungen.
     menu = window.view_button.menu()
     texts = [a.text().replace("&", "").split("\t")[0] for a in menu.actions()]
-    for text in ("Was zeigen die Ansichten? …", "Zeilen der Timeline", "Wochenabschluss …"):
+    for text in ("Was zeigen die Ansichten? …", "Zeilen der Timeline", "Wochenabschluss …",
+                 "Dunkles Design"):
         assert text in texts, (text, texts)
-    for text in ("Zusammengefasst", "Einzeln", "Dunkles Design", "Ganzer Tag", "Arbeitszeit"):
+    for text in ("Zusammengefasst", "Einzeln", "Ganzer Tag", "Arbeitszeit"):
         assert text not in texts, (text, texts)
+    # Hell/Dunkel direkt im Menü Ansicht: schaltet dieselbe Aktion wie im Menü Einstellungen
+    dark_entry = next(a for a in menu.actions() if a.text().replace("&", "") == "Dunkles Design")
+    was_dark = window.dark_mode
+    dark_entry.trigger()
+    assert window.dark_mode is (not was_dark) and window.dark_action.isChecked() is (not was_dark)
+    assert window.config["dark_mode"] is (not was_dark)
+    dark_entry.trigger()
+    assert window.dark_mode is was_dark
     chips = window.view_chips.buttons
     assert set(chips) == set(dict(window.VIEWS)), "jede Ansicht hat einen Chip"
     chips["rules"][0].click()
@@ -97,13 +106,35 @@ def gui_test():
     row = next(r for r in settings.rows if r.spec[5] == "pc_blocks_action")
     QTest.mouseMove(row, row.rect().center())
     settings.preview_hover(row.spec)  # wie enterEvent
+    QTest.qWait(settings.HOVER_DELAY_MS + 80)  # Darüberfahren wird kurz gebündelt
     assert preview.variant and preview.timeline.config["pc_blocks"] is False, preview.variant
     assert window.config.get("pc_blocks", True) is True, "Darüberfahren darf nichts speichern"
     assert not any(p.get("pc_block") for p in preview.timeline._pc_band)
     settings.preview_hover(None)
+    QTest.qWait(settings.HOVER_DELAY_MS + 80)
     assert preview.variant is None and any(p.get("pc_block") for p in preview.timeline._pc_band)
     # Vorschau bleibt sichtbar und kräftig, auch ohne Maus darüber (nicht verblasst)
     assert preview.timeline.isVisible() and preview.timeline.graphicsEffect() is None
+    # Viele Zeilen (PC-Verlauf, jedes Fenster einzeln) dürfen das Fenster nicht aufhalten:
+    # früher maß jede Zelle die ganze Tabelle neu (fast eine Minute Hänger unter Windows)
+    import time
+    preview.show_variant({"show_pc_in_list": True, "pc_blocks": False, "list_view": "grouped"}, "viele")
+    assert preview.table.rowCount() > 80, preview.table.rowCount()
+    start = time.perf_counter()
+    for _ in range(3):
+        preview.show_variant({"show_pc_in_list": True, "pc_blocks": False, "list_view": "grouped"}, "viele")
+    assert time.perf_counter() - start < 1.5, time.perf_counter() - start
+    preview.show_variant(None)
+    # Schnelles Wischen über viele Zeilen: nur die letzte zählt, nicht eine Neuzeichnung je Zeile
+    drawn = []
+    original = preview.show_variant
+    preview.show_variant = lambda *a: (drawn.append(a), original(*a))
+    for r in [r for r in settings.rows if r.spec[1] in ("toggle", "check")][:6]:
+        settings.preview_hover(r.spec)
+    settings.preview_hover(None)
+    QTest.qWait(settings.HOVER_DELAY_MS + 80)
+    assert len(drawn) <= 1, drawn
+    preview.show_variant = original
     # Ansicht „Telefonate“: nur Anrufe
     preview.show_variant({"list_view": "calls"}, "Telefonate")
     kinds = [preview.table.item(r, 2).text() for r in range(preview.table.rowCount())]
@@ -114,6 +145,7 @@ def gui_test():
     combo = next(r for r in settings.rows if r.spec[5] == "list_view").control
     single = combo.findData("single")
     combo.highlighted.emit(single)
+    QTest.qWait(settings.HOVER_DELAY_MS + 80)
     assert preview.timeline.config["list_view"] == "single" and window.config.get("list_view") != "single"
     rows_grouped = preview.table.rowCount()
     combo.activated.emit(single)
@@ -227,6 +259,22 @@ def gui_test():
     light, dark = sorted((lum(incoming), lum(outgoing)))
     assert (dark + 0.05) / (light + 0.05) > 1.8, "nur am Farbton unterscheidbar"
     assert CALL_MARKS["Eingehend"] != CALL_MARKS["Ausgehend"]
+    # Farbe je Richtung einstellbar (Menü Farben der Zeilen): eine alte Farbe für die ganze
+    # Zeile Telefon bleibt für die andere Richtung erhalten
+    colors_menu = next(a.menu() for a in window.rows_menu.actions()
+                       if a.menu() and a.text().replace("&", "") == "Farben der Zeilen")
+    entries = [a.text() for a in colors_menu.actions()]
+    assert "Telefon eingehend …" in entries and "Telefon ausgehend …" in entries, entries
+    assert "Telefon …" not in entries, entries
+    window.set_row_color("call", "#112233")
+    window.set_call_color("Ausgehend", "#AA5500")
+    out = entry_color({"type": "Telefonat", "direction": "Ausgehend"}, window.config).name()
+    inc = entry_color({"type": "Telefonat", "direction": "Eingehend"}, window.config).name()
+    assert (out, inc) == ("#aa5500", "#112233"), (out, inc)
+    assert "call" not in (window.config.get("row_colors") or {})
+    window.set_row_color("call", None)  # Standardfarbe: beide Richtungen zurück
+    assert not window.config.get("call_colors")
+    assert entry_color({"type": "Telefonat", "direction": "Ausgehend"}, window.config).name() != "#aa5500"
 
     # Schmales Fenster: Ansicht und Einstellungen bleiben sichtbar
     window.resize(640, 480)

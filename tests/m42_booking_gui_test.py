@@ -139,9 +139,35 @@ def gui_test():
     assert doc.item()["ticket"] == "TCK0000049374", doc.item()
     doc.deleteLater()
 
+    # Direkt im Feld Ticket suchen: tippen, Treffer erscheinen darunter, Auswahl setzt die Nummer
+    from PySide6.QtTest import QTest
+    doc = EntryDialog(start, end, ["Systems"], ["Fernwartung"], **window.entry_form_options(start, end))
+    doc.show()
+    form = doc.form
+    reader.searches.clear()
+    form.ticket_edit.lineEdit().textEdited.emit("Prakt")  # wie getippt
+    form.ticket_edit.setEditText("Prakt")
+    QTest.qWait(form.LOOKUP_DELAY_MS + 200)
+    assert reader.searches == ["Prakt"], reader.searches
+    assert form._lookup_model.rowCount() == 1, form._lookup_model.rowCount()
+    assert "1 Ticket in Matrix42" in form.ticket_status.text(), form.ticket_status.text()
+    form._pick_lookup(form._lookup_model.index(0, 0))
+    QTest.qWait(20)
+    assert form.ticket_edit.currentText() == "TCK0000049374"
+    assert form.customer_edit.currentText() == "Systems", "Kunde aus dem Ticket, wenn leer"
+    # Ticketnummer getippt: keine Suche
+    reader.searches.clear()
+    form.ticket_edit.setEditText("TCK0000049374")
+    form.ticket_edit.lineEdit().textEdited.emit("TCK0000049374")
+    QTest.qWait(form.LOOKUP_DELAY_MS + 100)
+    assert reader.searches == [], reader.searches
+    doc.close()
+    doc.deleteLater()
+
     # Ohne Matrix42 kein Knopf
     window.m42_reader = None
     assert window.entry_form_options(start, end)["ticket_search"] is None
+    assert window.entry_form_options(start, end)["ticket_lookup"] is None
     window.m42_reader = reader
     assert QDialog  # (Import für den Typ oben)
     window.quit_app()

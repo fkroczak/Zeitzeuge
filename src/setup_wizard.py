@@ -204,6 +204,10 @@ GROUPS = [
 SOURCES = {s["id"]: s for _g, items in GROUPS for s in items}
 
 
+# Quellen über Edge: erst anmelden, dann weiter (sonst läuft der Leser ohne Anmeldung ins Leere)
+LOGIN_FIRST = {"pbx": "pbx_reader", "m42": "m42_reader"}
+
+
 class SetupWizard(QDialog):
     """Assistent über dem Hauptfenster (main), Schritt für Schritt."""
 
@@ -317,6 +321,7 @@ class SetupWizard(QDialog):
         if s["key"]:
             page.use = QCheckBox(f"{s['title']} verwenden")
             page.use.setChecked(True)
+            page.use.toggled.connect(lambda _on, i=sid: self._update_gate(i))
             col.addWidget(page.use)
         page.state = QLabel()
         page.state.setObjectName("hint")
@@ -330,6 +335,13 @@ class SetupWizard(QDialog):
             row.addStretch(1)
             col.addLayout(row)
             page.setup_button = button
+        if sid in LOGIN_FIRST:
+            page.gate = QLabel(f"Erst einrichten und anmelden: „{s.get('button', 'Einrichten …')}“. "
+                               "Willst du es jetzt nicht nutzen, nimm das Häkchen "
+                               f"„{s['title']} verwenden“ heraus, dann geht es weiter.")
+            page.gate.setObjectName("hint")
+            page.gate.setWordWrap(True)
+            col.addWidget(page.gate)
         col.addStretch(1)
         return page
 
@@ -364,12 +376,42 @@ class SetupWizard(QDialog):
         last = self.index == self.stack.count() - 1 and self.index > 0
         self.next_button.setText("&Fertig" if last else "&Weiter >")
         self.cancel_button.setVisible(not last)
+        self._update_gate(self.steps[self.index - 1] if 0 < self.index <= total else None)
 
+    def needs_login(self, sid):
+        """3CX, Matrix42: gewählt, aber noch nicht eingerichtet und angemeldet."""
+        page = self.step_pages.get(sid)
+        if sid not in LOGIN_FIRST or page is None or page.use is None or not page.use.isChecked():
+            return False
+        return getattr(self.main, LOGIN_FIRST[sid], None) is None
+
+    def _update_gate(self, sid):
+        """Bei 3CX und Matrix42 führt der Weg erst über „einrichten und anmelden“:
+        Weiter ist gesperrt, der Einrichten-Knopf ist der Hauptknopf (Enter)."""
+        if sid is None or self.stack.currentWidget() is not self.step_pages.get(sid):
+            self.next_button.setEnabled(True)
+            self.next_button.setDefault(True)
+            return
+        page = self.step_pages[sid]
+        blocked = self.needs_login(sid)
+        self.next_button.setEnabled(not blocked)
+        button = getattr(page, "setup_button", None)
+        if button is not None:
+            button.setDefault(blocked)
+            self.next_button.setDefault(not blocked)
+            if blocked:
+                button.setFocus()
+        if sid in LOGIN_FIRST:
+            page.gate.setVisible(blocked)
     def next(self):
         if self.index == 0:
             self._build_steps()
         elif self.index <= len(self.steps):
-            self._apply_step(self.steps[self.index - 1])
+            sid = self.steps[self.index - 1]
+            if self.needs_login(sid):  # auch per Tastatur nicht an der Anmeldung vorbei
+                self._update_gate(sid)
+                return
+            self._apply_step(sid)
         if self.index >= self.stack.count() - 1:
             self.accept()
             return
@@ -443,6 +485,7 @@ class SetupWizard(QDialog):
         if page is not None and page.use is not None and s["key"]:
             page.use.setChecked(self.is_on(sid) or page.use.isChecked())
         self._update_state(sid)
+        self._update_gate(sid)
 
     def _update_state(self, sid):
         page = self.step_pages.get(sid)
@@ -453,6 +496,7 @@ class SetupWizard(QDialog):
             attr = {"pbx": "pbx_reader", "itm": "itm_reader", "m42": "m42_reader"}[sid]
             reader = getattr(self.main, attr, None)
             text = f"Stand: {reader.status}" if reader and getattr(reader, "status", "") else (
+                "Stand: noch nicht eingerichtet." if sid in LOGIN_FIRST else
                 "Stand: noch nicht eingerichtet. Mit „Weiter“ schaltet Zeitzeuge es ein, die "
                 "Anmeldung kommt dann über den Infobereich.")
         elif sid == "recovery":
