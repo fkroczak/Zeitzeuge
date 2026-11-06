@@ -691,10 +691,9 @@ class DocPromptDialog(QDialog):
         self.setWindowTitle("Nachfragen und Erinnerungen")
         self.setMinimumWidth(480)
         layout = QVBoxLayout(self)
-        info = QLabel("Hat Zeitzeuge eine Tätigkeit erkannt, die du noch nicht dokumentiert hast, "
-                      "fragt es kurz nach: „Was hast du gemacht?“. So fehlt am Ende des Tages "
-                      "nichts im Ticket. Was zur selben Arbeit gehört (gleicher Kunde, gleiche Zeit), "
-                      "fragt es nur einmal ab.")
+        info = QLabel("Erkennt Zeitzeuge eine Tätigkeit ohne Dokumentation, fragt es nach: "
+                      "„Was hast du gemacht?“. So fehlt abends nichts im Ticket. Was zusammengehört "
+                      "(gleicher Kunde, gleiche Zeit), fragt es nur einmal ab.")
         info.setWordWrap(True)
         prose(info)
         layout.addWidget(info)

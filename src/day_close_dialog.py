@@ -78,10 +78,10 @@ class DayCloseDialog(QDialog):
         self.summary = QLabel(self)
         self.summary.setWordWrap(True)
         layout.addWidget(self.summary)
-        intro = QLabel("Zeitzeuge hat den Tag aus Verbindungen, Telefonaten, KI-Vorschlägen, Regeln und "
-                       "PC-Aktivität zu Blöcken je Kunde zusammengestellt. Prüfe die angehakten Zeilen, "
-                       "ändere Kunde, Ticket oder Text per Doppelklick und bestätige unten einmal für alle. "
-                       "Gebucht wird mit Status „Neu“, freigeben kannst du danach in Matrix42.", self)
+        intro = QLabel("Der Tag als Blöcke je Kunde, aus Verbindungen, Telefonaten, KI-Vorschlägen, Regeln "
+                       "und PC-Aktivität. Angehakte Zeilen prüfen, per Doppelklick Kunde, Ticket oder Text "
+                       "ändern, unten einmal für alle bestätigen. Gebucht wird mit Status „Neu“, "
+                       "freigeben wie gewohnt in Matrix42.", self)
         intro.setWordWrap(True)
         intro.setObjectName("hint")
         prose(intro)

@@ -1,5 +1,5 @@
 """
-Kunden: Fenster „Kunden & Erkennung“ und die Befehle dazu im Hauptfenster.
+Kunden: Fenster „Kundenliste“ und die Befehle dazu im Hauptfenster.
 
 - CustomersDialog (Aufbau wie „Companion“): links die Kunden mit Suche, Kürzel, Zahl der
   Merkmale und Stunden der letzten 7 Tage; rechts Name, Kundennummer und „Woran Zeitzeuge
@@ -179,7 +179,7 @@ class CustomersDialog(QDialog):
         self.auto = {d.get("key") for d in config.get("customers_auto") or []
                      if isinstance(d, dict) and d.get("status") == "gelernt"}
         theme = THEMES["dark" if getattr(parent, "dark_mode", False) else "light"]
-        self.setWindowTitle("Kunden & Erkennung")
+        self.setWindowTitle("Kundenliste")
         self.resize(980, 680)
         self.setMinimumSize(860, 480)  # passt auch auf Full HD mit 200 % Anzeige (960 × 540)
         self.customers = copy.deepcopy(cl.customer_list(config))
@@ -190,7 +190,7 @@ class CustomersDialog(QDialog):
         layout.setContentsMargins(SPACE_L, SPACE_L, SPACE_L, SPACE_M)
         layout.setSpacing(SPACE_M)
         top = QHBoxLayout()
-        title = QLabel("Kunden & Erkennung")
+        title = QLabel("Kundenliste")
         title.setObjectName("page_title")
         top.addWidget(title)
         top.addStretch(1)
