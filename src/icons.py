@@ -4,6 +4,7 @@ Die Formen stammen aus Lucide (https://lucide.dev, ISC-Lizenz). Sie werden in de
 Textfarbe des aktuellen Designs gezeichnet, deshalb passen sie zu Hell und Dunkel.
 """
 import re
+from functools import lru_cache
 
 from PySide6.QtCore import QByteArray, QRectF, Qt
 from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
@@ -126,6 +127,13 @@ PAUSE_BARS = ('<rect x="96" y="86" width="26" height="84" rx="7" fill="{c}"/>'
 
 
 def _render(svg, sizes):
+    """Gerendertes Icon; gleiches SVG nur einmal rendern (Start, Designwechsel, Einstellungen
+    brauchen dieselben Symbole immer wieder, je Icon 5 Pixmaps ≈ 1,5 ms)."""
+    return QIcon(_render_cached(svg, sizes))  # Kopie: QIcon ist implizit geteilt, kostet nichts
+
+
+@lru_cache(maxsize=512)
+def _render_cached(svg, sizes):
     renderer = QSvgRenderer(QByteArray(svg.encode()))
     result = QIcon()
     for size in sizes:

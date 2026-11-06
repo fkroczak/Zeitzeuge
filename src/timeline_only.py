@@ -674,6 +674,13 @@ class TimelineView(QGraphicsView):
             except Exception as e:
                 print(f"Fehler beim Lesen der {name}-Logs: {e}")
                 indexes.append(ConnectionIndex([]))
+        # Windows-Ereignisprotokoll (wevtutil, bis zu Sekunden) hier im Hintergrund lesen:
+        # nach logs_loaded baut der GUI-Thread den RDP-Index neu und trifft dann den frischen Cache
+        if self.config.get("mstsc_enabled", True) or self.config.get("rdmbetter_enabled", True):
+            try:
+                self.rdp_reader.event_sessions()
+            except Exception as e:  # Timeline darf daran nie scheitern
+                print(f"RDP-Ereignisprotokoll nicht vorab gelesen: {e}")
         if not self._closing:
             self.logs_loaded.emit(*indexes)  # Qt stellt das im GUI-Thread zu
 

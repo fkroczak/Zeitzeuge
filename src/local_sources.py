@@ -28,6 +28,7 @@ from urllib.parse import urlsplit
 
 import datastore
 import safe_io
+import timefmt
 import tickets
 
 TIME_FMT = "%Y-%m-%d %H:%M:%S"
@@ -65,7 +66,7 @@ def _fmt(when):
 
 
 def _t(text):
-    return datetime.strptime(text, TIME_FMT)
+    return timefmt.parse(text)  # wie strptime, aber schnell (Archiv mit Tausenden Einträgen)
 
 
 def _no_window():
