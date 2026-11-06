@@ -122,3 +122,22 @@ def test_vorschau_und_loeschen_gesamt():
         "Vor dem 28.07.2026 liegt kein PC-Verlauf."
     datastore.unregister(store.data_dir)
     store.close()
+
+
+def test_spuren_verlauf_kuerzen():
+    """Spuren vom PC, Remotedesktop, VPN: was vor dem Stichtag endet, fällt weg, der Rest bleibt."""
+    from rdp_reader import RdpReader
+    assert retention.trace_days({}) == 365
+    assert retention.trace_days({"trace_history_days": 5}) == 30          # mindestens 30
+    assert retention.trace_days({"trace_history_days": "x"}) == 365       # ungültig: Standard
+    data = {"sessions": [{"start": "2025-01-01 08:00:00", "end": "2025-01-01 09:00:00"},
+                         {"start": "2025-12-31 23:00:00", "end": "2026-01-01 01:00:00"},  # endet danach
+                         {"start": "2026-02-01 08:00:00"}],                                # ohne Ende: bleibt
+            "names": {"a": "b"}}
+    assert retention.prune_entries(data, "2026-01-01") == 1
+    assert [s["start"][:10] for s in data["sessions"]] == ["2025-12-31", "2026-02-01"]
+    assert data["names"] == {"a": "b"}
+    reader = RdpReader({})
+    reader._data = {"sessions": [{"start": "2020-01-01 08:00:00", "end": "2020-01-01 09:00:00"},
+                                 {"start": "2026-11-01 08:00:00", "end": "2026-11-01 09:00:00"}]}
+    assert reader.prune("2026-01-01") == 1 and len(reader._data["sessions"]) == 1

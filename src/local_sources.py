@@ -27,6 +27,7 @@ from datetime import datetime, timedelta, timezone
 from urllib.parse import urlsplit
 
 import datastore
+import retention
 import safe_io
 import timefmt
 import tickets
@@ -504,6 +505,17 @@ class LocalReader:
                 return parsed
             self._data = parsed
         return self._data
+
+    def prune(self, before):
+        """Einträge, die vor before enden, aus dem Archiv löschen (Spuren-Verlauf begrenzen)."""
+        with self._lock:
+            self._archive()
+            if self._data is None:  # gerade gesperrt: beim nächsten Lauf
+                return 0
+            removed = retention.prune_entries(self._data, before)
+        if removed:
+            self._save()
+        return removed
 
     @staticmethod
     def _valid(v):

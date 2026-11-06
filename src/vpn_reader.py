@@ -25,6 +25,7 @@ import sys
 from datetime import datetime, timedelta
 
 import datastore
+import retention
 import safe_io
 
 TIME_FMT = "%Y-%m-%d %H:%M:%S"
@@ -419,6 +420,16 @@ class VpnReader:
                 return parsed  # beim nächsten Mal neu lesen
             self._data = parsed
         return self._data
+
+    def prune(self, before):
+        """Einträge, die vor before enden, aus dem Archiv löschen (Spuren-Verlauf begrenzen)."""
+        self._archive()
+        if self._data is None:  # gerade gesperrt: beim nächsten Lauf
+            return 0
+        removed = retention.prune_entries(self._data, before)
+        if removed:
+            self._save()
+        return removed
 
     def _save(self):
         if not self.archive_file or self._data is None:

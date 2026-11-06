@@ -68,6 +68,7 @@ class RetentionRunner(QObject):
         self.save_config = save_config
         self.last_day = None   # Tag des letzten vollständigen Laufs
         self._running = None   # (Speicher, Name, Stichtag, bisher gelöscht) während eines Laufs
+        self._traces_done = None  # (Tag, Tage) des letzten Kürzens des Spuren-Verlaufs
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.check)
         QTimer.singleShot(START_DELAY_MS, self.check)
@@ -81,7 +82,31 @@ class RetentionRunner(QObject):
             safe_io.log(f"PC-Verlauf löschen: Datenbank gerade nicht erreichbar ({e})")
             return None, retention.ACTIVITY
 
+    def prune_traces(self):
+        """Spuren-Verlauf (Spuren vom PC, Remotedesktop, VPN) auf trace_history_days Tage kürzen:
+        einmal am Tag und nach einer Änderung der Tage (spätestens nach einer Stunde)."""
+        days = retention.trace_days(self.window.config)
+        if self._traces_done == (date.today(), days):
+            return
+        self._traces_done = (date.today(), days)
+        before = retention.cutoff(days)
+        timeline = getattr(self.window, "timeline", None)
+        removed = 0
+        for name in ("local_reader", "rdp_reader", "vpn_reader"):
+            reader = getattr(timeline, name, None)
+            if reader is None:
+                continue
+            try:
+                removed += reader.prune(before)
+            except Exception as e:  # Aufräumen darf die App nie stören
+                safe_io.log(f"Spuren-Verlauf kürzen ({name}): {e}")
+        if removed:
+            safe_io.log(f"Spuren-Verlauf vor dem {before} gekürzt: {removed} Einträge")
+            timeline._local_index = timeline._rdp_index = timeline._sophos_index = None
+            timeline._remote_cache.clear()
+
     def check(self, force=False):
+        self.prune_traces()
         on, days = retention.settings(self.window.config)
         today = date.today()
         if not on or self._running or (self.last_day == today and not force):

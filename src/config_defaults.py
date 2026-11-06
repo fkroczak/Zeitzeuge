@@ -235,6 +235,9 @@ def default_config():
         "billing_step_minutes": 15,
         "billing_mode": "up",
         "billing_customers": {},       # Ausnahmen: Kunde -> {"step": 30, "mode": "nearest"}
+        # Spuren-Verlauf (Spuren vom PC, Remotedesktop, VPN): Einträge älter als so viele Tage
+        # löschen (Einstellungen → Daten & Schutz, 30–3650). Tätigkeiten bleiben immer erhalten.
+        "trace_history_days": 365,
         # PC-Verlauf (aktive Fenster) nach so vielen Tagen automatisch löschen. Standard: aus.
         # Tätigkeiten, Buchungen, KI-Vorschläge, Anrufe usw. bleiben immer erhalten.
         "pc_history_purge": False,

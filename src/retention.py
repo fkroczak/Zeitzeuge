@@ -8,6 +8,10 @@ Personalzeiten und übernommene Verbindungen bleiben erhalten.
 
 Config: "pc_history_purge" (an/aus, Standard aus), "pc_history_days" (Standard 90).
 Behalten werden heute und die letzten N Tage, gelöscht wird alles davor.
+
+Dazu, immer an: Spuren-Verlauf begrenzen. Die eigenen Aufzeichnungen der Spuren vom PC,
+Remotedesktop-Sitzungen und VPN-Verbindungen (je ein Archiv) wuchsen sonst ohne Grenze und
+werden bei jeder Änderung komplett neu geschrieben. Config "trace_history_days" (Standard 365).
 """
 
 from datetime import date, timedelta
@@ -16,6 +20,32 @@ ACTIVITY = "aktivitaet"
 DEFAULT_DAYS = 90
 MIN_DAYS, MAX_DAYS = 7, 3650
 CHUNK = 5000  # Zeilen je Schritt, damit das Fenster nie merklich hängt
+
+
+TRACE_DAYS = 365
+TRACE_MIN_DAYS = 30
+
+
+def trace_days(config):
+    """Tage, die der Spuren-Verlauf behält (Standard 365, mindestens 30, höchstens 3650)."""
+    days = config.get("trace_history_days", TRACE_DAYS)
+    if not isinstance(days, int) or isinstance(days, bool):
+        days = TRACE_DAYS
+    return max(TRACE_MIN_DAYS, min(MAX_DAYS, days))
+
+
+def prune_entries(data, before):
+    """Aus jeder Liste in data die Einträge entfernen, die vor before (JJJJ-MM-TT) enden.
+    Einträge ohne gültiges Ende bleiben. Gibt die Zahl der entfernten Einträge zurück."""
+    removed = 0
+    for key, value in list(data.items()):
+        if not isinstance(value, list):
+            continue
+        keep = [e for e in value if not (isinstance(e, dict) and isinstance(e.get("end"), str)
+                                         and len(e["end"]) >= 10 and e["end"][:10] < before)]
+        removed += len(value) - len(keep)
+        data[key] = keep
+    return removed
 
 
 def settings(config):

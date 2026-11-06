@@ -23,6 +23,7 @@ import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 
 import datastore
+import retention
 import safe_io
 import timefmt
 
@@ -327,6 +328,16 @@ class RdpReader:
                 return {"sessions": sessions}
             self._data = {"sessions": sessions}
         return self._data
+
+    def prune(self, before):
+        """Einträge, die vor before enden, aus dem Archiv löschen (Spuren-Verlauf begrenzen)."""
+        self._archive()
+        if self._data is None:  # gerade gesperrt: beim nächsten Lauf
+            return 0
+        removed = retention.prune_entries(self._data, before)
+        if removed:
+            self._save()
+        return removed
 
     @staticmethod
     def _valid(s):
