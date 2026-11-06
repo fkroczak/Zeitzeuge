@@ -330,7 +330,7 @@ Pfade, Zeitzonen und Anmeldungen stellst du unter **Einstellungen → Datenquell
 
 Unter **Einstellungen → Datenquellen → Einrichten → TeamViewer-Logs …** bzw. **RDM-Logs …** stellst du ein:
 - wo die Logdateien liegen,
-- eine Zeitzonenkorrektur, weil TeamViewer seine Zeiten in UTC speichert.
+- die Zeitzone: TeamViewer speichert UTC. Mit **Sommer- und Winterzeit automatisch** (Standard) rechnet Zeitzeuge jede Zeit mit der Sommer- oder Winterzeit ihres Datums um. Ohne den Haken gilt eine feste Korrektur in Stunden, z. B. 0, wenn das Log schon Ortszeit enthält.
 
 Standardpfade:
 
@@ -537,6 +537,8 @@ Unter **Einstellungen → Abrechnung …** stellst du Takt und Rundung ein, auch
 | `billing_customers` | `{}` | Ausnahmen: `{"Müller GmbH": {"step": 30, "mode": "nearest"}}` |
 | `pc_history_purge` | `false` | PC-Verlauf automatisch löschen |
 | `pc_history_days` | `90` | so viele Tage behalten (7 bis 3650) |
+| `trace_history_days` | `365` | Spuren vom PC, Remotedesktop- und VPN-Verbindungen so viele Tage behalten (30 bis 3650), Älteres löscht Zeitzeuge einmal am Tag. Einstellbar unter **Einstellungen → Daten & Schutz → Spuren-Verlauf aufbewahren** |
+| `teamviewer_utc_auto` | – | TeamViewer: `true` Sommer-/Winterzeit automatisch, `false` feste Korrektur. Fehlt der Wert, gilt `true`, wenn die Korrektur 1 oder 2 ist |
 
 ### Wenn etwas schiefgeht
 
