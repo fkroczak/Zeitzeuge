@@ -88,8 +88,9 @@ ROWS = [
     ("sources", "button", "spark", "Einrichtungsassistent", "Alle Quellen Schritt für Schritt neu einrichten.",
      "show_setup_wizard", None),
 
-    ("prompts", "button", "bell", "Nachfragen und Erinnerungen",
-     "Fenster oder Infobereich, wonach gefragt wird, Erinnerung bei Feierabend und Beenden.",
+    ("prompts", "button", "bell", "Nachfragen und Benachrichtigungen",
+     "Fenster oder Infobereich, wonach gefragt wird, Erinnerung bei Feierabend und Beenden, "
+     "Benachrichtigungen wie „Zeitzeuge läuft weiter“.",
      "edit_prompt_settings", _prompt_summary),
     ("prompts", "spin", "clock", "Abwesenheit am PC: fragen ab",
      "Nach so vielen Minuten ohne Eingabe fragt Zeitzeuge bei der Rückkehr, was war.",

@@ -67,7 +67,7 @@ pyz = PYZ(a.pure)
 # Ladebalken und Text: eigener Tcl-Teil statt der PyInstaller-Textzeile (src/splash_screen.py).
 # Der Balken läuft beim Entpacken über die Zahl der Dateien, danach melden die Startschritte.
 import splash_screen  # noqa: E402
-splash_screen.install(len(a.binaries) + len(a.datas))
+splash_screen.install(len(a.binaries) + len(a.datas), ASSETS)  # Bilder je Skalierung
 splash = Splash(
     os.path.join(ASSETS, 'splash.png'),
     binaries=a.binaries,
@@ -105,6 +105,8 @@ options = dict(
     entitlements_file=None,
     icon=[os.path.join(ASSETS, 'zeitzeuge.ico')],
     version=version_info,
+    # DPI-bewusst wie Qt, schon ab dem Startbild: sonst springt es beim Start klein nach links oben
+    manifest=splash_screen.manifest(),
 )
 # Kein UPX (upx=False oben): mit UPX gepackte EXE-Dateien melden Virenscanner besonders oft fälschlich.
 

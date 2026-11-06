@@ -19,14 +19,16 @@ _colleague_cache = {}  # Pfad -> (Stand, Kollegen); merge_calls zählt den Stand
 _version = [0]
 
 def _key(call):
-    # Gleicher Anruf = gleiche Startminute + gleiche Nummer/Name + angenommen ja/nein.
-    # 3CX listet oft einen nicht angenommenen Versuch und das eigentliche Gespräch in
-    # derselben Minute; ohne "angenommen" überschrieb der Versuch das Gespräch.
+    # Gleicher Anruf = gleiche Startminute + gleiche Nummer/Name + gleiche Dauer.
+    # 3CX listet oft mehrere Anrufe derselben Minute an dieselbe Nummer (Versuch, kurzes
+    # Gespräch, eigentliches Gespräch). Die Liste zeigt nur die Minute; ohne Dauer überschrieb
+    # einer den anderen (z. B. 0:02 das Gespräch mit 13:23). Abgeschlossene Anrufe ändern ihre
+    # Dauer nicht mehr.
     try:
-        talked = int(call.get("duration_s") or 0) > 0
+        seconds = int(call.get("duration_s") or 0)
     except (TypeError, ValueError):
-        talked = False
-    return f"{call['start'][:16]}|{call.get('number') or call.get('name')}|{int(talked)}"
+        seconds = 0
+    return f"{call['start'][:16]}|{call.get('number') or call.get('name')}|{seconds}"
 
 
 def _valid(call):

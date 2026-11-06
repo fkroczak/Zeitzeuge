@@ -43,5 +43,17 @@ def test_versuch_und_gespraech_in_derselben_minute(tmp_path):
     assert len(suggestions) == 1 and "Dauer 6:00" in suggestions[0]["details"], suggestions
 
 
+def test_zwei_gespraeche_in_derselben_minute(tmp_path):
+    """3CX: Gespräch 13:23 und Gespräch 0:02 um 14:40 an dieselbe Nummer – beide bleiben."""
+    calls_file = os.path.join(str(tmp_path), "anrufe.json")
+    long = {"start": "2026-10-21 14:40:00", "duration_s": 803, "name": "T F",
+            "number": "004925639369156", "direction": "Ausgehend"}
+    short = dict(long, duration_s=2)
+    assert merge_calls(calls_file, [long, short]) == 2
+    assert merge_calls(calls_file, [long, short]) == 0
+    details = sorted(s["details"] for s in load_call_suggestions(calls_file, "2026-10-21"))
+    assert details == ["Ausgehend, Dauer 0:02", "Ausgehend, Dauer 13:23"], details
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-q"]))

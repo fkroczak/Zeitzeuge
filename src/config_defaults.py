@@ -189,6 +189,7 @@ def default_config():
         "pc_role": "",
         "export_days": 31,            # Zeitraum beim Export für den anderen PC
         "close_to_tray": True,
+        "tray_hint_on_close": True,   # Meldung „Zeitzeuge läuft weiter“ beim Schließen des Fensters
 
         # Tagesliste: "grouped" (zusammengefasst), "single" (einzeln), "blocks" (Arbeitsblöcke)
         "list_view": "grouped",

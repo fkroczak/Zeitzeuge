@@ -192,7 +192,7 @@ class TrayMixin:
         if self.tray and self.config.get("close_to_tray", True) and not self._quitting:
             event.ignore()
             self.hide()
-            if not getattr(self, "_tray_hint_shown", False):
+            if self.config.get("tray_hint_on_close", True) and not getattr(self, "_tray_hint_shown", False):
                 self._tray_hint_shown = True
                 self.tray.showMessage(
                     "Zeitzeuge läuft weiter",
