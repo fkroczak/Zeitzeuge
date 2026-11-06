@@ -44,7 +44,9 @@ def booking_from_event(event):
         return None
     start = start_d + timedelta(hours=h1, minutes=m1)
     end = start_d + timedelta(hours=h2, minutes=m2)
-    if end <= start:  # über Mitternacht
+    if end == start:  # „10:00 - 10:00“: keine Dauer, sonst würden daraus 24 Stunden
+        return None
+    if end < start:  # über Mitternacht
         end += timedelta(days=1)
     customer, ticket, subject = parse_title(event.get("title"))
     return {"start": start.strftime(TIME_FMT), "end": end.strftime(TIME_FMT),

@@ -107,3 +107,16 @@ def test_vorschlaege():
 
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-q"]))
+
+
+def test_verschieben_ohne_datenverlust(tmp_path):
+    """Scheitert das Speichern am neuen Tag, bleibt die Tätigkeit am alten Tag stehen."""
+    j = Journal(str(tmp_path))
+    item = j.add({"start": f"{DAY} 10:00:00", "end": f"{DAY} 10:30:00", "customer": "Müller GmbH",
+                  "category": "Fernwartung", "text": "Drucker eingerichtet"})
+    real_save = j._save
+    j._save = lambda date_str: False if date_str == "2026-10-21" else real_save(date_str)
+    with pytest.raises(OSError):
+        j.update(item, {"start": "2026-10-21 08:00:00", "end": "2026-10-21 08:30:00"})
+    j._save = real_save
+    assert [i["text"] for i in Journal(str(tmp_path)).items(DAY)] == ["Drucker eingerichtet"]

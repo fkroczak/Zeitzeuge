@@ -152,9 +152,12 @@ class Journal:
     def update(self, old_item, new_item):
         """Tätigkeit ändern (auch auf einen anderen Tag verschieben)."""
         new_item = {**old_item, **new_item}
+        # Erst am neuen Tag speichern, dann am alten löschen: scheitert das Speichern,
+        # bleibt die Tätigkeit am alten Tag (sonst wäre sie auf beiden Tagen weg)
+        saved = self.add(new_item)
         if old_item["start"][:10] != new_item["start"][:10]:
             self.delete(old_item)
-        return self.add(new_item)
+        return saved
 
     def delete(self, item):
         date_str = item["start"][:10]
