@@ -193,6 +193,15 @@ def fit_bold(button):
     button.setStyleSheet(f"QPushButton {{ min-width: {width}px; }}")
 
 
+def fit_text(button):
+    """Knopf nie schmaler als sein Text in der Schrift des Stylesheets ($fs_base). Qt misst sonst,
+    bevor das Stylesheet greift, und das Layout darf den Knopf bis auf min-width 80 quetschen."""
+    font = QFont(button.font())
+    font.setPixelSize(FONT_BASE)
+    width = QFontMetrics(font).horizontalAdvance(button.text().replace("&", "")) + SPACE_XS
+    button.setStyleSheet(f"QPushButton {{ min-width: {width}px; }}")
+
+
 def prose(label):
     """Längeren Hinweistext gut lesbar setzen: Zeilenabstand 1,5.
 
