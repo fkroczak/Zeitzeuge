@@ -868,8 +868,13 @@ class SettingsWindow(QDialog):
             row.refresh()
         self.refresh_tiles()
 
+    def hideEvent(self, event):
+        super().hideEvent(event)
+        self._timer.stop()  # Fenster bleibt nach dem Schließen erhalten: nicht alle 3 s aufwachen
+
     def showEvent(self, event):
         super().showEvent(event)
+        self._timer.start(3000)
         self._fit_tiles()
         self.refresh()
         if self._preview_stale and self.current_page() == "view":
