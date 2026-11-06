@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QCompleter, QDateEdit, QDia
                                QPushButton, QSpinBox, QTimeEdit, QToolButton, QVBoxLayout,
                                QWidget)
 
-from theme import prose
+from theme import prose, SPACE_M, SPACE_S, SPACE_XS
 from billing import hours_text
 import customers as customer_list
 from grouping import format_tv_id
@@ -467,14 +467,14 @@ class EntryDialog(QDialog):
         card = QFrame()
         card.setObjectName("card")
         box = QVBoxLayout(card)
-        box.setContentsMargins(12, 10, 12, 10)
-        box.setSpacing(6)
+        box.setContentsMargins(SPACE_M, SPACE_M, SPACE_M, SPACE_M)
+        box.setSpacing(SPACE_S)
         head = QLabel("Was die Quellen in dieser Zeit sagen")
         head.setObjectName("card_title")
         box.addWidget(head)
         self.context_rows = QFormLayout()
-        self.context_rows.setHorizontalSpacing(12)
-        self.context_rows.setVerticalSpacing(4)
+        self.context_rows.setHorizontalSpacing(SPACE_M)
+        self.context_rows.setVerticalSpacing(SPACE_XS)
         box.addLayout(self.context_rows)
         return card
 
@@ -573,7 +573,7 @@ class PromptWindow(QDialog):
         """Abwesenheit: typische Tätigkeiten mit einem Klick (idle_watch.QUICK_CHOICES)."""
         from idle_watch import QUICK_CHOICES
         row = QHBoxLayout()
-        row.setSpacing(6)
+        row.setSpacing(SPACE_S)
         row.addWidget(QLabel("Was war?"))
         self.quick_buttons = []
         for label, category, text, flags in QUICK_CHOICES:

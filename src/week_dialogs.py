@@ -242,7 +242,7 @@ class WeekDialog(QDialog):
         hints_label.setBuddy(self.hints)
         self.hints.itemActivated.connect(self.open_hint)
         layout.addWidget(hints_label)
-        self.hints.setMinimumHeight(90)
+        self.hints.setMinimumHeight(80)  # mit Rändern der Token-Skala passt der Dialog noch auf 960 × 540
         layout.addWidget(self.hints, 1)
 
         form = QFormLayout()

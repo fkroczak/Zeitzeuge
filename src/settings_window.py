@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QFrame, QGridLayou
                                QSpinBox, QStackedWidget, QVBoxLayout, QWidget)
 
 import icons
-from theme import THEMES, prose
+from theme import THEMES, prose, SPACE_2XL, SPACE_L, SPACE_M, SPACE_S, SPACE_XL, SPACE_XS
 import main_timeline as mt  # Pfade und save_config zur Laufzeit von dort (Tests ersetzen sie dort)
 
 # Bereiche: Schlüssel, Name, Symbol, Satz darunter
@@ -353,14 +353,14 @@ class _Row(QFrame):
         main = window.main
         page, kind, icon_name, title, desc, target, extra = spec
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(4, 10, 4, 10)
-        layout.setSpacing(12)
+        layout.setContentsMargins(SPACE_XS, SPACE_M, SPACE_XS, SPACE_M)
+        layout.setSpacing(SPACE_M)
         pic = QLabel()
         pic.setPixmap(icons.icon(icon_name, window.icon_color).pixmap(20, 20))
         pic.setAlignment(Qt.AlignTop)
         layout.addWidget(pic)
         text = QVBoxLayout()
-        text.setSpacing(2)
+        text.setSpacing(SPACE_XS)
         head = QLabel(title)
         head.setObjectName("row_title")
         head.setWordWrap(True)  # lange Titel umbrechen statt die Seite zu verbreitern
@@ -497,8 +497,8 @@ class _Tile(QFrame):
         key, brand, name, desc, setup, _kind = spec
         main = window.main
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(14, 12, 14, 12)
-        layout.setSpacing(6)
+        layout.setContentsMargins(SPACE_L, SPACE_M, SPACE_L, SPACE_M)
+        layout.setSpacing(SPACE_S)
         head = QHBoxLayout()
         pic = QLabel()
         pic.setPixmap(icons.brand_icon(brand).pixmap(28, 28))
@@ -595,11 +595,11 @@ class SettingsWindow(QDialog):
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
         top = QHBoxLayout()
-        top.setContentsMargins(16, 12, 16, 12)
+        top.setContentsMargins(SPACE_L, SPACE_M, SPACE_L, SPACE_M)
         heading = QLabel("Einstellungen")
         heading.setObjectName("page_title")
         top.addWidget(heading)
-        top.addSpacing(24)
+        top.addSpacing(SPACE_XL)
         self.search = QLineEdit()
         self.search.setPlaceholderText("Einstellung suchen, z. B. Minuten, VPN, PIN")
         self.search.setAccessibleName("Einstellungen durchsuchen")
@@ -654,17 +654,17 @@ class SettingsWindow(QDialog):
         page = QWidget()
         page.setObjectName("settings_page")
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(28, 20, 28, 20)
-        layout.setSpacing(4)
+        layout.setContentsMargins(SPACE_2XL, SPACE_XL, SPACE_2XL, SPACE_XL)
+        layout.setSpacing(SPACE_XS)
         # Seite „Ansicht“: Titel und Vorschau bleiben stehen, nur die Einstellungen darunter blättern
         head = layout
         if key == "view":
             fixed = QWidget()
             fixed.setObjectName("settings_page")
             head = QVBoxLayout(fixed)
-            head.setContentsMargins(28, 20, 28, 8)
-            head.setSpacing(4)
-            layout.setContentsMargins(28, 4, 28, 20)
+            head.setContentsMargins(SPACE_2XL, SPACE_XL, SPACE_2XL, SPACE_S)
+            head.setSpacing(SPACE_XS)
+            layout.setContentsMargins(SPACE_2XL, SPACE_XS, SPACE_2XL, SPACE_XL)
         title = QLabel(name)
         title.setObjectName("page_title")
         head.addWidget(title)
@@ -672,7 +672,7 @@ class SettingsWindow(QDialog):
         sub.setObjectName("hint")
         sub.setWordWrap(True)
         head.addWidget(sub)
-        head.addSpacing(10)
+        head.addSpacing(SPACE_S)
         if key == "view":
             from settings_preview import PreviewPane
             self.preview = PreviewPane(self.main)
@@ -683,15 +683,15 @@ class SettingsWindow(QDialog):
                     row = _Row(self, spec)
                     self.rows.append(row)
                     layout.addWidget(row)
-            layout.addSpacing(8)
+            layout.addSpacing(SPACE_S)
             self.tile_grid = QGridLayout()
-            self.tile_grid.setSpacing(12)
+            self.tile_grid.setSpacing(SPACE_M)
             for spec in SOURCE_TILES:
                 self.tiles.append(_Tile(self, spec))
             self._tile_columns = 0
             self._place_tiles(3)
             layout.addLayout(self.tile_grid)
-            layout.addSpacing(12)
+            layout.addSpacing(SPACE_M)
             pc = QLabel("Aktive Fenster")  # Aufzeichnung am PC: Schalter, Filter, Leerlauf
             pc.setObjectName("row_title")
             layout.addWidget(pc)
@@ -795,7 +795,7 @@ class SettingsWindow(QDialog):
         page = QWidget()
         page.setObjectName("settings_page")
         self.results_layout = QVBoxLayout(page)
-        self.results_layout.setContentsMargins(28, 20, 28, 20)
+        self.results_layout.setContentsMargins(SPACE_2XL, SPACE_XL, SPACE_2XL, SPACE_XL)
         self.results_title = QLabel()
         self.results_title.setObjectName("page_title")
         self.results_layout.addWidget(self.results_title)

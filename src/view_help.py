@@ -7,7 +7,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (QDialog, QDialogButtonBox, QFrame, QGridLayout, QLabel,
                                QScrollArea, QVBoxLayout, QWidget)
 
-from theme import prose
+from theme import prose, SPACE_M
 import icons
 
 # Ansicht -> (Symbol, Kurz-Erklärung, Beispielzeilen). {merge} und {block} sind die Pausen
@@ -77,7 +77,7 @@ class ViewHelpDialog(QDialog):
         body = QWidget()
         grid = QGridLayout(body)
         grid.setColumnStretch(1, 1)
-        grid.setVerticalSpacing(14)
+        grid.setVerticalSpacing(SPACE_M)
         for row, (key, name) in enumerate(views):
             if key not in VIEW_HELP:
                 continue

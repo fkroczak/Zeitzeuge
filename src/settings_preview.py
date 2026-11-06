@@ -17,6 +17,7 @@ from activity_tracker import app_label
 from grouping import group_entries, work_blocks
 from journal import open_entry
 from timeline_only import TimelineView, type_label
+from theme import SPACE_S, SPACE_M
 
 DEMO_DAY = datetime(2026, 10, 21)  # Mittwoch
 DEMO_DATE = QDate(2026, 10, 21)
@@ -168,8 +169,8 @@ class PreviewPane(QFrame):
         self.main = main
         self.variant = None  # ({Schlüssel: Wert}, Satz) beim Darüberfahren
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 10, 12, 12)
-        layout.setSpacing(6)
+        layout.setContentsMargins(SPACE_M, SPACE_M, SPACE_M, SPACE_M)
+        layout.setSpacing(SPACE_S)
         head = QHBoxLayout()
         title = QLabel("Vorschau")
         title.setObjectName("row_title")

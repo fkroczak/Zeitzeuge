@@ -10,6 +10,7 @@ Erscheint erst nach kurzer Verzögerung, damit kurze Lesevorgänge nicht flacker
 from PySide6.QtCore import QRectF, Qt, QTimer
 from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QSizePolicy, QWidget
+from theme import SPACE_XS, SPACE_S
 
 
 class _Stripe(QWidget):
@@ -96,8 +97,8 @@ class BusyBar(QWidget):
         self._text = ""
         self.setObjectName("busy_bar")
         row = QHBoxLayout(self)
-        row.setContentsMargins(4, 0, 4, 0)
-        row.setSpacing(8)
+        row.setContentsMargins(SPACE_XS, 0, SPACE_XS, 0)
+        row.setSpacing(SPACE_S)
         self.spinner = _Spinner(self)
         row.addWidget(self.spinner, 0, Qt.AlignVCenter)
         self.label = QLabel(self)

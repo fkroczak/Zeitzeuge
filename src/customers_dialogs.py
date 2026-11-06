@@ -24,7 +24,7 @@ from PySide6.QtWidgets import (QCheckBox, QDialog, QDialogButtonBox, QFrame, QHB
                                QWidget)
 
 from flow_layout import FlowLayout
-from theme import THEMES, prose
+from theme import THEMES, prose, SPACE_L, SPACE_M, SPACE_S, SPACE_XS
 import customer_discovery as cdisc
 import customers as cl
 import icons
@@ -68,15 +68,15 @@ class _Section(QFrame):
         self.dialog, self.kind = dialog, kind
         self.setObjectName("card_row")
         row = QHBoxLayout(self)
-        row.setContentsMargins(12, 10, 12, 10)
-        row.setSpacing(12)
+        row.setContentsMargins(SPACE_M, SPACE_M, SPACE_M, SPACE_M)
+        row.setSpacing(SPACE_M)
         symbol = QLabel()
         symbol.setPixmap(icons.icon(icon_name, color).pixmap(QSize(16, 16)))
         symbol.setFixedWidth(20)
         symbol.setAlignment(Qt.AlignTop)
         row.addWidget(symbol)
         body = QVBoxLayout()
-        body.setSpacing(4)
+        body.setSpacing(SPACE_XS)
         head = QLabel(title)
         head.setObjectName("card_title")
         body.addWidget(head)
@@ -187,8 +187,8 @@ class CustomersDialog(QDialog):
         self._shown = []  # Kunden in der Reihenfolge der Liste (nach Suche)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(16, 16, 16, 12)
-        layout.setSpacing(12)
+        layout.setContentsMargins(SPACE_L, SPACE_L, SPACE_L, SPACE_M)
+        layout.setSpacing(SPACE_M)
         top = QHBoxLayout()
         title = QLabel("Kunden & Erkennung")
         title.setObjectName("page_title")
@@ -202,13 +202,13 @@ class CustomersDialog(QDialog):
         self._add_suggestions(layout, (found.get("rename") or []) + (found.get("suggest") or []))
 
         columns = QHBoxLayout()
-        columns.setSpacing(12)
+        columns.setSpacing(SPACE_M)
         # ---- Links: Kunden
         left = QFrame()
         left.setObjectName("card")
         left.setFixedWidth(280)
         left_layout = QVBoxLayout(left)
-        left_layout.setContentsMargins(8, 8, 8, 8)
+        left_layout.setContentsMargins(SPACE_S, SPACE_S, SPACE_S, SPACE_S)
         self.search = QLineEdit()
         self.search.setPlaceholderText("Kunden suchen")
         self.search.setAccessibleName("Kunden suchen")
@@ -234,8 +234,8 @@ class CustomersDialog(QDialog):
         inner = QWidget()
         inner.setObjectName("customer_detail")
         detail = QVBoxLayout(inner)
-        detail.setContentsMargins(16, 14, 16, 14)
-        detail.setSpacing(10)
+        detail.setContentsMargins(SPACE_L, SPACE_L, SPACE_L, SPACE_L)
+        detail.setSpacing(SPACE_S)
         head = QHBoxLayout()
         self.avatar = QLabel("")
         self.avatar.setObjectName("avatar")
@@ -283,7 +283,7 @@ class CustomersDialog(QDialog):
         cal = QFrame()
         cal.setObjectName("card_row")
         cal_row = QHBoxLayout(cal)
-        cal_row.setContentsMargins(12, 10, 12, 10)
+        cal_row.setContentsMargins(SPACE_M, SPACE_M, SPACE_M, SPACE_M)
         cal_icon = QLabel()
         cal_icon.setPixmap(icons.icon("today", theme["muted"]).pixmap(QSize(16, 16)))
         cal_icon.setFixedWidth(20)
@@ -321,7 +321,7 @@ class CustomersDialog(QDialog):
         right_layout.addWidget(scroll)
         self.empty = QLabel("Noch keine Kunden. Lege mit „+ Neuer Kunde“ den ersten an.")
         self.empty.setObjectName("hint")
-        self.empty.setContentsMargins(16, 16, 16, 16)
+        self.empty.setContentsMargins(SPACE_L, SPACE_L, SPACE_L, SPACE_L)
         right_layout.addWidget(self.empty)
         columns.addWidget(right, 1)
         layout.addLayout(columns, 1)
@@ -355,7 +355,7 @@ class CustomersDialog(QDialog):
         box = QFrame()
         box.setObjectName("notice")
         box_layout = QVBoxLayout(box)
-        box_layout.setContentsMargins(14, 10, 14, 10)
+        box_layout.setContentsMargins(SPACE_L, SPACE_M, SPACE_L, SPACE_M)
         title = QLabel("✦ Neu entdeckt – aus deinen Matrix42-Buchungen")
         title.setObjectName("card_title")
         box_layout.addWidget(title)
@@ -449,8 +449,8 @@ class CustomersDialog(QDialog):
         w.setObjectName("chips")  # durchsichtig, die Auswahlfarbe der Liste bleibt sichtbar
         w.setAttribute(Qt.WA_TransparentForMouseEvents)
         row = QHBoxLayout(w)
-        row.setContentsMargins(4, 2, 4, 2)
-        row.setSpacing(8)
+        row.setContentsMargins(SPACE_XS, SPACE_XS, SPACE_XS, SPACE_XS)
+        row.setSpacing(SPACE_S)
         av = QLabel(initials(c["name"]))
         av.setObjectName("avatar")
         av.setFixedSize(30, 30)

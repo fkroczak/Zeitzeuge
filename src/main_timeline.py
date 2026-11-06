@@ -54,7 +54,7 @@ from local_sources import COLORS as LOCAL_COLORS
 from settings_dialogs import ActivityTypeSettingsDialog, ConnectionSettingsDialog, WorkHoursDialog
 from timeline_only import ActivityViewDialog, TimelineView, parse_time
 from config_defaults import default_config
-from theme import GERMAN, STYLESHEET, THEMES, AppStyle, install_translator
+from theme import AppStyle, GERMAN, STYLESHEET, THEMES, install_translator, SPACE_S
 from app_menus import MenusMixin
 from app_daylist import DayListMixin
 from app_docs import DocsMixin
@@ -561,7 +561,7 @@ class TimelineApp(MenusMixin, DayListMixin, DayCloseMixin, DocsMixin, ReadersMix
         self._timeline_wish = None  # gezogene Höhe der Timeline (None = so hoch wie die Zeilen)
         splitter.splitterMoved.connect(self._on_splitter_moved)
         self.timeline.height_limits_changed.connect(self._fit_splitter)
-        splitter.setContentsMargins(8, 8, 8, 8)
+        splitter.setContentsMargins(SPACE_S, SPACE_S, SPACE_S, SPACE_S)
         central = QWidget(self)
         # Ladeanzeige (Logs, 3CX, ITM, KI): drehender Kreis mit Text in der Werkzeugleiste,
         # dazu ein Streifen über die ganze Breite oben über der Timeline. Beides schwebt.

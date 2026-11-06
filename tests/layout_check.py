@@ -58,6 +58,7 @@ def run_one(scale):
 
     app = QApplication(sys.argv)
     app.setStyle(main_timeline.AppStyle())
+    main_timeline.install_translator(app)  # „Abbrechen“ statt „Cancel“ wie in der App
     found = {}
     folder = os.path.join(OUT, f"{float(scale):.0%}".replace("%", ""))
     os.makedirs(folder, exist_ok=True)

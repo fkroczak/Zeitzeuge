@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QButtonGroup, QCheckBox, QColo
                                QPushButton, QRadioButton, QSpinBox, QTableWidget,
                                QTableWidgetItem, QTimeEdit, QVBoxLayout)
 
-from theme import prose, readable_on
+from theme import prose, readable_on, SPACE_M, SPACE_S
 class ConnectionSettingsDialog(QDialog):
     def __init__(self, config, config_key, default_paths, title, parent=None,
                  enabled_text=None, folders=False, hint=None, paths_key=None,
@@ -265,7 +265,7 @@ class WorkHoursDialog(QDialog):
         self.setWindowTitle("Arbeitszeiten")
         self.setMinimumWidth(640)
         layout = QVBoxLayout(self)
-        layout.setSpacing(10)
+        layout.setSpacing(SPACE_S)
 
         hint = QLabel("Die Arbeitszeit wird in der Timeline hervorgehoben, die Pause abgedunkelt. "
                       "Freie Tage sind komplett abgedunkelt. Gilt nur, wenn keine ITM-Personalzeit "
@@ -275,8 +275,8 @@ class WorkHoursDialog(QDialog):
         layout.addWidget(hint)
 
         grid = QGridLayout()
-        grid.setHorizontalSpacing(14)
-        grid.setVerticalSpacing(6)
+        grid.setHorizontalSpacing(SPACE_M)
+        grid.setVerticalSpacing(SPACE_S)
         for col, text in enumerate(("Tag", "von", "bis", "Pause", "Pause von", "bis", "Stunden")):
             grid.addWidget(QLabel(f"<b>{text}</b>"), 0, col)
         self.rows = []
