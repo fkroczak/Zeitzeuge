@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QFrame, QGridLayou
                                QSpinBox, QStackedWidget, QVBoxLayout, QWidget)
 
 import icons
-from theme import THEMES, prose, SPACE_2XL, SPACE_L, SPACE_M, SPACE_S, SPACE_XL, SPACE_XS
+from theme import THEMES, fit_text, prose, SPACE_2XL, SPACE_L, SPACE_M, SPACE_S, SPACE_XL, SPACE_XS
 import main_timeline as mt  # Pfade und save_config zur Laufzeit von dort (Tests ersetzen sie dort)
 
 # Bereiche: Schlüssel, Name, Symbol, Satz darunter
@@ -137,6 +137,9 @@ ROWS = [
     ("data", "button", "trash", "PC-Verlauf automatisch löschen", "Aufgezeichnete Fenster nach einigen Tagen löschen.",
      lambda main: main.retention.edit(),
      lambda m: f"nach {m.config.get('pc_history_days', 90)} Tagen" if m.config.get("pc_history_purge") else "aus"),
+    ("data", "spin", "trash", "Spuren-Verlauf aufbewahren",
+     "Spuren vom PC, Remotedesktop und VPN: Älteres wird einmal am Tag gelöscht. Tätigkeiten bleiben.",
+     "trace_history_days", (30, 3650, "Tage", "", None)),
     ("data", "button", "upload", "Daten exportieren", "Für einen anderen PC, z. B. die PAW.", "export_data", None),
     ("data", "button", "download", "Daten übernehmen", "Von einem anderen PC einlesen.", "import_data", None),
     ("data", "toggle", "server", "Dieser PC ist eine PAW", "Nur RDM sammeln, alles andere aus.", "paw_action", None),
@@ -418,6 +421,7 @@ class _Row(QFrame):
             self.control = QPushButton(BUTTON_TEXT.get(title, "Öffnen …") if kind == "button" else "")
             self.control.setAccessibleName(f"{title}: {self.control.text().rstrip(' …')}")
             self.control.setAutoDefault(False)
+            fit_text(self.control)  # nie schmaler als der Text, die Beschreibung bricht stattdessen um
             self.control.clicked.connect(self._run)
         layout.addWidget(self.control)
         self.refresh()

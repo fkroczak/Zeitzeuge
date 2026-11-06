@@ -193,6 +193,15 @@ def fit_bold(button):
     button.setStyleSheet(f"QPushButton {{ min-width: {width}px; }}")
 
 
+def fit_text(button):
+    """Knopf nie schmaler als sein Text in der Schrift des Stylesheets ($fs_base). Qt misst sonst,
+    bevor das Stylesheet greift, und das Layout darf den Knopf bis auf min-width 80 quetschen."""
+    font = QFont(button.font())
+    font.setPixelSize(FONT_BASE)
+    width = QFontMetrics(font).horizontalAdvance(button.text().replace("&", "")) + SPACE_XS
+    button.setStyleSheet(f"QPushButton {{ min-width: {width}px; }}")
+
+
 def prose(label):
     """Längeren Hinweistext gut lesbar setzen: Zeilenabstand 1,5.
 
@@ -290,7 +299,7 @@ QGroupBox { border: 1px solid $border; border-radius: $radius_cardpx; margin-top
             padding: 12px 8px 8px 8px; background-color: $surface; font-weight: bold; }
 QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 6px; }
 QGroupBox QWidget { font-weight: normal; }
-QGroupBox QLabel, QGroupBox QCheckBox { background: transparent; }
+QGroupBox QLabel, QGroupBox QCheckBox, QGroupBox QRadioButton { background: transparent; }
 QCheckBox { spacing: 8px; }
 QCheckBox::indicator { width: 16px; height: 16px; border: 1px solid $control;
                        background-color: $surface; border-radius: $radius_smpx; }

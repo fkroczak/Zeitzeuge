@@ -871,6 +871,7 @@ class MenusMixin:
             "teamviewer", r"%APPDATA%\TeamViewer\Connections.txt",
             "TeamViewer-Logeinstellungen",
             enabled_text="TeamViewer-Verbindungen auslesen und anzeigen",
+            utc_auto_key="teamviewer_utc_auto",
         )
 
     def edit_rdm_settings(self):

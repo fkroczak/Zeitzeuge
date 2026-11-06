@@ -41,3 +41,19 @@ Bericht: [`AUDIT-2026-11-06.md`](AUDIT-2026-11-06.md) · Tokens und Texte: [`DES
 | 2026-11-06 | Texte | fünf Erklärtexte über 240 Zeichen | gekürzt ohne Inhaltsverlust | Scannbarkeit | stärker kürzen (Information ginge verloren) | `649d369` | `git revert 649d369` |
 | 2026-11-06 | Bewusst nicht | TeamViewer-Zeiten im Sommer 1 h falsch (fester Offset +1) | **nicht geändert**, Empfehlung | Fix ändert die Bedeutung von `teamviewer_timezone_correction` (Config) | – | – | – |
 | 2026-11-06 | Bewusst nicht | Kerberos-Delegation an den Matrix42-Host | **nicht geändert**, Empfehlung | nur im Firmennetz testbar | – | – | – |
+
+## Umsetzung nach Filips Freigabe 2026-11-06 (Branch `claude/nifty-rubin-iy97ea`)
+
+Freigegeben: TeamViewer-Sommerzeit automatisieren, im Infobereich nicht zeichnen, Spuren-Verlauf
+mit einstellbarer Frist (365 Tage) kürzen, Regeln/Fenster-Filter scrollbar. Kerberos-Delegation
+bleibt wie sie ist.
+
+| Datum | Bereich | Befund | Entscheidung | Begründung | Verworfene Alternativen | Commit | So rückgängig machen |
+|---|---|---|---|---|---|---|---|
+| 2026-11-06 | TeamViewer | Fester Versatz +1 h, im Sommer 1 h zu früh | UTC→Ortszeit mit Sommer-/Winterzeit des Datums; Schalter `teamviewer_utc_auto` im TeamViewer-Fenster | Rechner kennt seine Zeitzone; kein Pflegen von Hand | Versatz automatisch +1/+2 je Datum für Mitteleuropa (falsch außerhalb DE/AT/CH) | `c377930` | Haken „Sommer- und Winterzeit automatisch“ aus oder `git revert c377930` |
+| 2026-11-06 | TeamViewer | Bestehende Configs haben einen Versatz gespeichert | Fehlt `teamviewer_utc_auto`, gilt automatisch bei Versatz 1 oder 2, sonst bleibt der feste Versatz | 1 (Winter) und 2 (Sommer) waren UTC-Korrekturen; 0 heißt „Log in Ortszeit“ | immer automatisch (bricht Logs in Ortszeit) | `c377930` | wie oben |
+| 2026-11-06 | Tempo | Auto-Refresh zeichnete auch im Infobereich | versteckt/minimiert nur lesen, `draw_stale`; beim Zeigen/Wiederherstellen einmal zeichnen | Nachfragen brauchen frische Logs, nicht die Zeichnung | Refresh ganz aussetzen (Nachfragen kämen zu spät) | `dcb2294` | `git revert dcb2294` |
+| 2026-11-06 | Daten | Archive der Spuren vom PC, Remotedesktop, VPN wuchsen ohne Grenze | `trace_history_days` (365, 30–3650), täglich im vorhandenen Aufräumlauf; Einträge ohne Ende bleiben | gewünscht; kleinste Stelle (RetentionRunner läuft schon) | eigener Timer je Leser; Löschen sofort beim Ändern der Zahl (Tippen von „40“ auf dem Weg zu „400“ würde löschen) | `3d011cd` | Zahl auf 3650 stellen oder `git revert 3d011cd` |
+| 2026-11-06 | UI | Einstellung für die Frist | Zeile „Spuren-Verlauf aufbewahren“ (Tage) unter Einstellungen → Daten & Schutz | neben „PC-Verlauf automatisch löschen“, durchsuchbar | eigener Dialog | `2f86c90` | `git revert 2f86c90` |
+| 2026-11-06 | UI | Knöpfe in Einstellungszeilen bei schmalem Fenster abgeschnitten | `theme.fit_text`: Mindestbreite aus der Textbreite in der Stylesheet-Schrift | Qt misst vor dem Stylesheet | Size-Policy Fixed (half nicht) | `2f86c90` | `git revert 2f86c90` |
+| 2026-11-06 | UI | Regeln/Fenster-Filter zu hoch für 960 × 540 | Inhalt im Scrollbereich, Knöpfe fest unten, Startgröße auf Bildschirm begrenzt | Knöpfe immer erreichbar | Dialog in Reiter aufteilen (Umbau) | `b4ae0b1` | `git revert b4ae0b1` |

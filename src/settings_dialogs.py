@@ -1,23 +1,50 @@
 import os
 
-from PySide6.QtCore import QTime
-from PySide6.QtGui import QColor
+from PySide6.QtCore import QSize, QTime
+from PySide6.QtGui import QColor, QGuiApplication
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (QAbstractItemView, QButtonGroup, QCheckBox, QColorDialog,
-                               QComboBox, QDialog, QDialogButtonBox,
+                               QComboBox, QDialog, QDialogButtonBox, QFrame,
                                QFileDialog, QFormLayout, QGridLayout, QGroupBox,
                                QHBoxLayout, QHeaderView, QInputDialog, QLabel, QLineEdit,
                                QListWidget, QListWidgetItem, QMessageBox, QPlainTextEdit,
-                               QPushButton, QRadioButton, QSpinBox, QTableWidget,
-                               QTableWidgetItem, QTimeEdit, QVBoxLayout)
+                               QPushButton, QRadioButton, QScrollArea, QSpinBox, QTableWidget,
+                               QTableWidgetItem, QTimeEdit, QVBoxLayout, QWidget)
 
-from theme import prose, readable_on, SPACE_M, SPACE_S
+from theme import prose, readable_on, SPACE_3XL, SPACE_M, SPACE_S, SPACE_XL
+def scrolling_body(dialog):
+    """Inhalt eines hohen Dialogs in einen Scrollbereich, die Knöpfe bleiben unten stehen.
+    So bleibt er auch auf kleinen Bildschirmen bedienbar (Full HD mit 200 % = 960 × 540).
+    Gibt (Layout für den Inhalt, äußeres Layout für die Knöpfe) zurück."""
+    outer = QVBoxLayout(dialog)
+    body = QWidget()
+    layout = QVBoxLayout(body)
+    layout.setContentsMargins(0, 0, SPACE_S, 0)  # rechts Platz für den Scrollbalken
+    scroll = QScrollArea()
+    scroll.setWidgetResizable(True)
+    scroll.setFrameShape(QFrame.NoFrame)
+    scroll.setWidget(body)
+    outer.addWidget(scroll, 1)
+    return layout, outer
+
+
+def fit_screen(widget, width, height):
+    """Startgröße, höchstens so groß wie der verfügbare Bildschirm (abzüglich Rand)."""
+    screen = widget.screen() or QGuiApplication.primaryScreen()
+    if screen is None:
+        return QSize(width, height)
+    area = screen.availableGeometry()
+    return QSize(min(width, area.width() - SPACE_XL), min(height, area.height() - SPACE_3XL))
+
+
 class ConnectionSettingsDialog(QDialog):
     def __init__(self, config, config_key, default_paths, title, parent=None,
                  enabled_text=None, folders=False, hint=None, paths_key=None,
                  timezone=True, files=True, paths=True, path_title="Logdatei-Pfade",
-                 enabled_key=None, checks=()):
+                 enabled_key=None, checks=(), utc_auto_key=None):
         super().__init__(parent)
+        self.utc_auto_key = utc_auto_key  # Schalter „von UTC automatisch umrechnen“ (TeamViewer)
+        self.utc_auto_box = None
         self.checks = list(checks)        # weitere Schalter: [(Config-Schlüssel, Text, Standard)]
         self.check_boxes = {}
         self.config = config
@@ -116,6 +143,13 @@ class ConnectionSettingsDialog(QDialog):
         self.tz_spinbox.setRange(-12, 14)
         self.tz_spinbox.setValue(saved_tz_correction)
         
+        if self.utc_auto_key:
+            auto = self.config.get(self.utc_auto_key)
+            self.utc_auto_box = QCheckBox("Sommer- und Winterzeit automatisch (Log in UTC)")
+            self.utc_auto_box.setChecked(saved_tz_correction in (1, 2) if auto is None else bool(auto))
+            self.tz_spinbox.setEnabled(not self.utc_auto_box.isChecked())
+            self.utc_auto_box.toggled.connect(lambda on: self.tz_spinbox.setEnabled(not on))
+            tz_layout.addRow(self.utc_auto_box)
         tz_layout.addRow("Zeitzonenkorrektur (Stunden):", self.tz_spinbox)
         tz_group.setLayout(tz_layout)
         layout.addWidget(tz_group)
@@ -139,6 +173,8 @@ class ConnectionSettingsDialog(QDialog):
             result[key] = box.isChecked()
         if self.tz_spinbox:
             result[f"{self.config_key}_timezone_correction"] = self.get_timezone_correction()
+        if self.utc_auto_box:
+            result[self.utc_auto_key] = self.utc_auto_box.isChecked()
         return result
     
     def add_path(self):
@@ -492,8 +528,8 @@ class TrackingFilterDialog(QDialog):
         self.config = config
         self.setWindowTitle("Fenster-Filter")
         self.setMinimumWidth(560)
-        self.resize(620, 820)  # Hinweistexte nicht abschneiden
-        layout = QVBoxLayout(self)
+        self.resize(fit_screen(self, 620, 820))  # Hinweistexte nicht abschneiden
+        layout, outer = scrolling_body(self)
 
         hint = QLabel("Ein Eintrag pro Zeile. Er passt auf den Programmnamen (z. B. chrome.exe "
                       "oder chrome) oder auf einen Teil des Fenstertitels. Groß und klein ist egal. "
@@ -579,7 +615,7 @@ class TrackingFilterDialog(QDialog):
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
-        layout.addWidget(buttons)
+        outer.addWidget(buttons)
         self.ok_button = buttons.button(QDialogButtonBox.Ok)
         self.white_radio.toggled.connect(self.validate)
         self.validate()
@@ -649,8 +685,8 @@ class RulesDialog(QDialog):
         self._loading = True
         self.setWindowTitle("Zuordnung ohne KI (Regeln)")
         self.setMinimumWidth(720)
-        self.resize(900, 760)  # Knöpfe und Hinweise ganz zeigen
-        layout = QVBoxLayout(self)
+        self.resize(fit_screen(self, 900, 760))  # Knöpfe und Hinweise ganz zeigen
+        layout, outer = scrolling_body(self)
 
         hint = QLabel("Feste Regeln ordnen Verbindungen, Telefonate und Fenster einer Kategorie und einem "
                       "Kunden zu, z. B. Outlook → „E-Mail / Kommunikation“. Ergebnis: Zeile „Zuordnung o. KI“. "
@@ -762,7 +798,7 @@ class RulesDialog(QDialog):
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
-        layout.addWidget(buttons)
+        outer.addWidget(buttons)
         self.ok_button = buttons.button(QDialogButtonBox.Ok)
 
         self._loading = False

@@ -7,7 +7,7 @@ Dateien nur das Ende gelesen (safe_io.log_lines). Kaputte Zeilen werden überspr
 import os
 import re
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import safe_io
 
@@ -20,6 +20,11 @@ def _dmy(text):
     """
     return datetime(int(text[6:10]), int(text[3:5]), int(text[0:2]),
                     int(text[11:13]), int(text[14:16]), int(text[17:19]))
+
+
+def utc_to_local(when):
+    """UTC → Ortszeit dieses Rechners, mit Sommer- oder Winterzeit des jeweiligen Datums."""
+    return when.replace(tzinfo=timezone.utc).astimezone().replace(tzinfo=None)
 
 
 class BaseConnectionParser:
@@ -73,6 +78,17 @@ class TeamViewerParser(BaseConnectionParser):
     ]
     LINE = re.compile(r"^(\d+)\s+(\d{2}-\d{2}-\d{4} \d{2}:\d{2}:\d{2})\s+"
                       r"(\d{2}-\d{2}-\d{4} \d{2}:\d{2}:\d{2})")
+    AUTO = "utc"  # statt fester Stunden: von UTC in Ortszeit umrechnen
+
+    def settings(self):
+        """TeamViewer schreibt UTC. Automatisch (teamviewer_utc_auto) stimmt die Zeit im Sommer
+        wie im Winter; ein fester Versatz nur in einer Jahreshälfte. Ohne Einstellung gelten die
+        alten Werte 1 (Winter) und 2 (Sommer) als UTC-Korrektur, andere als bewusst gewählt."""
+        paths, tz = super().settings()
+        auto = self.config.get("teamviewer_utc_auto")
+        if auto is None:
+            auto = tz in (1, 2)
+        return paths, (self.AUTO if auto else tz)
 
     def parse_file(self, lines, tz_correction):
         result = []
@@ -91,8 +107,11 @@ class TeamViewerParser(BaseConnectionParser):
             return None
         session_id, start_str, end_str = match.groups()
         try:
-            shift = timedelta(hours=tz_correction)  # TeamViewer speichert UTC
-            start, end = _dmy(start_str) + shift, _dmy(end_str) + shift
+            if tz_correction == self.AUTO:
+                start, end = utc_to_local(_dmy(start_str)), utc_to_local(_dmy(end_str))
+            else:
+                shift = timedelta(hours=tz_correction)  # fester Versatz (von Hand eingestellt)
+                start, end = _dmy(start_str) + shift, _dmy(end_str) + shift
         except ValueError:
             return None
         if (end - start).total_seconds() < 60:
