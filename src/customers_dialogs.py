@@ -180,7 +180,8 @@ class CustomersDialog(QDialog):
                      if isinstance(d, dict) and d.get("status") == "gelernt"}
         theme = THEMES["dark" if getattr(parent, "dark_mode", False) else "light"]
         self.setWindowTitle("Kunden & Erkennung")
-        self.setMinimumSize(980, 680)
+        self.resize(980, 680)
+        self.setMinimumSize(860, 480)  # passt auch auf Full HD mit 200 % Anzeige (960 × 540)
         self.customers = copy.deepcopy(cl.customer_list(config))
         self.customers.sort(key=lambda c: c["name"].lower())
         self._shown = []  # Kunden in der Reihenfolge der Liste (nach Suche)

@@ -363,6 +363,7 @@ class _Row(QFrame):
         text.setSpacing(2)
         head = QLabel(title)
         head.setObjectName("row_title")
+        head.setWordWrap(True)  # lange Titel umbrechen statt die Seite zu verbreitern
         text.addWidget(head)
         if show_page:
             where = QLabel(dict((k, n) for k, n, _i, _s in PAGES)[page])
@@ -723,9 +724,15 @@ class SettingsWindow(QDialog):
         for col in range(3):
             self.tile_grid.setColumnStretch(col, 1 if col < columns else 0)
 
+    # Unter dieser Fensterhöhe passt die feste Vorschau (Seite „Ansicht“) nicht mehr neben die
+    # Einstellungen und würde sie überdecken (z. B. Full HD mit 200 % Anzeige): dann ausblenden
+    PREVIEW_MIN_WINDOW_HEIGHT = 600
+
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self._fit_tiles()
+        if self.preview is not None:
+            self.preview.setVisible(self.height() >= self.PREVIEW_MIN_WINDOW_HEIGHT)
 
     def _fit_tiles(self):
         # Erst wenn die Seite zu sehen ist, hat das Stylesheet die Kacheln fertig vermessen
