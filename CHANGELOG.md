@@ -97,6 +97,14 @@ Testversionen aus Branches tragen die Version ihres main-Stands plus Buildnummer
 - **Remotedesktop (mstsc) aus dem Windows-Ereignisprotokoll:** Zeitzeuge liest zusätzlich `Microsoft-Windows-TerminalServices-RDPClient/Operational` (Aufbau 1024, Trennung 1026). Das füllt Zeiten, in denen Zeitzeuge nicht lief, und macht Beginn und Ende sekundengenau; mit der eigenen Aufzeichnung wird es zu einer Sitzung zusammengeführt. Abschaltbar unter Datenquellen → Remotedesktop (mstsc).
 
 ### Behoben
+- **Nächtlicher Audit 06.11.2026** (Details: `docs/AUDIT-2026-11-06.md`):
+  - **Matrix42: keine Doppelbuchung mehr nach Zeitüberschreitung.** War die Buchung schon abgeschickt, meldet Zeitzeuge jetzt „Vielleicht gebucht … bitte zuerst in Matrix42 nachsehen“ und sperrt den Knopf, statt „Nicht gebucht“ zu zeigen.
+  - **Tätigkeit auf einen anderen Tag verschieben** verliert sie nicht mehr, wenn das Speichern scheitert. Die Fehlermeldung im Buchungsfenster bleibt stehen. Ein Matrix42-Termin „10:00 - 10:00“ wird nicht mehr zur 24-Stunden-Buchung.
+  - **Schneller:** Tagesabschluss öffnet in 0,16 s statt 0,73 s, das Hauptfenster steht rund 40 ms früher (Symbole werden nur einmal gezeichnet). Das Windows-Ereignisprotokoll für Remotedesktop wird im Hintergrund gelesen statt alle 2 Minuten im Fenster.
+  - **Kleine Fenster und 150/200 % Anzeige:** Die Kacheln unter Einstellungen → Datenquellen nehmen so viele Spalten, wie passen (keine waagerechte Scrollleiste mehr), lange Pfade werden mit „…“ gekürzt, die Kundenliste passt auf Full HD mit 200 %.
+  - **Einheitliches Aussehen:** feste Abstände (4/8/12/16/24/32/48 px), vier Schriftgrößen und vier Rundungen für alle Fenster (`docs/DESIGN-TOKENS.md`). Tooltips der Timeline sehen aus wie alle anderen.
+  - **Sicherheit:** Edge-Fenster für 3CX, ITM und Matrix42 nehmen keine DevTools-Verbindungen fremder Webseiten mehr an; der Mitschnitt schwärzt auch SAML-Anmeldungen; Outlook-Ordner mit ’ im Namen funktionieren.
+  - **Texte:** „Kunden & Erkennung“ heißt jetzt wie im Menü „Kundenliste“, „M42“ in der Statuszeile „Matrix42“; fünf lange Erklärungen gekürzt.
 - **Einstellungen → Ansicht hing bis zu einer Minute:** Die Vorschau maß bei jeder Zelle der Beispielliste alle Spalten neu. Mit „PC-Verlauf in der Liste“ und Fenstern einzeln sind das über 100 Zeilen bei jedem Darüberfahren. Jetzt einmal nach dem Füllen (2,6 s → 0,1 s).
 - **Einstellungsfenster träge:** Die Vorschau zeichnet nur noch, wenn sie zu sehen ist, beim schnellen Darüberwischen nur für die Zeile, auf der die Maus bleibt. Die Kacheln der Datenquellen bauen sich alle 3 s nur noch neu auf, wenn sich ihr Zustand geändert hat. Seitenwechsel 60–80 ms → unter 30 ms.
 - **Erfasst zeigt die Personalzeit:** „5:53 h von 7:18 h gestempelt“ statt „von 8:00 h“ (Soll). Ohne Zeiterfassung steht dort die eingestellte Arbeitszeit („… Arbeitszeit“).
