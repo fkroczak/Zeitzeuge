@@ -622,10 +622,7 @@ class TimelineView(QGraphicsView):
 
     def _create_tooltip(self):
         tooltip = QLabel(self.parent(), Qt.ToolTip)
-        tooltip.setStyleSheet(
-            "QLabel { background-color: #18181B; color: #F4F4F5; "
-            "border: 1px solid #3F3F46; padding: 8px 10px; border-radius: 10px; }"
-        )
+        tooltip.setObjectName("timeline_tip")  # Aussehen wie QToolTip, siehe theme.py
         tooltip.hide()
         return tooltip
 

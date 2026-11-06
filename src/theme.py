@@ -99,6 +99,7 @@ GERMAN = QLocale(QLocale.German, QLocale.Germany)
 #   control                              Rahmen von Feldern und Knöpfen (mind. 3 : 1 zum Grund)
 #   chip/chiptext                        Merkmal-Chips (Kundenerkennung), Filter-Chips
 #   good                                 „gilt“, „bleibt auf diesem Gerät“ (Grün)
+#   tip/tiptext/tipborder                Hinweise (QToolTip, Timeline-Tooltip), in beiden Designs dunkel
 THEMES = {
     "dark": {
         "bg": "#0C0C0E", "surface": "#151517", "bar": "#151517",
@@ -109,6 +110,7 @@ THEMES = {
         "sel": "#2A2A2F", "seltext": "#FFFFFF", "now": "#F43F5E",
         "primary": "#FAFAFA", "onprimary": "#18181B",
         "chip": "#1F1F23", "chiptext": "#E4E4E7", "good": "#4ADE80",
+        "tip": "#18181B", "tiptext": "#F4F4F5", "tipborder": "#3F3F46",
         # Buchungsquote (booking_rate.py): Fläche und Schrift je Stufe
         "rate_low": "#4A1C1F", "rate_low_text": "#FFB4B6", "rate_mid": "#463708", "rate_mid_text": "#FFE08A",
         "rate_ok": "#173D27", "rate_ok_text": "#9BE8B8", "rate_over": "#0E6B34", "rate_over_text": "#FFFFFF",
@@ -124,6 +126,7 @@ THEMES = {
         "sel": "#ECE8FB", "seltext": "#2E1065", "now": "#E11D48",
         "primary": "#18181B", "onprimary": "#FAFAFA",
         "chip": "#F4F4F5", "chiptext": "#27272A", "good": "#15803D",
+        "tip": "#18181B", "tiptext": "#F4F4F5", "tipborder": "#3F3F46",
         # Buchungsquote (booking_rate.py): Fläche und Schrift je Stufe
         "rate_low": "#FCE4E4", "rate_low_text": "#9F1D20", "rate_mid": "#FFF1BF", "rate_mid_text": "#6B4E00",
         "rate_ok": "#DDF3E4", "rate_ok_text": "#1E6B3A", "rate_over": "#0F5E2E", "rate_over_text": "#FFFFFF",
@@ -352,8 +355,9 @@ QCheckBox#switch::indicator:focus { border-color: $text; }
 QFrame#setting_row { border: none; border-bottom: 1px solid $line; }
 QFrame#setting_row QLabel, QFrame#setting_row QCheckBox { background: transparent; }
 QPushButton#result_link { text-align: left; background: transparent; border: 1px solid $control; border-radius: $radiuspx; padding: 8px 12px; }
-QToolTip { background-color: #18181B; color: #F4F4F5; border: 1px solid #3F3F46; border-radius: $radiuspx;
-           padding: 5px 8px; }
+/* Hinweise (auch der Timeline-Tooltip): in beiden Designs dunkel, wie unter Windows 11 */
+QToolTip, QLabel#timeline_tip { background-color: $tip; color: $tiptext; border: 1px solid $tipborder;
+           border-radius: $radiuspx; padding: $space_spx $space_mpx; }
 /* Companion-Bausteine: Karten, Chips, Kennzahlen, Hinweisboxen */
 QFrame#card { background-color: $surface; border: 1px solid $border; border-radius: $radius_cardpx; }
 QFrame#card QLabel, QFrame#card QCheckBox { background: transparent; }
