@@ -33,3 +33,8 @@ def test_nur_speichernde_abfragen_ungekuerzt():
     assert not rec._full({"methode": "GET"})
     rec.full_writes = False
     assert not rec._full({"methode": "POST"})
+
+
+def test_saml_anmeldung_geschwaerzt():
+    out = rr.redact_query("SAMLResponse=PHNhbWw%3D&wresult=abc&RelayState=x")
+    assert "PHNhbWw" not in out and "abc" not in out and "RelayState" in out

@@ -408,7 +408,9 @@ class BrowserReader(QObject):
         ]
         args += shlex.split(os.environ.get("ZEITZEUGE_BROWSER_ARGS", ""))
         if debug:
-            args += ["--remote-debugging-port=0", "--remote-allow-origins=*"]
+            # Ohne --remote-allow-origins: unsere Clients senden keinen Origin (suppress_origin),
+            # fremde Webseiten kommen so nicht an die angemeldeten Browserprofile
+            args += ["--remote-debugging-port=0"]
         if mode == "login":
             return args + [f"--app={url or self.start_url()}", "--window-size=1100,800"]
         args += ["--window-size=1100,2400"]

@@ -22,7 +22,8 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 import websocket  # Paket websocket-client
 
 SECRET_NAME = re.compile(
-    r"pass|pwd|secret|token|otp|code|auth|session|sid|key|cookie|jwt|bearer|credential|pin",
+    r"pass|pwd|secret|token|otp|code|auth|session|sid|key|cookie|jwt|bearer|credential|pin"
+    r"|saml|wresult|assertion",  # ADFS/SAML-Anmeldung: signierte Anmeldebestätigung
     re.I)
 JWT = re.compile(r"eyJ[\w-]{5,}\.[\w-]{5,}\.[\w-]*")
 DATA_TYPES = {"XHR", "Fetch", "Document", "EventSource", "Other", "Preflight"}

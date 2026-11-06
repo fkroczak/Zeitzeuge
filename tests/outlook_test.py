@@ -256,3 +256,7 @@ def test_zeile_regeln_und_ki():
     assert "Teilnehmer: kunde-nord.de" in outlook
     # Ohne Outlook-Einträge bleibt der Text wie bisher
     assert "Outlook" not in ai_classifier.build_day_text([call])
+
+
+def test_powershell_text_mit_typografischem_apostroph():
+    assert od._ps_text("Peter’s 'Kalender'") == "Peter’’s ''Kalender''"
