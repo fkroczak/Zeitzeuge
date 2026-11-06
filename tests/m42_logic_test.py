@@ -195,3 +195,23 @@ def test_fehler_406_laedt_seite_neu_und_versucht_einmal(tmp_path, monkeypatch):
                                                               json.dumps(answers.pop(0)))[1])
     assert reader._fetch("GET", "/m42Services/api/x") == [1]
     assert seen == [("fresh", False), "Page.navigate", ("fresh", True)]
+
+
+def test_fehler_406_auch_nach_neuladen_heisst_anmelden(tmp_path, monkeypatch):
+    """Bleibt es bei 406 (Anmeldung abgelaufen), meldet Zeitzeuge „Anmeldung nötig“."""
+    import json
+
+    import pytest
+
+    import m42_booking
+    import m42_reader
+    from m42_reader import M42Reader
+
+    monkeypatch.setattr(m42_reader.time, "sleep", lambda s: None)
+    reader = M42Reader("http://m42.invalid/kalender", str(tmp_path / "m42_buchungen.json"),
+                       str(tmp_path / "profil"), weeks_back=0)
+    reader._tools = type("Tools", (), {"call": lambda self, method, **kw: None})()
+    monkeypatch.setattr(reader, "_evaluate", lambda js, **kw: json.dumps({"state": "error", "status": 406}))
+    with pytest.raises(m42_booking.BookingError, match="anmelden"):
+        reader._fetch("GET", "/m42Services/api/x")
+    assert reader.needs_login
