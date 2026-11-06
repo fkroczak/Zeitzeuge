@@ -564,6 +564,7 @@ class M42Reader(BrowserReader):
         import m42_booking as mb
         self._wake.set()
         result = {"ok": False, "request": request}
+        sent = False  # Buchung abgeschickt: danach ist bei einem Fehler unklar, ob sie angekommen ist
         try:
             ids = request.get("ids") or mb.DEFAULT_IDS
             number = mb.normalize_ticket(request.get("ticket", ""))
@@ -588,10 +589,21 @@ class M42Reader(BrowserReader):
                                       goodwill_reason=request.get("goodwill_reason", ""),
                                       no_surcharge=request.get("no_surcharge", False),
                                       surcharge_reason=request.get("surcharge_reason", ""))
+                sent = True
                 saved = self._fetch("POST", f"{mb.API}/WidgetDialog/UpdateData/{ids['dialog']}",
                                     mb.wrap(entry))
                 result.update(ok=True, entry=mb.saved_entry(saved), ticket=ticket)
             self._set_status(f"Matrix42: gebucht ({result['entry']} auf {number})")
+        except Exception as e:
+            result["error"] = str(e)
+            if sent:  # z. B. Zeitüberschreitung: Matrix42 kann trotzdem gebucht haben
+                result["unclear"] = True
+                result["error"] = f"unklar, ob gebucht wurde ({e}). Bitte zuerst in Matrix42 nachsehen."
+            safe_io.log(f"Matrix42: Buchen fehlgeschlagen ({e!r})")
+            self._set_status(f"Matrix42: Buchen fehlgeschlagen ({e})")
+        finally:
+            self._booking = False
+        if sent:
             # Woche neu lesen, damit Zeile „Matrix42“ und Buchungsquote die Buchung zeigen
             day = request["start"].strftime("%Y-%m-%d")
             self._checked.discard(week_start(day))
@@ -601,12 +613,6 @@ class M42Reader(BrowserReader):
                 with self._lock:
                     self._wanted.add(week_start(day))
             self._wake.set()
-        except Exception as e:
-            result["error"] = str(e)
-            safe_io.log(f"Matrix42: Buchen fehlgeschlagen ({e!r})")
-            self._set_status(f"Matrix42: Buchen fehlgeschlagen ({e})")
-        finally:
-            self._booking = False
         self.booking_done.emit(result)
 
     def _save(self, by_day):

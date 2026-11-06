@@ -523,6 +523,9 @@ class DayCloseDialog(QDialog):
         else:
             error = result.get("error") or "unbekannter Fehler"
             row["result"] = f"⚠ nicht gebucht: {error}"
+            if result.get("unclear"):  # abgeschickt, Antwort fehlt: nicht noch einmal mitbuchen
+                row["result"] = f"⚠ {error}"
+                row["checked"] = False
             self.results["failed"] += 1
             if "anmelden" in error:  # ohne Anmeldung scheitern auch alle weiteren
                 for r, _i, _q in self.queue:
