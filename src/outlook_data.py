@@ -221,7 +221,8 @@ try {
 
 def _ps_text(text):
     """Text für ein PowerShell-Literal in einfachen Anführungszeichen."""
-    return str(text or "").replace("'", "''")
+    # PowerShell wertet auch typografische Apostrophe (‘ ’ ‚ ‛) als einfache Anführungszeichen
+    return re.sub(r"(['\u2018\u2019\u201a\u201b])", r"\1\1", str(text or ""))
 
 
 def build_script(start, end, calendar=True, mails=True, calendar_path="", sent_path="",

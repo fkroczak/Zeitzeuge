@@ -303,8 +303,8 @@ class SetupWizard(QDialog):
         s = SOURCES[sid]
         page = QWidget()
         col = QVBoxLayout(page)
-        title = QLabel(f"<h3>{s['title']}</h3>")
-        title.setTextFormat(Qt.RichText)
+        title = QLabel(s["title"])
+        title.setObjectName("section_title")
         col.addWidget(title)
         text = QLabel(s["text"])
         text.setWordWrap(True)
@@ -348,8 +348,8 @@ class SetupWizard(QDialog):
     def _summary_page(self):
         page = QWidget()
         col = QVBoxLayout(page)
-        title = QLabel("<h3>Fertig</h3>")
-        title.setTextFormat(Qt.RichText)
+        title = QLabel("Fertig")
+        title.setObjectName("section_title")
         col.addWidget(title)
         col.addWidget(self.summary)
         col.addStretch(1)

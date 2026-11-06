@@ -17,7 +17,7 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (QDialog, QDialogButtonBox, QGridLayout, QLabel, QMessageBox,
                                QPushButton, QToolButton, QVBoxLayout)
 
-from theme import prose
+from theme import prose, SPACE_M
 import datakey
 import datastore
 import protect_dialogs
@@ -258,7 +258,7 @@ class ProtectMixin:
         layout.addWidget(intro)
         grid = QGridLayout()
         grid.setColumnStretch(1, 1)
-        grid.setHorizontalSpacing(12)
+        grid.setHorizontalSpacing(SPACE_M)
         labels, row_buttons = {}, {}
         rows = [("Windows-Anmeldung:", "win", []),
                 ("PIN beim Start:", "pin",

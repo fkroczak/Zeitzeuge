@@ -9,13 +9,13 @@ Teil von TimelineApp (main_timeline.py): SettingsWindow(main) bekommt das Hauptf
 import os
 
 from PySide6.QtCore import QSize, Qt, QTimer, QUrl
-from PySide6.QtGui import QCursor, QDesktopServices
+from PySide6.QtGui import QCursor, QDesktopServices, QPainter
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QFrame, QGridLayout, QHBoxLayout, QLabel,
                                QLineEdit, QListWidget, QListWidgetItem, QMessageBox, QPushButton, QScrollArea,
                                QSpinBox, QStackedWidget, QVBoxLayout, QWidget)
 
 import icons
-from theme import THEMES, prose
+from theme import THEMES, prose, SPACE_2XL, SPACE_L, SPACE_M, SPACE_S, SPACE_XL, SPACE_XS
 import main_timeline as mt  # Pfade und save_config zur Laufzeit von dort (Tests ersetzen sie dort)
 
 # Bereiche: Schlüssel, Name, Symbol, Satz darunter
@@ -310,6 +310,39 @@ class _Combo(QComboBox):
 ACTION_KEYS = {"dark_action": "dark_mode", "pc_blocks_action": "pc_blocks", "pc_list_action": "show_pc_in_list"}
 
 
+class _ElidedLabel(QLabel):
+    """Wert rechts in einer Zeile (z. B. Pfad): so breit wie nötig, höchstens maximumWidth,
+    in schmalen Fenstern in der Mitte mit „…“ gekürzt (voller Text als Tooltip).
+    Ein normales QLabel ist nie schmaler als sein Text und schiebt die Seite sonst nach rechts
+    aus dem Fenster (horizontale Scrollleiste)."""
+
+    def __init__(self):
+        super().__init__()
+        self._full = ""
+
+    def set_full_text(self, text):
+        self._full = text
+        self.setText(text)
+        self._update_tip()
+
+    def minimumSizeHint(self):
+        return QSize(60, super().minimumSizeHint().height())
+
+    def _update_tip(self):
+        self.setToolTip(self._full if self.fontMetrics().horizontalAdvance(self._full) > self.width() else "")
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._update_tip()
+
+    def paintEvent(self, _event):
+        painter = QPainter(self)
+        painter.setPen(self.palette().color(self.foregroundRole()))
+        rect = self.contentsRect()
+        painter.drawText(rect, Qt.AlignLeft | Qt.AlignVCenter,
+                         self.fontMetrics().elidedText(self._full, Qt.ElideMiddle, rect.width()))
+
+
 class _Row(QFrame):
     """Eine Einstellung: Symbol, Titel, Beschreibung, rechts Schalter, Zahl oder „Ändern …“."""
 
@@ -320,16 +353,17 @@ class _Row(QFrame):
         main = window.main
         page, kind, icon_name, title, desc, target, extra = spec
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(4, 10, 4, 10)
-        layout.setSpacing(12)
+        layout.setContentsMargins(SPACE_XS, SPACE_M, SPACE_XS, SPACE_M)
+        layout.setSpacing(SPACE_M)
         pic = QLabel()
         pic.setPixmap(icons.icon(icon_name, window.icon_color).pixmap(20, 20))
         pic.setAlignment(Qt.AlignTop)
         layout.addWidget(pic)
         text = QVBoxLayout()
-        text.setSpacing(2)
+        text.setSpacing(SPACE_XS)
         head = QLabel(title)
         head.setObjectName("row_title")
+        head.setWordWrap(True)  # lange Titel umbrechen statt die Seite zu verbreitern
         text.addWidget(head)
         if show_page:
             where = QLabel(dict((k, n) for k, n, _i, _s in PAGES)[page])
@@ -377,7 +411,7 @@ class _Row(QFrame):
                 lambda i: window.preview_hover(self.spec, self.control.itemData(i), self.control.itemText(i)))
         else:  # button
             if extra:
-                self.value = QLabel()
+                self.value = _ElidedLabel()
                 self.value.setObjectName("row_value")
                 self.value.setMaximumWidth(320)  # lange Pfade quetschen sonst die Beschreibung
                 layout.addWidget(self.value)
@@ -436,10 +470,7 @@ class _Row(QFrame):
         kind, target, extra = self.spec[1], self.spec[5], self.spec[6]
         main = self.window.main
         if self.value is not None and extra:
-            full = str(extra(main))
-            shown = self.value.fontMetrics().elidedText(full, Qt.ElideMiddle, self.value.maximumWidth())
-            self.value.setText(shown)
-            self.value.setToolTip(full if shown != full else "")
+            self.value.set_full_text(str(extra(main)))
         elif kind == "spin":
             self.control.blockSignals(True)
             self.control.setValue(int(main.config.get(target, extra[0]) or 0))
@@ -466,8 +497,8 @@ class _Tile(QFrame):
         key, brand, name, desc, setup, _kind = spec
         main = window.main
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(14, 12, 14, 12)
-        layout.setSpacing(6)
+        layout.setContentsMargins(SPACE_L, SPACE_M, SPACE_L, SPACE_M)
+        layout.setSpacing(SPACE_S)
         head = QHBoxLayout()
         pic = QLabel()
         pic.setPixmap(icons.brand_icon(brand).pixmap(28, 28))
@@ -541,7 +572,7 @@ class SettingsWindow(QDialog):
         self.main = main
         self.setWindowTitle("Zeitzeuge – Einstellungen")
         self.setObjectName("settings_window")
-        self.resize(1000, 660)
+        self.resize(1040, 660)  # 3 Kacheln nebeneinander ohne Scrollleiste
         self.setMinimumSize(720, 480)
         theme = THEMES["dark" if main.dark_mode else "light"]
         self.icon_color = theme["text"]
@@ -564,11 +595,11 @@ class SettingsWindow(QDialog):
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
         top = QHBoxLayout()
-        top.setContentsMargins(16, 12, 16, 12)
+        top.setContentsMargins(SPACE_L, SPACE_M, SPACE_L, SPACE_M)
         heading = QLabel("Einstellungen")
         heading.setObjectName("page_title")
         top.addWidget(heading)
-        top.addSpacing(24)
+        top.addSpacing(SPACE_XL)
         self.search = QLineEdit()
         self.search.setPlaceholderText("Einstellung suchen, z. B. Minuten, VPN, PIN")
         self.search.setAccessibleName("Einstellungen durchsuchen")
@@ -623,17 +654,17 @@ class SettingsWindow(QDialog):
         page = QWidget()
         page.setObjectName("settings_page")
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(28, 20, 28, 20)
-        layout.setSpacing(4)
+        layout.setContentsMargins(SPACE_2XL, SPACE_XL, SPACE_2XL, SPACE_XL)
+        layout.setSpacing(SPACE_XS)
         # Seite „Ansicht“: Titel und Vorschau bleiben stehen, nur die Einstellungen darunter blättern
         head = layout
         if key == "view":
             fixed = QWidget()
             fixed.setObjectName("settings_page")
             head = QVBoxLayout(fixed)
-            head.setContentsMargins(28, 20, 28, 8)
-            head.setSpacing(4)
-            layout.setContentsMargins(28, 4, 28, 20)
+            head.setContentsMargins(SPACE_2XL, SPACE_XL, SPACE_2XL, SPACE_S)
+            head.setSpacing(SPACE_XS)
+            layout.setContentsMargins(SPACE_2XL, SPACE_XS, SPACE_2XL, SPACE_XL)
         title = QLabel(name)
         title.setObjectName("page_title")
         head.addWidget(title)
@@ -641,7 +672,7 @@ class SettingsWindow(QDialog):
         sub.setObjectName("hint")
         sub.setWordWrap(True)
         head.addWidget(sub)
-        head.addSpacing(10)
+        head.addSpacing(SPACE_S)
         if key == "view":
             from settings_preview import PreviewPane
             self.preview = PreviewPane(self.main)
@@ -652,17 +683,15 @@ class SettingsWindow(QDialog):
                     row = _Row(self, spec)
                     self.rows.append(row)
                     layout.addWidget(row)
-            layout.addSpacing(8)
-            grid = QGridLayout()
-            grid.setSpacing(12)
-            for i, spec in enumerate(SOURCE_TILES):
-                tile = _Tile(self, spec)
-                self.tiles.append(tile)
-                grid.addWidget(tile, i // 3, i % 3)
-            for col in range(3):
-                grid.setColumnStretch(col, 1)
-            layout.addLayout(grid)
-            layout.addSpacing(12)
+            layout.addSpacing(SPACE_S)
+            self.tile_grid = QGridLayout()
+            self.tile_grid.setSpacing(SPACE_M)
+            for spec in SOURCE_TILES:
+                self.tiles.append(_Tile(self, spec))
+            self._tile_columns = 0
+            self._place_tiles(3)
+            layout.addLayout(self.tile_grid)
+            layout.addSpacing(SPACE_M)
             pc = QLabel("Aktive Fenster")  # Aufzeichnung am PC: Schalter, Filter, Leerlauf
             pc.setObjectName("row_title")
             layout.addWidget(pc)
@@ -681,6 +710,37 @@ class SettingsWindow(QDialog):
             box.addWidget(self._scroll(page), 1)
             return wrapper
         return self._scroll(page)
+
+    def _place_tiles(self, columns):
+        """Kacheln in so vielen Spalten wie nebeneinander passen (1–3), sonst ragen sie rechts
+        aus schmalen Fenstern (kleines Fenster, 150/200 % Anzeige)."""
+        if columns == self._tile_columns:
+            return
+        self._tile_columns = columns
+        for tile in self.tiles:
+            self.tile_grid.removeWidget(tile)
+        for i, tile in enumerate(self.tiles):
+            self.tile_grid.addWidget(tile, i // columns, i % columns)
+        for col in range(3):
+            self.tile_grid.setColumnStretch(col, 1 if col < columns else 0)
+
+    # Unter dieser Fensterhöhe passt die feste Vorschau (Seite „Ansicht“) nicht mehr neben die
+    # Einstellungen und würde sie überdecken (z. B. Full HD mit 200 % Anzeige): dann ausblenden
+    PREVIEW_MIN_WINDOW_HEIGHT = 600
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._fit_tiles()
+        if self.preview is not None:
+            self.preview.setVisible(self.height() >= self.PREVIEW_MIN_WINDOW_HEIGHT)
+
+    def _fit_tiles(self):
+        # Erst wenn die Seite zu sehen ist, hat das Stylesheet die Kacheln fertig vermessen
+        if self.tiles and self.tiles[0].isVisible():
+            need = max(t.minimumSizeHint().width() for t in self.tiles) + self.tile_grid.spacing()
+            # Platz rechts der Navigation abzüglich Seitenrand (2 × 28) und Scrollbalken
+            free = self.width() - self.nav.width() - 56 - 12 + self.tile_grid.spacing()
+            self._place_tiles(max(1, min(3, free // need)))
 
     # ---- Vorschau (Seite „Ansicht“)
 
@@ -735,7 +795,7 @@ class SettingsWindow(QDialog):
         page = QWidget()
         page.setObjectName("settings_page")
         self.results_layout = QVBoxLayout(page)
-        self.results_layout.setContentsMargins(28, 20, 28, 20)
+        self.results_layout.setContentsMargins(SPACE_2XL, SPACE_XL, SPACE_2XL, SPACE_XL)
         self.results_title = QLabel()
         self.results_title.setObjectName("page_title")
         self.results_layout.addWidget(self.results_title)
@@ -755,6 +815,7 @@ class SettingsWindow(QDialog):
             self.search.blockSignals(False)
         key = self.nav.item(row).data(Qt.UserRole)
         self.stack.setCurrentIndex(self.pages[key])
+        self._fit_tiles()
         self.refresh()
         if key == "view" and self._preview_stale:
             self._refresh_preview()
@@ -807,8 +868,14 @@ class SettingsWindow(QDialog):
             row.refresh()
         self.refresh_tiles()
 
+    def hideEvent(self, event):
+        super().hideEvent(event)
+        self._timer.stop()  # Fenster bleibt nach dem Schließen erhalten: nicht alle 3 s aufwachen
+
     def showEvent(self, event):
         super().showEvent(event)
+        self._timer.start(3000)
+        self._fit_tiles()
         self.refresh()
         if self._preview_stale and self.current_page() == "view":
             self.refresh_preview_later()

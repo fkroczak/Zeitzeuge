@@ -287,8 +287,12 @@ class BookingDialog(QDialog):
             self.ticket_info = result.get("ticket")
             self.accept()
             return
+        self.validate()  # vor dem Fehlertext: validate() leert sonst die Statuszeile
+        if result.get("unclear"):  # nicht ein zweites Mal buchen, erst in Matrix42 nachsehen
+            self.book_button.setEnabled(False)
+            self.status.setText(f"⚠ Vielleicht gebucht: {result.get('error')}")
+            return
         self.status.setText(f"⚠ Nicht gebucht: {result.get('error') or 'unbekannter Fehler'}")
-        self.validate()
 
 
 class TicketSearchDialog(QDialog):

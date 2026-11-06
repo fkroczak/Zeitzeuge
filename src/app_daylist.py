@@ -289,7 +289,7 @@ class DayListMixin:
             states["logs"] = ("warn", f"Logs: {', '.join(missing)} fehlt",
                               f"Keine Logdatei gefunden: {', '.join(missing)}.\n"
                               "Klicken, um den Pfad einzustellen.")
-        for kind, name in (("pbx", "3CX"), ("itm", "ITM"), ("m42", "M42")):
+        for kind, name in (("pbx", "3CX"), ("itm", "ITM"), ("m42", "Matrix42")):
             reader = getattr(self, {"pbx": "pbx_reader", "itm": "itm_reader", "m42": "m42_reader"}[kind], None)
             if not reader:
                 continue

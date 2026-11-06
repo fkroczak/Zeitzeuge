@@ -134,3 +134,7 @@ def test_aktualisieren_liest_woche_neu(tmp_path):
     reader.refresh(old)
     assert reader._todo() == [this_week, old]
     assert reader._wake.is_set()
+
+
+def test_buchung_ohne_dauer_ist_kein_ganzer_tag():
+    assert m.booking_from_event(ev("10:00 - 10:00")) is None

@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QProgressBar, QSizeP
                                QToolButton, QVBoxLayout, QWidget)
 
 from flow_layout import FlowLayout
+from theme import SPACE_XS, SPACE_S, SPACE_M, SPACE_L
 
 TIME_FMT = "%Y-%m-%d %H:%M:%S"
 
@@ -126,13 +127,13 @@ class _Kpi(QFrame):
         super().__init__(parent)
         self.setObjectName("card")
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(14, 10, 14, 10)
-        layout.setSpacing(2)
+        layout.setContentsMargins(SPACE_L, SPACE_M, SPACE_L, SPACE_M)
+        layout.setSpacing(SPACE_XS)
         head = QLabel(label, self)
         head.setObjectName("kpi_label")
         layout.addWidget(head)
         row = QHBoxLayout()
-        row.setSpacing(8)
+        row.setSpacing(SPACE_S)
         self.value = _CustomerLine(self) if customers else QLabel("–", self)
         self.value.setObjectName("card_title" if customers else "kpi_value")
         row.addWidget(self.value, 1 if customers else 0)
@@ -175,22 +176,22 @@ class RateKpi(QFrame):
         self.level = "none"
         self._text = ""
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(14, 10, 14, 10)
-        layout.setSpacing(2)
+        layout.setContentsMargins(SPACE_L, SPACE_M, SPACE_L, SPACE_M)
+        layout.setSpacing(SPACE_XS)
         title = QLabel("Buchungsquote", self)  # Überschrift wie bei den anderen Kacheln
         title.setObjectName("kpi_label")
         layout.addWidget(title)
         row = QHBoxLayout()
-        row.setSpacing(6)
+        row.setSpacing(SPACE_S)
         self.columns = {}
         for i, key in enumerate(("today", "seven")):
             if i:
                 line = QFrame(self)
                 line.setObjectName("divider")
                 line.setFixedWidth(1)
-                row.addSpacing(8)
+                row.addSpacing(SPACE_S)
                 row.addWidget(line)
-                row.addSpacing(8)
+                row.addSpacing(SPACE_S)
             value = QLabel("–", self)
             value.setObjectName("rate_value_none")
             head = QLabel("heute" if key == "today" else "7 Tage", self)  # klein neben der Zahl
@@ -244,8 +245,8 @@ class DaySummary(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(8, 8, 8, 0)
-        layout.setSpacing(8)
+        layout.setContentsMargins(SPACE_S, SPACE_S, SPACE_S, 0)
+        layout.setSpacing(SPACE_S)
         self.booked = _Kpi("Erfasst", self)
         self.booked.add_progress()
         self.opened = _Kpi("Offen", self, "Jetzt eintragen")
@@ -301,10 +302,10 @@ class ViewChips(QWidget):
         # Fließend: im schmalen Fenster rücken die Chips in die nächste Zeile, statt dem
         # ganzen Fenster eine Mindestbreite aufzuzwingen (Reflow)
         layout = FlowLayout(self, spacing=6)
-        layout.setContentsMargins(4, 6, 4, 6)
+        layout.setContentsMargins(SPACE_XS, SPACE_S, SPACE_XS, SPACE_S)
         title = QLabel("Einträge", self)
         title.setObjectName("section_title")
-        title.setContentsMargins(0, 0, 6, 0)
+        title.setContentsMargins(0, 0, SPACE_S, 0)
         layout.addWidget(title)
         self.buttons = {}
         for key, text in CHIP_VIEWS:

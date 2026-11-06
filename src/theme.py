@@ -27,6 +27,12 @@ class AppStyle(QProxyStyle):
     def pixelMetric(self, metric, option=None, widget=None):
         if metric == QStyle.PM_ToolBarExtensionExtent:
             return 26
+        # Layouts ohne eigene Werte: Rand und Abstand aus der Token-Skala statt Fusion (9–11 / 6 px)
+        if metric in (QStyle.PM_LayoutLeftMargin, QStyle.PM_LayoutTopMargin,
+                      QStyle.PM_LayoutRightMargin, QStyle.PM_LayoutBottomMargin):
+            return SPACE_M
+        if metric in (QStyle.PM_LayoutHorizontalSpacing, QStyle.PM_LayoutVerticalSpacing):
+            return SPACE_S
         return super().pixelMetric(metric, option, widget)
 
     def sizeFromContents(self, ct, option, size, widget=None):
@@ -93,6 +99,7 @@ GERMAN = QLocale(QLocale.German, QLocale.Germany)
 #   control                              Rahmen von Feldern und Knöpfen (mind. 3 : 1 zum Grund)
 #   chip/chiptext                        Merkmal-Chips (Kundenerkennung), Filter-Chips
 #   good                                 „gilt“, „bleibt auf diesem Gerät“ (Grün)
+#   tip/tiptext/tipborder                Hinweise (QToolTip, Timeline-Tooltip), in beiden Designs dunkel
 THEMES = {
     "dark": {
         "bg": "#0C0C0E", "surface": "#151517", "bar": "#151517",
@@ -103,6 +110,7 @@ THEMES = {
         "sel": "#2A2A2F", "seltext": "#FFFFFF", "now": "#F43F5E",
         "primary": "#FAFAFA", "onprimary": "#18181B",
         "chip": "#1F1F23", "chiptext": "#E4E4E7", "good": "#4ADE80",
+        "tip": "#18181B", "tiptext": "#F4F4F5", "tipborder": "#3F3F46",
         # Buchungsquote (booking_rate.py): Fläche und Schrift je Stufe
         "rate_low": "#4A1C1F", "rate_low_text": "#FFB4B6", "rate_mid": "#463708", "rate_mid_text": "#FFE08A",
         "rate_ok": "#173D27", "rate_ok_text": "#9BE8B8", "rate_over": "#0E6B34", "rate_over_text": "#FFFFFF",
@@ -118,6 +126,7 @@ THEMES = {
         "sel": "#ECE8FB", "seltext": "#2E1065", "now": "#E11D48",
         "primary": "#18181B", "onprimary": "#FAFAFA",
         "chip": "#F4F4F5", "chiptext": "#27272A", "good": "#15803D",
+        "tip": "#18181B", "tiptext": "#F4F4F5", "tipborder": "#3F3F46",
         # Buchungsquote (booking_rate.py): Fläche und Schrift je Stufe
         "rate_low": "#FCE4E4", "rate_low_text": "#9F1D20", "rate_mid": "#FFF1BF", "rate_mid_text": "#6B4E00",
         "rate_ok": "#DDF3E4", "rate_ok_text": "#1E6B3A", "rate_over": "#0F5E2E", "rate_over_text": "#FFFFFF",
@@ -126,10 +135,36 @@ THEMES = {
     },
 }
 
-# Rundungen (px): Felder und Knöpfe, Karten und Menüs, Chips
+# ---- Design-Tokens (docs/DESIGN-TOKENS.md). Qt kennt keine CSS-Variablen: Python nutzt die
+# Konstanten, das Stylesheet die Platzhalter $space_*, $fs_*, $radius* (SIZE_TOKENS, beim Import ersetzt).
+
+# Abstände (px), feste Skala: Ränder, Abstände zwischen Elementen, Lücken zwischen Gruppen
+SPACE_XS = 4     # Titel → Beschreibung, eng zusammengehörig
+SPACE_S = 8      # Elemente einer Gruppe, Zeilen
+SPACE_M = 12     # Gruppen, Innenrand kleiner Karten, Standard-Rand von Layouts
+SPACE_L = 16     # Innenrand von Dialogen und Karten
+SPACE_XL = 24    # Abstand zwischen Bereichen, Seitenrand oben/unten
+SPACE_2XL = 32   # Seitenrand links/rechts (Einstellungen)
+SPACE_3XL = 48   # leere Zustände, große Lücken
+
+# Schriftgrößen (px): nur diese vier, Zeilenhöhe Fließtext 1,5 (PROSE_LINE_HEIGHT)
+FONT_SM = 12     # Spaltenköpfe, Beschriftungen von Kennzahlen, Zähler, Menü-Überschriften
+FONT_BASE = 13   # Grundschrift
+FONT_LG = 14     # Abschnittsüberschriften
+FONT_XL = 20     # Seitentitel, große Kennzahlen
+
+# Rundungen (px): klein (Häkchen, Menüzeilen), Felder und Knöpfe, Karten/Menüs/Tabellen, Chips
+RADIUS_SM = 4
 RADIUS = 6
 RADIUS_CARD = 10
 RADIUS_CHIP = 11
+
+SIZE_TOKENS = {
+    "space_xs": SPACE_XS, "space_s": SPACE_S, "space_m": SPACE_M, "space_l": SPACE_L,
+    "space_xl": SPACE_XL, "space_2xl": SPACE_2XL, "space_3xl": SPACE_3XL,
+    "fs_sm": FONT_SM, "fs_base": FONT_BASE, "fs_lg": FONT_LG, "fs_xl": FONT_XL,
+    "radius_sm": RADIUS_SM, "radius": RADIUS, "radius_card": RADIUS_CARD, "radius_chip": RADIUS_CHIP,
+}
 
 # Eine Schrift für die ganze Oberfläche (Stylesheet, Timeline, Legende). Nur zwei Schnitte:
 # normal und fett. Feste Breite nur für Schlüssel und Beispiele.
@@ -174,12 +209,12 @@ def prose(label):
 
 
 STYLESHEET = """
-QWidget { background-color: $bg; color: $text; font-size: 13px; font-family: $font; }
+QWidget { background-color: $bg; color: $text; font-size: $fs_basepx; font-family: $font; }
 QToolBar { background-color: $bar; border: none; padding: 6px 8px; spacing: 4px; }
 QToolBar::separator { background: $border; width: 1px; margin: 6px 6px; }
 QToolBar#tools, QToolBar#fixed { border: none; padding: 0; background: transparent; }
 QToolButton { background: transparent; border: 1px solid transparent;
-              border-radius: 6px; padding: 4px 8px; }
+              border-radius: $radiuspx; padding: 4px 8px; }
 QToolButton:hover { background-color: $hover; }
 QToolButton:pressed, QToolButton:checked { background-color: $pressed; border-color: $border; }
 QToolButton::menu-indicator { image: none; }
@@ -200,7 +235,7 @@ QStatusBar QToolButton { color: $text; padding: 2px 8px; margin: 2px 4px; }
 QStatusBar::item { border: none; }
 QDateEdit, QLineEdit, QTextEdit, QPlainTextEdit, QComboBox, QSpinBox, QTimeEdit, QListWidget {
     background-color: $surface; color: $text; border: 1px solid $control;
-    border-radius: 6px; padding: 5px 8px; selection-background-color: $sel;
+    border-radius: $radiuspx; padding: 5px 8px; selection-background-color: $sel;
     selection-color: $seltext; }
 QDateEdit, QComboBox { min-height: 22px; }
 QDateEdit { font-weight: bold; }
@@ -210,7 +245,7 @@ QAbstractSpinBox::up-button, QAbstractSpinBox::down-button { width: 0; border: n
 QDateEdit { min-width: 102px; } /* + 18 px Kalenderpfeil (Qt 6) = 120 px wie bisher */
 QComboBox QAbstractItemView { padding: 4px; outline: none; }
 QPushButton { background-color: $surface; color: $text; border: 1px solid $control;
-              border-radius: 6px; padding: 6px 14px; min-width: 80px; }
+              border-radius: $radiuspx; padding: 6px 14px; min-width: 80px; }
 QPushButton:hover { background-color: $hover; }
 QPushButton:default { background-color: $primary; color: $onprimary; border-color: $primary; font-weight: bold; }
 QPushButton:default:hover { background-color: $muted; border-color: $muted; }
@@ -228,7 +263,7 @@ QLabel#hint { color: $muted; }
 QTableWidget QLabel { padding: 2px 8px; }
 QLabel#busy_text { color: $bandtext; background: transparent; font-weight: bold; padding: 2px 0; }
 QStatusBar QToolButton#cta { background-color: $primary; color: $onprimary; font-weight: bold;
-                             border-radius: 6px; padding: 2px 12px; }
+                             border-radius: $radiuspx; padding: 2px 12px; }
 QStatusBar QToolButton#cta:hover { background-color: $primary; border-color: $accent; }
 QStatusBar QToolButton#cta_secondary { background: transparent; color: $accent; font-weight: bold;
                                        border: 1px solid $accent; padding: 2px 12px; }
@@ -239,7 +274,7 @@ QToolButton#rate_ok, QLabel#rate_ok { background-color: $rate_ok; color: $rate_o
 QToolButton#rate_over, QLabel#rate_over { background-color: $rate_over; color: $rate_over_text; font-weight: bold; }
 /* Kachel Buchungsquote: Zahl groß in der Farbe der Stufe (Text-Farbe der Stufe) */
 QLabel#rate_value_low, QLabel#rate_value_mid, QLabel#rate_value_ok, QLabel#rate_value_over,
-QLabel#rate_value_none { background: transparent; font-size: 20px; font-weight: bold; }
+QLabel#rate_value_none { background: transparent; font-size: $fs_xlpx; font-weight: bold; }
 QLabel#rate_value_low { color: $rate_value_low; }
 QLabel#rate_value_mid { color: $rate_value_mid; }
 QLabel#rate_value_ok, QLabel#rate_value_over { color: $rate_value_ok; }
@@ -247,38 +282,38 @@ QLabel#rate_value_none { color: $muted; }
 QFrame#divider { background-color: $border; border: none; }
 QFrame#card:focus { border: 2px solid $accent; }
 QToolButton#rate_low, QToolButton#rate_mid, QToolButton#rate_ok, QToolButton#rate_over {
-    border-radius: 6px; padding: 3px 10px; }
+    border-radius: $radiuspx; padding: 3px 10px; }
 QPushButton:disabled, QToolButton:disabled, QLineEdit:disabled, QDateEdit:disabled,
 QTimeEdit:disabled, QSpinBox:disabled, QCheckBox:disabled { color: $muted; }
 QPushButton:disabled { background-color: $surface; }
-QGroupBox { border: 1px solid $border; border-radius: 10px; margin-top: 1.4em;
+QGroupBox { border: 1px solid $border; border-radius: $radius_cardpx; margin-top: 1.4em;
             padding: 12px 8px 8px 8px; background-color: $surface; font-weight: bold; }
 QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 6px; }
 QGroupBox QWidget { font-weight: normal; }
 QGroupBox QLabel, QGroupBox QCheckBox { background: transparent; }
 QCheckBox { spacing: 8px; }
 QCheckBox::indicator { width: 16px; height: 16px; border: 1px solid $control;
-                       background-color: $surface; border-radius: 4px; }
+                       background-color: $surface; border-radius: $radius_smpx; }
 QCheckBox::indicator:hover, QCheckBox::indicator:focus { border-color: $accent; }
 QCheckBox::indicator:checked { border-color: $accent; background-color: $accent;
                                image: url($checkmark); }
 QCheckBox::indicator:disabled { border-color: $border; }
 QCheckBox::indicator:checked:disabled { background-color: $border; border-color: $border; }
-QMenu { background-color: $surface; border: 1px solid $border; border-radius: 8px; padding: 4px; }
-QMenu::item { padding: 6px 28px 6px 12px; border-radius: 4px; }
+QMenu { background-color: $surface; border: 1px solid $border; border-radius: $radius_cardpx; padding: 4px; }
+QMenu::item { padding: 6px 28px 6px 12px; border-radius: $radius_smpx; }
 QMenu::item:selected { background-color: $sel; color: $seltext; }
 QMenu::item:disabled { color: $muted; }
 QMenu::separator { height: 1px; background: $border; margin: 4px 0; }
 QMenu::icon { padding-left: 6px; }
-QGraphicsView { border: 1px solid $border; border-radius: 10px; }  /* sichtbares Ende der Timeline */
+QGraphicsView { border: 1px solid $border; border-radius: $radius_cardpx; }  /* sichtbares Ende der Timeline */
 QTableWidget { background-color: $surface; alternate-background-color: $alt;
-               border: 1px solid $border; border-radius: 10px; gridline-color: transparent;
+               border: 1px solid $border; border-radius: $radius_cardpx; gridline-color: transparent;
                selection-background-color: $sel; selection-color: $seltext; }
 QTableWidget::item { padding: 2px 8px; border: none; border-bottom: 1px solid $line; }
 QTableWidget::item:selected { background-color: $sel; color: $seltext; }
 QHeaderView::section { background-color: $bar; color: $muted; border: none;
                        border-bottom: 1px solid $border; padding: 6px 8px; font-weight: bold;
-                       font-size: 12px; }
+                       font-size: $fs_smpx; }
 QTableCornerButton::section { background-color: $bar; border: none; }
 QSplitter::handle { background: transparent; }
 QSplitter::handle:vertical { height: 8px; }
@@ -296,69 +331,72 @@ QCalendarWidget QAbstractItemView { background-color: $surface; color: $text;
     selection-background-color: $accent; selection-color: $onaccent; }
 QCalendarWidget QAbstractItemView:disabled { color: $muted; }
 QMenu#view_menu::item { padding: 4px 28px 4px 12px; }
-QLabel#menu_header { color: $muted; background: transparent; font-size: 12px; font-weight: bold;
+QLabel#menu_header { color: $muted; background: transparent; font-size: $fs_smpx; font-weight: bold;
                      padding: 8px 12px 2px 12px; }
 QLabel#example { background-color: $surface; color: $text; padding: 6px 8px;
-                 font-family: "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace; font-size: 12px; }
-QLabel#page_title { font-size: 20px; font-weight: bold; }
+                 font-family: "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace; font-size: $fs_smpx; }
+QLabel#page_title { font-size: $fs_xlpx; font-weight: bold; }
 QLabel#row_title { font-weight: bold; }
-QLabel#row_page { color: $muted; font-size: 12px; font-weight: bold; }
+QLabel#row_page { color: $muted; font-size: $fs_smpx; font-weight: bold; }
 QLabel#row_value { color: $text; font-weight: bold; }
 QListWidget#settings_nav { border: none; border-right: 1px solid $border; background-color: $surface;
                            padding: 6px 0; outline: none; }
-QListWidget#settings_nav::item { padding: 6px 10px; margin: 1px 6px; border-radius: 6px; border-left: 3px solid transparent; }
+QListWidget#settings_nav::item { padding: 6px 10px; margin: 1px 6px; border-radius: $radiuspx; border-left: 3px solid transparent; }
 QListWidget#settings_nav::item:selected { background-color: $sel; color: $seltext;
                                           border-left: 3px solid $accent; font-weight: bold; }
 QListWidget#settings_nav::item:hover:!selected { background-color: $hover; }
-QFrame#tile { background-color: $surface; border: 1px solid $border; border-radius: 10px; }
+QFrame#tile { background-color: $surface; border: 1px solid $border; border-radius: $radius_cardpx; }
 QFrame#tile QLabel, QFrame#tile QCheckBox { background: transparent; }
 QCheckBox#switch { spacing: 6px; font-weight: bold; }
-QCheckBox#switch::indicator { width: 30px; height: 16px; border: 2px solid $muted; border-radius: 10px;
+QCheckBox#switch::indicator { width: 30px; height: 16px; border: 2px solid $muted; border-radius: $radius_cardpx;
                               background-color: $surface; }
 QCheckBox#switch::indicator:checked { border-color: $accent; background-color: $accent; image: none; }
 QCheckBox#switch::indicator:focus { border-color: $text; }
 QFrame#setting_row { border: none; border-bottom: 1px solid $line; }
 QFrame#setting_row QLabel, QFrame#setting_row QCheckBox { background: transparent; }
-QPushButton#result_link { text-align: left; background: transparent; border: 1px solid $control; border-radius: 8px; padding: 8px 12px; }
-QToolTip { background-color: #18181B; color: #F4F4F5; border: 1px solid #3F3F46; border-radius: 6px;
-           padding: 5px 8px; }
+QPushButton#result_link { text-align: left; background: transparent; border: 1px solid $control; border-radius: $radiuspx; padding: 8px 12px; }
+/* Hinweise (auch der Timeline-Tooltip): in beiden Designs dunkel, wie unter Windows 11 */
+QToolTip, QLabel#timeline_tip { background-color: $tip; color: $tiptext; border: 1px solid $tipborder;
+           border-radius: $radiuspx; padding: $space_spx $space_mpx; }
 /* Companion-Bausteine: Karten, Chips, Kennzahlen, Hinweisboxen */
-QFrame#card { background-color: $surface; border: 1px solid $border; border-radius: 10px; }
+QFrame#card { background-color: $surface; border: 1px solid $border; border-radius: $radius_cardpx; }
 QFrame#card QLabel, QFrame#card QCheckBox { background: transparent; }
 QFrame#card_row { background: transparent; border: none; border-bottom: 1px solid $line; }
 QFrame#card_row QLabel { background: transparent; }
 QLabel#card_title { font-weight: bold; }
-QLabel#section_title { font-weight: bold; font-size: 14px; }
-QLabel#kpi_label { color: $muted; background: transparent; font-size: 12px; }
-QLabel#kpi_value { color: $text; background: transparent; font-size: 18px; font-weight: bold; }
+QLabel#section_title { font-weight: bold; font-size: $fs_lgpx; }
+QLabel#kpi_label { color: $muted; background: transparent; font-size: $fs_smpx; }
+QLabel#kpi_value { color: $text; background: transparent; font-size: $fs_xlpx; font-weight: bold; }
 QLabel#avatar { background-color: $chip; color: $chiptext; border: 1px solid $border;
-                border-radius: 8px; font-size: 12px; font-weight: bold; padding: 0; }
-QLabel#count { color: $muted; background: transparent; font-size: 12px; }
+                border-radius: $radius_cardpx; font-size: $fs_smpx; font-weight: bold; padding: 0; }
+QLabel#count { color: $muted; background: transparent; font-size: $fs_smpx; }
 QLabel#good { color: $good; background: transparent; }
 QToolButton#chip { background-color: $chip; color: $chiptext; border: 1px solid $border;
-                   border-radius: 11px; padding: 2px 10px; }
+                   border-radius: $radius_chippx; padding: 2px 10px; }
 QToolButton#chip:hover { border-color: $control; }
 QToolButton#chip:checked { background-color: $primary; color: $onprimary; border-color: $primary; }
 QToolButton#chip:focus { border: 2px solid $accent; padding: 1px 9px; }
 QToolButton#chip_add { background: transparent; color: $muted; border: 1px dashed $control;
-                       border-radius: 11px; padding: 2px 10px; }
+                       border-radius: $radius_chippx; padding: 2px 10px; }
 QToolButton#chip_add:hover { color: $text; }
 QToolButton#chip_add:focus { border: 2px solid $accent; padding: 1px 9px; }
 QToolButton#link { background: transparent; color: $accent; border: none; padding: 2px 4px; }
 QToolButton#link:hover { text-decoration: underline; }
 QToolButton#link:focus { border: 1px solid $accent; padding: 1px 3px; }
-QFrame#notice { background-color: $chip; border: 1px solid $border; border-radius: 10px; }
+QFrame#notice { background-color: $chip; border: 1px solid $border; border-radius: $radius_cardpx; }
 QFrame#notice QLabel { background: transparent; }
 QProgressBar { background-color: $chip; border: none; border-radius: 2px; }
 QProgressBar::chunk { background-color: $good; border-radius: 2px; }
-QWidget#chips { background: transparent; }
+QWidget#chips, QWidget#band_row { background: transparent; }
 QWidget#customer_detail { background-color: $surface; }
 QScrollArea { background: transparent; border: none; }
 QListWidget#nav_list { border: none; background: transparent; outline: none; padding: 4px; }
-QListWidget#nav_list::item { border-radius: 8px; padding: 6px 8px; margin: 1px 0; }
+QListWidget#nav_list::item { border-radius: $radiuspx; padding: 6px 8px; margin: 1px 0; }
 QListWidget#nav_list::item:selected { background-color: $sel; color: $seltext; }
 QListWidget#nav_list::item:hover:!selected { background-color: $hover; }
 """.replace("$font", FONT_CSS)
+for _key in sorted(SIZE_TOKENS, key=len, reverse=True):  # $radius_card vor $radius ersetzen
+    STYLESHEET = STYLESHEET.replace(f"${_key}px", f"{SIZE_TOKENS[_key]}px")
 
 
 def readable_on(color):

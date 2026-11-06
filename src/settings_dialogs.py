@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QButtonGroup, QCheckBox, QColo
                                QPushButton, QRadioButton, QSpinBox, QTableWidget,
                                QTableWidgetItem, QTimeEdit, QVBoxLayout)
 
-from theme import prose, readable_on
+from theme import prose, readable_on, SPACE_M, SPACE_S
 class ConnectionSettingsDialog(QDialog):
     def __init__(self, config, config_key, default_paths, title, parent=None,
                  enabled_text=None, folders=False, hint=None, paths_key=None,
@@ -265,7 +265,7 @@ class WorkHoursDialog(QDialog):
         self.setWindowTitle("Arbeitszeiten")
         self.setMinimumWidth(640)
         layout = QVBoxLayout(self)
-        layout.setSpacing(10)
+        layout.setSpacing(SPACE_S)
 
         hint = QLabel("Die Arbeitszeit wird in der Timeline hervorgehoben, die Pause abgedunkelt. "
                       "Freie Tage sind komplett abgedunkelt. Gilt nur, wenn keine ITM-Personalzeit "
@@ -275,8 +275,8 @@ class WorkHoursDialog(QDialog):
         layout.addWidget(hint)
 
         grid = QGridLayout()
-        grid.setHorizontalSpacing(14)
-        grid.setVerticalSpacing(6)
+        grid.setHorizontalSpacing(SPACE_M)
+        grid.setVerticalSpacing(SPACE_S)
         for col, text in enumerate(("Tag", "von", "bis", "Pause", "Pause von", "bis", "Stunden")):
             grid.addWidget(QLabel(f"<b>{text}</b>"), 0, col)
         self.rows = []
@@ -409,11 +409,11 @@ class AiSettingsDialog(QDialog):
         layout = QVBoxLayout(self)
 
         info = QLabel(
-            "Zeitzeuge schickt die Einträge eines Tages an Claude von Anthropic. Zurück kommen "
-            "Tätigkeiten mit Kunde, Kategorie und einem Satz fürs Ticket. Sie stehen in der "
-            "Timeline in der Zeile „KI“ und in der Tagesliste unter „KI-Vorschläge“.\n\n"
-            "Gesendet wird nur, wenn du es anstößt (F6), und nur, wenn sich der Tag geändert hat. "
-            "Ein Tag kostet meist wenige Cent.")
+            "Zeitzeuge schickt die Einträge eines Tages an Claude (Anthropic). Zurück kommen "
+            "Tätigkeiten mit Kunde, Kategorie und einem Satz fürs Ticket: Zeile „KI“ in der "
+            "Timeline, „KI-Vorschläge“ in der Tagesliste.\n\n"
+            "Gesendet wird nur auf Wunsch (F6) und nur, wenn sich der Tag geändert hat. "
+            "Meist wenige Cent pro Tag.")
         info.setWordWrap(True)
         layout.addWidget(info)
 
@@ -652,10 +652,10 @@ class RulesDialog(QDialog):
         self.resize(900, 760)  # Knöpfe und Hinweise ganz zeigen
         layout = QVBoxLayout(self)
 
-        hint = QLabel("Zuordnung ohne KI: Feste Regeln ordnen Verbindungen, Telefonate und Fenster einer Kategorie und "
-                      "einem Kunden zu, z. B. Outlook → „E-Mail / Kommunikation“. Das Ergebnis steht in der "
-                      "Timeline in der Zeile „Zuordnung o. KI“. Die erste passende Regel gewinnt, Wichtiges steht also oben. "
-                      "Verbindungen und Telefonate gehen immer vor PC-Fenstern.")
+        hint = QLabel("Feste Regeln ordnen Verbindungen, Telefonate und Fenster einer Kategorie und einem "
+                      "Kunden zu, z. B. Outlook → „E-Mail / Kommunikation“. Ergebnis: Zeile „Zuordnung o. KI“. "
+                      "Die erste passende Regel gilt, Wichtiges also nach oben. "
+                      "Verbindungen und Telefonate gehen vor PC-Fenstern.")
         hint.setObjectName("hint")
         hint.setWordWrap(True)
         layout.addWidget(hint)

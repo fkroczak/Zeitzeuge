@@ -9,6 +9,8 @@ Ticketnummern und Ticket-Format (reine Logik, ohne Qt).
 import re
 from datetime import datetime, timedelta
 
+import timefmt
+
 TIME_FMT = "%Y-%m-%d %H:%M:%S"
 # Matrix42: TCK0000049374 (wie m42_data.TITLE_RE)
 DEFAULT_PATTERNS = [r"TCK\d+"]
@@ -44,7 +46,7 @@ def find_tickets(text, compiled):
 
 
 def _t(text):
-    return datetime.strptime(text[:19], TIME_FMT)
+    return timefmt.parse(text[:19])  # wie strptime, aber schnell (Tagesabschluss: 92 000 Aufrufe)
 
 
 def _overlap(a_start, a_end, b_start, b_end):

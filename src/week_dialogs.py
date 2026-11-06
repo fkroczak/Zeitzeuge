@@ -197,9 +197,7 @@ class WeekDialog(QDialog):
         self.next_button.setToolTip("Nächste Woche (Bild ab)")
         self.next_button.clicked.connect(lambda: self.move_week(1))
         self.title = QLabel(self)
-        font = self.title.font()
-        font.setBold(True)
-        self.title.setFont(font)
+        self.title.setObjectName("section_title")
         nav.addWidget(self.prev_button)
         nav.addWidget(self.title, 1, Qt.AlignCenter)
         nav.addWidget(self.next_button)
@@ -242,7 +240,7 @@ class WeekDialog(QDialog):
         hints_label.setBuddy(self.hints)
         self.hints.itemActivated.connect(self.open_hint)
         layout.addWidget(hints_label)
-        self.hints.setMinimumHeight(90)
+        self.hints.setMinimumHeight(80)  # mit Rändern der Token-Skala passt der Dialog noch auf 960 × 540
         layout.addWidget(self.hints, 1)
 
         form = QFormLayout()

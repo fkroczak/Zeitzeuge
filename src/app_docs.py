@@ -675,6 +675,11 @@ class DocsMixin(CustomersMixin):
 
     def _mark_asked(self, entry, until):
         """Nicht vor until wieder fragen: alle Teile des Themas und Zeitraum + Kunde."""
+        # Abgelaufene Einträge zählen in _was_asked nicht mehr: wegwerfen, sonst wachsen beide
+        # Listen bei tagelanger Laufzeit und _was_asked prüft jede Minute alle alten Zeiträume
+        now = datetime.now()
+        self._prompt_asked = {k: u for k, u in self._prompt_asked.items() if u > now}
+        self._prompt_asked_spans = [(s, u) for s, u in self._prompt_asked_spans if u > now]
         for e in [entry] + sub_entries(entry):
             self._prompt_asked[journal_key(e)] = until
         self._prompt_asked_spans.append((prompt_topics.answer_span(entry, self.customer_index()), until))

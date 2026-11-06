@@ -19,7 +19,7 @@ from local_sources import DEFAULT_BROWSER_HISTORY, DEFAULT_RECENT_DIR
 from rdp_reader import DEFAULT_LAUNCHER_LOG
 from vpn_reader import DEFAULT_DIRS as VPN_DEFAULT_DIRS, FORTI_TRACE_PATHS, vpn_sources
 from settings_dialogs import ActivityTypeSettingsDialog, ConnectionSettingsDialog, WorkHoursDialog
-from theme import GERMAN, STYLESHEET, THEMES
+from theme import GERMAN, STYLESHEET, THEMES, SPACE_XS
 from timeline_only import (COLOR_ROWS, DEFAULT_CALL_COLORS, LEGEND_BANDS, LEGEND_FIXED, ROW_NAMES,
                            TIMELINE_ROWS, entry_color)
 from view_help import VIEW_HELP, ViewHelpDialog, help_text
@@ -60,11 +60,10 @@ class MenusMixin:
         self.addToolBar(Qt.TopToolBarArea, outer)
         header = QWidget(outer)
         header.setObjectName("band_row")
-        # Nur die Zeile selbst durchsichtig, sonst erben auch Datum und Knöpfe "transparent"
-        header.setStyleSheet("#band_row { background: transparent; }")
+        # Nur die Zeile selbst durchsichtig (QWidget#band_row in theme.py), nicht Datum und Knöpfe
         row = QHBoxLayout(header)
         row.setContentsMargins(0, 0, 0, 0)
-        row.setSpacing(4)
+        row.setSpacing(SPACE_XS)
         outer.addWidget(header)
         self._band_row = header
 

@@ -217,8 +217,8 @@ class TransferMixin:
         dialog.setMinimumWidth(520)
         layout = QVBoxLayout(dialog)
         info = QLabel(
-            "Übernimm hier einen Export vom anderen PC (Datei oder Text aus der Zwischenablage). "
-            "Die Daten erscheinen zusammen mit den Daten dieses PCs in Timeline und Tagesliste. "
+            "Export vom anderen PC übernehmen (Datei oder Text aus der Zwischenablage). "
+            "Die Daten erscheinen zusammen mit denen dieses PCs in Timeline und Tagesliste. "
             "Ein neuerer Export ersetzt die Tage des älteren.")
         info.setWordWrap(True)
         prose(info)

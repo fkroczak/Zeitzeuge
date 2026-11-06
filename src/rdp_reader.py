@@ -24,6 +24,7 @@ from datetime import datetime, timedelta, timezone
 
 import datastore
 import safe_io
+import timefmt
 
 TIME_FMT = "%Y-%m-%d %H:%M:%S"
 TYPE = "RDP-Verbindung"
@@ -289,7 +290,7 @@ def parse_rdp_events(xml_text):
 
 
 def _t(text):
-    return datetime.strptime(text, TIME_FMT)
+    return timefmt.parse(text)  # wie strptime, aber schnell (Archiv mit Tausenden Einträgen)
 
 
 class RdpReader:
