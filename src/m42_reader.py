@@ -46,15 +46,39 @@ PENDING_JS = r"""
   window.__zzPending = 0;
   window.__zzLast = Date.now();
   function done() { window.__zzPending = Math.max(0, window.__zzPending - 1); window.__zzLast = Date.now(); }
+  // Köpfe merken, mit denen die Seite selbst ihre Schnittstelle abfragt (vor allem die
+  // Anmeldung): Zeitzeuge fragt dann genauso an, auch wenn Matrix42 das Token woanders hält
+  function remember(url, headers) {
+    try {
+      if (!/\/m42Services\/api\//i.test(String(url || ""))) return;
+      const h = {};
+      if (headers && typeof headers.forEach === "function") headers.forEach(function (v, k) { h[String(k).toLowerCase()] = v; });
+      else if (headers) Object.keys(headers).forEach(function (k) { h[k.toLowerCase()] = headers[k]; });
+      if (h.authorization) window.__zzHeaders = h;
+    } catch (e) {}
+  }
   const origFetch = window.fetch;
-  if (origFetch) window.fetch = function () {
+  window.__zzFetch = origFetch;  // für Zeitzeuges eigene Abfragen (zählen nicht als die der Seite)
+  if (origFetch) window.fetch = function (input, init) {
     window.__zzPending++; window.__zzLast = Date.now();
+    remember(input && input.url || input, (init && init.headers) || (input && input.headers));
     return origFetch.apply(this, arguments).then(function (r) { done(); return r; },
                                                  function (e) { done(); throw e; });
+  };
+  const open = XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open = function (method, url) {
+    this.__zzUrl = url; this.__zzH = {};
+    return open.apply(this, arguments);
+  };
+  const setHeader = XMLHttpRequest.prototype.setRequestHeader;
+  XMLHttpRequest.prototype.setRequestHeader = function (k, v) {
+    if (this.__zzH) this.__zzH[k] = v;
+    return setHeader.apply(this, arguments);
   };
   const send = XMLHttpRequest.prototype.send;
   XMLHttpRequest.prototype.send = function () {
     window.__zzPending++; window.__zzLast = Date.now();
+    remember(this.__zzUrl, this.__zzH);
     this.addEventListener("loadend", done);
     return send.apply(this, arguments);
   };
@@ -159,16 +183,32 @@ API_JS = r"""
 (async function (monday, widgetDefault) {
   const sleep = ms => new Promise(r => setTimeout(r, ms));
   const isLogin = () => !!document.querySelector("input[type=password]") || /\/(wm\/)?login\b/i.test(location.pathname);
-  const token = () => { try { return localStorage.getItem("mx.auth.session.token"); } catch (e) { return null; } };
+  // Anmeldung: wie die Seite selbst (gemerkte Köpfe), sonst das Token aus dem localStorage
+  const token = () => {
+    let t = null;
+    try { t = localStorage.getItem("mx.auth.session.token"); } catch (e) {}
+    if (t && t.charAt(0) === '"') { try { t = JSON.parse(t); } catch (e) {} }
+    return t || null;
+  };
+  const auth = () => (window.__zzHeaders || {}).authorization || (token() ? "Bearer " + token() : null);
+  const apiHeaders = extra => {
+    const h = {"accept": "application/json, text/plain, */*"};
+    const page = window.__zzHeaders || {};
+    Object.keys(page).forEach(k => { if (k !== "content-type" && k !== "content-length") h[k] = page[k]; });
+    h.authorization = auth();
+    Object.keys(extra || {}).forEach(k => { h[k.toLowerCase()] = extra[k]; });
+    return h;
+  };
+  const apiFetch = (url, opts) => (window.__zzFetch || fetch).call(window, url, opts);
   // Auf die fertige Seite warten (Anmeldung im Firmennetz läuft oft von selbst). Nicht nur
   // aufs Token: nach dem Start liegt oft noch ein abgelaufenes im Profil (Fehler 406), und die
   // Seite leitet gleich zur Anmeldung weiter. Ohne Kalender nach 30 s das Token nehmen, wenn da.
   for (let i = 0; i < 60; i++) {
     if (isLogin() && (document.querySelector("input[type=password]") || i >= 40)) break;
-    if (document.querySelector(".fc-view") && (token() || i >= 4)) break;
+    if (document.querySelector(".fc-view") && (auth() || i >= 4)) break;
     await sleep(500);
   }
-  if (!token()) return JSON.stringify({state: isLogin() ? "login" : "notoken", url: location.href});
+  if (!auth()) return JSON.stringify({state: isLogin() ? "login" : "notoken", url: location.href});
   // Widget der Kalenderseite: aus den Abfragen der Seite, sonst der eingestellte
   const widgets = [];
   try {
@@ -195,14 +235,18 @@ API_JS = r"""
   for (const widget of widgets) {
     let r;
     try {
-      r = await fetch("/m42Services/api/WidgetList/GetData/" + widget, {
+      r = await apiFetch("/m42Services/api/WidgetList/GetData/" + widget, {
         method: "POST", credentials: "include",
-        headers: {"Authorization": "Bearer " + token(), "Content-Type": "application/json;charset=UTF-8",
-                  "Accept": "application/json, text/plain, */*"},
+        headers: apiHeaders({"Content-Type": "application/json;charset=UTF-8"}),
         body: JSON.stringify(filter)});
     } catch (e) { last = {state: "error", status: 0, error: String(e)}; continue; }
     if (r.status === 401) return JSON.stringify({state: "login", status: 401});
-    if (!r.ok) { last = {state: "error", status: r.status, widget: widget}; continue; }
+    if (!r.ok) {
+      let detail = "";
+      try { detail = (await r.text()).slice(0, 200); } catch (e) {}
+      last = {state: "error", status: r.status, widget: widget, page_auth: !!window.__zzHeaders, detail: detail};
+      continue;
+    }
     let data;
     try { data = await r.json(); } catch (e) { last = {state: "error", status: r.status, widget: widget}; continue; }
     if (!Array.isArray(data)) { last = {state: "error", status: r.status, widget: widget}; continue; }
@@ -221,15 +265,32 @@ API_JS = r"""
 # {state: "ok" | "login" | "notoken" | "error", status, data, user}
 # user: Kennung des eigenen Benutzers aus den Abfragen der Seite (AutoTimeTracking/Settings/<id>)
 FETCH_JS = r"""
-(async function (method, path, body, contentType) {
+(async function (method, path, body, contentType, fresh) {
   const sleep = ms => new Promise(r => setTimeout(r, ms));
-  const token = () => { try { return localStorage.getItem("mx.auth.session.token"); } catch (e) { return null; } };
+  // Anmeldung: wie die Seite selbst (gemerkte Köpfe), sonst das Token aus dem localStorage
+  const token = () => {
+    let t = null;
+    try { t = localStorage.getItem("mx.auth.session.token"); } catch (e) {}
+    if (t && t.charAt(0) === '"') { try { t = JSON.parse(t); } catch (e) {} }
+    return t || null;
+  };
+  const auth = () => (window.__zzHeaders || {}).authorization || (token() ? "Bearer " + token() : null);
+  const apiHeaders = extra => {
+    const h = {"accept": "application/json, text/plain, */*"};
+    const page = window.__zzHeaders || {};
+    Object.keys(page).forEach(k => { if (k !== "content-type" && k !== "content-length") h[k] = page[k]; });
+    h.authorization = auth();
+    Object.keys(extra || {}).forEach(k => { h[k.toLowerCase()] = extra[k]; });
+    return h;
+  };
+  const apiFetch = (url, opts) => (window.__zzFetch || fetch).call(window, url, opts);
   const isLogin = () => !!document.querySelector("input[type=password]") || /\/(wm\/)?login\b/i.test(location.pathname);
-  for (let i = 0; i < 60 && !token(); i++) {
+  // fresh: Seite eben neu geladen, auf ihre eigene angemeldete Abfrage warten (höchstens 30 s)
+  for (let i = 0; i < 60 && (!auth() || (fresh && !window.__zzHeaders)); i++) {
     if (isLogin() && (document.querySelector("input[type=password]") || i >= 40)) break;
     await sleep(500);
   }
-  if (!token()) return JSON.stringify({state: isLogin() ? "login" : "notoken"});
+  if (!auth()) return JSON.stringify({state: isLogin() ? "login" : "notoken"});
   let user = null;
   try {
     for (const e of performance.getEntriesByType("resource")) {
@@ -237,12 +298,12 @@ FETCH_JS = r"""
       if (m) user = m[1];
     }
   } catch (e) {}
-  const headers = {"Authorization": "Bearer " + token(), "Accept": "application/json, text/plain, */*",
-                   "Explicit-Language": "de-DE"};
-  if (body !== null) headers["Content-Type"] = contentType || "application/json;charset=UTF-8";
+  const extra = {"Explicit-Language": "de-DE"};
+  if (body !== null) extra["Content-Type"] = contentType || "application/json;charset=UTF-8";
+  const headers = apiHeaders(extra);
   let r;
   try {
-    r = await fetch(path, {method: method, credentials: "include", headers: headers,
+    r = await apiFetch(path, {method: method, credentials: "include", headers: headers,
                            body: body === null ? undefined : body});
   } catch (e) { return JSON.stringify({state: "error", status: 0, error: String(e), user: user}); }
   if (r.status === 401) return JSON.stringify({state: "login", status: 401});
@@ -250,7 +311,7 @@ FETCH_JS = r"""
   let data = null;
   try { data = text ? JSON.parse(text) : null; } catch (e) { data = text.slice(0, 500); }
   return JSON.stringify({state: r.ok ? "ok" : "error", status: r.status, data: data, user: user});
-})(%s, %s, %s, %s)
+})(%s, %s, %s, %s, %s)
 """
 
 
@@ -447,10 +508,15 @@ class M42Reader(BrowserReader):
     def _read_week_api(self, monday):
         """Woche über die Schnittstelle lesen. True = gelesen, False = Anmeldung nötig,
         None = Schnittstelle geht nicht (dann für diese Sitzung aus der Seite lesen)."""
+        js = API_JS % (json.dumps(monday), json.dumps(self.widget_id))
         try:
-            raw = self._evaluate(API_JS % (json.dumps(monday), json.dumps(self.widget_id)),
-                                 timeout=self.LOAD_TIMEOUT, retries=self.NAVIGATION_RETRIES)
+            raw = self._evaluate(js, timeout=self.LOAD_TIMEOUT, retries=self.NAVIGATION_RETRIES)
             data = json.loads(raw) if raw else {}
+            if data.get("status") == 406:  # Anmeldung abgelehnt (altes Token): Seite neu laden, nochmal
+                self._tools.call("Page.navigate", url=self.start_url())
+                time.sleep(2)
+                raw = self._evaluate(js, timeout=self.LOAD_TIMEOUT, retries=self.NAVIGATION_RETRIES)
+                data = json.loads(raw) if raw else {}
         except Exception as e:  # Seite hängt o. Ä.: wie bisher aus der Seite lesen
             data = {"state": "error", "error": str(e)}
         state = data.get("state")
@@ -540,9 +606,15 @@ class M42Reader(BrowserReader):
             self._start_browser()
         if isinstance(body, (dict, list)):
             body = json.dumps(body, ensure_ascii=False)
-        raw = self._evaluate(FETCH_JS % (json.dumps(method), json.dumps(path), json.dumps(body),
-                                         json.dumps(content_type)), timeout=self.LOAD_TIMEOUT)
-        result = json.loads(raw) if raw else {"state": "error", "status": 0}
+        result = self._fetch_once(method, path, body, content_type)
+        if result.get("status") == 406:
+            # Matrix42 lehnt die Anmeldung ab (meist altes Token im Profil): Seite neu laden,
+            # damit sie sich frisch anmeldet, und einmal mit ihren Köpfen wiederholen.
+            # 406 heißt "nicht ausgeführt", darum ist das auch beim Buchen ungefährlich.
+            safe_io.log(f"Matrix42: Fehler 406 bei {path.split('?')[0]}, lade Seite neu und versuche es nochmal")
+            self._tools.call("Page.navigate", url=self.start_url())
+            time.sleep(2)
+            result = self._fetch_once(method, path, body, content_type, fresh=True)
         if result.get("user"):
             self.user_id = self.user_id or result["user"]
         if result.get("state") in ("login", "notoken"):
@@ -550,10 +622,20 @@ class M42Reader(BrowserReader):
             raise m42_booking.BookingError("Bitte zuerst bei Matrix42 anmelden (Einstellungen → "
                                            "Datenquellen → Einrichten → Matrix42 …).")
         if result.get("state") != "ok":
-            detail = result.get("data") if isinstance(result.get("data"), str) else ""
+            detail = result.get("data")
+            if detail is not None and not isinstance(detail, str):
+                detail = json.dumps(detail, ensure_ascii=False)
             raise m42_booking.BookingError(f"Matrix42 antwortet mit Fehler {result.get('status')}"
                                            f"{': ' + detail[:200] if detail else ''}")
         return result.get("data")
+
+    def _fetch_once(self, method, path, body, content_type, fresh=False):
+        raw = self._evaluate(FETCH_JS % (json.dumps(method), json.dumps(path), json.dumps(body),
+                                         json.dumps(content_type), json.dumps(fresh)),
+                             # Speichern nie wiederholen (könnte doppelt buchen)
+                             timeout=self.LOAD_TIMEOUT,
+                             retries=self.NAVIGATION_RETRIES if fresh and "UpdateData" not in path else 0)
+        return json.loads(raw) if raw else {"state": "error", "status": 0}
 
     def _load_activity_types(self):
         import m42_booking
