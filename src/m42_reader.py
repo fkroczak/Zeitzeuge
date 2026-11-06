@@ -160,10 +160,12 @@ API_JS = r"""
   const sleep = ms => new Promise(r => setTimeout(r, ms));
   const isLogin = () => !!document.querySelector("input[type=password]") || /\/(wm\/)?login\b/i.test(location.pathname);
   const token = () => { try { return localStorage.getItem("mx.auth.session.token"); } catch (e) { return null; } };
-  // Auf Token oder fertige Seite warten (Anmeldung im Firmennetz läuft oft von selbst)
-  for (let i = 0; i < 60 && !token(); i++) {
+  // Auf die fertige Seite warten (Anmeldung im Firmennetz läuft oft von selbst). Nicht nur
+  // aufs Token: nach dem Start liegt oft noch ein abgelaufenes im Profil (Fehler 406), und die
+  // Seite leitet gleich zur Anmeldung weiter. Ohne Kalender nach 30 s das Token nehmen, wenn da.
+  for (let i = 0; i < 60; i++) {
     if (isLogin() && (document.querySelector("input[type=password]") || i >= 40)) break;
-    if (document.querySelector(".fc-view") && i >= 4) break;  // Seite da, aber ohne Token
+    if (document.querySelector(".fc-view") && (token() || i >= 4)) break;
     await sleep(500);
   }
   if (!token()) return JSON.stringify({state: isLogin() ? "login" : "notoken", url: location.href});
@@ -273,6 +275,9 @@ class M42Reader(BrowserReader):
     NAME = "Matrix42"
     READ_INTERVAL = 10 * 60   # aktuelle Woche so oft neu lesen
     LOAD_TIMEOUT = 60         # so lange darf das Lesen einer Woche dauern
+    # Matrix42 leitet nach dem Start oft über die Anmeldung weiter (altes Token, Windows-
+    # Anmeldung): das Lesen dann auf der neuen Seite wiederholen statt Edge neu zu starten
+    NAVIGATION_RETRIES = 3
 
     def __init__(self, url, data_file, profile_dir, parent=None, weeks_back=4, use_api=True,
                  widget_id=""):
@@ -417,7 +422,8 @@ class M42Reader(BrowserReader):
             done = self._read_week_api(monday)
             if done is not None:
                 return done
-        raw = self._evaluate(READ_JS % json.dumps(monday), timeout=self.LOAD_TIMEOUT)
+        raw = self._evaluate(READ_JS % json.dumps(monday), timeout=self.LOAD_TIMEOUT,
+                             retries=self.NAVIGATION_RETRIES)
         data = json.loads(raw) if raw else {}
         state = data.get("state")
         if state == "login" or (data.get("url") and urlsplit(data["url"]).hostname
@@ -443,7 +449,7 @@ class M42Reader(BrowserReader):
         None = Schnittstelle geht nicht (dann für diese Sitzung aus der Seite lesen)."""
         try:
             raw = self._evaluate(API_JS % (json.dumps(monday), json.dumps(self.widget_id)),
-                                 timeout=self.LOAD_TIMEOUT)
+                                 timeout=self.LOAD_TIMEOUT, retries=self.NAVIGATION_RETRIES)
             data = json.loads(raw) if raw else {}
         except Exception as e:  # Seite hängt o. Ä.: wie bisher aus der Seite lesen
             data = {"state": "error", "error": str(e)}

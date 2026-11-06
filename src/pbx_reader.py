@@ -674,10 +674,23 @@ class BrowserReader(QObject):
             self.login_required.emit()
         self._set_status(f"{self.NAME}: Anmeldung nötig")
 
-    def _evaluate(self, js, timeout=15):
-        result = self._tools.call("Runtime.evaluate", timeout=timeout, expression=js,
-                                  returnByValue=True, awaitPromise=True)
-        return result.get("result", {}).get("value")
+    # Fehler von Edge, wenn die Seite während des Lesens neu lädt oder weiterleitet
+    NAVIGATION_ERRORS = ("Inspected target navigated or closed", "Execution context was destroyed",
+                         "Cannot find context with specified id")
+
+    def _evaluate(self, js, timeout=15, retries=0):
+        """Skript in der Seite ausführen. retries: so oft neu versuchen, wenn die Seite
+        dabei weiterleitet (z. B. automatische Anmeldung). Nur für Skripte, die nichts
+        verändern: ein neuer Versuch führt sie noch einmal aus."""
+        for attempt in range(retries + 1):
+            try:
+                result = self._tools.call("Runtime.evaluate", timeout=timeout, expression=js,
+                                          returnByValue=True, awaitPromise=True)
+                return result.get("result", {}).get("value")
+            except RuntimeError as e:
+                if attempt >= retries or not any(m in str(e) for m in self.NAVIGATION_ERRORS):
+                    raise
+                time.sleep(2)  # neue Seite laden lassen
 
     def _loop(self):
         # Darf nie sterben: Jeder Fehler eines Durchlaufs wird gefangen und gemeldet
