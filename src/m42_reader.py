@@ -46,23 +46,29 @@ PENDING_JS = r"""
   window.__zzPending = 0;
   window.__zzLast = Date.now();
   function done() { window.__zzPending = Math.max(0, window.__zzPending - 1); window.__zzLast = Date.now(); }
-  // Köpfe merken, mit denen die Seite selbst ihre Schnittstelle abfragt (vor allem die
-  // Anmeldung): Zeitzeuge fragt dann genauso an, auch wenn Matrix42 das Token woanders hält
-  function remember(url, headers) {
+  // Angemeldete Abfragen der Seite an ihre Schnittstelle beobachten. Klappt eine, merkt sich
+  // Zeitzeuge ihre Köpfe (vor allem die Anmeldung) und fragt genauso an; __zzAuthOk sagt, ob die
+  // Anmeldung gilt. Ein altes Token im Profil gilt nicht: Matrix42 antwortet darauf mit 406.
+  function norm(headers) {
+    const h = {};
     try {
-      if (!/\/m42Services\/api\//i.test(String(url || ""))) return;
-      const h = {};
       if (headers && typeof headers.forEach === "function") headers.forEach(function (v, k) { h[String(k).toLowerCase()] = v; });
       else if (headers) Object.keys(headers).forEach(function (k) { h[k.toLowerCase()] = headers[k]; });
-      if (h.authorization) window.__zzHeaders = h;
     } catch (e) {}
+    return h;
+  }
+  function answered(url, h, status) {
+    if (!/\/m42Services\/api\//i.test(String(url || "")) || !h.authorization) return;
+    if (status >= 200 && status < 300) { window.__zzHeaders = h; window.__zzAuthOk = true; }
+    else if (status === 401 || status === 406) window.__zzAuthOk = false;
   }
   const origFetch = window.fetch;
   window.__zzFetch = origFetch;  // für Zeitzeuges eigene Abfragen (zählen nicht als die der Seite)
   if (origFetch) window.fetch = function (input, init) {
     window.__zzPending++; window.__zzLast = Date.now();
-    remember(input && input.url || input, (init && init.headers) || (input && input.headers));
-    return origFetch.apply(this, arguments).then(function (r) { done(); return r; },
+    const url = input && input.url || input;
+    const h = norm((init && init.headers) || (input && input.headers));
+    return origFetch.apply(this, arguments).then(function (r) { done(); answered(url, h, r.status); return r; },
                                                  function (e) { done(); throw e; });
   };
   const open = XMLHttpRequest.prototype.open;
@@ -78,8 +84,8 @@ PENDING_JS = r"""
   const send = XMLHttpRequest.prototype.send;
   XMLHttpRequest.prototype.send = function () {
     window.__zzPending++; window.__zzLast = Date.now();
-    remember(this.__zzUrl, this.__zzH);
-    this.addEventListener("loadend", done);
+    const xhr = this;
+    this.addEventListener("loadend", function () { done(); answered(xhr.__zzUrl, norm(xhr.__zzH), xhr.status); });
     return send.apply(this, arguments);
   };
 })();
@@ -204,6 +210,7 @@ API_JS = r"""
   // aufs Token: nach dem Start liegt oft noch ein abgelaufenes im Profil (Fehler 406), und die
   // Seite leitet gleich zur Anmeldung weiter. Ohne Kalender nach 30 s das Token nehmen, wenn da.
   for (let i = 0; i < 60; i++) {
+    if (window.__zzAuthOk === true && window.__zzHeaders) break;  // Seite ist angemeldet
     if (isLogin() && (document.querySelector("input[type=password]") || i >= 40)) break;
     if (document.querySelector(".fc-view") && (auth() || i >= 4)) break;
     await sleep(500);
@@ -315,14 +322,15 @@ FETCH_JS = r"""
 """
 
 
-# Anmeldefenster: angemeldet? (auf dem Matrix42-Server, keine Anmeldeseite, Token oder Kalender da)
+# Anmeldefenster: angemeldet? Erst wenn die Seite (auf dem Matrix42-Server, keine Anmeldeseite)
+# eine angemeldete Abfrage erfolgreich gemacht hat. Ein Token im localStorage allein reicht
+# nicht: nach dem Start liegt dort oft noch ein abgelaufenes, und das Fenster ging zu, bevor
+# Matrix42 zur Anmeldung weiterleiten konnte.
 LOGIN_DONE_JS = r"""
 (function (host) {
   if (host && location.hostname !== host) return false;
   if (document.querySelector("input[type=password]") || /\/(wm\/)?login\b/i.test(location.pathname)) return false;
-  let token = null;
-  try { token = localStorage.getItem("mx.auth.session.token"); } catch (e) {}
-  return !!token || !!document.querySelector(".fc-view");
+  return window.__zzAuthOk === true;
 })(%s)
 """
 
@@ -517,6 +525,8 @@ class M42Reader(BrowserReader):
                 time.sleep(2)
                 raw = self._evaluate(js, timeout=self.LOAD_TIMEOUT, retries=self.NAVIGATION_RETRIES)
                 data = json.loads(raw) if raw else {}
+                if data.get("status") == 406:  # Anmeldung gilt nicht mehr: neu anmelden
+                    data = {"state": "login"}
         except Exception as e:  # Seite hängt o. Ä.: wie bisher aus der Seite lesen
             data = {"state": "error", "error": str(e)}
         state = data.get("state")
@@ -615,6 +625,8 @@ class M42Reader(BrowserReader):
             self._tools.call("Page.navigate", url=self.start_url())
             time.sleep(2)
             result = self._fetch_once(method, path, body, content_type, fresh=True)
+            if result.get("status") == 406:  # Anmeldung gilt nicht mehr: neu anmelden
+                result = {"state": "login"}
         if result.get("user"):
             self.user_id = self.user_id or result["user"]
         if result.get("state") in ("login", "notoken"):
