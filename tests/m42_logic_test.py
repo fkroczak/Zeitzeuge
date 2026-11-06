@@ -138,3 +138,60 @@ def test_aktualisieren_liest_woche_neu(tmp_path):
 
 def test_buchung_ohne_dauer_ist_kein_ganzer_tag():
     assert m.booking_from_event(ev("10:00 - 10:00")) is None
+
+
+def test_weiterleitung_beim_lesen_wird_wiederholt(tmp_path, monkeypatch):
+    """Seite leitet während des Lesens weiter (altes Token, automatische Anmeldung):
+    nochmal lesen statt Fehler und Edge-Neustart. Andere Fehler bleiben Fehler."""
+    import pytest
+
+    import pbx_reader
+    from m42_reader import M42Reader
+
+    monkeypatch.setattr(pbx_reader.time, "sleep", lambda s: None)
+    reader = M42Reader("http://m42.invalid/kalender", str(tmp_path / "m42_buchungen.json"),
+                       str(tmp_path / "profil"), weeks_back=0)
+
+    class Tools:
+        def __init__(self, errors):
+            self.errors, self.calls = list(errors), 0
+
+        def call(self, method, **kw):
+            self.calls += 1
+            if self.errors:
+                raise RuntimeError(self.errors.pop(0))
+            return {"result": {"value": "fertig"}}
+
+    reader._tools = Tools(["Inspected target navigated or closed"] * 2)
+    assert reader._evaluate("1", retries=3) == "fertig" and reader._tools.calls == 3
+    reader._tools = Tools(["Inspected target navigated or closed"])
+    with pytest.raises(RuntimeError):  # ohne retries (z. B. Buchen): kein zweiter Versuch
+        reader._evaluate("1")
+    reader._tools = Tools(["etwas anderes"])
+    with pytest.raises(RuntimeError):
+        reader._evaluate("1", retries=3)
+    assert reader._tools.calls == 1
+
+
+def test_fehler_406_laedt_seite_neu_und_versucht_einmal(tmp_path, monkeypatch):
+    """406 (Anmeldung abgelehnt, z. B. altes Token): Seite neu laden, einmal wiederholen."""
+    import json
+
+    import m42_reader
+    from m42_reader import M42Reader
+
+    monkeypatch.setattr(m42_reader.time, "sleep", lambda s: None)
+    reader = M42Reader("http://m42.invalid/kalender", str(tmp_path / "m42_buchungen.json"),
+                       str(tmp_path / "profil"), weeks_back=0)
+    answers = [{"state": "error", "status": 406}, {"state": "ok", "status": 200, "data": [1]}]
+    seen = []
+
+    class Tools:
+        def call(self, method, **kw):
+            seen.append(method)
+
+    reader._tools = Tools()
+    monkeypatch.setattr(reader, "_evaluate", lambda js, **kw: (seen.append(("fresh", "true)" in js)),
+                                                              json.dumps(answers.pop(0)))[1])
+    assert reader._fetch("GET", "/m42Services/api/x") == [1]
+    assert seen == [("fresh", False), "Page.navigate", ("fresh", True)]
