@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: write  # für Releases bei Tags
+  actions: write   # alte Artefakte löschen (Speicherplatz)
 
 jobs:
   build:
@@ -134,26 +135,55 @@ jobs:
             if ($code -ne 0) { exit $code }
           }
 
+      # Artefakte zählen zum Speicher des Kontos. Ältere als 2 Tage löschen, sonst scheitert
+      # der Upload ("Artifact storage quota has been hit").
+      - name: Alte Artefakte löschen (älter als 2 Tage)
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $grenze = (Get-Date).ToUniversalTime().AddDays(-2)
+          $alle = gh api "repos/$env:GITHUB_REPOSITORY/actions/artifacts?per_page=100" --paginate --jq '.artifacts[] | [.id, .created_at] | @tsv'
+          foreach ($zeile in $alle) {
+            $id, $am = $zeile -split "`t"
+            if ([datetime]::Parse($am).ToUniversalTime() -lt $grenze) {
+              gh api -X DELETE "repos/$env:GITHUB_REPOSITORY/actions/artifacts/$id" | Out-Null
+            }
+          }
+
       - name: Installationsassistent als Download bereitstellen
+        # main bekommt ein Release, Artefakte nur für Branches/PRs. Ist der Speicher voll,
+        # darf das den Build nicht scheitern lassen.
+        if: github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/v')
+        continue-on-error: true
         uses: actions/upload-artifact@v6
         with:
           name: Zeitzeuge-Setup-${{ env.ZZ_VERSION }}
           path: dist/Zeitzeuge-Setup.exe
-          retention-days: 30
+          retention-days: 5
 
       - name: Ordner-Variante als Download bereitstellen
+        # main bekommt ein Release, Artefakte nur für Branches/PRs. Ist der Speicher voll,
+        # darf das den Build nicht scheitern lassen.
+        if: github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/v')
+        continue-on-error: true
         uses: actions/upload-artifact@v6
         with:
           name: ZeitZeuge-Ordner-${{ env.ZZ_VERSION }}
           path: dist/ZeitZeuge-Ordner.zip
-          retention-days: 30
+          retention-days: 5
 
       - name: EXE als Download bereitstellen
+        # main bekommt ein Release, Artefakte nur für Branches/PRs. Ist der Speicher voll,
+        # darf das den Build nicht scheitern lassen.
+        if: github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/v')
+        continue-on-error: true
         uses: actions/upload-artifact@v6
         with:
           name: ZeitZeuge-${{ env.ZZ_VERSION }}
           path: dist/ZeitZeuge.exe
-          retention-days: 30
+          retention-days: 5
 
       # Jeder Stand von main wird ein Release v<Version> (Tag legt die Aktion selbst an).
       # Der feste Link .../releases/latest/download/ZeitZeuge.exe zeigt immer auf das neueste.
