@@ -173,7 +173,7 @@ SWATCHES = {
         "bg": ["#F7F7F8", "#FFFFFF", "#F3F4F6", "#F5F3EF", "#EEF2F7", "#F4F1FA", "#EFF6F1", "#FDF6EC"],
         "surface": ["#FFFFFF", "#FAFAFA", "#F9FAFB", "#FFFDF8", "#F8FAFC", "#FCFAFF", "#F7FCF9", "#FFFBF5"],
         "band": ["#F7F7F8", "#E9ECEF", "#DCE6F2", "#EDE7F6", "#E3F1E8", "#1F2937", "#005FB8", "#3F3F46"],
-        "text": ["#18181B", "#000000", "#374151", "#1E293B", "#3F3F46", "#27272A", "#1E3A5F", "#14532D"],
+        "text": ["#18181B", "#0A0A0A", "#374151", "#1E293B", "#3F3F46", "#27272A", "#1E3A5F", "#14532D"],
         "accent": ["#005FB8", "#003E92", "#5F6368", "#6D28D9", "#15803D", "#C2410C", "#BE123C", "#0F766E"],
     },
 }
