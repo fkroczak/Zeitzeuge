@@ -374,6 +374,8 @@ QSpinBox:focus, QListWidget:focus, QTableWidget:focus {
 QGraphicsView:focus { border: 1px solid $muted; }  /* Timeline ausgewählt: dunkelgrau statt Akzent */
 QToolButton#qt_toolbar_ext_button { border: 1px solid $control; background-color: $hover; }
 QLabel#hint { color: $muted; }
+QDialog#prompt_window { border: 2px solid $accent; }
+QLabel#prompt_head { background-color: $sel; color: $seltext; border-radius: $radiuspx; padding: 6px 8px; }
 QTableWidget QLabel { padding: 2px 8px; }
 QLabel#busy_text { color: $bandtext; background: transparent; font-weight: bold; padding: 2px 0; }
 QStatusBar QToolButton#cta { background-color: $primary; color: $onprimary; font-weight: bold;
