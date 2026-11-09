@@ -1,10 +1,11 @@
 """Schematisches Zeitzeuge-Fenster im Dialog „Eigene Farben“.
 
 Zeigt Kopfleiste, Timeline und Tagesliste in den gewählten Farben (theme.custom_theme).
-Ein Klick auf einen Bereich wählt die passende Grundfarbe (theme.CUSTOM_KEYS) zum Ändern.
+Ein Klick auf einen Bereich meldet die passende Grundfarbe (theme.CUSTOM_KEYS) und die Stelle
+fürs Farbmenü; mit der Tastatur: Pfeiltasten wählen den Bereich, Eingabe/Leertaste öffnet das Menü.
 Die Farben der Balken sind fest (Beispiel), sie hängen nicht vom Design ab.
 """
-from PySide6.QtCore import QPointF, QRectF, QSize, Qt, Signal
+from PySide6.QtCore import QPoint, QPointF, QRectF, QSize, Qt, Signal
 from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import QToolTip, QWidget
 
@@ -23,9 +24,9 @@ ROWS = ["PC-Aktivität", "Dokumentation", "Telefon", "Remote"]
 
 
 class ThemeMockup(QWidget):
-    """Klickbare Skizze des Hauptfensters. Signal picked(Schlüssel) beim Klick auf einen Bereich."""
+    """Klickbare Skizze des Hauptfensters. Signal picked(Schlüssel, Bildschirmposition)."""
 
-    picked = Signal(str)
+    picked = Signal(str, QPoint)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -35,6 +36,7 @@ class ThemeMockup(QWidget):
         self.setMouseTracking(True)
         self.setMinimumSize(580, 300)
         self.setCursor(Qt.PointingHandCursor)
+        self.setFocusPolicy(Qt.StrongFocus)
         self.setAccessibleName("Vorschau des Designs. Klick auf einen Bereich ändert seine Farbe.")
 
     def set_colors(self, colors):
@@ -71,14 +73,38 @@ class ThemeMockup(QWidget):
             QToolTip.hideText()
 
     def leaveEvent(self, event):
-        self._hover = None
+        if not self.hasFocus():
+            self._hover = None
         self.update()
         super().leaveEvent(event)
 
     def mouseReleaseEvent(self, event):
         key = self.key_at(event.position())
-        if key and event.button() == Qt.LeftButton:
-            self.picked.emit(key)
+        if key and event.button() in (Qt.LeftButton, Qt.RightButton):
+            self.picked.emit(key, event.globalPosition().toPoint())
+
+    def area_point(self, key):
+        """Mitte des ersten Bereichs dieser Farbe in Widget-Koordinaten (für die Tastatur)."""
+        s, dx, dy = self._scale()
+        for rect, k in self._areas:
+            if k == key:
+                c = rect.center()
+                return QPoint(int(dx + c.x() * s), int(dy + c.y() * s))
+        return self.rect().center()
+
+    def keyPressEvent(self, event):
+        keys = [k for k, _t in CUSTOM_KEYS]
+        if event.key() in (Qt.Key_Right, Qt.Key_Down, Qt.Key_Left, Qt.Key_Up):
+            step = 1 if event.key() in (Qt.Key_Right, Qt.Key_Down) else -1
+            i = keys.index(self._hover) if self._hover in keys else (-1 if step > 0 else 0)
+            self._hover = keys[(i + step) % len(keys)]
+            self.update()
+            QToolTip.showText(self.mapToGlobal(self.area_point(self._hover)),
+                              f"{NAMES[self._hover]} – Eingabe zum Ändern", self)
+        elif event.key() in (Qt.Key_Return, Qt.Key_Enter, Qt.Key_Space, Qt.Key_Menu) and self._hover:
+            self.picked.emit(self._hover, self.mapToGlobal(self.area_point(self._hover)))
+        else:
+            super().keyPressEvent(event)
 
     # ---- Zeichnen
 

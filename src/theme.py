@@ -159,6 +159,26 @@ ACCENT_PRESETS = [
 ]
 
 
+# Farbvorschläge im Menü beim Klick auf einen Bereich der Vorschau („Eigene Farben“):
+# je Grundlage und Grundfarbe; die erste ist die des Standard-Designs.
+SWATCHES = {
+    "dark": {
+        "bg": ["#1F1F1F", "#121212", "#202124", "#1E1E2E", "#1B2430", "#0F172A", "#1C1917", "#14201A"],
+        "surface": ["#282828", "#2D2D2D", "#303134", "#252536", "#1F2A37", "#1E293B", "#292524", "#1D2B24"],
+        "band": ["#3C3C3C", "#2D2D2D", "#35363A", "#313244", "#243447", "#334155", "#44403C", "#004A77"],
+        "text": ["#E3E3E3", "#FFFFFF", "#D4D4D4", "#CDD6F4", "#E2E8F0", "#F5F5F4", "#C2E7FF", "#D9F99D"],
+        "accent": ["#4CC2FF", "#99C3FF", "#C4C7C5", "#A78BFA", "#6DD58C", "#FFB74D", "#F28B82", "#5EEAD4"],
+    },
+    "light": {
+        "bg": ["#F7F7F8", "#FFFFFF", "#F3F4F6", "#F5F3EF", "#EEF2F7", "#F4F1FA", "#EFF6F1", "#FDF6EC"],
+        "surface": ["#FFFFFF", "#FAFAFA", "#F9FAFB", "#FFFDF8", "#F8FAFC", "#FCFAFF", "#F7FCF9", "#FFFBF5"],
+        "band": ["#F7F7F8", "#E9ECEF", "#DCE6F2", "#EDE7F6", "#E3F1E8", "#1F2937", "#005FB8", "#3F3F46"],
+        "text": ["#18181B", "#000000", "#374151", "#1E293B", "#3F3F46", "#27272A", "#1E3A5F", "#14532D"],
+        "accent": ["#005FB8", "#003E92", "#5F6368", "#6D28D9", "#15803D", "#C2410C", "#BE123C", "#0F766E"],
+    },
+}
+
+
 def _mix(a, b, t):
     """Farbe zwischen a (t = 0) und b (t = 1) als Hex-String."""
     ca, cb = QColor(a), QColor(b)
