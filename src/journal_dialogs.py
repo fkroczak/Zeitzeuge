@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 import re
 
 from PySide6.QtCore import QDate, QLocale, QModelIndex, Qt, QTime, QTimer, Signal
-from PySide6.QtGui import QStandardItem, QStandardItemModel
+from PySide6.QtGui import QGuiApplication, QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QCompleter, QDateEdit, QDialog, QDialogButtonBox,
                                QFormLayout, QFrame, QHBoxLayout, QLabel, QMenu, QPlainTextEdit,
                                QPushButton, QSpinBox, QTimeEdit, QToolButton, QVBoxLayout,
@@ -607,6 +607,34 @@ class PromptWindow(QDialog):
         else:
             self.form.text_edit.setFocus()
             self.form.text_edit.selectAll()
+
+    def dock_bottom_right(self, margin=24):
+        """Unten rechts über der Taskleiste halten, mit Abstand – auch wenn das Fenster
+        später wächst (Ticket-Status, Fehlermeldung, Haken)."""
+        self._dock_margin = margin
+        self._dock()
+
+    def _dock(self):
+        margin = getattr(self, "_dock_margin", None)
+        screen = QGuiApplication.primaryScreen()
+        if margin is None or screen is None:
+            return
+        area = screen.availableGeometry()  # Bildschirm ohne Taskleiste
+        frame = self.frameGeometry()       # mit Titelleiste und Rahmen
+        x = max(area.x(), area.x() + area.width() - frame.width() - margin)
+        y = max(area.y(), area.y() + area.height() - frame.height() - margin)
+        if (x, y) != (frame.x(), frame.y()):
+            self.move(x, y)  # move() setzt die Außenkante (Rahmen) des Fensters
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._dock()
+        # Windows kennt Titelleiste und Rahmen erst nach dem Anzeigen sicher
+        QTimer.singleShot(0, self._dock)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._dock()
 
     def set_pending(self, pending):
         self.pending_label.setText(f"Außerdem noch {pending} weitere offen." if pending else "")

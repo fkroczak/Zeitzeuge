@@ -44,6 +44,14 @@ def gui_test():
     prompt = window._prompt_window
     assert prompt is not None and prompt.entry.get("idle"), "keine Nachfrage nach Abwesenheit"
     assert len(prompt.quick_buttons) == 5
+    # unten rechts mit Abstand, nie in der Taskleiste – auch wenn das Fenster wächst
+    area = app.primaryScreen().availableGeometry()
+    for grow in (0, 120):
+        prompt.resize(prompt.width(), prompt.height() + grow)
+        app.processEvents()
+        frame = prompt.frameGeometry()
+        assert frame.bottom() <= area.bottom() - 20, (frame, area)
+        assert frame.right() <= area.right() - 20, (frame, area)
 
     # Später fragen: Fenster weg, nicht sofort wieder, aber noch offen
     prompt._answer("later")
