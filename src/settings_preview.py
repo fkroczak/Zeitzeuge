@@ -105,8 +105,8 @@ class PreviewTimeline(TimelineView):
     def __init__(self, config, parent=None):
         super().__init__([], config, parent)
         self.setMinimumHeight(0)
-        # Die Vorschau ist niedriger als die Timeline: untere Zeilen über die Scrollleiste erreichbar
-        self.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        # Alle Zeilen passen (ein paar sind in der Vorschau ausgeblendet): nicht senkrecht scrollen
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.setAccessibleName("Vorschau der Timeline mit Beispieldaten")
         self._fitted_width = None  # Breite, für die der Zeitraum zuletzt eingepasst wurde
         self.current_date = DEMO_DATE
@@ -177,6 +177,7 @@ class PreviewPane(QFrame):
     """Kasten „Vorschau“: Satz, was gezeigt wird, darunter Timeline und Tagesliste."""
 
     LIST_ROWS = 2
+    HIDDEN_ROWS = ("outlook", "vpn", "tv")  # nicht in der Vorschau, damit sie klein bleibt
     TIMELINE_HEIGHT = 170
 
     def __init__(self, main, parent=None):
@@ -198,7 +199,7 @@ class PreviewPane(QFrame):
         layout.addLayout(head)
         self.timeline = PreviewTimeline(dict(main.config), self)
         # Mindesthöhe; danach bindet die Timeline ihre Höhe selbst an die Zeilen
-        # (TimelineView._fit_height_to_rows) und wächst, wenn die Vorschau größer gezogen wird.
+        # (TimelineView._fit_height_to_rows), alle Zeilen passen ohne Scrollen.
         self.timeline.setMinimumHeight(self.TIMELINE_HEIGHT)
         layout.addWidget(self.timeline, 1)
         self.table = QTableWidget(0, 5, self)
@@ -223,6 +224,10 @@ class PreviewPane(QFrame):
         cfg = dict(self.main.config)
         if self.variant:
             cfg.update(self.variant[0])
+        # Vorschau kompakt halten: ein paar Zeilen weniger als die echte Timeline
+        rows = dict(cfg.get("timeline_rows") or {})
+        rows.update({key: False for key in self.HIDDEN_ROWS})
+        cfg["timeline_rows"] = rows
         return cfg
 
     def show_variant(self, changes=None, text=""):

@@ -854,8 +854,10 @@ class SettingsWindow(QDialog):
         self.stack.setCurrentIndex(self.pages[key])
         self._fit_tiles()
         self.refresh()
-        if key == "view" and self._preview_stale:
-            self._refresh_preview()
+        if key == "view":
+            if self._preview_stale:
+                self._refresh_preview()
+            QTimer.singleShot(0, self._fit_view_split)  # erst mit sichtbarer Seite messen
 
     def show_page(self, key):
         """Bereich zeigen, z. B. show_page("sources")."""
