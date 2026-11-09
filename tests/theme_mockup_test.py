@@ -20,16 +20,20 @@ from theme_mockup import ThemeMockup  # noqa: E402
 
 mockup = ThemeMockup()
 mockup.set_colors(default_custom_colors("dark"))
-mockup.resize(640, 330)
+mockup.resize(640, 380)
 mockup.show()
 QTest.qWait(50)
 mockup.grab()  # einmal zeichnen: legt die klickbaren Bereiche an
 picked = []
 mockup.picked.connect(lambda key, _pos: picked.append(key))
-# Kopfleiste, Hintergrund (Rand), Timeline-Fläche, Beschriftung, Schalter
-for x, y in [(300, 15), (5, 320), (300, 190), (40, 104), (533, 53)]:
+# Kopfleiste, Hintergrund (Rand), Timeline-Fläche, Beschriftung, Schalter, Jetzt-Linie,
+# Balken Dokumentation, VPN, Anruf ausgehend
+left = 14 + 92
+for x, y in [(300, 15), (5, 370), (300, 105), (40, 99), (533, 53), (left + 380, 150),
+             (left + 30, 98 + 22 + 7), (left + 150, 98 + 3 * 22 + 7), (left + 210, 98 + 2 * 22 + 7)]:
     QTest.mouseClick(mockup, Qt.LeftButton, pos=QPoint(x, y))
-assert picked == ["band", "bg", "surface", "text", "accent"], picked
+assert picked == ["band", "bg", "surface", "text", "accent", "now", "row:doc", "row:vpn",
+                  "row:call:Ausgehend"], picked
 
 # Tastatur: Pfeiltaste wählt den ersten Bereich, Eingabe meldet ihn
 picked.clear()
@@ -50,6 +54,23 @@ class FakeMain(QWidget):
     def set_theme(self, name, save=True):
         self.themes.append(name)
 
+    def row_color(self, key):
+        return (self.config.get("row_colors") or {}).get(key, "#4682B4")
+
+    def call_color(self, direction):
+        return (self.config.get("call_colors") or {}).get(direction, "#1F5FD6")
+
+    def set_row_color(self, key, color):
+        rows = dict(self.config.get("row_colors") or {})
+        if color:
+            rows[key] = color
+        else:
+            rows.pop(key, None)
+        self.config["row_colors"] = rows
+
+    def set_call_color(self, direction, color):
+        self.config.setdefault("call_colors", {})[direction] = color
+
 
 main = FakeMain()
 dialog = CustomColorsDialog(main)
@@ -64,6 +85,22 @@ standard = [a for a in menu.actions() if a.text() == "&Standardfarbe"][0]
 assert standard.isEnabled()
 standard.trigger()
 assert dialog.colors["accent"] == SWATCHES["dark"]["accent"][0]
+
+# Jetzt-Linie ist eine Grundfarbe
+dialog.color_menu("now").swatches[1][1].click()
+assert dialog.colors["now"] == SWATCHES["dark"]["now"][1]
+
+# Balken: Farbfeld setzt die Zeilenfarbe, Standardfarbe nimmt sie wieder weg
+from theme import BAR_SWATCHES  # noqa: E402
+menu = dialog.color_menu("row:vpn")
+assert [a.text() for a in menu.actions() if a.text() == "&Standardfarbe"][0]
+menu.swatches[4][1].click()
+assert main.config["row_colors"]["vpn"] == BAR_SWATCHES[4]
+assert dialog.mockup.bar_colors["row:vpn"] == BAR_SWATCHES[4]
+dialog.color_menu("row:call:Eingehend").swatches[0][1].click()
+assert main.config["call_colors"]["Eingehend"] == BAR_SWATCHES[0]
+# Abbrechen: auch die Balkenfarben wie vorher (vorher gab es keine eigenen)
 dialog.reject()
+assert "row_colors" not in main.config and "call_colors" not in main.config, main.config
 print("ok")
 os._exit(0)

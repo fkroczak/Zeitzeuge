@@ -2,7 +2,8 @@
 
 Oben die Grundlage (Hell/Dunkel), darunter eine Skizze von Zeitzeuge (theme_mockup).
 Klick auf einen Bereich der Skizze öffnet dort ein Menü mit Farbvorschlägen (theme.SWATCHES),
-„Andere Farbe …“ und „Standardfarbe“. Man wählt nur wenige Grundfarben (theme.CUSTOM_KEYS),
+„Andere Farbe …“ und „Standardfarbe“. Klick auf einen Balken der Timeline ändert die Farbe
+dieser Zeile wie Rechtsklick auf die Legende (config["row_colors"], Anrufe config["call_colors"]). Man wählt nur wenige Grundfarben (theme.CUSTOM_KEYS),
 alle übrigen leitet theme.custom_theme ab. Jede Änderung ist sofort im Hauptfenster zu sehen;
 Abbrechen stellt das vorherige Design wieder her.
 """
@@ -14,8 +15,9 @@ from PySide6.QtWidgets import (QColorDialog, QComboBox, QDialog, QDialogButtonBo
                                QHBoxLayout, QLabel, QMenu, QToolButton, QVBoxLayout, QWidget,
                                QWidgetAction)
 
-from theme import CUSTOM_KEYS, SPACE_S, SWATCHES, default_custom_colors
-from theme_mockup import ThemeMockup
+from theme import BAR_SWATCHES, CUSTOM_KEYS, SPACE_S, SWATCHES, default_custom_colors
+from theme_mockup import BAR_NAMES, ThemeMockup
+from timeline_only import DEFAULT_CALL_COLORS
 
 SWATCH_COLUMNS = 4
 
@@ -47,7 +49,7 @@ class CustomColorsDialog(QDialog):
         self.setWindowTitle("Eigene Farben")
         self.setMinimumWidth(720)  # Skizze gut lesbar
         self._before = {k: copy.deepcopy(main.config.get(k))
-                        for k in ("custom_theme", "custom_colors", "dark_mode")}
+                        for k in ("custom_theme", "custom_colors", "dark_mode", "row_colors", "call_colors")}
         stored = main.config.get("custom_colors") or {}
         base = stored.get("base") or ("dark" if main.dark_mode else "light")
         self.colors = {**default_custom_colors(base), **stored}
@@ -66,8 +68,8 @@ class CustomColorsDialog(QDialog):
         top.addWidget(self.base_box)
         top.addStretch()
         layout.addLayout(top)
-        hint = QLabel("Klick auf einen Bereich, um seine Farbe zu ändern (Tastatur: Pfeiltasten, "
-                      "dann Eingabe). Rahmen, Auswahl und Hover passt Zeitzeuge daran an.")
+        hint = QLabel("Klick auf einen Bereich oder Balken, um seine Farbe zu ändern (Tastatur: "
+                      "Pfeiltasten, dann Eingabe). Rahmen, Auswahl und Hover passt Zeitzeuge daran an.")
         hint.setObjectName("hint")
         hint.setWordWrap(True)
         layout.addWidget(hint)
@@ -84,35 +86,78 @@ class CustomColorsDialog(QDialog):
         layout.addWidget(box)
 
         self.mockup.set_colors(self.colors)
+        self.mockup.set_bar_colors(self.bar_colors())
         self._apply()
+
+    # ---- Balken der Timeline (Zeilenfarben, gelten sofort wie per Rechtsklick auf die Legende)
+
+    def bar_colors(self):
+        """Aktuelle Farbe je Balken der Skizze, wie die Timeline sie zeichnet."""
+        out = {}
+        for key in BAR_NAMES:
+            parts = key.split(":")
+            out[key] = (self.main.call_color(parts[2]) if parts[1] == "call"
+                        else self.main.row_color(parts[1]))
+        return out
+
+    def _bar_default(self, key):
+        """Standardfarbe des Balkens und ob gerade eine eigene Farbe gilt."""
+        parts = key.split(":")
+        cfg = self.main.config
+        if parts[1] == "call":
+            own = parts[2] in (cfg.get("call_colors") or {}) or "call" in (cfg.get("row_colors") or {})
+            return DEFAULT_CALL_COLORS[parts[2]], own
+        return None, parts[1] in (cfg.get("row_colors") or {})
+
+    def _set_bar(self, key, color):
+        """color None = Standardfarbe."""
+        parts = key.split(":")
+        if parts[1] == "call":
+            self.main.set_call_color(parts[2], color or DEFAULT_CALL_COLORS[parts[2]])
+        else:
+            self.main.set_row_color(parts[1], color)
+        self.mockup.set_bar_colors(self.bar_colors())
+
+    def _pick_bar(self, key):
+        color = QColorDialog.getColor(QColor(self.bar_colors()[key]), self, BAR_NAMES[key])
+        if color.isValid():
+            self._set_bar(key, color.name())
 
     # ---- Menü mit Farben für einen Bereich
 
     def color_menu(self, key):
         """Menü für eine Grundfarbe: Vorschläge als Farbfelder, andere Farbe, Standardfarbe."""
+        bar = key in BAR_NAMES
         menu = QMenu(self)
-        title = menu.addAction(dict(CUSTOM_KEYS)[key])
+        title = menu.addAction(f"Balken {BAR_NAMES[key]}" if bar else dict(CUSTOM_KEYS)[key])
         title.setEnabled(False)
         grid_box = QWidget(menu)
         grid = QGridLayout(grid_box)
         grid.setContentsMargins(SPACE_S, 0, SPACE_S, SPACE_S // 2)
         grid.setSpacing(2)
-        current = QColor(self.colors[key]).name().upper()
+        current = QColor(self.bar_colors()[key] if bar else self.colors[key]).name().upper()
+        choices = BAR_SWATCHES if bar else SWATCHES[self.colors["base"]][key]
+        set_color = (lambda c: self._set_bar(key, c)) if bar else (lambda c: self._set(key, c))
         menu.swatches = []
-        for i, color in enumerate(SWATCHES[self.colors["base"]][key]):
+        for i, color in enumerate(choices):
             button = QToolButton(grid_box)
             button.setAutoRaise(True)
             button.setIcon(swatch_icon(color, color.upper() == current))
             button.setIconSize(QSize(22, 22))
             button.setToolTip(color)
             button.setAccessibleName(f"Farbe {color}")
-            button.clicked.connect(lambda _c=False, c=color: (self._set(key, c), menu.close()))
+            button.clicked.connect(lambda _c=False, c=color: (set_color(c), menu.close()))
             grid.addWidget(button, i // SWATCH_COLUMNS, i % SWATCH_COLUMNS)
             menu.swatches.append((color, button))
         swatches = QWidgetAction(menu)
         swatches.setDefaultWidget(grid_box)
         menu.addAction(swatches)
         menu.addSeparator()
+        if bar:
+            menu.addAction("&Andere Farbe …", lambda: self._pick_bar(key))
+            _default, own = self._bar_default(key)
+            menu.addAction("&Standardfarbe", lambda: self._set_bar(key, None)).setEnabled(own)
+            return menu
         menu.addAction("&Andere Farbe …", lambda: self._pick(key))
         default = default_custom_colors(self.colors["base"])[key]
         menu.addAction("&Standardfarbe", lambda: self._set(key, default)).setEnabled(
@@ -154,7 +199,15 @@ class CustomColorsDialog(QDialog):
         super().accept()
 
     def reject(self):
-        self.main.config.update(self._before)
+        for key, value in self._before.items():  # None = Schlüssel gab es vorher nicht
+            if value is None:
+                self.main.config.pop(key, None)
+            else:
+                self.main.config[key] = value
         self.main.set_theme("custom" if self._before["custom_theme"] else
                             ("dark" if self._before["dark_mode"] else "light"))
+        # Balkenfarben wurden sofort gespeichert: Zeilen und Timeline wieder im alten Stand
+        if hasattr(self.main, "update_row_icons"):
+            self.main.update_row_icons()
+            self.main.timeline.draw_timeline(self.main.current_date)
         super().reject()

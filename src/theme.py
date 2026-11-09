@@ -148,6 +148,7 @@ CUSTOM_KEYS = [
     ("band", "Kopfleiste oben"),
     ("text", "Schrift"),
     ("accent", "Akzent (Auswahl, Schalter, Häkchen)"),
+    ("now", "Jetzt-Linie (Timeline)"),
 ]
 
 # Akzentfarben zum schnellen Wählen im Dialog „Eigene Farben“: (Name, hell, dunkel)
@@ -168,6 +169,7 @@ SWATCHES = {
         "band": ["#3C3C3C", "#2D2D2D", "#35363A", "#313244", "#243447", "#334155", "#44403C", "#004A77"],
         "text": ["#E3E3E3", "#FFFFFF", "#D4D4D4", "#CDD6F4", "#E2E8F0", "#F5F5F4", "#C2E7FF", "#D9F99D"],
         "accent": ["#4CC2FF", "#99C3FF", "#C4C7C5", "#A78BFA", "#6DD58C", "#FFB74D", "#F28B82", "#5EEAD4"],
+        "now": ["#F28B82", "#FF5C5C", "#FFB74D", "#FACC15", "#6DD58C", "#4CC2FF", "#A78BFA", "#E3E3E3"],
     },
     "light": {
         "bg": ["#F7F7F8", "#FFFFFF", "#F3F4F6", "#F5F3EF", "#EEF2F7", "#F4F1FA", "#EFF6F1", "#FDF6EC"],
@@ -175,8 +177,13 @@ SWATCHES = {
         "band": ["#F7F7F8", "#E9ECEF", "#DCE6F2", "#EDE7F6", "#E3F1E8", "#1F2937", "#005FB8", "#3F3F46"],
         "text": ["#18181B", "#0A0A0A", "#374151", "#1E293B", "#3F3F46", "#27272A", "#1E3A5F", "#14532D"],
         "accent": ["#005FB8", "#003E92", "#5F6368", "#6D28D9", "#15803D", "#C2410C", "#BE123C", "#0F766E"],
+        "now": ["#E11D48", "#DC2626", "#C2410C", "#B45309", "#15803D", "#005FB8", "#6D28D9", "#18181B"],
     },
 }
+
+# Farbvorschläge für die Balken der Timeline (Zeilenfarben), in beiden Designs gleich
+BAR_SWATCHES = ["#2272AD", "#1F5FD6", "#139FB3", "#0F9D8A", "#2E9E5B", "#BB8400", "#E06D10", "#E5484D",
+                "#C7195D", "#7C4DCC", "#565EBF", "#6B7280"]
 
 
 def _mix(a, b, t):

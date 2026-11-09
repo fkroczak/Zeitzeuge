@@ -3,7 +3,9 @@
 Zeigt Kopfleiste, Timeline und Tagesliste in den gewählten Farben (theme.custom_theme).
 Ein Klick auf einen Bereich meldet die passende Grundfarbe (theme.CUSTOM_KEYS) und die Stelle
 fürs Farbmenü; mit der Tastatur: Pfeiltasten wählen den Bereich, Eingabe/Leertaste öffnet das Menü.
-Die Farben der Balken sind fest (Beispiel), sie hängen nicht vom Design ab.
+Balken der Timeline: Schlüssel „row:<Zeile>“ bzw. „row:call:<Richtung>“ für die Farbe der
+Zeile (config["row_colors"], Anrufe config["call_colors"]); die Farben gibt der Dialog mit
+set_bar_colors vor. Die Zeile PC-Aktivität hat feste Farben je Programm und ist nicht klickbar.
 """
 from PySide6.QtCore import QPoint, QPointF, QRectF, QSize, Qt, Signal
 from PySide6.QtGui import QColor, QPainter, QPen
@@ -12,15 +14,23 @@ from PySide6.QtWidgets import QToolTip, QWidget
 from theme import CUSTOM_KEYS, custom_theme, ui_font
 
 # Zeichenfläche in festen Einheiten, wird aufs Widget skaliert
-W, H = 640, 330
-NAMES = dict(CUSTOM_KEYS)
+W, H = 640, 380
 
-# Beispielbalken der Timeline: (Zeile, Start, Ende in Einheiten ab Zeitachse, Farbe)
+# Zeilen der Skizze: (Text links, Schlüssel der Balken oder None = feste Farben)
+ROWS = [("PC-Aktivität", None), ("Dokumentation", "row:doc"), ("Telefon", "row:call"),
+        ("VPN", "row:vpn"), ("TeamViewer", "row:tv"), ("Remote / Weitere", "row:other")]
+# Beispielbalken: (Zeile, Start, Ende in Einheiten ab Zeitachse, Schlüssel oder feste Farbe)
 BARS = [(0, 0, 70, "#2F6FDE"), (0, 74, 150, "#2E9E5B"), (0, 154, 230, "#2F6FDE"), (0, 300, 400, "#7C4DCC"),
-        (1, 10, 60, "#2E9E5B"), (1, 250, 330, "#2E9E5B"),
-        (2, 40, 46, "#1E63D0"), (2, 200, 214, "#E67E22"),
-        (3, 70, 150, "#C08A10"), (3, 300, 360, "#C08A10")]
-ROWS = ["PC-Aktivität", "Dokumentation", "Telefon", "Remote"]
+        (1, 10, 60, "row:doc"), (1, 250, 330, "row:doc"),
+        (2, 36, 50, "row:call:Eingehend"), (2, 200, 220, "row:call:Ausgehend"),
+        (3, 80, 200, "row:vpn"), (4, 14, 70, "row:tv"),
+        (5, 90, 170, "row:other"), (5, 300, 360, "row:other")]
+BAR_NAMES = {"row:doc": "Dokumentation", "row:call:Eingehend": "Anrufe eingehend",
+             "row:call:Ausgehend": "Anrufe ausgehend", "row:vpn": "VPN", "row:tv": "TeamViewer",
+             "row:other": "Remote / Weitere"}
+NAMES = {**dict(CUSTOM_KEYS), **{k: f"Balken {v}" for k, v in BAR_NAMES.items()}}
+# Reihenfolge für die Tastatur (Pfeiltasten)
+KEY_ORDER = [k for k, _t in CUSTOM_KEYS] + list(BAR_NAMES)
 
 
 class ThemeMockup(QWidget):
@@ -31,16 +41,21 @@ class ThemeMockup(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.colors = {}
+        self.bar_colors = {}  # Schlüssel aus BAR_NAMES -> Farbe
         self._hover = None
         self._areas = []  # (Rechteck in Einheiten, Schlüssel), spezifischste zuerst
         self.setMouseTracking(True)
-        self.setMinimumSize(580, 300)
+        self.setMinimumSize(580, 345)
         self.setCursor(Qt.PointingHandCursor)
         self.setFocusPolicy(Qt.StrongFocus)
         self.setAccessibleName("Vorschau des Designs. Klick auf einen Bereich ändert seine Farbe.")
 
     def set_colors(self, colors):
         self.colors = dict(colors)
+        self.update()
+
+    def set_bar_colors(self, colors):
+        self.bar_colors = dict(colors)
         self.update()
 
     def sizeHint(self):
@@ -93,7 +108,7 @@ class ThemeMockup(QWidget):
         return self.rect().center()
 
     def keyPressEvent(self, event):
-        keys = [k for k, _t in CUSTOM_KEYS]
+        keys = KEY_ORDER
         if event.key() in (Qt.Key_Right, Qt.Key_Down, Qt.Key_Left, Qt.Key_Up):
             step = 1 if event.key() in (Qt.Key_Right, Qt.Key_Down) else -1
             i = keys.index(self._hover) if self._hover in keys else (-1 if step > 0 else 0)
@@ -157,7 +172,8 @@ class ThemeMockup(QWidget):
         text(W - 86, 47, "Aufzeichnung", c["text"], 7, key="text")
 
         # Timeline-Karte
-        tl = QRectF(14, 70, W - 28, 128)
+        lane = 22
+        tl = QRectF(14, 70, W - 28, 30 + len(ROWS) * lane + 6)
         box(tl, c["surface"], 6, c["border"])
         left = tl.left() + 92
         for i in range(6):
@@ -165,18 +181,23 @@ class ThemeMockup(QWidget):
             p.setPen(QPen(c["border"], 1))
             p.drawLine(QPointF(x, tl.top() + 22), QPointF(x, tl.bottom() - 6))
             text(x - 13, tl.top() + 5, f"{8 + i * 2:02d}:00", c["muted"], 7)
-        for row, name in enumerate(ROWS):
-            y = tl.top() + 28 + row * 24
-            text(tl.left() + 10, y + 2, name, c["text"], 7, True, "text")
-        for row, a, b, color in BARS:
-            y = tl.top() + 28 + row * 24
-            box(QRectF(left + a, y, b - a, 16), QColor(color), 3)
-        now = left + 360
-        p.setPen(QPen(c["now"], 1.5))
+        for row, (name, _key) in enumerate(ROWS):
+            y = tl.top() + 28 + row * lane
+            text(tl.left() + 10, y + 1, name, c["text"], 7, True, "text")
+        now = left + 380
+        p.setPen(QPen(c["now"], 2))
         p.drawLine(QPointF(now, tl.top() + 20), QPointF(now, tl.bottom() - 4))
+        # „Jetzt“-Linie vor den Balken: sie ist schmal und sonst kaum zu treffen
+        areas.append((QRectF(now - 4, tl.top() + 20, 8, tl.height() - 24), "now"))
+        for row, a, b, key in BARS:
+            y = tl.top() + 28 + row * lane
+            rect = QRectF(left + a, y, b - a, 15)
+            box(rect, QColor(self.bar_colors.get(key, key if key.startswith("#") else "#4682B4")), 3)
+            if not key.startswith("#"):
+                areas.append((rect.adjusted(-2, -2, 2, 2), key))
 
         # Tagesliste
-        ls = QRectF(14, 208, W - 28, 108)
+        ls = QRectF(14, tl.bottom() + 10, W - 28, 108)
         box(ls, c["surface"], 6, c["border"])
         cols = (12, 62, 112, 232, 420)
         for x, label in zip(cols, ("Von", "Bis", "Typ", "Kunde", "Details")):
