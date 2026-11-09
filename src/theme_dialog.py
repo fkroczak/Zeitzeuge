@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (QColorDialog, QComboBox, QDialog, QDialogButtonBo
 
 import icons
 from theme import ACCENT_PRESETS, CUSTOM_KEYS, SPACE_S, default_custom_colors
+from theme_mockup import ThemeMockup
 
 
 class CustomColorsDialog(QDialog):
@@ -27,11 +28,14 @@ class CustomColorsDialog(QDialog):
         self.colors = {**default_custom_colors(base), **stored}
 
         layout = QVBoxLayout(self)
-        hint = QLabel("Wähle die Grundfarben. Alles andere (Rahmen, Auswahl, Hover) "
-                      "passt Zeitzeuge daran an. Änderungen sind sofort zu sehen.")
+        hint = QLabel("Klick in der Vorschau auf einen Bereich, um seine Farbe zu ändern, oder wähle "
+                      "sie unten. Alles andere (Rahmen, Auswahl, Hover) passt Zeitzeuge daran an.")
         hint.setObjectName("hint")
         hint.setWordWrap(True)
         layout.addWidget(hint)
+        self.mockup = ThemeMockup(self)
+        self.mockup.picked.connect(self._pick)
+        layout.addWidget(self.mockup, 1)
 
         form = QFormLayout()
         self.base_box = QComboBox()
@@ -80,6 +84,7 @@ class CustomColorsDialog(QDialog):
             value = QColor(self.colors[key]).name().upper()
             button.setText(value)
             button.setIcon(icons.dot(value, 16))
+        self.mockup.set_colors(self.colors)
 
     def _apply(self):
         cfg = self.main.config
