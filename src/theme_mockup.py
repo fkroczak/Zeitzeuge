@@ -203,7 +203,9 @@ class ThemeMockup(QWidget):
             rect = QRectF(left + a, y, b - a, 15)
             box(rect, QColor(self.bar_colors.get(key, key if key.startswith("#") else "#4682B4")), 3)
             if not key.startswith("#"):
-                areas.append((rect.adjusted(-2, -2, 2, 2), key))
+                # vor allen anderen Bereichen: Beschriftungen links können je nach Schrift
+                # (Windows breiter) in den ersten Balken ragen
+                areas.insert(0, (rect.adjusted(-2, -2, 2, 2), key))
 
         # Tagesliste
         ls = QRectF(14, tl.bottom() + 10, W - 28, 108)
