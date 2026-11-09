@@ -12,7 +12,7 @@ from PySide6.QtCore import QSize, Qt, QTimer, QUrl
 from PySide6.QtGui import QCursor, QDesktopServices, QPainter
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QFrame, QGridLayout, QHBoxLayout, QLabel,
                                QLineEdit, QListWidget, QListWidgetItem, QMessageBox, QPushButton, QScrollArea,
-                               QSpinBox, QStackedWidget, QVBoxLayout, QWidget)
+                               QSpinBox, QSplitter, QStackedWidget, QVBoxLayout, QWidget)
 
 import icons
 from theme import theme_for, fit_text, prose, SPACE_2XL, SPACE_L, SPACE_M, SPACE_S, SPACE_XL, SPACE_XS
@@ -65,7 +65,7 @@ ROWS = [
      "tracking_idle_minutes", (1, 60, "min", "", "idle_limit")),
 
     # Ansicht: alles, was nur die Darstellung ändert (mit Vorschau, settings_preview.py)
-    ("view", "toggle", "moon", "Dunkles Design", "Dunkles Aussehen wie Chrome, gilt sofort. Eigene Farben: Menü Ansicht → Design.",
+    ("view", "toggle", "moon", "Dunkles Design", "Dunkles Aussehen, gilt sofort. Eigene Farben: Menü Ansicht → Design.",
      "dark_action", None),
     ("view", "choice", "layers", "Tagesliste", "Wie die Liste unter der Timeline die Einträge zeigt (F1 erklärt alle).",
      "list_view", (lambda main: [(k, t) for k, t in main.VIEWS], "view")),
@@ -577,8 +577,17 @@ class SettingsWindow(QDialog):
         self.main = main
         self.setWindowTitle("Zeitzeuge – Einstellungen")
         self.setObjectName("settings_window")
-        self.resize(1040, 660)  # 3 Kacheln nebeneinander ohne Scrollleiste
+        # Maximieren erlauben: die Vorschau (Seite „Ansicht“) wächst mit dem Fenster
+        self.setWindowFlag(Qt.WindowMinMaxButtonsHint, True)
         self.setMinimumSize(720, 480)
+        # Mindestens 3 Kacheln nebeneinander ohne Scrollleiste, auf großen Bildschirmen mehr Platz
+        screen = main.screen() if main is not None else None
+        if screen is not None:
+            free = screen.availableGeometry()
+            self.resize(max(720, min(1280, int(free.width() * 0.85))),
+                        max(480, min(900, int(free.height() * 0.85))))
+        else:
+            self.resize(1040, 660)
         theme = theme_for(main.config)
         self.icon_color = theme["text"]
         self.rows, self.tiles = [], []
@@ -681,7 +690,7 @@ class SettingsWindow(QDialog):
         if key == "view":
             from settings_preview import PreviewPane
             self.preview = PreviewPane(self.main)
-            head.addWidget(self.preview)
+            head.addWidget(self.preview, 1)
         if key == "sources":  # Einrichtungsassistent ganz oben, darunter die Kacheln
             for spec in ROWS:
                 if spec[0] == key and spec[1] == "button" and spec[5] == "show_setup_wizard":
@@ -707,13 +716,20 @@ class SettingsWindow(QDialog):
                 layout.addWidget(row)
         layout.addStretch(1)
         if key == "view":
-            wrapper = QWidget()
-            box = QVBoxLayout(wrapper)
-            box.setContentsMargins(0, 0, 0, 0)
-            box.setSpacing(0)
-            box.addWidget(fixed)
-            box.addWidget(self._scroll(page), 1)
-            return wrapper
+            # Oben Vorschau, unten Einstellungen; die Trennlinie lässt sich ziehen. Mehr
+            # Fensterhöhe (z. B. maximiert) geht zuerst an die Vorschau.
+            split = QSplitter(Qt.Vertical)
+            split.setChildrenCollapsible(False)
+            split.addWidget(fixed)
+            split.addWidget(self._scroll(page))
+            split.setStretchFactor(0, 0)
+            split.setStretchFactor(1, 1)
+            self.view_splitter = split
+            self._view_head = fixed
+            self._view_split_dragged = False
+            split.splitterMoved.connect(self._on_view_split_moved)
+            self.preview.timeline.height_limits_changed.connect(self._fit_view_split)
+            return split
         return self._scroll(page)
 
     def _place_tiles(self, columns):
@@ -729,6 +745,21 @@ class SettingsWindow(QDialog):
         for col in range(3):
             self.tile_grid.setColumnStretch(col, 1 if col < columns else 0)
 
+    def _on_view_split_moved(self, *_args):
+        self._view_split_dragged = True  # gezogene Höhe der Vorschau behalten
+
+    def _fit_view_split(self):
+        """Vorschau kompakt halten: nur so hoch, dass alle Zeilen der Timeline passen;
+        der Rest geht an die Einstellungen. Nach Ziehen an der Trennlinie bleibt die Wahl."""
+        split = getattr(self, "view_splitter", None)
+        if split is None or self._view_split_dragged:
+            return
+        total = sum(split.sizes())
+        if total <= 0:
+            return
+        top = self._view_head.minimumSizeHint().height() if self.preview.isVisible() else 0
+        split.setSizes([top, max(0, total - top)])
+
     # Unter dieser Fensterhöhe passt die feste Vorschau (Seite „Ansicht“) nicht mehr neben die
     # Einstellungen und würde sie überdecken (z. B. Full HD mit 200 % Anzeige): dann ausblenden
     PREVIEW_MIN_WINDOW_HEIGHT = 600
@@ -738,6 +769,7 @@ class SettingsWindow(QDialog):
         self._fit_tiles()
         if self.preview is not None:
             self.preview.setVisible(self.height() >= self.PREVIEW_MIN_WINDOW_HEIGHT)
+            self._fit_view_split()
 
     def _fit_tiles(self):
         # Erst wenn die Seite zu sehen ist, hat das Stylesheet die Kacheln fertig vermessen
@@ -822,8 +854,10 @@ class SettingsWindow(QDialog):
         self.stack.setCurrentIndex(self.pages[key])
         self._fit_tiles()
         self.refresh()
-        if key == "view" and self._preview_stale:
-            self._refresh_preview()
+        if key == "view":
+            if self._preview_stale:
+                self._refresh_preview()
+            QTimer.singleShot(0, self._fit_view_split)  # erst mit sichtbarer Seite messen
 
     def show_page(self, key):
         """Bereich zeigen, z. B. show_page("sources")."""

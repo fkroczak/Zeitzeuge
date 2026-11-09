@@ -50,8 +50,8 @@ def gui_test():
         prompt.resize(prompt.width(), prompt.height() + grow)
         app.processEvents()
         frame = prompt.frameGeometry()
-        assert frame.bottom() <= area.bottom() - 20, (frame, area)
-        assert frame.right() <= area.right() - 20, (frame, area)
+        assert frame.bottom() <= area.bottom() - 8, (frame, area)
+        assert frame.right() <= area.right() - 8, (frame, area)
 
     # Später fragen: Fenster weg, nicht sofort wieder, aber noch offen
     prompt._answer("later")

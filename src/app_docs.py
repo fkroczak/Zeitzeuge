@@ -764,7 +764,7 @@ class DocsMixin(CustomersMixin):
         self._prompt_window = window
         # unten rechts über dem Infobereich, ohne dir den Fokus wegzunehmen
         window.adjustSize()
-        window.dock_bottom_right(24)
+        window.dock_bottom_right(8)  # dicht über der Taskleiste
         window.show()
 
     def on_prompt_answered(self, action, entry, item):

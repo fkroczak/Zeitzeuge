@@ -4,8 +4,8 @@ Teil von TimelineApp (main_timeline.py), nur über main_timeline laden.
 """
 from datetime import datetime
 
-from PySide6.QtCore import QDate, QEvent
-from PySide6.QtGui import QFont
+from PySide6.QtCore import QDate, QEvent, QObject, QPoint
+from PySide6.QtGui import QFont, QGuiApplication
 from PySide6.QtWidgets import QApplication, QDialog, QMenu, QSystemTrayIcon
 
 from activity_tracker import ActivityTracker, tracking_filters
@@ -13,6 +13,47 @@ import icons
 from settings_dialogs import RulesDialog, TrackingFilterDialog
 from theme import theme_for
 import main_timeline as mt  # Pfade und save_config zur Laufzeit von dort (Tests ersetzen sie dort)
+
+
+def tray_menu_pos(icon, size, avail):
+    """Feste Stelle für das Menü im Infobereich: mittig über dem Symbol, direkt an der
+    Taskleiste (unten, oben, links oder rechts), ganz auf dem Bildschirm. None = Qt entscheidet."""
+    if not icon.isValid() or icon.isEmpty():
+        return None
+    w, h = size.width(), size.height()
+    if icon.top() > avail.bottom():  # Taskleiste unten
+        x, y = icon.center().x() - w // 2, avail.bottom() - h + 1
+    elif icon.bottom() < avail.top():  # oben
+        x, y = icon.center().x() - w // 2, avail.top()
+    elif icon.left() > avail.right():  # rechts
+        x, y = avail.right() - w + 1, icon.center().y() - h // 2
+    elif icon.right() < avail.left():  # links
+        x, y = avail.left(), icon.center().y() - h // 2
+    else:  # Symbol im aufgeklappten Überlauf: direkt darüber
+        x, y = icon.center().x() - w // 2, icon.top() - h
+    x = max(avail.left(), min(x, avail.right() - w + 1))
+    y = max(avail.top(), min(y, avail.bottom() - h + 1))
+    return QPoint(x, y)
+
+
+class _TrayMenuPlacer(QObject):
+    """Rückt das Menü des Infobereichs beim Öffnen an seine feste Stelle. Windows öffnet es
+    sonst dort, wo die Maus gerade steht, also jedes Mal etwas anders."""
+
+    def __init__(self, tray, menu):
+        super().__init__(menu)
+        self.tray = tray
+        menu.installEventFilter(self)
+
+    def eventFilter(self, menu, event):
+        if event.type() == QEvent.Show:
+            icon = self.tray.geometry()
+            screen = QGuiApplication.screenAt(icon.center()) or QGuiApplication.primaryScreen()
+            if screen is not None:
+                pos = tray_menu_pos(icon, menu.sizeHint(), screen.availableGeometry())
+                if pos is not None:
+                    menu.move(pos)
+        return False
 
 
 class TrayMixin:
@@ -124,6 +165,7 @@ class TrayMixin:
         quit_action = menu.addAction("&Beenden", self.request_quit)
         self._icon_actions += [(open_action, "window"), (refresh, "refresh"), (quit_action, "power")]
         self.tray.setContextMenu(menu)
+        self._tray_menu_placer = _TrayMenuPlacer(self.tray, menu)  # immer an derselben Stelle
         # Klick auf die Meldung "3CX-Anmeldung nötig" öffnet die Anmeldung
         self.tray.messageClicked.connect(self.on_tray_message_clicked)
         self.tray.activated.connect(

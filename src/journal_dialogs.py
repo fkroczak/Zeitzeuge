@@ -50,17 +50,17 @@ class _EntryForm(QWidget):
         self._suggested_category = (category or "").strip()
         form = QFormLayout(self)
         form.setContentsMargins(0, 0, 0, 0)
+        form.setVerticalSpacing(SPACE_S)  # kompakt: Nachfrage-Fenster nicht höher als nötig
 
         self.date_edit = QDateEdit(QDate(start.year, start.month, start.day))
         self.date_edit.setLocale(QLocale(QLocale.German, QLocale.Germany))  # "Mi" statt "Wed"
         self.date_edit.setDisplayFormat("ddd dd.MM.yyyy")
         self.date_edit.setCalendarPopup(True)
-        if show_date:
-            form.addRow("&Datum:", self.date_edit)
-        else:
+        if not show_date:
             self.date_edit.hide()
 
         times = QHBoxLayout()
+        times.setSpacing(SPACE_S)
         self.start_edit = QTimeEdit(QTime(start.hour, start.minute))
         self.end_edit = QTimeEdit(QTime(end.hour, end.minute) if end.date() == start.date()
                                   else QTime(23, 59))
@@ -70,15 +70,24 @@ class _EntryForm(QWidget):
         self.end_edit.setAccessibleName("Bis")
         bis = QLabel("&bis")
         bis.setBuddy(self.end_edit)
+        von = QLabel("&von" if show_date else "&Von:")
+        von.setBuddy(self.start_edit)
+        if show_date:  # Datum und Uhrzeit in einer Zeile
+            times.addWidget(self.date_edit)
+            times.addWidget(von)
         times.addWidget(self.start_edit)
         times.addWidget(bis)
         times.addWidget(self.end_edit)
         self.duration = QLabel()
         self.duration.setObjectName("hint")
+        self.duration.setWordWrap(True)
         times.addWidget(self.duration, 1)
-        von = QLabel("&Von:")
-        von.setBuddy(self.start_edit)
-        form.addRow(von, times)
+        if show_date:
+            date_label = QLabel("&Datum:")
+            date_label.setBuddy(self.date_edit)
+            form.addRow(date_label, times)
+        else:
+            form.addRow(von, times)
 
         self.customer_edit = QComboBox()
         self.customer_edit.setEditable(True)
@@ -136,19 +145,21 @@ class _EntryForm(QWidget):
         flags.addWidget(self.travel_box)
         flags.addWidget(self.surcharge_box)
         flags.addStretch(1)
+        self._flags_row = flags  # rechts daneben „Text einfügen“ (_add_text_helpers)
         form.addRow("", flags)
 
         self.text_edit = QPlainTextEdit(text)
         self.text_edit.setPlaceholderText("Was hast du gemacht? z. B. „Drucker neu eingerichtet, "
                                           "Treiber aktualisiert“")
         self.text_edit.setTabChangesFocus(True)
-        self.text_edit.setFixedHeight(80)
+        self.text_edit.setFixedHeight(64)
         form.addRow("&Tätigkeit:", self.text_edit)
         self._add_text_helpers(form, snippets, recent_texts, ticket, ticket_suggestions, show_ticket)
 
         self.error = QLabel()
         self.error.setObjectName("hint")
         self.error.setWordWrap(True)
+        self.error.hide()  # nur mit Fehler eine eigene Zeile
         form.addRow("", self.error)
 
         for edit in (self.start_edit, self.end_edit):
@@ -175,10 +186,8 @@ class _EntryForm(QWidget):
         self.insert_menu = QMenu(self.insert_button)
         self.insert_menu.aboutToShow.connect(self._fill_insert_menu)
         self.insert_button.setMenu(self.insert_menu)
-        row = QHBoxLayout()
-        row.addWidget(self.insert_button)
-        row.addStretch(1)
-        form.addRow("", row)
+        # In der Zeile Kulanz / Reise / Zuschlag, direkt über dem Textfeld: spart eine Zeile
+        self._flags_row.addWidget(self.insert_button)
 
         # Ticket: nur Vorschläge, nie automatisch eingesetzt
         self.ticket_suggestions = list(suggestions or [])
@@ -397,6 +406,7 @@ class _EntryForm(QWidget):
         ok = end > start
         self.error.setText("" if ok else "⚠ Fehler: „Bis“ muss nach „Von“ liegen.")
         self.error.setVisible(not ok)
+        self.error.setVisible(not ok)
         minutes = int((end - start).total_seconds() // 60)
         text = f"{minutes // 60}:{minutes % 60:02d} h" if ok else ""
         customer = self.customer_edit.currentText().strip()
@@ -430,7 +440,7 @@ class EntryDialog(QDialog):
                  trace=None, rule_subject=None, context_for=None, **form_options):
         super().__init__(parent)
         self.setWindowTitle(title)
-        self.setMinimumWidth(480)
+        self.setMinimumWidth(620)  # Datum und Zeit, Häkchen und „Text einfügen“ je in einer Zeile
         self.deleted = False
         layout = QVBoxLayout(self)
         if info:
@@ -445,7 +455,6 @@ class EntryDialog(QDialog):
         self.context_for = context_for
         self.context_rows = None
         if context_for:
-            self.setMinimumWidth(560)
             layout.addWidget(self._context_card())
             self.form.start_edit.timeChanged.connect(lambda _t: self.update_context())
             self.form.end_edit.timeChanged.connect(lambda _t: self.update_context())
@@ -519,8 +528,10 @@ class PromptWindow(QDialog):
         super().__init__(parent, Qt.Tool | Qt.WindowStaysOnTopHint)
         self.entry = entry
         self.setWindowTitle("Zeitzeuge: Was hast du gemacht?")
+        # Rahmen in Akzentfarbe und farbige Kopfzeile: hebt sich von Fenstern dahinter ab
+        self.setObjectName("prompt_window")
         self.setAttribute(Qt.WA_ShowWithoutActivating)
-        self.setMinimumWidth(460)
+        self.setMinimumWidth(620)  # Datum und Zeit, Häkchen und „Text einfügen“ je in einer Zeile
         layout = QVBoxLayout(self)
 
         if entry.get("idle"):  # Leerlauf (Companion): Frage statt „Erkannt:“
@@ -533,6 +544,7 @@ class PromptWindow(QDialog):
             head = QLabel(f"<b>Erkannt:</b> {describe(entry)}")
         head.setWordWrap(True)
         head.setTextFormat(Qt.RichText)
+        head.setObjectName("prompt_head")
         layout.addWidget(head)
         self.pending_label = QLabel()
         self.pending_label.setObjectName("hint")
@@ -608,7 +620,7 @@ class PromptWindow(QDialog):
             self.form.text_edit.setFocus()
             self.form.text_edit.selectAll()
 
-    def dock_bottom_right(self, margin=24):
+    def dock_bottom_right(self, margin=8):
         """Unten rechts über der Taskleiste halten, mit Abstand – auch wenn das Fenster
         später wächst (Ticket-Status, Fehlermeldung, Haken)."""
         self._dock_margin = margin
