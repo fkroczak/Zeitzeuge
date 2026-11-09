@@ -26,3 +26,11 @@ def test_lane_is_reused_and_capped():
     lanes, count = stack_lanes(spans, max_lanes=3)
     assert count == 3 and lanes[:4] == [0, 1, 2, 2] and lanes[4] == 0
     assert stack_lanes([]) == ([], 0)
+
+
+def test_now_pill_keeps_white_time_readable():
+    from theme import contrast
+    from timeline_only import now_pill_color
+    for line in ("#E11D48", "#F28B82", "#FACC15"):  # hell, dunkel, eigene Farbe
+        assert contrast("#FFFFFF", now_pill_color(line).name()) >= 4.5, line
+    assert now_pill_color("#E11D48").name().upper() == "#E11D48"  # kräftig genug: unverändert

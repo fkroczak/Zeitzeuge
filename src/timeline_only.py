@@ -5,7 +5,7 @@ from datetime import datetime
 from html import escape
 
 from PySide6.QtCore import QDate, QDateTime, QPoint, Qt, QTimer, Signal
-from PySide6.QtGui import QBrush, QColor, QContextMenuEvent, QFontMetrics, QPainter, QPen
+from PySide6.QtGui import QBrush, QColor, QContextMenuEvent, QFontMetrics, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (QDialog, QDialogButtonBox, QFormLayout, QGraphicsRectItem,
                                QGraphicsScene, QGraphicsView, QLabel, QLineEdit, QMenu,
                                QTextEdit, QVBoxLayout)
@@ -20,7 +20,7 @@ from grouping import format_tv_id, group_entries
 from log_parsers import ConnectionIndex, RdmParser, TeamViewerParser, VpnParser
 from rdp_reader import RdpReader
 from local_sources import BROWSER_TYPE, FILE_TYPE, NET_TYPE, PC_STATE_TYPES, WLAN_TYPE, LocalReader
-from theme import readable_on, theme_for, ui_font
+from theme import contrast, readable_on, theme_for, ui_font
 from vpn_reader import VpnReader, drop_unnamed_twins, vpn_sources
 
 TIME_FMT = "%Y-%m-%d %H:%M:%S"
@@ -234,6 +234,20 @@ def row_of(activity):
 
 # Zeilen mit einstellbarer Farbe (PC-Aktivität färbt nach Tätigkeit bzw. Programm)
 COLOR_ROWS = [k for k, _t in TIMELINE_ROWS if k != "pc"]
+
+
+def now_pill_color(color):
+    """Füllung der Pille an der Jetzt-Linie: Farbe der Linie, falls die weiße Uhrzeit darauf
+    lesbar ist, sonst derselbe Farbton kräftiger und dunkler (helles Rot im dunklen Design)."""
+    fill = QColor(color)
+    if contrast("#FFFFFF", fill.name()) >= 4.5:
+        return fill
+    hue = max(0, fill.hslHue())
+    for light in range(150, 40, -10):  # Sättigung hoch statt grau-braun, Helligkeit schrittweise runter
+        fill = QColor.fromHsl(hue, 230, light)
+        if contrast("#FFFFFF", fill.name()) >= 4.5:
+            break
+    return fill
 
 
 def type_label(activity):
@@ -560,6 +574,13 @@ class TimelineView(QGraphicsView):
         self._resize_timer.setInterval(40)
         self._resize_timer.timeout.connect(self._apply_resize)
         self._rendered_h = None    # Höhe der Fläche beim letzten Zeichnen
+        # Jetzt-Linie mit Uhrzeit-Pille: jede Minute verschieben, auch ohne neues Zeichnen
+        # (z. B. Aufzeichnung pausiert). Nur die zwei Teile, nicht die ganze Szene.
+        self._now_items = None     # (Linie, Pille, Text, Szenenbreite, Höhe)
+        self._now_timer = QTimer(self)
+        self._now_timer.setSingleShot(True)
+        self._now_timer.timeout.connect(self._tick_now)
+        self._schedule_now_tick()
         self.fit_day = True        # ganzen Tag ins Fenster einpassen
         self._drag_start = None    # Mausposition beim Drücken (Bereich ziehen)
         self._drag_button = None   # links: Tätigkeit eintragen, rechts: Zoom
@@ -1068,6 +1089,7 @@ class TimelineView(QGraphicsView):
         self._drag_item = None
         self.scene.clear()
         self._hover_line = self._hover_label = None  # mit der Szene gelöscht
+        self._now_items = None
         self.activity_rects.clear()
         self.tooltip.hide()
         self.scene.setBackgroundBrush(self.background_color)
@@ -1234,7 +1256,9 @@ class TimelineView(QGraphicsView):
         if date == QDate.currentDate():
             now = QDateTime.currentDateTime().time()
             x = self._x(now.hour() * 60 + now.minute())
-            self.scene.addLine(x, 0, x, height, QPen(self.now_color, 2))
+            line = self.scene.addLine(x, 0, x, height, QPen(self.now_color, 2))
+            pill, label = self._add_now_pill(x, now.toString("HH:mm"), width)
+            self._now_items = (line, pill, label, width, height)
 
         # Senkrechte Linie unter der Maus (erst bei Mausbewegung sichtbar)
         self._hover_line = self.scene.addLine(0, 0, 0, height, QPen(self.text_color, 1, Qt.DashLine))
@@ -1606,6 +1630,41 @@ class TimelineView(QGraphicsView):
             self._hide_hover()
         if not in_legend:  # Balken unter der Legende sollen dort keinen Zeiger setzen
             super().mouseMoveEvent(event)
+
+    def _add_now_pill(self, x, text, width):
+        """Rote Pille mit weißer Uhrzeit oben in der Stundenleiste, wandert mit der Linie."""
+        font = ui_font(8, bold=True)
+        metrics = QFontMetrics(font)
+        w, h = metrics.horizontalAdvance(text) + 12, self.AXIS_H - 8
+        left = max(0, min(x - w / 2, width - w))
+        path = QPainterPath()
+        path.addRoundedRect(left, 4, w, h, h / 2, h / 2)
+        pill = self.scene.addPath(path, QPen(Qt.NoPen), QBrush(now_pill_color(self.now_color)))
+        pill.setZValue(80)
+        label = self.scene.addSimpleText(text, font)
+        label.setBrush(QColor("#FFFFFF"))
+        label.setPos(left + 6, 4 + (h - metrics.height()) / 2)
+        label.setZValue(81)
+        return pill, label
+
+    def _schedule_now_tick(self):
+        """Kurz nach dem nächsten Minutenwechsel _tick_now aufrufen."""
+        sec = QDateTime.currentDateTime().time().second()
+        self._now_timer.start((60 - sec) * 1000 + 200)
+
+    def _tick_now(self):
+        """Jetzt-Linie und Pille auf die aktuelle Minute setzen."""
+        self._schedule_now_tick()
+        if not self._now_items or self.current_date != QDate.currentDate():
+            return
+        line, pill, label, width, height = self._now_items
+        now = QDateTime.currentDateTime().time()
+        x = self._x(now.hour() * 60 + now.minute())
+        line.setLine(x, 0, x, height)
+        self.scene.removeItem(pill)
+        self.scene.removeItem(label)
+        pill, label = self._add_now_pill(x, now.toString("HH:mm"), width)
+        self._now_items = (line, pill, label, width, height)
 
     def _show_hover_line(self, minute):
         if not self._hover_line:

@@ -12,6 +12,7 @@ from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import QToolTip, QWidget
 
 from theme import CUSTOM_KEYS, custom_theme, ui_font
+from timeline_only import now_pill_color
 
 # Zeichenfläche in festen Einheiten, wird aufs Widget skaliert
 W, H = 640, 380
@@ -187,7 +188,15 @@ class ThemeMockup(QWidget):
         now = left + 380
         p.setPen(QPen(c["now"], 2))
         p.drawLine(QPointF(now, tl.top() + 20), QPointF(now, tl.bottom() - 4))
+        # Pille mit Uhrzeit oben an der Linie, wie in der Timeline
+        pill_color = now_pill_color(c["now"])
+        p.setFont(ui_font(7, True))
+        pill = QRectF(now - 18, tl.top() + 4, 36, 15)
+        box(pill, pill_color, 7.5)
+        p.setPen(QColor("#FFFFFF"))
+        p.drawText(pill, Qt.AlignCenter, "16:40")
         # „Jetzt“-Linie vor den Balken: sie ist schmal und sonst kaum zu treffen
+        areas.append((pill.adjusted(-2, -2, 2, 2), "now"))
         areas.append((QRectF(now - 4, tl.top() + 20, 8, tl.height() - 24), "now"))
         for row, a, b, key in BARS:
             y = tl.top() + 28 + row * lane
