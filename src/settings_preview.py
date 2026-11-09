@@ -108,6 +108,7 @@ class PreviewTimeline(TimelineView):
         # Die Vorschau ist niedriger als die Timeline: untere Zeilen über die Scrollleiste erreichbar
         self.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.setAccessibleName("Vorschau der Timeline mit Beispieldaten")
+        self._fitted_width = None  # Breite, für die der Zeitraum zuletzt eingepasst wurde
         self.current_date = DEMO_DATE
         self.tracker = _DemoTracker(demo_segments())
         self.doc_entries = lambda _d: demo_docs(self.activities_for(DEMO_DATE))
@@ -123,6 +124,21 @@ class PreviewTimeline(TimelineView):
 
     def refresh(self):  # keine Logs
         pass
+
+    def fit_range(self):
+        """Zeitraum aus den Einstellungen (Arbeitszeit oder ganzer Tag) in die Breite einpassen."""
+        self._fitted_width = self.maximumViewportSize().width()
+        if self.config.get("timeline_range", "work") == "work":
+            self.show_work_time()
+        else:
+            self.show_whole_day()
+
+    def _apply_resize(self):
+        # Breite geändert (Fenster größer, maximiert): Zeitraum neu einpassen statt seitlich zu scrollen
+        if self._ppm and self.maximumViewportSize().width() != self._fitted_width:
+            self.fit_range()
+            return
+        super()._apply_resize()
 
     # Nur ansehen: Klicks und Menüs tun in der Vorschau nichts, der Hinweis beim Darüberfahren bleibt
     def mousePressEvent(self, event):
@@ -160,7 +176,7 @@ def list_entries(timeline, config):
 class PreviewPane(QFrame):
     """Kasten „Vorschau“: Satz, was gezeigt wird, darunter Timeline und Tagesliste."""
 
-    LIST_ROWS = 3
+    LIST_ROWS = 2
     TIMELINE_HEIGHT = 170
 
     def __init__(self, main, parent=None):
@@ -181,8 +197,10 @@ class PreviewPane(QFrame):
         head.addWidget(self.caption, 1)
         layout.addLayout(head)
         self.timeline = PreviewTimeline(dict(main.config), self)
-        self.timeline.setFixedHeight(self.TIMELINE_HEIGHT)
-        layout.addWidget(self.timeline)
+        # Mindesthöhe; danach bindet die Timeline ihre Höhe selbst an die Zeilen
+        # (TimelineView._fit_height_to_rows) und wächst, wenn die Vorschau größer gezogen wird.
+        self.timeline.setMinimumHeight(self.TIMELINE_HEIGHT)
+        layout.addWidget(self.timeline, 1)
         self.table = QTableWidget(0, 5, self)
         self.table.setAccessibleName("Vorschau der Tagesliste mit Beispieldaten")
         self.table.setHorizontalHeaderLabels(["Von", "Bis", "Typ", "Kunde / Verbindung", "Details"])
@@ -221,10 +239,7 @@ class PreviewPane(QFrame):
         if tl.dark_mode != bool(cfg.get("dark_mode")):
             tl.dark_mode = bool(cfg.get("dark_mode"))
             tl.init_timeline_colors()
-        if cfg.get("timeline_range", "work") == "work":
-            tl.show_work_time()
-        else:
-            tl.show_whole_day()
+        tl.fit_range()
         self.caption.setText(self.variant[1] if self.variant
                              else "Beispieltag. Fahr über eine Einstellung, um die Änderung vorab zu sehen.")
         self._fill_list(cfg)
