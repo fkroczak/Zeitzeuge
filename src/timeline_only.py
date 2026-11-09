@@ -20,7 +20,7 @@ from grouping import format_tv_id, group_entries
 from log_parsers import ConnectionIndex, RdmParser, TeamViewerParser, VpnParser
 from rdp_reader import RdpReader
 from local_sources import BROWSER_TYPE, FILE_TYPE, NET_TYPE, PC_STATE_TYPES, WLAN_TYPE, LocalReader
-from theme import THEMES, readable_on, ui_font
+from theme import readable_on, theme_for, ui_font
 from vpn_reader import VpnReader, drop_unnamed_twins, vpn_sources
 
 TIME_FMT = "%Y-%m-%d %H:%M:%S"
@@ -591,8 +591,8 @@ class TimelineView(QGraphicsView):
 
     def init_timeline_colors(self):
         """Grundfarben aus dem Design (theme.THEMES), Balken in den Typfarben."""
-        t = THEMES["dark" if self.dark_mode else "light"]
-        self.background_color = QColor(t["surface"])
+        t = theme_for({**(self.config or {}), "dark_mode": self.dark_mode})
+        self.background_color = QColor(t["canvas"])
         self.text_color = QColor(t["text"])
         self.muted_text = QColor(t["muted"])
         self.accent = QColor(t["accent"])
@@ -605,7 +605,7 @@ class TimelineView(QGraphicsView):
             self.hour_line = QColor(27, 31, 36, 26)
             self.half_line = QColor(27, 31, 36, 10)
             self.non_work_color = QColor(27, 31, 36, 14)
-        self.axis_bg = QColor(t["surface"])
+        self.axis_bg = QColor(t["canvas"])
 
     def _add_block(self, x, y, w, h, pen, brush):
         """Balken mit runden Ecken in die Szene legen (wie scene.addRect)."""
@@ -1495,7 +1495,7 @@ class TimelineView(QGraphicsView):
             if entry:
                 line_y = self.mapFromScene(0, entry[0] + (entry[1] + self.LANE_GAP / 2 if below
                                                           else -self.LANE_GAP / 2)).y()
-                accent = QColor(THEMES["dark" if self.dark_mode else "light"]["accent"])
+                accent = QColor(theme_for(self.config)["accent"])
                 painter.setPen(QPen(accent, 3))
                 painter.drawLine(4, line_y, self.viewport().width(), line_y)
         painter.restore()

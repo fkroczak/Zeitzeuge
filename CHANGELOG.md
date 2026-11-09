@@ -18,6 +18,8 @@ Testversionen aus Branches tragen die Version ihres main-Stands plus Buildnummer
 26.10.2026 können sie nicht mehr lesen.
 
 ### Neu
+- **Design im Menü Ansicht:** Hell, Dunkel oder eigene Farben. Das dunkle Design sieht jetzt aus wie Google Chrome im dunklen Modus (Grautöne statt fast Schwarz). Unter „Eigene Farben festlegen …“ wählst du Hintergrund, Flächen, Kopfleiste, Schrift und Akzent selbst.
+- **Akzentfarbe Windows-Blau** statt Lila (Auswahl, Schalter, Häkchen). Hellgrau, Dunkelblau und Lila gibt es weiter unter „Eigene Farben“.
 - **Benachrichtigungen abschaltbar:** Der Menüpunkt heißt jetzt „Nachfragen und Benachrichtigungen …“ (Einstellungen). Dort lässt sich die Meldung „Zeitzeuge läuft weiter“ beim Schließen des Fensters abschalten. Nachfragen im Infobereich und Feierabend-Erinnerungen stellst du wie bisher im selben Fenster ein.
 - **Installationsassistent** (`Zeitzeuge-Setup.exe`, unter Releases): installiert ohne Adminrechte, aktualisiert eine vorhandene Installation, findet alte `ZeitZeuge.exe` (Desktop, OneDrive-Desktop, Downloads, Autostart) und ersetzt sie durch Verknüpfungen. Einstellungen und Datenbank werden weiter genutzt und vor dem Update gesichert. Die installierte Version startet schneller (kein Entpacken nach `%TEMP%`).
 - **Ticket direkt im Feld suchen:** Beim Dokumentieren Kunde, Titel oder Benutzer ins Feld „Ticket“ tippen (ab 3 Zeichen). Die Treffer aus dem Ticketsystem erscheinen darunter, die Auswahl setzt die Ticketnummer (und den Kunden, wenn er noch fehlt). „Suchen …“ übernimmt den getippten Text.

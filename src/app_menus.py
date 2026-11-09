@@ -19,7 +19,7 @@ from local_sources import DEFAULT_BROWSER_HISTORY, DEFAULT_RECENT_DIR
 from rdp_reader import DEFAULT_LAUNCHER_LOG
 from vpn_reader import DEFAULT_DIRS as VPN_DEFAULT_DIRS, FORTI_TRACE_PATHS, vpn_sources
 from settings_dialogs import ActivityTypeSettingsDialog, ConnectionSettingsDialog, WorkHoursDialog
-from theme import GERMAN, STYLESHEET, THEMES, SPACE_XS
+from theme import GERMAN, STYLESHEET, SPACE_XS, theme_for
 from timeline_only import (COLOR_ROWS, DEFAULT_CALL_COLORS, LEGEND_BANDS, LEGEND_FIXED, ROW_NAMES,
                            TIMELINE_ROWS, entry_color)
 from view_help import VIEW_HELP, ViewHelpDialog, help_text
@@ -230,7 +230,7 @@ class MenusMixin:
         self.view_button.setToolTip(f"Ansicht: Tagesliste ({current}), Zeilen der Timeline, "
                                     "Zeitraum, Übersichten und Design (Alt+A)")
         self.view_button.setAccessibleDescription(f"Tagesliste aktuell: {current}")
-        theme = THEMES["dark" if self.dark_mode else "light"]
+        theme = theme_for(self.config)
         for k, action in self.view_actions.items():  # Hilfe mit den aktuellen Pausen
             action.setToolTip(help_text(k, self.config))
             action.setStatusTip(help_text(k, self.config))
@@ -245,7 +245,7 @@ class MenusMixin:
 
     def show_view_help(self):
         """Erklärung der Ansichten der Tagesliste mit Beispielen."""
-        theme = THEMES["dark" if self.dark_mode else "light"]
+        theme = theme_for(self.config)
         ViewHelpDialog(self.VIEWS, self.config, theme["text"],
                        self.config.get("list_view", "grouped"), self).exec()
 
@@ -285,7 +285,7 @@ class MenusMixin:
         menu.setObjectName("view_menu")
         menu.setToolTipsVisible(True)  # Hilfe zu den Ansichten beim Darüberfahren
         self._check_proxies = {}
-        accent = THEMES["dark" if self.dark_mode else "light"]["accent"]
+        accent = theme_for(self.config)["accent"]
         # Die Ansichten selbst wählt man über die Chips über der Tagesliste (day_summary.ViewChips);
         # view_actions bleiben als Aktionen ohne Menüeintrag (Einstellungsfenster, Hinweise).
         self._menu_header(menu, "Tagesliste")
@@ -323,9 +323,19 @@ class MenusMixin:
         self._icon_actions.append((menu.addAction("&Offene Tätigkeiten …", self.show_open_docs), "alert"))
         # Zeitraum (Ganzer Tag, Arbeitszeit) steht in der Werkzeugleiste
         menu.addSeparator()
-        # Hell/Dunkel: schnell erreichbar hier, dieselbe Aktion wie im Menü Einstellungen
-        self._view_dark_proxy = self._add_check(menu, self._ensure_dark_action(), accent)
-        self._check_proxies.pop(self.dark_action)  # Eintrag im Menü Einstellungen bleibt dort registriert
+        # Design: Hell, Dunkel (wie Chrome) oder eigene Farben. „Dunkles Design“ im Menü
+        # Einstellungen und im Einstellungsfenster schaltet zwischen Hell und Dunkel.
+        self._ensure_dark_action()
+        self._view_dark_proxy = None
+        self._menu_header(menu, "Design")
+        self.theme_actions = {}
+        for key, text in self.THEME_CHOICES:
+            action = menu.addAction(text)
+            action.triggered.connect(lambda _c=False, k=key: self.choose_theme(k))
+            self.theme_actions[key] = action
+        menu.addSeparator()
+        self._icon_actions.append((menu.addAction("Eigene Farben &festlegen …", self.edit_custom_colors),
+                                   "edit"))
         self._icon_actions.append((menu.addAction("An&passen mit Vorschau …",
                                                   lambda: self.show_settings("view")), "eye"))
 
@@ -343,7 +353,7 @@ class MenusMixin:
         menu = QMenu("&Zeilen der Timeline", self)
         menu.setToolTipsVisible(True)
         # Auch hier umschaltbar (Rechtsklick auf die Legende), ohne das Kästchen im Menü Ansicht zu ersetzen
-        accent = THEMES["dark" if self.dark_mode else "light"]["accent"]
+        accent = theme_for(self.config)["accent"]
         blocks = menu.addAction(self.pc_blocks_action.text())
         blocks.setToolTip(self.pc_blocks_action.toolTip())
         blocks.triggered.connect(self.pc_blocks_action.toggle)
@@ -535,7 +545,7 @@ class MenusMixin:
         self.autostart_action.setChecked(autostart.is_enabled())
         self.autostart_action.setEnabled(autostart.supported())
         self.autostart_action.toggled.connect(self.toggle_autostart)
-        self._add_check(menu, self._ensure_dark_action(), THEMES["dark" if self.dark_mode else "light"]["accent"])
+        self._add_check(menu, self._ensure_dark_action(), theme_for(self.config)["accent"])
         # Datenquellen: im Einstellungsfenster (Kacheln mit Zustand); das Untermenü nutzt der Infobereich
         self.sources_menu = self._build_sources_menu()
         self._icon_actions.append(
@@ -797,14 +807,53 @@ class MenusMixin:
             self.dark_action.toggled.connect(self.toggle_dark_mode)
         return self.dark_action
 
+    THEME_CHOICES = [("light", "&Hell"), ("dark", "&Dunkel (wie Chrome)"), ("custom", "&Eigene Farben")]
+
+    def current_theme_key(self):
+        colors = self.config.get("custom_colors") or {}
+        if self.config.get("custom_theme") and (colors.get("base") == "dark") == bool(self.dark_mode):
+            return "custom"
+        return "dark" if self.dark_mode else "light"
+
     def toggle_dark_mode(self, enabled: bool):
-        self.dark_mode = enabled
-        self.config["dark_mode"] = enabled
-        mt.save_config(self.config)
+        self.set_theme("dark" if enabled else "light")
+
+    def choose_theme(self, key):
+        """Eintrag im Menü Ansicht → Design. Eigene Farben ohne gespeicherte Werte: erst festlegen."""
+        if key == "custom" and not self.config.get("custom_colors"):
+            self.edit_custom_colors()
+        else:
+            self.set_theme(key)
+
+    def edit_custom_colors(self):
+        from theme_dialog import CustomColorsDialog
+        CustomColorsDialog(self).exec()
+
+    def set_theme(self, key, save=True):
+        """Design wechseln: "light", "dark" oder "custom" (config["custom_colors"])."""
+        if key == "custom":
+            colors = self.config.get("custom_colors") or {}
+            dark = colors.get("base") == "dark"
+            self.config["custom_theme"] = True
+        else:
+            dark = key == "dark"
+            self.config["custom_theme"] = False
+        self.dark_mode = dark
+        self.config["dark_mode"] = dark
+        action = getattr(self, "dark_action", None)
+        if action is not None and action.isChecked() != dark:
+            action.blockSignals(True)  # nur den Haken nachziehen, nicht erneut umschalten
+            action.setChecked(dark)
+            action.blockSignals(False)
+            proxy = self._check_proxies.get(action)
+            if proxy is not None:
+                proxy.setIcon(icons.check_box(proxy.data(), dark))
+        if save:
+            mt.save_config(self.config)
         self.apply_style()
 
     def apply_style(self):
-        theme = THEMES["dark" if self.dark_mode else "light"]
+        theme = theme_for(self.config)
         sheet = STYLESHEET
         tokens = {**theme, "checkmark": icons.check_mark_file(theme["onaccent"])}
         for key in sorted(tokens, key=len, reverse=True):  # $bandtext vor $band ersetzen
@@ -828,6 +877,13 @@ class MenusMixin:
             in_menu = any(isinstance(o, QMenu) for o in action.associatedObjects())
             action.setIcon(icons.icon(name, theme["text" if in_menu else "bandtext"]))
         self.update_view_button()
+        current = self.current_theme_key()
+        for key, action in getattr(self, "theme_actions", {}).items():
+            # Punkt in Akzentfarbe und fett am aktuellen Design (wie die Ansichten der Tagesliste)
+            action.setIcon(icons.dot(theme["accent"]) if key == current else QIcon())
+            font = action.font()
+            font.setBold(key == current)
+            action.setFont(font)
         for action in (self.pc_list_action, self.dark_action, self.pc_blocks_action):
             for proxy in (self._check_proxies.get(action),
                           self._rows_blocks_proxy if action is self.pc_blocks_action else None,

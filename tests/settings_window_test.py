@@ -48,18 +48,28 @@ def gui_test():
     menu = window.view_button.menu()
     texts = [a.text().replace("&", "").split("\t")[0] for a in menu.actions()]
     for text in ("Was zeigen die Ansichten? …", "Zeilen der Timeline", "Wochenabschluss …",
-                 "Dunkles Design"):
+                 "Hell", "Dunkel (wie Chrome)", "Eigene Farben", "Eigene Farben festlegen …"):
         assert text in texts, (text, texts)
     for text in ("Zusammengefasst", "Einzeln", "Ganzer Tag", "Arbeitszeit"):
         assert text not in texts, (text, texts)
-    # Hell/Dunkel direkt im Menü Ansicht: schaltet dieselbe Aktion wie im Menü Einstellungen
-    dark_entry = next(a for a in menu.actions() if a.text().replace("&", "") == "Dunkles Design")
+    # Design direkt im Menü Ansicht: Hell/Dunkel ziehen den Schalter „Dunkles Design“ mit
     was_dark = window.dark_mode
-    dark_entry.trigger()
+    window.theme_actions["light" if was_dark else "dark"].trigger()
     assert window.dark_mode is (not was_dark) and window.dark_action.isChecked() is (not was_dark)
     assert window.config["dark_mode"] is (not was_dark)
-    dark_entry.trigger()
+    window.theme_actions["dark" if was_dark else "light"].trigger()
     assert window.dark_mode is was_dark
+    # Eigene Farben: Grundfarben gelten, der Rest wird abgeleitet; Hell/Dunkel schaltet zurück
+    import theme
+    window.config["custom_colors"] = {**theme.default_custom_colors("dark"), "accent": "#C4C7C5",
+                                      "band": "#3C3C3C"}
+    window.theme_actions["custom"].trigger()
+    assert window.dark_mode and window.current_theme_key() == "custom"
+    assert theme.theme_for(window.config)["accent"] == "#C4C7C5"
+    assert window.theme_actions["custom"].font().bold()
+    window.dark_action.setChecked(False)  # Schalter in den Einstellungen: zurück zum Standard
+    assert window.current_theme_key() == "light" and not window.config["custom_theme"]
+    window.set_theme("dark" if was_dark else "light")
     chips = window.view_chips.buttons
     assert set(chips) == set(dict(window.VIEWS)), "jede Ansicht hat einen Chip"
     chips["rules"][0].click()

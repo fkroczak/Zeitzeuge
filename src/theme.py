@@ -88,11 +88,11 @@ def install_translator(app):
 GERMAN = QLocale(QLocale.German, QLocale.Germany)
 
 # Design "Companion": ruhige Zink-Grautöne wie shadcn/ui, runde Ecken, Karten mit feinem Rand.
-# Hauptknopf in Textfarbe (hell auf dunkel, dunkel auf hell), Violett für Bedienbares, Fokus
+# Hauptknopf in Textfarbe (hell auf dunkel, dunkel auf hell), Windows-Blau für Bedienbares, Fokus
 # und Vorschläge. Tokens:
 #   band/bandtext/bandhover/bandpressed  Werkzeugleiste (ruhig wie der Hintergrund)
 #   sel/seltext                          markierte Zeile (tonal statt Vollton)
-#   accent/onaccent                      Fokus, Häkchen, Links, Vorschläge (Violett)
+#   accent/onaccent                      Fokus, Häkchen, Links, Vorschläge (Windows-Blau)
 #   primary/onprimary                    Hauptknopf (Standardknopf, „Neuer Kunde“)
 #   line                                 feine Linie zwischen den Zeilen der Tagesliste
 #   now                                  Jetzt-Linie in der Timeline
@@ -101,29 +101,34 @@ GERMAN = QLocale(QLocale.German, QLocale.Germany)
 #   good                                 „gilt“, „bleibt auf diesem Gerät“ (Grün)
 #   tip/tiptext/tipborder                Hinweise (QToolTip, Timeline-Tooltip), in beiden Designs dunkel
 THEMES = {
+    # Dunkel wie Google Chrome im dunklen Modus (Grautöne #1F1F1F / #282828 / #3C3C3C),
+    # Akzent Windows-Blau für dunkle Flächen
     "dark": {
-        "bg": "#0C0C0E", "surface": "#151517", "bar": "#151517",
-        "border": "#27272A", "text": "#FAFAFA", "muted": "#A1A1AA",
-        "accent": "#A78BFA", "onaccent": "#1A1033", "hover": "#1F1F23", "pressed": "#2A2A2F",
-        "alt": "#151517", "handle": "#6B6B74", "line": "#1F1F23", "control": "#6B6B74",
-        "band": "#0C0C0E", "bandtext": "#FAFAFA", "bandhover": "#1F1F23", "bandpressed": "#2A2A2F",
-        "sel": "#2A2A2F", "seltext": "#FFFFFF", "now": "#F43F5E",
-        "primary": "#FAFAFA", "onprimary": "#18181B",
-        "chip": "#1F1F23", "chiptext": "#E4E4E7", "good": "#4ADE80",
-        "tip": "#18181B", "tiptext": "#F4F4F5", "tipborder": "#3F3F46",
+        "bg": "#1F1F1F", "surface": "#282828", "bar": "#282828",
+        "border": "#444746", "text": "#E3E3E3", "muted": "#C4C7C5",
+        "accent": "#4CC2FF", "onaccent": "#00243D", "hover": "#353535", "pressed": "#474747",
+        "alt": "#282828", "handle": "#8E918F", "line": "#323232", "control": "#8E918F",
+        "band": "#3C3C3C", "bandtext": "#E3E3E3", "bandhover": "#474747", "bandpressed": "#545454",
+        "sel": "#004A77", "seltext": "#C2E7FF", "now": "#F28B82",
+        # Grund der Timeline: etwas dunkler als die Flächen, damit die farbigen Balken abheben
+        "canvas": "#1A1A1A",
+        "primary": "#4CC2FF", "onprimary": "#00243D",
+        "chip": "#3C3C3C", "chiptext": "#E3E3E3", "good": "#6DD58C",
+        "tip": "#3C3C3C", "tiptext": "#E3E3E3", "tipborder": "#5E5E5E",
         # Buchungsquote (booking_rate.py): Fläche und Schrift je Stufe
         "rate_low": "#4A1C1F", "rate_low_text": "#FFB4B6", "rate_mid": "#463708", "rate_mid_text": "#FFE08A",
         "rate_ok": "#173D27", "rate_ok_text": "#9BE8B8", "rate_over": "#0E6B34", "rate_over_text": "#FFFFFF",
         # Kachel Buchungsquote: farbige Zahl direkt auf der Karte
-        "rate_value_low": "#FF8A8E", "rate_value_mid": "#FACC15", "rate_value_ok": "#4ADE80",
+        "rate_value_low": "#FF8A8E", "rate_value_mid": "#FACC15", "rate_value_ok": "#6DD58C",
     },
     "light": {
         "bg": "#F7F7F8", "surface": "#FFFFFF", "bar": "#FFFFFF",
         "border": "#E4E4E7", "text": "#18181B", "muted": "#62626B",
-        "accent": "#6D28D9", "onaccent": "#FFFFFF", "hover": "#F1F1F3", "pressed": "#E6E6EA",
+        "accent": "#005FB8", "onaccent": "#FFFFFF", "hover": "#F1F1F3", "pressed": "#E6E6EA",
         "alt": "#FFFFFF", "handle": "#85858D", "line": "#F0F0F2", "control": "#85858D",
         "band": "#F7F7F8", "bandtext": "#18181B", "bandhover": "#ECECEF", "bandpressed": "#E2E2E6",
-        "sel": "#ECE8FB", "seltext": "#2E1065", "now": "#E11D48",
+        "sel": "#E0EEF9", "seltext": "#003A70", "now": "#E11D48",
+        "canvas": "#FFFFFF",
         "primary": "#18181B", "onprimary": "#FAFAFA",
         "chip": "#F4F4F5", "chiptext": "#27272A", "good": "#15803D",
         "tip": "#18181B", "tiptext": "#F4F4F5", "tipborder": "#3F3F46",
@@ -134,6 +139,79 @@ THEMES = {
         "rate_value_low": "#DC2626", "rate_value_mid": "#D97706", "rate_value_ok": "#16A34A",
     },
 }
+
+# ---- Eigene Farben (Menü Ansicht → Design). Gespeichert in config["custom_colors"], aktiv mit
+# config["custom_theme"]. Man wählt nur diese Grundfarben, alle übrigen Tokens werden abgeleitet.
+CUSTOM_KEYS = [
+    ("bg", "Hintergrund"),
+    ("surface", "Flächen (Listen, Menüs, Karten)"),
+    ("band", "Kopfleiste oben"),
+    ("text", "Schrift"),
+    ("accent", "Akzent (Auswahl, Schalter, Häkchen)"),
+]
+
+# Akzentfarben zum schnellen Wählen im Dialog „Eigene Farben“: (Name, hell, dunkel)
+ACCENT_PRESETS = [
+    ("Windows-Blau", "#005FB8", "#4CC2FF"),
+    ("Dunkelblau", "#003E92", "#99C3FF"),
+    ("Hellgrau", "#5F6368", "#C4C7C5"),
+    ("Lila", "#6D28D9", "#A78BFA"),
+]
+
+
+def _mix(a, b, t):
+    """Farbe zwischen a (t = 0) und b (t = 1) als Hex-String."""
+    ca, cb = QColor(a), QColor(b)
+    return QColor(round(ca.red() + (cb.red() - ca.red()) * t),
+                  round(ca.green() + (cb.green() - ca.green()) * t),
+                  round(ca.blue() + (cb.blue() - ca.blue()) * t)).name().upper()
+
+
+def default_custom_colors(base="dark"):
+    """Startwerte für eigene Farben: die Grundfarben des gewählten Standard-Designs."""
+    t = THEMES[base]
+    return {"base": base, **{k: t[k] for k, _ in CUSTOM_KEYS}}
+
+
+def custom_theme(colors):
+    """Vollständiges Token-dict aus den wenigen eigenen Grundfarben."""
+    colors = colors or {}
+    base = "dark" if colors.get("base") == "dark" else "light"
+    t = dict(THEMES[base])
+    for key, _ in CUSTOM_KEYS:
+        if QColor.isValidColorName(str(colors.get(key, ""))):
+            t[key] = QColor(colors[key]).name().upper()
+    bg, surface, band, text, accent = (t[k] for k in ("bg", "surface", "band", "text", "accent"))
+    band_text = text if contrast(text, band) >= 4.5 else readable_on(band).name().upper()
+    t.update({
+        "bar": surface, "alt": surface, "canvas": surface,
+        "border": _mix(surface, text, 0.16), "line": _mix(surface, text, 0.07),
+        "handle": _mix(surface, text, 0.45), "control": _mix(surface, text, 0.45),
+        "muted": _mix(text, surface, 0.3),
+        "hover": _mix(surface, text, 0.07), "pressed": _mix(surface, text, 0.14),
+        "bandtext": band_text, "bandhover": _mix(band, band_text, 0.1),
+        "bandpressed": _mix(band, band_text, 0.17),
+        "sel": _mix(surface, accent, 0.22), "seltext": text,
+        "onaccent": readable_on(accent).name().upper(),
+        "chip": _mix(surface, text, 0.07), "chiptext": text,
+    })
+    if base == "dark":
+        t["primary"], t["onprimary"] = accent, t["onaccent"]
+    return t
+
+
+def theme_for(config):
+    """Aktuelle Farben für diese Config: eigene Farben, sonst Hell oder Dunkel nach dark_mode.
+
+    Eigene Farben gelten nur, solange ihre Grundlage zu dark_mode passt (Vorschau im
+    Einstellungsfenster schaltet dark_mode probeweise um)."""
+    config = config or {}
+    dark = bool(config.get("dark_mode"))
+    colors = config.get("custom_colors") or {}
+    if config.get("custom_theme") and (colors.get("base") == "dark") == dark:
+        return custom_theme(colors)
+    return THEMES["dark" if dark else "light"]
+
 
 # ---- Design-Tokens (docs/DESIGN-TOKENS.md). Qt kennt keine CSS-Variablen: Python nutzt die
 # Konstanten, das Stylesheet die Platzhalter $space_*, $fs_*, $radius* (SIZE_TOKENS, beim Import ersetzt).
@@ -406,6 +484,22 @@ QListWidget#nav_list::item:hover:!selected { background-color: $hover; }
 """.replace("$font", FONT_CSS)
 for _key in sorted(SIZE_TOKENS, key=len, reverse=True):  # $radius_card vor $radius ersetzen
     STYLESHEET = STYLESHEET.replace(f"${_key}px", f"{SIZE_TOKENS[_key]}px")
+
+
+def _luminance(color):
+    c = QColor(color)
+
+    def channel(v):
+        v /= 255
+        return v / 12.92 if v <= 0.03928 else ((v + 0.055) / 1.055) ** 2.4
+
+    return 0.2126 * channel(c.red()) + 0.7152 * channel(c.green()) + 0.0722 * channel(c.blue())
+
+
+def contrast(a, b):
+    """Kontrastverhältnis zweier Farben nach WCAG (1 bis 21)."""
+    la, lb = sorted((_luminance(a), _luminance(b)), reverse=True)
+    return (la + 0.05) / (lb + 0.05)
 
 
 def readable_on(color):
