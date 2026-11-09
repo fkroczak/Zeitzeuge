@@ -174,7 +174,7 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
   - Der Hinweis an der Maus zeigt beim Ziehen Beginn, Ende und Dauer. **ESC** bricht das Ziehen ab.
   - Ein Doppelklick auf eine freie Stelle oder **Ganzer Tag** führt zurück zur Tagesansicht. **Arbeitszeit** zeigt die Arbeitszeit des Tages.
   - STRG + Mausrad zoomt an der Mausposition, das Mausrad allein blättert durch den Tag.
-  - Design: ruhige Zink-Grautöne, runde Ecken, Karten mit feinem Rand, Balken mit runden Ecken, Hauptknopf in Textfarbe, Violett für Fokus, Häkchen und Links. Gestaltet nach 16 UI-Design-Regeln (Kontrast, eine Schrift, keine Großbuchstaben, siehe `docs/quality-guardrails.md`). Hell und dunkel (Pfeil am Knopf **Einstellungen → Dunkles Design**), eigene Aktivitätstypen mit frei wählbaren Farben.
+  - Design: ruhige Zink-Grautöne, runde Ecken, Karten mit feinem Rand, Balken mit runden Ecken, Hauptknopf in Textfarbe, Violett für Fokus, Häkchen und Links. Gestaltet nach 16 UI-Design-Regeln (Kontrast, eine Schrift, keine Großbuchstaben, siehe `docs/quality-guardrails.md`). Hell, dunkel oder „Wie Windows“ (**Ansicht → Design**), unter Windows mit passender Titelleiste, eigene Aktivitätstypen mit frei wählbaren Farben.
 
 ### Tastenkürzel
 
@@ -290,7 +290,7 @@ Alles, was nur die Anzeige ändert, nie die Daten:
 - **Übersichten:** Wochenabschluss, Offene Tätigkeiten.
 - **Anpassen mit Vorschau …** öffnet die Seite **Ansicht** im Einstellungsfenster.
 
-Ganzer Tag und Arbeitszeit stehen in der Werkzeugleiste, **Dunkles Design** im Pfeil-Menü am Knopf **Einstellungen**.
+Ganzer Tag und Arbeitszeit stehen in der Werkzeugleiste, das Design (Wie Windows, Hell, Dunkel, Eigene Farben) im Menü **Ansicht**. Die Knöpfe der Werkzeugleiste zeigen nur Symbole; fährst du darüber, nennt der Hinweis Namen, Tastenkürzel und was der Knopf tut.
 
 ### Fenster Einstellungen
 
@@ -677,6 +677,7 @@ Läuft RDM auf einem Server, kann Zeitzeuge dessen Log auch über das Netzwerk l
 |---|---|
 | `work_days` | Arbeitszeit pro Wochentag, z. B. `"Fr": "08:00-13:00"`, leer = frei. Einstellbar unter **Einstellungen → Arbeitszeiten …** |
 | `dark_mode` | Dunkles Design |
+| `theme_follow_system` | Design „Wie Windows“: Hell oder Dunkel folgt der Einstellung von Windows |
 | `activity_types`, `type_colors` | Aktivitätstypen und ihre Farben |
 | ~~`teamviewer_names`~~ | Kundennamen zu TeamViewer-IDs stehen nicht mehr in der Config, sondern verschlüsselt in der Datenbank. Alte Einträge übernimmt Zeitzeuge beim ersten Start. |
 

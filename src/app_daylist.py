@@ -4,7 +4,7 @@ Teil von TimelineApp (main_timeline.py), nur über main_timeline laden.
 """
 import re
 
-from PySide6.QtCore import QDate, QTimer
+from PySide6.QtCore import Qt, QDate, QTimer
 from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtWidgets import QApplication, QInputDialog, QHeaderView, QTableWidgetItem
 
@@ -105,7 +105,9 @@ class DayListMixin:
             details = a.get("details", "")
             details_item = QTableWidgetItem(new_details(details, type_label(a), customer_text))
             # Spalte Dauer: nur die echte Dauer; die abgerechnete Zeit steht im Hinweis
-            duration_item = QTableWidgetItem(format_duration((end - start).total_seconds()))
+            minutes = round((end - start).total_seconds() / 60)
+            duration_item = QTableWidgetItem(f"{minutes // 60}:{minutes % 60:02d} h")
+            duration_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
             note = (billing.note((end - start).total_seconds(), a.get("customer_name", ""))
                     if billing and a.get("doc") else "")
             values = [

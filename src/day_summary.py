@@ -148,6 +148,7 @@ class _Kpi(QFrame):
             self.button.setCursor(Qt.PointingHandCursor)
             row.addWidget(self.button)
         layout.addLayout(row)
+        layout.addStretch(1)  # Inhalt oben: Überschriften aller Kacheln auf einer Höhe
         self.bar = None
 
     def add_progress(self):
@@ -156,7 +157,7 @@ class _Kpi(QFrame):
         self.bar.setFixedHeight(4)
         self.bar.setRange(0, 100)
         self.bar.setAccessibleName("Anteil erfasst")
-        self.layout().addWidget(self.bar)
+        self.layout().insertWidget(self.layout().count() - 1, self.bar)
 
 
 class RateKpi(QFrame):
@@ -289,7 +290,9 @@ class DaySummary(QWidget):
         self.suggest.button.setVisible(bool(s))
         self.suggest.setVisible(bool(s))  # „0 warten“ ist nur Rauschen
         parts = [f"{name} {hm(sec)}" for name, sec in data["customers"]]
-        self.customers.value.set_parts(parts, "noch nichts eingetragen")
+        self.customers.value.set_parts(parts, "Noch nichts eingetragen – hier steht später die Zeit je Kunde")
+        self.customers.value.setProperty("empty", not parts)
+        self.customers.value.style().polish(self.customers.value)
 
 
 class ViewChips(QWidget):
@@ -312,7 +315,16 @@ class ViewChips(QWidget):
             b = QToolButton(self)
             b.setObjectName("chip")
             b.setCheckable(True)
-            b.setText(text)
+            inner = QHBoxLayout(b)
+            inner.setContentsMargins(10, 3, 10, 3)
+            inner.setSpacing(6)
+            b.chip_text = QLabel(text.replace("&", ""), b)
+            b.chip_count = QLabel("", b)
+            b.chip_count.setObjectName("chip_count")
+            b.chip_count.hide()
+            for lab in (b.chip_text, b.chip_count):
+                lab.setAttribute(Qt.WA_TransparentForMouseEvents)
+                inner.addWidget(lab)
             b.setCursor(Qt.PointingHandCursor)
             b.setAccessibleName(f"Ansicht {text}")
             b.clicked.connect(lambda _c=False, k=key: self.view_chosen.emit(k))
@@ -327,8 +339,14 @@ class ViewChips(QWidget):
         counts = counts or {}
         for key, (button, text) in self.buttons.items():
             n = counts.get(key)
-            button.setText(f"{text}  {n}" if n else text)
+            button.chip_count.setText(str(n) if n else "")
+            button.chip_count.setVisible(bool(n))
             button.setChecked(key == view)
+            button.setAccessibleName(f"Ansicht {text}" + (f", {n}" if n else ""))
+            for lab in (button.chip_text, button.chip_count):
+                lab.setProperty("on", key == view)
+                lab.style().polish(lab)
+            button.setMinimumSize(button.layout().sizeHint())
 
     def set_tips(self, tips):
         """Erklärung je Ansicht beim Darüberfahren (view_help.help_text)."""

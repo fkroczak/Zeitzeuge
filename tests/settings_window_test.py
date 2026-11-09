@@ -33,8 +33,13 @@ def gui_test():
 
     # Schnellzugriffe bleiben in der Werkzeugleiste: Tag zurück/vor, Heute, Ganzer Tag, Arbeitszeit
     tips = [a.toolTip() for a in window.findChildren(type(window.whole_day_action))]
-    for text in ("Vorheriger Tag", "Nächster Tag", "Heute zeigen", "Ganzen Tag zeigen", "Arbeitszeit des Tages"):
-        assert any(t.startswith(text) for t in tips), (text, tips)
+    for text in ("<b>Vorheriger Tag</b>", "<b>Nächster Tag</b>", "Heute zeigen", "Ganzen Tag zeigen",
+                 "Arbeitszeit des Tages"):
+        assert any(text in t for t in tips), (text, tips)
+    # Jeder Knopf der Werkzeugleiste nennt im Hinweis zuerst seinen Namen (nur Symbol sichtbar)
+    for action in window.tools_bar.actions():
+        if action.text() and not action.isSeparator():
+            assert action.toolTip().startswith(f"<b>{action.text()}</b>"), action.toolTip()
     # Heute, Ganzer Tag, Arbeitszeit nur als Symbol; PC-Verlauf und Wochenabschluss nur im Menü
     assert window._today_button.toolButtonStyle() == Qt.ToolButtonIconOnly
     bar = window.tools_bar.actions()
@@ -81,7 +86,8 @@ def gui_test():
     assert len([t for t in texts if t]) <= 16, texts
     assert "Tagesabschluss …" in texts, texts
     settings_texts = [a.text().replace("&", "") for a in window.menu_button.menu().actions()]
-    assert "Dunkles Design" in settings_texts and "Datenquellen …" in settings_texts, settings_texts
+    # Design wählt man im Menü Ansicht (Wie Windows, Hell, Dunkel, Eigene Farben), nicht doppelt hier
+    assert "Dunkles Design" not in settings_texts and "Datenquellen …" in settings_texts, settings_texts
     # PC-Aktivität: Arbeitsblöcke <-> jedes Fenster, im Menü Ansicht und im Menü der Zeilen
     assert "PC-Aktivität als Arbeitsblöcke" in texts, texts
     assert any(a.text().replace("&", "") == "PC-Aktivität als Arbeitsblöcke"

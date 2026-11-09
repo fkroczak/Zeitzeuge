@@ -448,6 +448,8 @@ class TimelineApp(MenusMixin, DayListMixin, DayCloseMixin, DocsMixin, ReadersMix
                                 and not os.environ.get("ZEITZEUGE_DATA")
                                 and self.config.get("pc_role") != "paw")
         self.dark_mode = self.config.get("dark_mode", False)
+        if self.config.get("theme_follow_system"):  # Design „Wie Windows“
+            self.dark_mode = self.config["dark_mode"] = self.windows_dark()
         self.current_date = QDate.currentDate()
         self.activities = []
         self.day_activities = []
@@ -499,6 +501,9 @@ class TimelineApp(MenusMixin, DayListMixin, DayCloseMixin, DocsMixin, ReadersMix
         self.track_timer.timeout.connect(self.track_sample)
         self.set_tracking(self.config.get("tracking_enabled", True))
 
+        # Hinweise beim Darüberfahren auch, wenn Zeitzeuge gerade nicht das aktive Fenster ist
+        # (Qt zeigt sie sonst nur im aktiven Fenster, die Werkzeugleiste hat nur Symbole)
+        self.setAttribute(Qt.WA_AlwaysShowToolTips)
         self.table = QTableWidget(0, len(self.COLUMNS), self)
         # Spaltenköpfe fett statt in Großbuchstaben (besser lesbar)
         self.table.setHorizontalHeaderLabels(self.COLUMNS)
@@ -508,7 +513,8 @@ class TimelineApp(MenusMixin, DayListMixin, DayCloseMixin, DocsMixin, ReadersMix
         self.table.setWordWrap(False)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.table.verticalHeader().setDefaultSectionSize(26)
+        self.table.verticalHeader().setDefaultSectionSize(32)
+        self.table.horizontalHeaderItem(2).setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
         header = self.table.horizontalHeader()
         header.setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         for col in range(4):

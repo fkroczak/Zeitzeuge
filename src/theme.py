@@ -112,7 +112,7 @@ THEMES = {
         "sel": "#004A77", "seltext": "#C2E7FF", "now": "#F28B82",
         # Grund der Timeline: etwas dunkler als die Flächen, damit die farbigen Balken abheben
         "canvas": "#1A1A1A",
-        "primary": "#4CC2FF", "onprimary": "#00243D",
+        "primary": "#4CC2FF", "onprimary": "#00243D", "primaryhover": "#99DBFF",
         "chip": "#3C3C3C", "chiptext": "#E3E3E3", "good": "#6DD58C",
         "tip": "#3C3C3C", "tiptext": "#E3E3E3", "tipborder": "#5E5E5E",
         # Buchungsquote (booking_rate.py): Fläche und Schrift je Stufe
@@ -129,7 +129,7 @@ THEMES = {
         "band": "#F7F7F8", "bandtext": "#18181B", "bandhover": "#ECECEF", "bandpressed": "#E2E2E6",
         "sel": "#E0EEF9", "seltext": "#003A70", "now": "#E11D48",
         "canvas": "#FFFFFF",
-        "primary": "#18181B", "onprimary": "#FAFAFA",
+        "primary": "#005FB8", "onprimary": "#FFFFFF", "primaryhover": "#004C93",
         "chip": "#F4F4F5", "chiptext": "#27272A", "good": "#15803D",
         "tip": "#18181B", "tiptext": "#F4F4F5", "tipborder": "#3F3F46",
         # Buchungsquote (booking_rate.py): Fläche und Schrift je Stufe
@@ -222,8 +222,8 @@ def custom_theme(colors):
         "onaccent": readable_on(accent).name().upper(),
         "chip": _mix(surface, text, 0.07), "chiptext": text,
     })
-    if base == "dark":
-        t["primary"], t["onprimary"] = accent, t["onaccent"]
+    t["primary"], t["onprimary"] = accent, t["onaccent"]
+    t["primaryhover"] = _mix(accent, text, 0.25)
     return t
 
 
@@ -362,7 +362,7 @@ QPushButton { background-color: $surface; color: $text; border: 1px solid $contr
               border-radius: $radiuspx; padding: 6px 14px; min-width: 80px; }
 QPushButton:hover { background-color: $hover; }
 QPushButton:default { background-color: $primary; color: $onprimary; border-color: $primary; font-weight: bold; }
-QPushButton:default:hover { background-color: $muted; border-color: $muted; }
+QPushButton:default:hover { background-color: $primaryhover; border-color: $primaryhover; }
 QToolButton:focus, QPushButton:focus { border: 2px solid $accent; }
 QToolButton:focus { padding: 3px 5px; }
 QPushButton:focus { padding: 5px 13px; }
@@ -485,6 +485,14 @@ QToolButton#chip { background-color: $chip; color: $chiptext; border: 1px solid 
                    border-radius: $radius_chippx; padding: 2px 10px; }
 QToolButton#chip:hover { border-color: $control; }
 QToolButton#chip:checked { background-color: $primary; color: $onprimary; border-color: $primary; }
+QToolButton#chip QLabel { background: transparent; color: $chiptext; }
+QToolButton#chip QLabel[on="true"] { color: $onprimary; font-weight: bold; }
+QLabel#chip_count { background-color: $border; color: $chiptext; border-radius: 8px; padding: 0 6px;
+                    font-size: $fs_smpx; font-weight: bold; }
+QLabel#chip_count[on="true"] { background-color: $onprimary; color: $primary; }
+QLabel#card_title[empty="true"] { color: $muted; font-weight: normal; }
+QLabel#detail_key { color: $muted; background: transparent; }
+QLabel#detail_value { background: transparent; }
 QToolButton#chip:focus { border: 2px solid $accent; padding: 1px 9px; }
 QToolButton#chip_add { background: transparent; color: $muted; border: 1px dashed $control;
                        border-radius: $radius_chippx; padding: 2px 10px; }

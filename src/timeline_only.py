@@ -6,9 +6,9 @@ from html import escape
 
 from PySide6.QtCore import QDate, QDateTime, QPoint, QPointF, Qt, QTimer, Signal
 from PySide6.QtGui import QBrush, QColor, QContextMenuEvent, QFontMetrics, QPainter, QPainterPath, QPen
-from PySide6.QtWidgets import (QDialog, QDialogButtonBox, QFormLayout, QGraphicsRectItem,
-                               QGraphicsScene, QGraphicsView, QLabel, QLineEdit, QMenu,
-                               QTextEdit, QVBoxLayout)
+from PySide6.QtWidgets import (QDialog, QDialogButtonBox, QFormLayout, QFrame, QGraphicsRectItem,
+                               QGraphicsScene, QGraphicsView, QLabel, QMenu,
+                               QScrollArea, QVBoxLayout)
 
 from activity_tracker import app_label, merge_segments, read_segments
 import call_import
@@ -425,10 +425,18 @@ class ActivityViewDialog(QDialog):
         layout = QVBoxLayout(self)
         form = QFormLayout()
 
-        def ro_field(text):
-            w = QLineEdit(text)
-            w.setReadOnly(True)
-            return w
+        form.setHorizontalSpacing(24)
+        form.setVerticalSpacing(10)
+        form.setLabelAlignment(Qt.AlignLeft)
+
+        def row(key, text):
+            """Nur anzeigen: Name grau, Wert als markierbarer Text (kein Eingabefeld)."""
+            label = QLabel(key)
+            label.setObjectName("detail_key")
+            value = QLabel(text or "–")
+            value.setObjectName("detail_value")
+            value.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            form.addRow(label, value)
 
         try:
             start = parse_time(activity["start"])
@@ -438,10 +446,10 @@ class ActivityViewDialog(QDialog):
         except (KeyError, ValueError):
             zeit = dauer = ""
 
-        form.addRow("Typ:", ro_field(type_label(activity)))
-        form.addRow("Kunde:", ro_field(activity.get("customer_name", "")))
-        form.addRow("Zeit:", ro_field(zeit))
-        form.addRow("Dauer:", ro_field(dauer))
+        row("Typ", type_label(activity))
+        row("Kunde", activity.get("customer_name", ""))
+        row("Zeit", zeit)
+        row("Dauer", dauer)
         layout.addLayout(form)
 
         text = activity.get("details", "")
@@ -453,15 +461,27 @@ class ActivityViewDialog(QDialog):
                 f"Enthält {len(lines)} Einträge:\n" + "\n".join(lines)
         if activity.get("ai"):
             text = activity.get("description", "")
-            form.addRow("Sicherheit:", ro_field(f"{round(activity.get('confidence', 0) * 100)} %"))
+            row("Sicherheit", f"{round(activity.get('confidence', 0) * 100)} %")
         if text:
-            details = QTextEdit(text)
-            details.setReadOnly(True)
-            details.setMaximumHeight(240 if parts else 90)
-            label = QLabel("Details:")
-            label.setBuddy(details)
+            box = QFrame()
+            box.setObjectName("notice")
+            inner = QVBoxLayout(box)
+            inner.setContentsMargins(12, 10, 12, 10)
+            details = QLabel(text)
+            details.setWordWrap(True)
+            details.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            details.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+            scroll = QScrollArea()  # lange Listen (Arbeitsblöcke) scrollen statt das Fenster zu sprengen
+            scroll.setWidget(details)
+            scroll.setWidgetResizable(True)
+            scroll.setFrameShape(QFrame.NoFrame)
+            scroll.setMaximumHeight(240 if parts else 90)
+            inner.addWidget(scroll)
+            label = QLabel("Details")
+            label.setObjectName("detail_key")
+            layout.addSpacing(8)
             layout.addWidget(label)
-            layout.addWidget(details)
+            layout.addWidget(box)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Close)
         buttons.rejected.connect(self.reject)
@@ -1517,6 +1537,7 @@ class TimelineView(QGraphicsView):
         panel = QColor(self.background_color)
         panel.setAlpha(232)
         painter.fillRect(0, top, width, max(0, bottom - top), panel)
+        painter.fillRect(0, 0, width, top, QColor(self.background_color))  # Zeitachse unter der Legende
         painter.setPen(QPen(self.hour_line, 1))
         painter.drawLine(width, top, width, bottom)
         for y, h, name, color in self._legend:

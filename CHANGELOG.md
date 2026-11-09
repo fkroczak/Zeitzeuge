@@ -18,6 +18,16 @@ Testversionen aus Branches tragen die Version ihres main-Stands plus Buildnummer
 26.10.2026 können sie nicht mehr lesen.
 
 ### Neu
+- **Feinschliff am Aussehen:**
+  - **Design „Wie Windows“** im Menü Ansicht: Hell oder Dunkel folgt der Einstellung von Windows. Das doppelte Häkchen „Dunkles Design“ im Menü Einstellungen fällt weg.
+  - **Dunkle Titelleiste** unter Windows 10/11 im dunklen Design.
+  - **Eine Hauptfarbe:** Im hellen Design sind aktiver Chip und Hauptknopf blau statt schwarz, wie im dunklen.
+  - **Kacheln** oben bündig, „Nach Kunde“ zeigt ohne Einträge einen grauen Hinweis.
+  - **Chips** zeigen die Anzahl als kleines Abzeichen neben dem Namen.
+  - **Tagesliste:** höhere Zeilen, Dauer einheitlich als „0:35 h“ und rechtsbündig.
+  - **Aktivitätsdetails:** Werte als Text statt in Eingabefeldern (markieren und kopieren geht weiter).
+  - **Zeitachse:** links unter der Legende keine halb abgeschnittene Uhrzeit mehr.
+  - **Hinweise der Werkzeugleiste** nennen zuerst den Namen des Knopfs und erscheinen auch, wenn Zeitzeuge nicht das aktive Fenster ist.
 - **Ruhigere Timeline und Statuszeile:** Ohne Zeiterfassung hat die Arbeitszeit keine eigene Zeile mehr. Sie steht als blaue Linie unter den Uhrzeiten und als zarte Fläche dahinter. Die Legende zeigt runde Farbpunkte in den Farben, die in der Zeile wirklich vorkommen (Telefon z. B. blau und orange). Der Knopf „… offen – jetzt eintragen“ unten rechts fällt weg, „Jetzt eintragen“ steht in der Kachel „Offen“. „Wiederherstellungsschlüssel einrichten“ ist ein Link statt eines umrandeten Knopfs.
 - **Design im Menü Ansicht:** Hell, Dunkel oder eigene Farben. Das dunkle Design sieht jetzt aus wie Google Chrome im dunklen Modus (Grautöne statt fast Schwarz). Unter „Eigene Farben festlegen …“ wählst du Hintergrund, Flächen, Kopfleiste, Schrift und Akzent selbst.
 - **Akzentfarbe Windows-Blau** statt Lila (Auswahl, Schalter, Häkchen). Hellgrau, Dunkelblau und Lila gibt es weiter unter „Eigene Farben“.

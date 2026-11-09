@@ -2,6 +2,7 @@
 
 Teil von TimelineApp (main_timeline.py), nur über main_timeline laden.
 """
+import html
 import os
 import sys
 
@@ -14,6 +15,7 @@ from PySide6.QtWidgets import (QApplication, QColorDialog, QDateEdit, QDialog, Q
 import datastore
 import icons
 import storage
+import titlebar
 from log_parsers import VpnParser
 from local_sources import DEFAULT_BROWSER_HISTORY, DEFAULT_RECENT_DIR
 from rdp_reader import DEFAULT_LAUNCHER_LOG
@@ -35,10 +37,14 @@ class MenusMixin:
         action.triggered.connect(slot)
         if shortcut:
             action.setShortcuts(shortcut if isinstance(shortcut, list) else [shortcut])
-        label = tip or text
+        # Hinweis: Name fett (die Knöpfe zeigen nur ein Symbol), Kürzel, darunter die Erklärung
+        label = f"<b>{html.escape(text)}</b>"
         if shortcut:
             first = shortcut[0] if isinstance(shortcut, list) else shortcut
             label += f" ({QKeySequence(first).toString(QKeySequence.NativeText)})"
+        if tip and tip != text:
+            tip = tip.removeprefix(f"{text}: ")
+            label += f"<br>{html.escape(tip[0].upper() + tip[1:])}"
         action.setToolTip(label)
         if icon_name:
             self._icon_actions.append((action, icon_name))
@@ -163,7 +169,7 @@ class MenusMixin:
             for action in bar.actions():
                 button = bar.widgetForAction(action)
                 if isinstance(button, QToolButton) and not button.accessibleName():
-                    button.setAccessibleName(action.toolTip().split(" (")[0] or action.text())
+                    button.setAccessibleName(action.text().replace("&", ""))
         # Überlauf-Knopf, wenn das Fenster schmal ist (z. B. bei 200 % Anzeige)
         ext = tb.findChild(QToolButton, "qt_toolbar_ext_button")
         if ext:
@@ -545,7 +551,7 @@ class MenusMixin:
         self.autostart_action.setChecked(autostart.is_enabled())
         self.autostart_action.setEnabled(autostart.supported())
         self.autostart_action.toggled.connect(self.toggle_autostart)
-        self._add_check(menu, self._ensure_dark_action(), theme_for(self.config)["accent"])
+        self._ensure_dark_action()  # Design wählt man im Menü Ansicht (Hell, Dunkel, Wie Windows)
         # Datenquellen: im Einstellungsfenster (Kacheln mit Zustand); das Untermenü nutzt der Infobereich
         self.sources_menu = self._build_sources_menu()
         self._icon_actions.append(
@@ -807,9 +813,23 @@ class MenusMixin:
             self.dark_action.toggled.connect(self.toggle_dark_mode)
         return self.dark_action
 
-    THEME_CHOICES = [("light", "&Hell"), ("dark", "&Dunkel"), ("custom", "&Eigene Farben")]
+    THEME_CHOICES = [("system", "Wie &Windows"), ("light", "&Hell"), ("dark", "&Dunkel"),
+                     ("custom", "&Eigene Farben")]
+
+    @staticmethod
+    def windows_dark():
+        """Dunkler App-Modus in Windows (Einstellungen → Personalisierung → Farben)."""
+        try:
+            import winreg
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER,
+                                r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize") as k:
+                return winreg.QueryValueEx(k, "AppsUseLightTheme")[0] == 0
+        except OSError:
+            return False
 
     def current_theme_key(self):
+        if self.config.get("theme_follow_system"):
+            return "system"
         colors = self.config.get("custom_colors") or {}
         if self.config.get("custom_theme") and (colors.get("base") == "dark") == bool(self.dark_mode):
             return "custom"
@@ -831,7 +851,11 @@ class MenusMixin:
 
     def set_theme(self, key, save=True):
         """Design wechseln: "light", "dark" oder "custom" (config["custom_colors"])."""
-        if key == "custom":
+        self.config["theme_follow_system"] = key == "system"
+        if key == "system":
+            dark = self.windows_dark()
+            self.config["custom_theme"] = False
+        elif key == "custom":
             colors = self.config.get("custom_colors") or {}
             dark = colors.get("base") == "dark"
             self.config["custom_theme"] = True
@@ -851,6 +875,26 @@ class MenusMixin:
         if save:
             mt.save_config(self.config)
         self.apply_style()
+
+    def update_title_bars(self):
+        """Windows: Titelleisten aller offenen Fenster passend zum Design (titlebar.py).
+        Neue Fenster (Dialoge) bekommen sie, sobald sie aktiv werden."""
+        app = QApplication.instance()
+        if not getattr(self, "_title_bar_hooked", False):
+            self._title_bar_hooked = True
+            app.focusWindowChanged.connect(self._window_activated)
+        for widget in app.topLevelWidgets():
+            # nur schon erzeugte Fenster (internalWinId), Menüs und Hinweise haben keine Titelleiste
+            if widget.internalWinId() and widget.windowType() in (Qt.Window, Qt.Dialog):
+                titlebar.apply(widget.internalWinId(), self.dark_mode)
+
+    def _window_activated(self, window):
+        if window is None:
+            return
+        # „Wie Windows“: hat jemand Windows zwischendurch umgestellt, beim nächsten Aktivieren folgen
+        if self.config.get("theme_follow_system") and self.windows_dark() != bool(self.dark_mode):
+            self.set_theme("system")
+        titlebar.apply(window.winId(), self.dark_mode)
 
     def apply_style(self):
         theme = theme_for(self.config)
@@ -872,6 +916,7 @@ class MenusMixin:
         self.setStyleSheet("")  # alte Farben vollständig entfernen
         QApplication.instance().setPalette(pal)
         self.setStyleSheet(sheet)
+        self.update_title_bars()
         # Symbole im farbigen Band oben in dessen Schriftfarbe, in Menüs in der normalen
         for action, name in self._icon_actions:
             in_menu = any(isinstance(o, QMenu) for o in action.associatedObjects())

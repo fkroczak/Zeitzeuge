@@ -132,6 +132,8 @@ def default_config():
         "rdm_timezone_correction": 0,
 
         "dark_mode": False,
+        # Design „Wie Windows“ (Menü Ansicht): Hell/Dunkel folgt dem App-Modus von Windows
+        "theme_follow_system": False,
         # Eigene Farben (Menü Ansicht → Design, theme.custom_theme): Grundlage und Grundfarben
         "custom_theme": False,
         "custom_colors": {},
