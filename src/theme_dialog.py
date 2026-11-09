@@ -35,7 +35,7 @@ class CustomColorsDialog(QDialog):
 
         form = QFormLayout()
         self.base_box = QComboBox()
-        self.base_box.addItem("Dunkel (wie Chrome)", "dark")
+        self.base_box.addItem("Dunkel", "dark")
         self.base_box.addItem("Hell", "light")
         self.base_box.setCurrentIndex(0 if self.colors["base"] == "dark" else 1)
         self.base_box.setAccessibleName("Grundlage")

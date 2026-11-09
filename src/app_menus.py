@@ -323,7 +323,7 @@ class MenusMixin:
         self._icon_actions.append((menu.addAction("&Offene Tätigkeiten …", self.show_open_docs), "alert"))
         # Zeitraum (Ganzer Tag, Arbeitszeit) steht in der Werkzeugleiste
         menu.addSeparator()
-        # Design: Hell, Dunkel (wie Chrome) oder eigene Farben. „Dunkles Design“ im Menü
+        # Design: Hell, Dunkel oder eigene Farben. „Dunkles Design“ im Menü
         # Einstellungen und im Einstellungsfenster schaltet zwischen Hell und Dunkel.
         self._ensure_dark_action()
         self._view_dark_proxy = None
@@ -807,7 +807,7 @@ class MenusMixin:
             self.dark_action.toggled.connect(self.toggle_dark_mode)
         return self.dark_action
 
-    THEME_CHOICES = [("light", "&Hell"), ("dark", "&Dunkel (wie Chrome)"), ("custom", "&Eigene Farben")]
+    THEME_CHOICES = [("light", "&Hell"), ("dark", "&Dunkel"), ("custom", "&Eigene Farben")]
 
     def current_theme_key(self):
         colors = self.config.get("custom_colors") or {}

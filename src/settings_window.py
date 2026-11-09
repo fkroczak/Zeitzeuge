@@ -65,7 +65,7 @@ ROWS = [
      "tracking_idle_minutes", (1, 60, "min", "", "idle_limit")),
 
     # Ansicht: alles, was nur die Darstellung ändert (mit Vorschau, settings_preview.py)
-    ("view", "toggle", "moon", "Dunkles Design", "Dunkles Aussehen wie Chrome, gilt sofort. Eigene Farben: Menü Ansicht → Design.",
+    ("view", "toggle", "moon", "Dunkles Design", "Dunkles Aussehen, gilt sofort. Eigene Farben: Menü Ansicht → Design.",
      "dark_action", None),
     ("view", "choice", "layers", "Tagesliste", "Wie die Liste unter der Timeline die Einträge zeigt (F1 erklärt alle).",
      "list_view", (lambda main: [(k, t) for k, t in main.VIEWS], "view")),

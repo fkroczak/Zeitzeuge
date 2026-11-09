@@ -48,7 +48,7 @@ def gui_test():
     menu = window.view_button.menu()
     texts = [a.text().replace("&", "").split("\t")[0] for a in menu.actions()]
     for text in ("Was zeigen die Ansichten? …", "Zeilen der Timeline", "Wochenabschluss …",
-                 "Hell", "Dunkel (wie Chrome)", "Eigene Farben", "Eigene Farben festlegen …"):
+                 "Hell", "Dunkel", "Eigene Farben", "Eigene Farben festlegen …"):
         assert text in texts, (text, texts)
     for text in ("Zusammengefasst", "Einzeln", "Ganzer Tag", "Arbeitszeit"):
         assert text not in texts, (text, texts)
