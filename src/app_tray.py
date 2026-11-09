@@ -11,7 +11,7 @@ from PySide6.QtWidgets import QApplication, QDialog, QMenu, QSystemTrayIcon
 from activity_tracker import ActivityTracker, tracking_filters
 import icons
 from settings_dialogs import RulesDialog, TrackingFilterDialog
-from theme import THEMES
+from theme import theme_for
 import main_timeline as mt  # Pfade und save_config zur Laufzeit von dort (Tests ersetzen sie dort)
 
 
@@ -82,7 +82,7 @@ class TrayMixin:
             self.tray_state_action.setIcon(icons.state_dot(on))
             self.tray_toggle_action.setText("Aufzeichnung &pausieren" if on
                                             else "Aufzeichnung &fortsetzen")
-            color = THEMES["dark" if self.dark_mode else "light"]["text"]
+            color = theme_for(self.config)["text"]
             self.tray_toggle_action.setIcon(icons.icon("pause" if on else "record", color))
 
     def toggle_pc_list(self, enabled):

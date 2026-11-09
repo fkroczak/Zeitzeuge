@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QFrame, QGridLayou
                                QSpinBox, QStackedWidget, QVBoxLayout, QWidget)
 
 import icons
-from theme import THEMES, fit_text, prose, SPACE_2XL, SPACE_L, SPACE_M, SPACE_S, SPACE_XL, SPACE_XS
+from theme import theme_for, fit_text, prose, SPACE_2XL, SPACE_L, SPACE_M, SPACE_S, SPACE_XL, SPACE_XS
 import main_timeline as mt  # Pfade und save_config zur Laufzeit von dort (Tests ersetzen sie dort)
 
 # Bereiche: Schlüssel, Name, Symbol, Satz darunter
@@ -65,7 +65,7 @@ ROWS = [
      "tracking_idle_minutes", (1, 60, "min", "", "idle_limit")),
 
     # Ansicht: alles, was nur die Darstellung ändert (mit Vorschau, settings_preview.py)
-    ("view", "toggle", "moon", "Dunkles Design", "Helles oder dunkles Aussehen, gilt sofort.",
+    ("view", "toggle", "moon", "Dunkles Design", "Dunkles Aussehen wie Chrome, gilt sofort. Eigene Farben: Menü Ansicht → Design.",
      "dark_action", None),
     ("view", "choice", "layers", "Tagesliste", "Wie die Liste unter der Timeline die Einträge zeigt (F1 erklärt alle).",
      "list_view", (lambda main: [(k, t) for k, t in main.VIEWS], "view")),
@@ -579,7 +579,7 @@ class SettingsWindow(QDialog):
         self.setObjectName("settings_window")
         self.resize(1040, 660)  # 3 Kacheln nebeneinander ohne Scrollleiste
         self.setMinimumSize(720, 480)
-        theme = THEMES["dark" if main.dark_mode else "light"]
+        theme = theme_for(main.config)
         self.icon_color = theme["text"]
         self.rows, self.tiles = [], []
         self.preview = None  # Vorschau auf der Seite „Ansicht“ (settings_preview.py)

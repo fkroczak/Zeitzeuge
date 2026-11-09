@@ -17,7 +17,7 @@ import booking_rate as br
 import day_checks
 import icons
 import m42_booking
-from theme import THEMES
+from theme import theme_for
 from timeline_only import work_hours, work_spans
 
 DAY_NAMES = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]
@@ -181,8 +181,7 @@ class WeekDialog(QDialog):
         self.monday = datetime.strptime(br.week_dates(day or datetime.now().strftime("%Y-%m-%d"))[0],
                                         "%Y-%m-%d")
         self.rows = []  # Datum je Tabellenzeile
-        dark = getattr(window, "dark_mode", False)
-        self.theme = THEMES["dark" if dark else "light"]
+        self.theme = theme_for(getattr(window, "config", None))
         layout = QVBoxLayout(self)
 
         nav = QHBoxLayout()

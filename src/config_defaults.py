@@ -132,6 +132,9 @@ def default_config():
         "rdm_timezone_correction": 0,
 
         "dark_mode": False,
+        # Eigene Farben (Menü Ansicht → Design, theme.custom_theme): Grundlage und Grundfarben
+        "custom_theme": False,
+        "custom_colors": {},
         "start_minimized": False,
 
         # Anrufe aus 3CX

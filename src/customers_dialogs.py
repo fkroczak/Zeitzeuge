@@ -24,7 +24,7 @@ from PySide6.QtWidgets import (QCheckBox, QDialog, QDialogButtonBox, QFrame, QHB
                                QWidget)
 
 from flow_layout import FlowLayout
-from theme import THEMES, prose, SPACE_L, SPACE_M, SPACE_S, SPACE_XS
+from theme import theme_for, prose, SPACE_L, SPACE_M, SPACE_S, SPACE_XS
 import customer_discovery as cdisc
 import customers as cl
 import icons
@@ -178,7 +178,7 @@ class CustomersDialog(QDialog):
         self.decisions = []  # (Vorschlag, Status) für customer_discovery.mark beim Übernehmen
         self.auto = {d.get("key") for d in config.get("customers_auto") or []
                      if isinstance(d, dict) and d.get("status") == "gelernt"}
-        theme = THEMES["dark" if getattr(parent, "dark_mode", False) else "light"]
+        theme = theme_for(getattr(parent, "config", None))
         self.setWindowTitle("Kundenliste")
         self.resize(980, 680)
         self.setMinimumSize(860, 480)  # passt auch auf Full HD mit 200 % Anzeige (960 × 540)
