@@ -908,37 +908,63 @@ class TimelineView(QGraphicsView):
         return self._work_info(date)[0]
 
     def _work_info(self, date: QDate):
-        """([(Start, Ende)] in Minuten, aus ITM?, Index der noch offenen Buchung oder None)."""
+        """([(Start, Ende)] in Minuten, aus ITM?, Index der offenen Buchung oder None).
+
+        Offen heute: noch eingestempelt, läuft bis jetzt. Offen an einem früheren Tag: Gehen
+        vergessen. Das Ende ist unbekannt, der Block reicht bis zum geplanten Feierabend
+        (sonst eine Stunde) und gilt nicht als Personalzeit (siehe missing_end_idx)."""
         day = self.personal_day(date.toString("yyyy-MM-dd")) if self.personal_day else None
         if day and day.get("zeiten"):
             spans, open_idx = [], None
+            now = datetime.now()
             for t in day["zeiten"]:
                 start = parse_time(t["start"])
-                if not t["end"]:
+                a = start.hour * 60 + start.minute
+                if t["end"]:
+                    end = parse_time(t["end"])
+                    b = end.hour * 60 + end.minute if end.date() == start.date() else 24 * 60
+                else:
                     open_idx = len(spans)
-                end = parse_time(t["end"]) if t["end"] else datetime.now()  # noch eingestempelt
-                end_min = end.hour * 60 + end.minute if end.date() == start.date() else 24 * 60
-                spans.append((start.hour * 60 + start.minute, end_min))
+                    if start.date() >= now.date():  # noch eingestempelt
+                        b = now.hour * 60 + now.minute if now.date() == start.date() else 24 * 60
+                    else:  # Gehen fehlt
+                        hours = work_hours(self.config, date.dayOfWeek() - 1)
+                        b = hours[1] if hours and hours[1] > a else min(a + 60, 24 * 60)
+                spans.append((a, b))
             return spans, True, open_idx
         return work_spans(self.config, date.dayOfWeek() - 1), False, None
+
+    def missing_end_idx(self, date: QDate):
+        """Index der Personalzeit, bei der an einem früheren Tag das Gehen fehlt, sonst None."""
+        _spans, from_itm, open_idx = self._work_info(date)
+        if from_itm and open_idx is not None and date < QDate.currentDate():
+            return open_idx
+        return None
 
     def work_entries(self, date_str):
         """Zeile "Personalzeit": je gestempeltem Abschnitt ein Block mit Beginn und Ende
         (ohne ITM die Arbeitszeit aus den Einstellungen)."""
         date = QDate.fromString(date_str, "yyyy-MM-dd")
         spans, from_itm, open_idx = self._work_info(date)
+        missing = self.missing_end_idx(date)
         name = "Personalzeit" if from_itm else "Arbeitszeit"
         result = []
         for i, (a, b) in enumerate(spans):
             if b <= a:
                 continue
-            running = i == open_idx
-            label = f"{hhmm(a)} – {'jetzt' if running else hhmm(b)}"
+            running = i == open_idx and missing is None
+            if i == missing:
+                label = f"{hhmm(a)} – Gehen fehlt"
+            else:
+                label = f"{hhmm(a)} – {'jetzt' if running else hhmm(b)}"
             end = f"{date_str} 23:59:59" if b >= 24 * 60 else f"{date_str} {hhmm(b)}:00"
+            details = f"{name} {label}" + (" (eingestempelt)" if running else "")
+            if i == missing:
+                details += " (in ITM nachtragen; Ende hier nur geschätzt)"
             result.append({
                 "start": f"{date_str} {hhmm(a)}:00", "end": end, "type": name,
                 "customer_name": label, "work": True, "from_itm": from_itm, "running": running,
-                "details": f"{name} {label}" + (" (eingestempelt)" if running else ""),
+                "missing_end": i == missing, "details": details,
                 "is_suggestion": False,
             })
         return result
@@ -946,11 +972,14 @@ class TimelineView(QGraphicsView):
     def _work_text(self, minute):
         """Was zu dieser Minute laut Personalzeit/Arbeitszeit gilt (eine Zeile)."""
         spans, from_itm, open_idx = self._work_info(self.current_date)
+        missing = self.missing_end_idx(self.current_date)
         name = "Personalzeit" if from_itm else "Arbeitszeit"
         if not spans:
             return f"<i>Keine {name}</i>"
         for i, (a, b) in enumerate(spans):
             if a <= minute < b:
+                if i == missing:
+                    return f"<b>{name}</b> seit {hhmm(a)} (Gehen fehlt in ITM)"
                 if i == open_idx:
                     return f"<b>{name}</b> seit {hhmm(a)} (eingestempelt)"
                 return f"<b>{name}</b> {hhmm(a)} – {hhmm(b)}"
@@ -1300,7 +1329,8 @@ class TimelineView(QGraphicsView):
         # Deckkraft der halb durchsichtigen Kacheln (Regeln, KI, offene, Lücken): kräftig statt pastell
         light = 175 if self.dark_mode else 150
         label_color = self.text_color
-        if a.get("work") and not a.get("from_itm"):  # Arbeitszeit aus den Einstellungen: nur Rahmen
+        if a.get("work") and (not a.get("from_itm") or a.get("missing_end")):
+            # Arbeitszeit aus den Einstellungen oder Ende unbekannt (Gehen fehlt): nur Rahmen
             fill.setAlpha(light // 2)
             pen = QPen(base, 1.2, Qt.DashLine)
         elif a.get("m42_gap"):  # Personalzeit ohne Buchung: fällt auf
@@ -1646,8 +1676,11 @@ class TimelineView(QGraphicsView):
                       *self._customer_line(hovered),
                       f"{start:%H:%M} – {end:%H:%M}  ({format_duration((end - start).total_seconds())})"]
             if hovered.get("work"):
-                lines.append("<i>Eingestempelt (ITM)</i>" if hovered.get("from_itm")
-                             else "<i>Arbeitszeit aus den Einstellungen</i>")
+                if hovered.get("missing_end"):
+                    lines.append("<i>Gehen fehlt in ITM, Ende geschätzt</i>")
+                else:
+                    lines.append("<i>Eingestempelt (ITM)</i>" if hovered.get("from_itm")
+                                 else "<i>Arbeitszeit aus den Einstellungen</i>")
             elif hovered.get("m42"):
                 lines.append(escape(hovered.get("details", "")))
                 lines.append("<i>In Matrix42 gebucht</i>")

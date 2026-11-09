@@ -96,6 +96,18 @@ def test_today_counts_until_now_and_while_stamped_in():
     assert rate.booked_seconds == 4 * 3600
 
 
+def test_past_day_without_end_is_forgotten_not_running():
+    # Gehen vergessen: Der offene Abschnitt zählt nicht bis heute, wie bei ITM ("gewertet")
+    day = "2026-11-06"
+    now = dt("2026-11-09 10:55")
+    itm = {"zeiten": [{"start": f"{day} 08:28:00", "end": f"{day} 12:51:00"},
+                      {"start": f"{day} 13:21:00", "end": None}], "gewertet": 263}
+    spans, running = br.itm_spans(itm, now)
+    assert not running and spans == [(dt(f"{day} 08:28"), dt(f"{day} 12:51"))]
+    rate = br.day_rate(day, spans, None, now, from_itm=True, day=itm, running=running)
+    assert rate.personal_seconds == 263 * 60
+
+
 def test_not_read_is_not_zero():
     day = "2026-10-19"
     now = dt("2026-10-26 12:00")
@@ -154,3 +166,21 @@ def test_week_and_lookback_dates():
     back = br.lookback_dates("2026-10-26", 3)
     assert back == ["2026-10-26", "2026-10-25", "2026-10-24"]
     assert br.duration(80 * 60) == "1:20 h" and br.duration(45 * 60) == "45 min"
+
+
+def test_timeline_past_day_missing_end():
+    """Timeline: Gehen fehlt an einem früheren Tag -> nicht "jetzt" bis Mitternacht."""
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtCore import QDate
+    from PySide6.QtWidgets import QApplication
+    import timeline_only
+    _app = QApplication.instance() or QApplication([])
+    view = timeline_only.TimelineView([], {"work_days": {"Fr": "08:00-16:30"}})
+    day = "2026-11-06"
+    view.personal_day = lambda d: {"zeiten": [{"start": f"{day} 08:28:00", "end": f"{day} 12:51:00"},
+                                             {"start": f"{day} 13:21:00", "end": None}]}
+    entries = view.work_entries(day)
+    assert [e["customer_name"] for e in entries] == ["08:28 – 12:51", "13:21 – Gehen fehlt"]
+    assert entries[1]["end"] == f"{day} 16:30:00" and entries[1]["missing_end"]
+    assert not entries[1]["running"]
+    assert view.missing_end_idx(QDate.fromString(day, "yyyy-MM-dd")) == 1

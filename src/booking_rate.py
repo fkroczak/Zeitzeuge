@@ -122,7 +122,8 @@ def booked_seconds(bookings, until=None):
 
 def itm_spans(day, now):
     """Personalzeiten aus ITM ({"zeiten": [{start, end}]}) -> ([(start, end)], eingestempelt?).
-    Ein offener Abschnitt (noch eingestempelt) zählt bis jetzt."""
+    Ein offener Abschnitt (noch eingestempelt) zählt bis jetzt. Ist er von einem früheren
+    Tag, fehlt das Gehen: Das Ende ist unbekannt, er zählt nicht (wie bei ITM)."""
     spans, running = [], False
     for t in (day or {}).get("zeiten") or []:
         try:
@@ -131,6 +132,8 @@ def itm_spans(day, now):
         except (KeyError, TypeError, ValueError):
             continue
         if e is None:
+            if a.date() < now.date():
+                continue
             running = True
             e = max(a, now)
         if e > a:
