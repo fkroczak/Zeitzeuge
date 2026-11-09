@@ -763,11 +763,8 @@ class DocsMixin(CustomersMixin):
         window.answered.connect(self.on_prompt_answered)
         self._prompt_window = window
         # unten rechts über dem Infobereich, ohne dir den Fokus wegzunehmen
-        screen = QApplication.primaryScreen()
-        if screen:
-            area = screen.availableGeometry()
-            window.adjustSize()
-            window.move(area.right() - window.width() - 24, area.bottom() - window.height() - 24)
+        window.adjustSize()
+        window.dock_bottom_right(24)
         window.show()
 
     def on_prompt_answered(self, action, entry, item):
