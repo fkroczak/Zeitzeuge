@@ -211,18 +211,12 @@ class DayListMixin:
             more.append(f"am PC aktiv {format_duration(mt.merged_seconds(self.pc_activities))}")
         doc = self.doc_band(self.current_date.toString("yyyy-MM-dd"))
         done = [e for e in doc if e.get("doc")]
-        open_count = len(doc) - len(done)
-        if done:  # "nichts dokumentiert" sagt schon der Knopf "… offen – jetzt eintragen"
+        if done:  # "nichts dokumentiert" sagt schon die Kachel „Offen“
             text = f"dokumentiert {format_duration(mt.merged_seconds(done))}"
             billing = self.billing()
             if billing.any_active():
                 text += f", abgerechnet {hours_text(billing.total_minutes([e['doc_item'] for e in done]))}"
             parts.append(text)
-        self.open_docs_button.setVisible(bool(open_count))
-        if open_count:
-            self.open_docs_button.setText(f"{open_count} offen – jetzt eintragen")
-            self.open_docs_button.setToolTip("Erste noch nicht dokumentierte Tätigkeit eintragen")
-            self.open_docs_button.setAccessibleName(f"{open_count} Tätigkeiten offen, jetzt eintragen")
         itm_day = self.personal_day_for(self.current_date.toString("yyyy-MM-dd"))
         if itm_day and itm_day.get("gewertet") is not None:
             text = f"Personalzeit {format_duration(itm_day['gewertet'] * 60)}"

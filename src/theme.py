@@ -378,12 +378,6 @@ QDialog#prompt_window { border: 2px solid $accent; }
 QLabel#prompt_head { background-color: $sel; color: $seltext; border-radius: $radiuspx; padding: 6px 8px; }
 QTableWidget QLabel { padding: 2px 8px; }
 QLabel#busy_text { color: $bandtext; background: transparent; font-weight: bold; padding: 2px 0; }
-QStatusBar QToolButton#cta { background-color: $primary; color: $onprimary; font-weight: bold;
-                             border-radius: $radiuspx; padding: 2px 12px; }
-QStatusBar QToolButton#cta:hover { background-color: $primary; border-color: $accent; }
-QStatusBar QToolButton#cta_secondary { background: transparent; color: $accent; font-weight: bold;
-                                       border: 1px solid $accent; padding: 2px 12px; }
-QStatusBar QToolButton#cta_secondary:hover { background-color: $hover; }
 QToolButton#rate_low, QLabel#rate_low { background-color: $rate_low; color: $rate_low_text; font-weight: bold; }
 QToolButton#rate_mid, QLabel#rate_mid { background-color: $rate_mid; color: $rate_mid_text; font-weight: bold; }
 QToolButton#rate_ok, QLabel#rate_ok { background-color: $rate_ok; color: $rate_ok_text; font-weight: bold; }

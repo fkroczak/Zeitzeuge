@@ -598,13 +598,6 @@ class TimelineApp(MenusMixin, DayListMixin, DayCloseMixin, DocsMixin, ReadersMix
         # (Kachel oben in der Kennzahlen-Leiste, day_summary.RateKpi)
         self.rate_button = self.day_summary.rate
         self.rate_button.clicked.connect(self.show_week)
-        # Wichtigste Aufgabe sichtbar machen: offene Tätigkeiten, ein Klick trägt die erste ein
-        self.open_docs_button = QToolButton(self)
-        self.open_docs_button.setObjectName("cta")
-        self.open_docs_button.setToolButtonStyle(Qt.ToolButtonTextOnly)
-        self.open_docs_button.clicked.connect(self.document_next_open)
-        self.open_docs_button.hide()
-        self.statusBar().addPermanentWidget(self.open_docs_button)
         # Zustand der Fensteraufzeichnung, ein Klick schaltet sie um (wie im Infobereich)
         self.tracking_button = QToolButton(self)
         self.tracking_button.setAccessibleName("Fensteraufzeichnung ein- oder ausschalten")

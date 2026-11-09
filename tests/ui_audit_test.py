@@ -150,10 +150,6 @@ if not window.timeline._ai_band:
     problem("KI", "KI-Vorschläge erscheinen nicht in der Timeline")
 QTest.qWait(200)
 
-# Eine gefüllte Hauptaktion im Hauptfenster (Statuszeile)
-if len(window.findChildren(QToolButton, "cta")) > 1:
-    problem("Hauptfenster", "mehr als ein gefüllter Hauptknopf (cta) in der Statuszeile")
-
 # 1. Namen im Hauptfenster
 check_names("Hauptfenster", window)
 for name, w in [("Timeline", window.timeline), ("Tagesliste", window.table),
@@ -173,7 +169,7 @@ for theme_name, t in main_timeline.THEMES.items():
     check_contrast(area, t["bandtext"], t["bandhover"])
     check_contrast(area, t["seltext"], t["sel"])  # markierte Zeile
     check_contrast(area, t["muted"], t["bg"])  # Hinweistexte (QLabel#hint)
-    check_contrast(area, t["accent"], t["bg"])  # umrandeter Knopf in der Statuszeile (cta_secondary)
+    check_contrast(area, t["accent"], t["bg"])  # Links (auch Wiederherstellungsschlüssel in der Statuszeile)
     for lvl in ("low", "mid", "ok", "over"):  # Buchungsquote (Statuszeile, Wochenabschluss)
         check_contrast(area, t[f"rate_{lvl}_text"], t[f"rate_{lvl}"])
     for lvl in ("low", "mid", "ok"):  # Kachel Buchungsquote: farbige Zahl auf der Karte

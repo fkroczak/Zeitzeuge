@@ -66,9 +66,9 @@ def gui_test():
     # Zeile "Doku" zeigt den offenen Eintrag gestrichelt
     bands = dict((k, e) for k, _t, e in window.timeline._bands)
     assert "doc" in bands and len(bands["doc"]) == 1 and bands["doc"][0]["open"], bands
-    # Offenes fällt auf: Knopf in der Statuszeile, ein Klick öffnet das Eintragen
-    button = window.open_docs_button
-    assert not button.isHidden() and button.text().startswith("1 offen"), button.text()
+    # Offenes fällt auf: Kachel „Offen“, ein Klick auf „Jetzt eintragen“ öffnet das Eintragen
+    button = window.day_summary.opened.button
+    assert not button.isHidden() and button.text() == "Jetzt eintragen", button.text()
     opened = []
     window.add_doc = lambda entry=None, minute=None: opened.append(entry)
     button.click()
