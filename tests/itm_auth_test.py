@@ -245,3 +245,25 @@ def test_auth_unreachable_uses_edge(tmp_path):
     reader._fetch_token = lambda: "edge"
     assert reader._read_day_direct("2026-10-20") is True
     assert reader.auth.refresh_token == "r1"  # Anmeldung bleibt für später
+
+
+def test_past_day_with_open_stamp_is_read_again(tmp_path):
+    """Fehlt bei einem früheren Tag das Gehen, liest want() ihn erneut (gedrosselt);
+    Aktualisieren (refresh) liest jeden Tag sofort neu."""
+    reader = make_reader(tmp_path)
+    day = "2026-11-06"
+    reader.days[day] = {"zeiten": [{"start": f"{day} 13:21:00", "end": None}]}
+    reader._checked.add(day)
+    reader._read_at[day] = time.time()
+    reader.want(day)
+    assert day not in reader._wanted  # gerade erst gelesen
+    reader._read_at[day] = time.time() - reader.READ_INTERVAL - 1
+    reader.want(day)
+    assert day in reader._wanted
+    reader._wanted.clear()
+
+    reader.days[day] = {"zeiten": [{"start": f"{day} 13:21:00", "end": f"{day} 14:53:00"}]}
+    reader.want(day)
+    assert day not in reader._wanted  # vollständig: einmal pro Sitzung reicht
+    reader.refresh(day)
+    assert day in reader._wanted and day not in reader._checked

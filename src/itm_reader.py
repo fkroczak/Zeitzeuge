@@ -185,6 +185,8 @@ class ItmReader(BrowserReader):
         self.days = load_days(data_file)
         self._wanted = set()
         self._checked = set()  # in dieser Sitzung schon gelesene Tage
+        self._read_at = {}     # Datum -> Zeitpunkt (time.time()) des letzten Lesens
+        self._last_today = None  # Datum von "heute" beim letzten Durchlauf
         self._lock = threading.Lock()
         self._today_read = 0
         self._token = None      # JwtToken aus dem Cookie "session"
@@ -216,13 +218,40 @@ class ItmReader(BrowserReader):
 
     def want(self, date_str):
         """Tag lesen lassen, z. B. weil er angezeigt wird (einmal pro Sitzung,
-        damit nachträgliche Korrekturen in ITM ankommen)."""
-        if date_str >= date.today().isoformat() or date_str in self._checked:
+        damit nachträgliche Korrekturen in ITM ankommen). Fehlt bei einem Abschnitt das
+        Gehen, liest Zeitzeuge den Tag erneut (höchstens alle READ_INTERVAL Sekunden):
+        Das Gehen kann später gestempelt oder nachgetragen werden."""
+        if date_str >= date.today().isoformat():
             return  # heute liest die Schleife selbst, Zukunft gibt es nicht
+        if date_str in self._checked:
+            if not self._has_open(date_str):
+                return
+            if time.time() - self._read_at.get(date_str, 0) < self.READ_INTERVAL:
+                return
         with self._lock:
             self._wanted.add(date_str)
         if not self.needs_login:  # ohne Anmeldung erst nach dem Anmelden lesen
             self._wake.set()
+
+    def refresh(self, date_str):
+        """Tag sofort neu aus ITM lesen (Aktualisieren, F5), auch wenn er schon gelesen ist."""
+        today = date.today().isoformat()
+        if date_str > today:
+            return
+        self._checked.discard(date_str)
+        self._read_at.pop(date_str, None)
+        if date_str == today:
+            self._today_read = 0  # beim nächsten Durchlauf gleich lesen
+        else:
+            with self._lock:
+                self._wanted.add(date_str)
+        if not self.needs_login:
+            self._wake.set()
+
+    def _has_open(self, date_str):
+        """Hat der gespeicherte Tag einen Abschnitt ohne Gehen?"""
+        zeiten = (self.days.get(date_str) or {}).get("zeiten") or []
+        return any(isinstance(t, dict) and not t.get("end") for t in zeiten)
 
     # ------------------------------------------------------------ Lesen
 
@@ -237,6 +266,13 @@ class ItmReader(BrowserReader):
 
     def _tick(self):
         today = date.today().isoformat()
+        if self._last_today and self._last_today != today:
+            # Neuer Tag (z. B. nach dem Ruhezustand): den alten Tag noch einmal lesen, sonst
+            # bliebe der letzte Stand von dort (z. B. ohne das Gehen am Nachmittag)
+            self._checked.discard(self._last_today)
+            with self._lock:
+                self._wanted.add(self._last_today)
+        self._last_today = today
         with self._lock:
             todo = sorted(self._wanted, reverse=True)
             self._wanted.clear()
@@ -304,6 +340,7 @@ class ItmReader(BrowserReader):
                 raise DirectFailed("Antwort ohne Personalzeiten")
             self.needs_login = False
             self._checked.add(date_str)
+            self._read_at[date_str] = time.time()
             self._save(date_str, day_from_api(data))
             self._set_status(f"ITM gelesen {datetime.now():%H:%M}")
             return True
@@ -442,6 +479,7 @@ class ItmReader(BrowserReader):
             if state and state["data"]:
                 self.needs_login = False
                 self._checked.add(date_str)
+                self._read_at[date_str] = time.time()
                 self._save(date_str, day_from_api(state["data"]))
                 self._set_status(f"ITM gelesen {datetime.now():%H:%M}")
                 return True
