@@ -236,8 +236,11 @@ class DocsMixin(CustomersMixin):
         if day.date() > now.date():
             return result
         spans, from_itm, _open = self.timeline._work_info(date)
+        missing = self.timeline.missing_end_idx(date)
         work = []
-        for a, b in spans:
+        for i, (a, b) in enumerate(spans):
+            if i == missing:  # Gehen fehlt: Ende unbekannt, keine Lücke ausrechnen
+                continue
             start, end = day + timedelta(minutes=a), day + timedelta(minutes=b)
             end = min(end, now)  # heute nur bis jetzt
             if end > start:
