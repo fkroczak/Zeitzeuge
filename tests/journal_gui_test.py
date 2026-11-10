@@ -86,7 +86,7 @@ def gui_test():
     window.check_prompts()
     prompt = window._prompt_window
     assert prompt is not None, "keine Nachfrage"
-    assert "TeamViewer" in prompt.findChildren(main_timeline.QLabel)[0].text()
+    assert "TeamViewer" in prompt.subtitle.full_text()  # Quelle unter der Frage
     assert prompt.form.category_edit.currentText() == "Fernwartung"
     assert prompt.remember_tv(), "TeamViewer-Name merken sollte vorausgewählt sein"
     # Gleicher Eintrag wird nicht doppelt gefragt

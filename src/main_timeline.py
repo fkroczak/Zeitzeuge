@@ -495,6 +495,8 @@ class TimelineApp(MenusMixin, DayListMixin, DayCloseMixin, DocsMixin, ReadersMix
         self._prompt_queue = []
         self._prompt_asked = {}     # Schlüssel -> frühestens wieder fragen (datetime)
         self._prompt_asked_spans = []  # [(Zeitraum + Kunde, bis)]: erkennt auch veränderte Einträge
+        self._prompt_drafts = {}    # Schlüssel -> angefangener Text (Punkte, Später, ausgeblendet)
+        self._prompt_open = []      # frisch erkannte offene Nachfragen, auch zurückgestellte (Infobereich)
         self._started_at = datetime.now()
         self._reminded_day = None   # Feierabend-Erinnerung nur einmal am Tag
 

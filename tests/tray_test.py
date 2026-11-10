@@ -25,19 +25,23 @@ menu = window.tray.contextMenu()
 texts = [a.text().replace("&", "") for a in menu.actions() if not a.isSeparator()]
 print("Tray-Menü:", texts)
 assert menu.defaultAction().text().replace("&", "") == "Zeitzeuge öffnen"
-for needed in ["Aufzeichnung aktiv", "Aufzeichnung pausieren", "Logs neu einlesen",
-               "Datenquellen", "Datenordner öffnen", "Beenden"]:
+for needed in ["Aufzeichnung pausieren", "Aktualisieren", "Offene Nachfragen", "Benachrichtigungen …",
+               "Einstellungen …", "Beenden"]:
     assert needed in texts, needed
-assert not window.tray_state_action.isEnabled()  # reine Anzeige
+# Ein Eintrag für die Aufzeichnung (kein zweiter, nur anzeigender), Datenquellen nur im Hauptfenster
+assert "Aufzeichnung aktiv" not in texts and "Datenquellen" not in texts, texts
+assert not window.tray_prompts_action.isEnabled()  # noch nichts offen
+row = window.tray_record
 
 
 def state():
-    return (window.tracker is not None, window.tray_state_action.text(),
+    return (window.tracker is not None, row.recording, row.state.text(),
             window.tracking_button.text(), window.tracking_action.isChecked(),
             window.config["tracking_enabled"], "aktiv" in window.tray.toolTip())
 
 
-assert state() == (True, "Aufzeichnung aktiv", "Aufzeichnung aktiv", True, True, True), state()
+assert state() == (True, True, "läuft", "Aufzeichnung aktiv", True, True, True), state()
+assert row.dot.isVisibleTo(row.row) and not row.pause.isVisibleTo(row.row)  # roter Punkt
 
 # Bisher Aufgezeichnetes von heute
 today = datetime.now().strftime("%Y-%m-%d")
@@ -45,17 +49,17 @@ window.data_store.append("aktivitaet", today, {"start": f"{today} 00:00:01", "en
                                               "app": "outlook.exe", "title": "Posteingang"})
 
 # Pausieren über das Tray-Menü
-window.tray_toggle_action.trigger()
-assert state() == (False, "Aufzeichnung pausiert", "Aufzeichnung pausiert", False, False, False), state()
-assert window.tray_toggle_action.text().replace("&", "") == "Aufzeichnung fortsetzen"
+row._activate()
+assert state() == (False, False, "pausiert", "Aufzeichnung pausiert", False, False, False), state()
+assert row.text() == "Aufzeichnung fortsetzen" and not row.dot.isVisibleTo(row.row)
 assert window.timeline.pc_entries_for(window.current_date), "pausiert: bisherige PC-Daten fehlen"
 with open(main_timeline.CONFIG_FILE, encoding="utf-8") as f:
     assert json.load(f)["tracking_enabled"] is False  # Zustand bleibt nach Neustart
 
 # Fortsetzen über den Knopf in der Statuszeile
 window.tracking_button.click()
-assert state() == (True, "Aufzeichnung aktiv", "Aufzeichnung aktiv", True, True, True), state()
-assert window.tray_toggle_action.text().replace("&", "") == "Aufzeichnung pausieren"
+assert state() == (True, True, "läuft", "Aufzeichnung aktiv", True, True, True), state()
+assert row.text() == "Aufzeichnung pausieren"
 
 # Beenden, während die Logs noch gelesen werden: Thread wird abgewartet und meldet nichts mehr
 import time  # noqa: E402

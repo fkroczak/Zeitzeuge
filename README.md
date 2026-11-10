@@ -1,4 +1,4 @@
-Im Fenster **Einstellungen → Datenquellen** schaltest du jede Quelle in ihrer Kachel ein oder aus und siehst ihren Zustand. Schneller geht es über den Pfeil am Knopf **Einstellungen → Datenquellen …** (öffnet direkt diese Seite) oder über das Menü im Infobereich:
+Im Fenster **Einstellungen → Datenquellen** schaltest du jede Quelle in ihrer Kachel ein oder aus und siehst ihren Zustand. Schneller geht es über den Pfeil am Knopf **Einstellungen → Datenquellen …** (öffnet direkt diese Seite):
 
 | Gruppe | Quellen |
 |---|---|
@@ -121,7 +121,12 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
   - Rechtsklick auf einen Eintrag: **Tätigkeit dazu eintragen …**. Rechtsklick auf eine freie Stelle der Timeline: **Tätigkeit ab hh:mm eintragen …**.
   - Timeline und Tagesliste haben dasselbe Rechtsklick-Menü. Es zeigt nur Befehle, die zum Eintrag passen.
   - **Offenes fällt auf:** Verbindungen und Telefonate ohne Dokumentation stehen gestrichelt mit „?“ in der Zeile „Doku“. Ein Klick darauf öffnet das Eintragen.
-  - **Zeitzeuge fragt nach:** Endet eine TeamViewer-Sitzung, eine RDP-/SSH-/VPN-Verbindung oder ein Telefonat, erscheint unten rechts ein kleines Fenster: „Was hast du gemacht?“. Zeit, Kunde und Kategorie sind schon ausgefüllt, du schreibst nur noch einen Satz. **Später fragen** fragt in 15 Minuten wieder, **Nicht dokumentieren** fragt für diesen Eintrag nie mehr. Ab welcher Dauer gefragt wird, stellst du unter **Nachfragen und Benachrichtigungen …** je Art ein.
+  - **Zeitzeuge fragt nach:** Endet eine TeamViewer-Sitzung, eine RDP-/SSH-/VPN-Verbindung oder ein Telefonat, erscheint unten rechts eine Karte: „Was hast du bei Beispiel AG gemacht?“. Zeit, Kunde und Kategorie sind schon ausgefüllt, du schreibst nur noch einen Satz. **Später** fragt in 15 Minuten wieder, **Nicht dokumentieren** fragt für diesen Eintrag nie mehr. Ab welcher Dauer gefragt wird, stellst du unter **Nachfragen und Benachrichtigungen …** je Art ein.
+    - **Datum und Uhrzeit** stehen in einer eigenen Zeile direkt unter der Frage, immer an derselben Stelle. Der **Stift** rechts macht sie bearbeitbar, „Fertig“ oder Enter schließt.
+    - **+ Ticket** öffnet das Feld Ticket (mit Suche in Matrix42), danach steht das Ticket als Chip da; ✕ am Chip entfernt es. Ein gefundenes Ticket steht als „Vorschlag: …“ darunter und wird mit einem Klick übernommen. Kulanz, Reise, Kein Zuschlag und Text einfügen sind Chips.
+    - **Mehrere offen:** Oben rechts steht „1 von 3“ mit einem Punkt je Nachfrage. Die Maus über einem Punkt zeigt Quelle und Zeit, ein Klick springt hin. Angefangener Text bleibt je Nachfrage erhalten.
+    - **Anheften** (Nadel oben) hält die Karte, auch wenn eine Anzeigedauer eingestellt ist.
+    - **Darstellung:** Karte (Standard), Kompakt (dieselbe Karte, kleiner) oder **Leiste**: eine schmale Zeile mit Zahl und ✕; ein Klick öffnet die Karte. ✕ schließt nur die vorderste Nachfrage oder alle (einstellbar). Dazu die **Anzeigedauer** (10 s bis 5 Min. oder dauerhaft) und die **Position** von Karte und Kompakt: unten rechts (Standard), oben rechts, unten links oder oben links. Ausgeblendete Nachfragen bleiben unter **Offene Nachfragen** im Infobereich.
   - **Wonach gefragt wird:** Verbindungen (TeamViewer, RDP, SSH, VPN …) und Telefonate (3CX, Teams) ab 1 Minute, **Arbeitsblöcke am PC** mit erkannter Tätigkeit ab 15 Minuten (z. B. M365-Admin, Remotedesktop-Fenster, Ticketsystem; reine E-Mail-Arbeit nicht), **Teams-Besprechungen**, an denen du erkennbar teilgenommen hast (Teams-Anruf oder Teams mindestens 30 % der Zeit im Vordergrund), und **Mails an Kunden** aus der Kundenliste. Auf Wunsch auch angezeigte Zugangsdaten und Blöcke der Zuordnung ohne KI. Abwesenheit am PC fragt Zeitzeuge bei deiner Rückkehr ab („Du warst 42 Min. nicht am Rechner (10:15–10:57). Was hast du gemacht?“) mit Chips zur Schnellauswahl: Telefonat, Besprechung, Vor Ort, Fahrt / Reise, Pause.
   - **Keine doppelten Nachfragen:** Was zur selben Arbeit gehört, ist ein Thema mit einer Nachfrage, z. B. VPN „Kanzlei Schmidt - SSL VPN“, RDP „Kanzlei Schmidt - DC01“ und ein Telefonat mit der Kanzlei 6 Minuten danach. Gleicher Kunde mit höchstens 15 Minuten Abstand gehört zusammen; ein Arbeitsblock am PC gehört zur Verbindung, in der er liegt. Verschiedene Kunden werden nie zusammengelegt. Im Fenster steht, was dazugehört („· dazu RDP-Verbindung, Telefonat“).
   - Beantwortet, ignoriert oder zurückgestellt merkt sich Zeitzeuge **Zeitraum und Kunde** des Themas. Es fragt also nicht noch einmal, wenn du eine kürzere Zeit einträgst als erkannt, wenn die Logs später nachkommen und sich Beginn oder Name leicht ändern oder wenn nach „Später“ noch ein Telefonat zum selben Kunden dazukommt. Löschst du die Tätigkeit wieder, gilt das Thema wieder als offen.
@@ -467,7 +472,12 @@ Unter **Einstellungen → Nachfragen und Benachrichtigungen …** legst du fest,
 
 | Schlüssel | Standard | Bedeutung |
 |---|---|---|
-| `prompt_mode` | `window` | `window`: kleines Fenster unten rechts, `tray`: nur Meldung im Infobereich, `off`: nicht fragen |
+| `prompt_mode` | `window` | `window`: Karte unten rechts, `compact`: kleinere Karte, `strip`: schmale Leiste (früher `tray`), `off`: nicht fragen |
+| `prompt_position` | `bottom_right` | Wo Karte und Kompakt erscheinen: `bottom_right`, `top_right`, `bottom_left`, `top_left`. Die Leiste bleibt unten rechts |
+| `prompt_timeout_seconds` | `0` | Nachfrage nach so vielen Sekunden ausblenden, 0 = dauerhaft. Ausgeblendete bleiben unter „Offene Nachfragen“ im Infobereich |
+| `prompt_keep_while_active` | `true` | Nicht ausblenden, solange getippt wird oder die Maus darüber ist |
+| `prompt_dots_clickable` | `true` | Punkte oben rechts in der Karte: zwischen offenen Nachfragen wechseln |
+| `prompt_strip_close` | `front` | ✕ an der Leiste schließt nur die vorderste (`front`) oder alle (`all`) |
 | `prompt_sources` | `["connections", "calls"]` | Wonach gefragt wird: Verbindungen, Telefonate, `rules` (Blöcke aus den Regeln) |
 | `prompt_thresholds` | `{"connections": 1, "calls": 1, "rules": 1}` | Erst ab dieser Dauer (Minuten) nachfragen, je Art: Verbindungen, Telefonate, Regel-Blöcke. 0 = immer. Einstellbar unter *Nachfragen und Benachrichtigungen …* |
 | `prompt_snooze_minutes` | `15` | „Später fragen“ fragt nach so vielen Minuten wieder |

@@ -14,8 +14,9 @@ from ai_classifier import to_entries
 from billing import Billing
 from journal import (describe, entry_key as journal_key, open_entry, suggest_category,
                      suggest_customer, sub_entries, ticket_line)
-from journal_dialogs import (DocPromptDialog, prompt_thresholds, EntryDialog, PromptWindow, default_span,
-                             PROMPT_SOURCES)
+from journal_dialogs import (DocPromptDialog, prompt_thresholds, EntryDialog, PromptStrip, PromptWindow,
+                             default_span, PROMPT_SOURCES, prompt_style, prompt_timeout)
+from prompt_card import entry_label, prompt_position
 import snippets
 import tickets
 from snippets_dialogs import SnippetsDialog
@@ -726,6 +727,7 @@ class DocsMixin(CustomersMixin):
         now = datetime.now()
         today = now.strftime("%Y-%m-%d")
         open_items = self.doc_candidates(today)
+        fresh = []
         for e in open_items:
             key = journal_key(e)
             # Nur frisch beendete fragen (seit dem Start von Zeitzeuge oder in der letzten
@@ -733,6 +735,7 @@ class DocsMixin(CustomersMixin):
             ended = parse_time(e["end"])
             if ended < min(self._started_at, now) - timedelta(hours=1):
                 continue
+            fresh.append(e)
             if self._was_asked(e, now):
                 continue
             # Schon in der Warteschlange (auch als ähnliches, inzwischen gewachsenes Thema)?
@@ -749,46 +752,132 @@ class DocsMixin(CustomersMixin):
         # inzwischen dokumentiert: nicht mehr fragen
         keys = {journal_key(e) for e in open_items + idle}
         self._prompt_queue = [q for q in self._prompt_queue if journal_key(q) in keys]
+        self._prompt_open = fresh + list(self._idle_open)
+        self.update_open_prompts_action()
         if self._prompt_queue:
             self.show_next_prompt()
         self.end_of_day_reminder(open_items, now)
 
+    def _prompt_labels(self):
+        return [entry_label(e) for e in self._prompt_queue]
+
     def show_next_prompt(self, force=False):
-        if self._prompt_window or not self._prompt_queue:
-            if self._prompt_window:
-                self._prompt_window.set_pending(len(self._prompt_queue) - 1)
+        """Erste Nachfrage der Warteschlange zeigen: als Karte, kompakt oder als Leiste.
+        force: als Karte, auch wenn die Leiste eingestellt ist (Klick auf Leiste, Infobereich)."""
+        window = self._prompt_window
+        if window or not self._prompt_queue:
+            if isinstance(window, PromptStrip) and self._prompt_queue:
+                window.set_entry(self._prompt_queue[0], len(self._prompt_queue))
+            elif window is not None and hasattr(window, "set_queue"):
+                keys = [journal_key(q) for q in self._prompt_queue]
+                current = keys.index(journal_key(window.entry)) if journal_key(window.entry) in keys else 0
+                window.set_queue(self._prompt_labels(), current)
+            self.update_open_prompts_action()
             return
         entry = self._prompt_queue[0]
-        # Abwesenheit immer als Fenster: Du bist gerade zurück und sitzt davor
-        if self.config.get("prompt_mode") == "tray" and not force and not entry.get("idle"):
-            if self.tray and not self._was_asked(entry, datetime.now()):
-                self._mark_asked(entry, datetime.max)
-                self._tray_doc_hint = True
-                self.tray.showMessage("Was hast du gemacht?",
-                                      f"{describe(entry)}\nKlick hier, um es einzutragen.",
-                                      QSystemTrayIcon.Information, 10000)
+        style = prompt_style(self.config)
+        timeout = prompt_timeout(self.config)
+        keep = self.config.get("prompt_keep_while_active", True)
+        # Abwesenheit immer als Karte: Du bist gerade zurück und sitzt davor
+        if style == "strip" and not force and not entry.get("idle"):
+            strip = PromptStrip(entry, len(self._prompt_queue), parent=self, timeout=timeout,
+                                keep_while_active=keep,
+                                close_all=self.config.get("prompt_strip_close", "front") == "all")
+            strip.opened.connect(self._open_strip)
+            strip.dismissed.connect(self._dismiss_strip)
+            strip.timed_out.connect(self._strip_timed_out)
+            self._prompt_window = strip
+            strip.adjustSize()
+            strip.dock_bottom_right(8)
+            strip.show()
+            self.update_open_prompts_action()
             return
         categories = self.categories()
         hints = learning.doc_hints(entry, self.config, categories, self.customer_index())
         window = PromptWindow(entry, self.known_customers(), categories,
-                              self.config.get("teamviewer_names", {}),
-                              pending=len(self._prompt_queue) - 1, parent=self,
+                              self.config.get("teamviewer_names", {}), parent=self,
                               customer=hints["customer"], category=hints["category"],
                               trace=hints["trace"], rule_subject=hints["rule_subject"],
+                              style="compact" if style == "compact" else "window",
+                              timeout=0 if force and style == "strip" else timeout,
+                              queue=self._prompt_labels(),
+                              dots_clickable=self.config.get("prompt_dots_clickable", True),
+                              keep_while_active=keep,
+                              draft=self._prompt_drafts.get(journal_key(entry), ""),
+                              position=prompt_position(self.config),
                               **self.entry_form_options(parse_time(entry["start"]),
                                                         parse_time(entry["end"])))
         window.form.set_billing(self.billing())
         window.answered.connect(self.on_prompt_answered)
+        window.jump.connect(self.on_prompt_jump)
         self._prompt_window = window
-        # unten rechts über dem Infobereich, ohne dir den Fokus wegzunehmen
+        # in der gewählten Ecke (Standard unten rechts), ohne dir den Fokus wegzunehmen
         window.adjustSize()
         window.dock_bottom_right(8)  # dicht über der Taskleiste
         window.show()
+        self.update_open_prompts_action()
+
+    def _close_prompt_silently(self):
+        """Gezeigte Nachfrage schließen, ohne zu antworten (Wechsel zu einer anderen)."""
+        window, self._prompt_window = self._prompt_window, None
+        if window is None:
+            return
+        if isinstance(window, PromptStrip):
+            window.close_silently()
+            return
+        self._prompt_drafts[journal_key(window.entry)] = window.draft()
+        window._done = True
+        window.blockSignals(True)
+        window.close()
+        window.deleteLater()
+
+    def on_prompt_jump(self, index):
+        """Punkt oben rechts: zu einer anderen offenen Nachfrage wechseln, Text bleibt erhalten."""
+        if not 0 <= index < len(self._prompt_queue):
+            return
+        self._close_prompt_silently()
+        self._prompt_queue.insert(0, self._prompt_queue.pop(index))
+        self.show_next_prompt(force=True)
+
+    def _open_strip(self):
+        """Klick auf die Leiste: dieselbe Nachfrage als Karte."""
+        self._close_prompt_silently()
+        self.show_next_prompt(force=True)
+
+    def _dismiss_strip(self):
+        """✕ an der Leiste: nur die vorderste oder alle zurückstellen (Einstellung)."""
+        strip = self._prompt_window
+        self._close_prompt_silently()
+        if not self._prompt_queue:
+            return
+        snooze = self.config.get("prompt_snooze_minutes", 15)
+        until = datetime.now() + timedelta(minutes=snooze)
+        close_all = self.config.get("prompt_strip_close", "front") == "all"
+        for entry in (list(self._prompt_queue) if close_all else [strip.entry if strip else self._prompt_queue[0]]):
+            self._mark_asked(entry, until)
+            key = journal_key(entry)
+            self._prompt_queue = [q for q in self._prompt_queue if journal_key(q) != key]
+        self.statusBar().showMessage(
+            f"Zeitzeuge fragt in {snooze} Minuten noch einmal" + (" (alle offenen)" if close_all else ""), 4000)
+        self.update_open_prompts_action()
+        QTimer.singleShot(400, self.show_next_prompt)
+
+    def _strip_timed_out(self):
+        """Leiste ausgeblendet: alle gezeigten Nachfragen bleiben offen (Infobereich)."""
+        self._close_prompt_silently()
+        snooze = self.config.get("prompt_snooze_minutes", 15)
+        until = datetime.now() + timedelta(minutes=snooze)
+        for entry in self._prompt_queue:
+            self._mark_asked(entry, until)
+        self._prompt_queue = []
+        self.update_open_prompts_action()
 
     def on_prompt_answered(self, action, entry, item):
         window, self._prompt_window = self._prompt_window, None
         key = journal_key(entry)
         span = prompt_topics.answer_span(entry, self.customer_index())
+        if action in ("later", "timeout") and window is not None and hasattr(window, "draft"):
+            self._prompt_drafts[key] = window.draft()  # angefangenen Text nicht verlieren
         # auch ein inzwischen gewachsenes oder verändertes Thema aus der Warteschlange nehmen
         self._prompt_queue = [q for q in self._prompt_queue if journal_key(q) != key
                               and not prompt_topics.matches_span(q, span, self.customer_index())]
@@ -799,17 +888,58 @@ class DocsMixin(CustomersMixin):
             if not self._save_doc(item, entry, window.remember_tv() if window else False,
                                   rule=window.wants_rule() if window else False):
                 self._prompt_queue.insert(0, entry)
+            else:
+                self._prompt_drafts.pop(key, None)
         elif action == "ignore":
+            self._prompt_drafts.pop(key, None)
             self.journal.ignore(entry)
             self.timeline.draw_timeline(self.current_date)
             self.statusBar().showMessage("Wird nicht mehr nachgefragt", 4000)
-        else:  # später
+        else:  # später oder ausgeblendet (Anzeigedauer abgelaufen)
             snooze = self.config.get("prompt_snooze_minutes", 15)
             self._mark_asked(entry, datetime.now() + timedelta(minutes=snooze))
-            self.statusBar().showMessage(f"Zeitzeuge fragt in {snooze} Minuten noch einmal", 4000)
+            self.statusBar().showMessage(
+                f"Zeitzeuge fragt in {snooze} Minuten noch einmal" if action == "later" else
+                "Nachfrage ausgeblendet. Offen unter „Offene Nachfragen“ im Infobereich", 4000)
+        if action in ("save", "ignore"):
+            self._prompt_open = [e for e in self._prompt_open if journal_key(e) != key
+                                 and not prompt_topics.matches_span(e, span, self.customer_index())]
         if window:
             window.deleteLater()
-        QTimer.singleShot(400, self.show_next_prompt)
+        self.update_open_prompts_action()
+        if action != "timeout":  # ausgeblendet: nicht gleich die nächste zeigen
+            QTimer.singleShot(400, self.show_next_prompt)
+
+    def open_prompt_count(self):
+        keys = {journal_key(e) for e in self._prompt_open + self._prompt_queue}
+        return len(keys)
+
+    def update_open_prompts_action(self):
+        """Eintrag „Offene Nachfragen (n)“ im Infobereich."""
+        action = getattr(self, "tray_prompts_action", None)
+        if action is None:
+            return
+        count = self.open_prompt_count()
+        action.setText(f"Offene &Nachfragen ({count})" if count else "Offene &Nachfragen")
+        action.setEnabled(bool(count))
+
+    def show_open_prompts(self):
+        """Infobereich → Offene Nachfragen: alle frisch erkannten wieder fragen, als Karte."""
+        if self.config.get("prompt_mode", "window") == "off":
+            self.show_open_docs()
+            return
+        self._prompt_asked.clear()  # ausdrücklich gewünscht: auch zurückgestellte zeigen
+        self._prompt_asked_spans.clear()
+        self.check_prompts()
+        if isinstance(self._prompt_window, PromptStrip):
+            self._open_strip()
+        elif self._prompt_window is None:
+            if self._prompt_queue:
+                self.show_next_prompt(force=True)
+            else:
+                self.show_open_docs()
+        else:
+            self._prompt_window.raise_()
 
     def end_of_day_reminder(self, open_items, now):
         """Nach Feierabend einmal am Tag erinnern: an offene Tätigkeiten und an das, was
