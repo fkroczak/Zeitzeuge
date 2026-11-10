@@ -6,7 +6,9 @@ Dateien nur das Ende gelesen (safe_io.log_lines). Kaputte Zeilen werden überspr
 """
 import os
 import re
+import time
 from collections import defaultdict
+from functools import lru_cache
 from datetime import datetime, timedelta, timezone
 
 import safe_io
@@ -22,9 +24,35 @@ def _dmy(text):
                     int(text[11:13]), int(text[14:16]), int(text[17:19]))
 
 
-def utc_to_local(when):
-    """UTC → Ortszeit dieses Rechners, mit Sommer- oder Winterzeit des jeweiligen Datums."""
+def _utc_to_local_exact(when):
     return when.replace(tzinfo=timezone.utc).astimezone().replace(tzinfo=None)
+
+
+_offsets = {}  # (Viertelstunde in UTC, Zeitzone) -> Versatz zur Ortszeit
+
+
+def utc_to_local(when):
+    """UTC → Ortszeit dieses Rechners, mit Sommer- oder Winterzeit des jeweiligen Datums.
+
+    Der Versatz wird je Viertelstunde gemerkt (Umstellungen liegen immer auf einer vollen
+    Viertelstunde): Bei einem Jahr TeamViewer-Log spart das die meisten Zeitzonen-Abfragen."""
+    bucket = when.replace(minute=when.minute - when.minute % 15, second=0, microsecond=0)
+    key = (bucket, time.tzname, time.timezone)
+    offset = _offsets.get(key)
+    if offset is None:
+        offset = _utc_to_local_exact(bucket) - bucket
+        last = bucket + timedelta(minutes=14, seconds=59, microseconds=999999)
+        if _utc_to_local_exact(last) - last != offset:  # Umstellung mittendrin: nicht merken
+            return _utc_to_local_exact(when)
+        if len(_offsets) > 100000:
+            _offsets.clear()
+        _offsets[key] = offset
+    return when + offset
+
+
+@lru_cache(maxsize=64)
+def _hours(n):
+    return timedelta(hours=n)
 
 
 class BaseConnectionParser:
@@ -110,7 +138,7 @@ class TeamViewerParser(BaseConnectionParser):
             if tz_correction == self.AUTO:
                 start, end = utc_to_local(_dmy(start_str)), utc_to_local(_dmy(end_str))
             else:
-                shift = timedelta(hours=tz_correction)  # fester Versatz (von Hand eingestellt)
+                shift = _hours(tz_correction)  # fester Versatz (von Hand eingestellt)
                 start, end = _dmy(start_str) + shift, _dmy(end_str) + shift
         except ValueError:
             return None
@@ -153,7 +181,7 @@ class RdmParser(BaseConnectionParser):
             return None
         timestamp_str, action, entry_name, entry_type = match.groups()
         try:
-            timestamp = _dmy(timestamp_str) + timedelta(hours=tz_correction)
+            timestamp = _dmy(timestamp_str) + _hours(tz_correction)
         except ValueError:
             return None
         return {"timestamp": timestamp, "action": action.strip(),
@@ -186,8 +214,7 @@ class RdmParser(BaseConnectionParser):
             return
         if action not in self.CONNECT + self.DISCONNECT:
             return
-        type_lower = entry_type.lower()
-        protocol = next((p for key, p in self.PROTOCOLS.items() if key in type_lower), None)
+        protocol = self._protocol(entry_type)
         if protocol is None:
             return
         key = f"{name}_{entry_type}"
@@ -200,6 +227,13 @@ class RdmParser(BaseConnectionParser):
             if protocol == "TeamViewer" and name.replace(" ", "").isdigit():
                 conn["tv_id"] = name.replace(" ", "")
             connections.append(conn)
+
+    @classmethod
+    @lru_cache(maxsize=256)
+    def _protocol(cls, entry_type):
+        """Protokoll zum RDM-Eintragstyp (erster passender Teil) oder None; je Typ gemerkt."""
+        type_lower = entry_type.lower()
+        return next((p for key, p in cls.PROTOCOLS.items() if key in type_lower), None)
 
     @staticmethod
     def _connection(start, end, entry_name, connection_type, details):

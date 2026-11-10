@@ -65,7 +65,9 @@ def make_logs():
     with open(os.path.join(DATA, "zeitzeuge_config.json"), "w", encoding="utf-8") as f:
         json.dump({"teamviewer_paths": [tv], "rdm_paths": [rdm], "tracking_enabled": True,
                    "setup_done": True, "show_pc_in_list": True,
-                   "customers": [{"name": c, "keywords": [c.lower()], "domains": [f"kunde{i}.de"]}
+                   # Kundenliste im aktuellen Format (Spuren): Stichwort und Mail-Domain
+                   "customers": [{"name": c, "traces": [{"kind": "word", "value": c.lower()},
+                                                        {"kind": "mail", "value": f"kunde{i}.de"}]}
                                  for i, c in enumerate(CUSTOMERS)]}, f)
 
 

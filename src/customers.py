@@ -479,7 +479,11 @@ def count_hits(index, entries, pc_entries=()):
     return hits
 
 
-_index_cache = [None, None]  # (Schlüssel, Index): Hinweis unter der Maus fragt sehr oft
+# Schlüssel -> Index: Hinweis unter der Maus fragt sehr oft. Mehrere Plätze, weil Timeline
+# (nur eigene Liste) und Hauptfenster (mit übernommenen Daten) abwechselnd fragen; mit nur
+# einem Platz wurde der Index dann bei jedem Wechsel neu gebaut.
+_index_cache = {}
+INDEX_CACHE_SIZE = 4
 
 
 def index(config, imported_customers=None, imported_tv_names=None):
@@ -487,11 +491,14 @@ def index(config, imported_customers=None, imported_tv_names=None):
     Bleiben Liste, TeamViewer-Namen und übernommene Daten gleich, kommt derselbe Index."""
     key = repr((config.get("customers"), config.get("teamviewer_names"),
                 imported_customers, imported_tv_names))
-    if _index_cache[0] == key:
-        return _index_cache[1]
+    hit = _index_cache.get(key)
+    if hit is not None:
+        return hit
     own = customer_list(config)
     result = Index(own + _valid_list(imported_customers), imported_tv_names)
-    _index_cache[:] = [key, result]
+    while len(_index_cache) >= INDEX_CACHE_SIZE:
+        _index_cache.pop(next(iter(_index_cache)), None)
+    _index_cache[key] = result
     return result
 
 

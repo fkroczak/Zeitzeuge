@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QProgressBar, QSizeP
                                QToolButton, QVBoxLayout, QWidget)
 
 from flow_layout import FlowLayout
+import skeleton
 import timefmt
 from theme import SPACE_XS, SPACE_S, SPACE_M, SPACE_L
 
@@ -137,6 +138,11 @@ class _Kpi(QFrame):
         self.value = _CustomerLine(self) if customers else QLabel("–", self)
         self.value.setObjectName("card_title" if customers else "kpi_value")
         row.addWidget(self.value, 1 if customers else 0)
+        # Bis die Zahlen da sind: Umriss statt „–“ (skeleton.py)
+        self.placeholder = skeleton.Bar(160 if customers else 64, 26, self)
+        self.value.hide()
+        row.addWidget(self.placeholder)
+        self._row = row
         self.extra = QLabel("", self)
         self.extra.setObjectName("kpi_label")
         row.addWidget(self.extra, 0 if customers else 1)
@@ -150,6 +156,15 @@ class _Kpi(QFrame):
         layout.addLayout(row)
         layout.addStretch(1)  # Inhalt oben: Überschriften aller Kacheln auf einer Höhe
         self.bar = None
+
+    def loaded(self):
+        """Zahlen sind da: Umriss weg, Wert zeigen."""
+        if self.placeholder is not None:
+            self.placeholder.done()
+            self._row.removeWidget(self.placeholder)
+            self.placeholder.deleteLater()
+            self.placeholder = None
+            self.value.show()
 
     def add_progress(self):
         self.bar = QProgressBar(self)
@@ -273,6 +288,8 @@ class DaySummary(QWidget):
         self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
 
     def show_numbers(self, data):
+        for kpi in (self.booked, self.opened, self.suggest, self.customers):
+            kpi.loaded()
         booked, target = data["booked_s"], data["target_s"]
         self.booked.value.setText(hm(booked))
         basis = data.get("target_basis", "")  # „gestempelt“ (ITM-Personalzeit) oder „Arbeitszeit“
@@ -348,6 +365,15 @@ class ViewChips(QWidget):
                 lab.setProperty("on", key == view)
                 lab.style().polish(lab)
             button.setMinimumSize(button.layout().sizeHint())
+
+    def showEvent(self, event):
+        # Breite der Chips schon vor den ersten Daten (Fenster mit Umrissen, skeleton.py):
+        # erst jetzt gilt die Schrift aus dem Stylesheet
+        for button, _text in self.buttons.values():
+            for lab in (button.chip_text, button.chip_count):
+                lab.ensurePolished()
+            button.setMinimumSize(button.layout().sizeHint())
+        super().showEvent(event)
 
     def set_tips(self, tips):
         """Erklärung je Ansicht beim Darüberfahren (view_help.help_text)."""
