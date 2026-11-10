@@ -342,7 +342,7 @@ class MenusMixin:
         menu.addSeparator()
         self._icon_actions.append((menu.addAction("Eigene Farben &festlegen …", self.edit_custom_colors),
                                    "edit"))
-        self._icon_actions.append((menu.addAction("An&passen mit Vorschau …",
+        self._icon_actions.append((menu.addAction("Darstellung an&passen …",
                                                   lambda: self.show_settings("view")), "eye"))
 
         self.view_button = QToolButton(self)

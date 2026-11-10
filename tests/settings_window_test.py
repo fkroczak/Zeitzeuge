@@ -126,75 +126,31 @@ def gui_test():
     settings.show_page("general")  # alter Name leitet weiter
     assert settings.current_page() == "home"
 
-    # Seite Ansicht: Vorschau mit Beispieltag, Varianten beim Darüberfahren, Änderungen sofort
+    # Seite Darstellung: keine Vorschau oben, Auswahl über Kacheln, Änderungen sofort
     settings.show_page("view")
     QTest.qWait(50)
-    preview = settings.preview
-    assert preview is not None and preview.isVisible()
-    assert preview.table.rowCount() >= 5 and preview.timeline._legend, "Vorschau leer"
-    from PySide6.QtCore import QEvent
-    from PySide6.QtWidgets import QApplication as _App
+    assert not hasattr(settings, "preview"), "Vorschau oben ist entfallen"
     row = next(r for r in settings.rows if r.spec[5] == "pc_blocks_action")
     assert row.spec[1] == "tiles" and set(row.tiles) == {"on", "off"} and row.tiles["on"].isChecked()
-    _App.sendEvent(row.tiles["off"], QEvent(QEvent.Enter))  # Maus über „Jedes Fenster“
-    QTest.qWait(settings.HOVER_DELAY_MS + 80)  # Darüberfahren wird kurz gebündelt
-    assert preview.variant and preview.timeline.config["pc_blocks"] is False, preview.variant
-    assert window.config.get("pc_blocks", True) is True, "Darüberfahren darf nichts speichern"
-    assert not any(p.get("pc_block") for p in preview.timeline._pc_band)
-    _App.sendEvent(row.tiles["off"], QEvent(QEvent.Leave))
-    QTest.qWait(settings.HOVER_DELAY_MS + 80)
-    assert preview.variant is None and any(p.get("pc_block") for p in preview.timeline._pc_band)
     # Klick auf die Kachel schaltet um, das Menü Ansicht zieht mit
     row.tiles["off"].click()
     assert not window.pc_blocks_action.isChecked() and row.tiles["off"].isChecked()
     window.pc_blocks_action.setChecked(True)
     assert row.tiles["on"].isChecked()
-    # Vorschau bleibt sichtbar und kräftig, auch ohne Maus darüber (nicht verblasst)
-    assert preview.timeline.isVisible() and preview.timeline.graphicsEffect() is None
-    # Viele Zeilen (PC-Verlauf, jedes Fenster einzeln) dürfen das Fenster nicht aufhalten:
-    # früher maß jede Zelle die ganze Tabelle neu (fast eine Minute Hänger unter Windows)
-    import time
-    preview.show_variant({"show_pc_in_list": True, "pc_blocks": False, "list_view": "grouped"}, "viele")
-    assert preview.table.rowCount() > 80, preview.table.rowCount()
-    start = time.perf_counter()
-    for _ in range(3):
-        preview.show_variant({"show_pc_in_list": True, "pc_blocks": False, "list_view": "grouped"}, "viele")
-    assert time.perf_counter() - start < 1.5, time.perf_counter() - start
-    preview.show_variant(None)
-    # Schnelles Wischen über viele Zeilen: nur die letzte zählt, nicht eine Neuzeichnung je Zeile
-    drawn = []
-    original = preview.show_variant
-    preview.show_variant = lambda *a: (drawn.append(a), original(*a))
-    for r in [r for r in settings.rows if r.spec[1] in ("toggle", "check")][:6]:
-        settings.preview_hover(r.spec)
-    settings.preview_hover(None)
-    QTest.qWait(settings.HOVER_DELAY_MS + 80)
-    assert len(drawn) <= 1, drawn
-    preview.show_variant = original
-    # Ansicht „Telefonate“: nur Anrufe
-    preview.show_variant({"list_view": "calls"}, "Telefonate")
-    kinds = [preview.table.item(r, 2).text() for r in range(preview.table.rowCount())]
-    assert kinds and all(k.startswith("Telefonat") or k == "Teams-Anruf" for k in kinds), kinds
-    preview.show_variant(None)
     assert "calls" in window.view_actions and "calls" in dict(window.VIEWS)
-    # Auswahl: schon beim Durchgehen der Liste, gespeichert erst beim Wählen
+    # Ansicht der Tagesliste: jede Ansicht eine Kachel, Hauptfenster folgt
     view_row = next(r for r in settings.rows if r.spec[5] == "list_view")
     assert list(view_row.tiles) == [k for k, _t in window.VIEWS], "jede Ansicht eine Kachel"
-    _App.sendEvent(view_row.tiles["single"], QEvent(QEvent.Enter))
-    QTest.qWait(settings.HOVER_DELAY_MS + 80)
-    assert preview.timeline.config["list_view"] == "single" and window.config.get("list_view") != "single"
-    rows_grouped = preview.table.rowCount()
     view_row.tiles["single"].click()
     QTest.qWait(20)
-    assert window.config["list_view"] == "single" and preview.variant is None
+    assert window.config["list_view"] == "single" and view_row.tiles["single"].isChecked()
     assert window.view_actions["single"].isChecked(), "Hauptfenster folgt der Auswahl"
-    assert preview.table.rowCount() >= rows_grouped
     window.change_view("grouped")
-    # Zahl ändern wirkt sofort auf die Vorschau
+    assert view_row.tiles["grouped"].isChecked() or settings.refresh() or view_row.tiles["grouped"].isChecked()
+    # Zahl ändern wirkt sofort
     spin = next(r for r in settings.rows if r.spec[5] == "merge_gap_minutes").control
     spin.setValue(0)
-    QTest.qWait(20)
-    assert preview.timeline.config["merge_gap_minutes"] == 0
+    assert window.config["merge_gap_minutes"] == 0
     spin.setValue(5)
     # Zeitraum beim Start
     range_row = next(r for r in settings.rows if r.spec[5] == "timeline_range")

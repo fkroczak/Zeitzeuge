@@ -294,7 +294,7 @@ Alles, was nur die Anzeige ändert, nie die Daten:
 - **Zeilen der Timeline** (Untermenü, auch per Rechtsklick auf die Legende links): jede Zeile mit einem Kästchen in ihrer Farbe zum Ein- und Ausblenden, dazu **Alle Zeilen einblenden**. **Zeilen abwechselnd hinterlegen** zeigt graue Streifen statt feiner Linien zwischen den Zeilen. Leere Zeilen blendet Zeitzeuge von selbst aus.
 - **PC-Aktivität als Arbeitsblöcke:** an = Blöcke je Tätigkeit, aus = jedes Fenster einzeln.
 - **Übersichten:** Wochenabschluss, Offene Tätigkeiten.
-- **Anpassen mit Vorschau …** öffnet die Seite **Ansicht** im Einstellungsfenster.
+- **Darstellung anpassen …** öffnet die Seite **Darstellung** im Einstellungsfenster.
 
 Ganzer Tag und Arbeitszeit stehen in der Werkzeugleiste, das Design (Wie Windows, Hell, Dunkel, Eigene Farben) im Menü **Ansicht**. Die Knöpfe der Werkzeugleiste zeigen nur Symbole; fährst du darüber, nennt der Hinweis Namen, Tastenkürzel und was der Knopf tut.
 
@@ -308,12 +308,12 @@ Ein Klick auf **Einstellungen** (oder STRG + ,) öffnet ein eigenes Fenster. Es 
   - **Nachfragen:** Darstellung als Kacheln mit Vorschau (Karte, Kompakt, Leiste, Aus), Ausblenden, wonach ab wie vielen Minuten gefragt wird, „Später“ und Erinnerungen. Früher ein eigener Dialog.
   - **Zuordnung:** Kundenliste, Orte und Fahrzeiten, Regeln ohne KI, KI-Vorschläge, Textbausteine.
   - **Buchung:** Matrix42, Arbeitszeiten, Abrechnung, Ziel und Anzeige der Quote, Prüfung bei Feierabend.
-  - **Darstellung:** Vorschau, darunter Aussehen, Timeline und Tagesliste.
+  - **Darstellung:** Aussehen, Timeline und Tagesliste, gewählt über Kacheln.
   - **Datenschutz:** Speicherort, PIN und Wiederherstellungsschlüssel, Aufbewahren, Daten für einen anderen PC.
   - **Info:** Über Zeitzeuge, Beenden und (eingeklappt) die Fehlersuche mit den Mitschnitten.
 - **Jede Einstellung steht genau einmal.** Nur „Häufig“ auf der Übersicht wiederholt einige als Abkürzung.
 - **Oben die Suche:** z. B. „Minuten“ zeigt alle Grenzwerte aus allen Bereichen, und du änderst sie direkt dort. Die Suche findet auch die Quellen und die Optionen der Seite Nachfragen.
-- **Darstellung mit Vorschau und Kacheln:** Design, Timeline beim Start, PC-Aktivität, PC-Verlauf in der Liste und die Ansicht der Tagesliste wählst du über Kacheln mit kleinen Skelett-Bildern. Oben zeigt eine **Vorschau** einen erfundenen Beispieltag mit Timeline und Tagesliste, so wie Zeitzeuge sie mit deinen Einstellungen zeichnet. Fährst du über eine Kachel oder einen Schalter, zeigt sie schon, wie es danach aussähe, ohne etwas zu speichern. Zahlen wirken beim Ändern sofort. Erreichbar auch über **Ansicht → Anpassen mit Vorschau …**.
+- **Darstellung mit Kacheln:** Design, Timeline beim Start, PC-Aktivität, PC-Verlauf in der Liste und die Ansicht der Tagesliste wählst du über Kacheln mit kleinen Skelett-Bildern; jede Kachel zeigt, wie es danach aussieht. Ein Klick gilt sofort, auch im Hauptfenster. Zahlen wirken beim Ändern sofort. Erreichbar auch über **Ansicht → Darstellung anpassen …**.
 - **Eigene Farben:** Wählst du die Kachel **Eigene Farben**, klappt darunter eine Skizze von Zeitzeuge auf (als Skelett). Ein Klick auf einen Bereich (Kopfleiste, Hintergrund, Flächen, Schrift, Akzent, Jetzt-Linie oder einen Balken der Timeline) zeigt darunter die Farbvorschläge, **Andere Farbe …** und **Standardfarbe**. Jede Änderung gilt sofort, **Alle Farben zurücksetzen** holt das Standard-Design zurück. **Ansicht → Eigene Farben festlegen …** führt an diese Stelle.
 - **Quellen als Kacheln:** je Quelle ihr Zeichen in der Farbe des Herstellers, ein Schalter („An“/„Aus“ links, der Schalter rechts wie überall), der Zustand („läuft“, „Logdatei nicht gefunden“, „Anmeldung nötig“) und **Einrichten …**.
 - **Jede Zeile eine Karte:** Symbol in einer ruhigen Kachel, Titel, Beschreibung, rechts Schalter, Zahl oder Knopf in einer Spalte.
@@ -724,7 +724,7 @@ Module in `src/`:
 | `main_timeline.py` | Start, Config laden/speichern, Hauptfenster (setzt sich aus den `app_*.py` zusammen) |
 | `app_menus.py` | Werkzeugleiste, Menü „Einstellungen“, Dialoge dazu |
 | `app_daylist.py` | Tagesliste, Statuszeile, Tageswechsel |
-| `settings_preview.py` | Vorschau mit Beispieltag auf der Seite Ansicht der Einstellungen |
+| `settings_skeletons.py` | Skelett-Bilder für die Kacheln auf der Seite Darstellung der Einstellungen |
 | `focus.py` | PC-Aktivität zu Arbeitsblöcken zusammenfassen (kurze Sprünge, Splitter, Anteile) |
 | `app_docs.py` | Tätigkeiten dokumentieren, Nachfragen, KI-Vorschläge |
 | `day_close.py` | Tagesabschluss: Vorschläge je Kunde aus allen Spuren, Lücken, Ticket und Text (ohne Qt) |

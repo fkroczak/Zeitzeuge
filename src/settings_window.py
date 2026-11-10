@@ -8,11 +8,11 @@ Teil von TimelineApp (main_timeline.py): SettingsWindow(main) bekommt das Hauptf
 """
 import os
 
-from PySide6.QtCore import QEvent, QSize, Qt, QTimer, QUrl
+from PySide6.QtCore import QSize, Qt, QTimer, QUrl
 from PySide6.QtGui import QCursor, QDesktopServices, QIcon, QPainter
 from PySide6.QtWidgets import (QButtonGroup, QCheckBox, QComboBox, QDialog, QFrame, QGridLayout, QHBoxLayout, QLabel,
                                QLineEdit, QListWidget, QListWidgetItem, QMessageBox, QPushButton, QScrollArea,
-                               QSpinBox, QSplitter, QStackedWidget, QToolButton, QVBoxLayout, QWidget)
+                               QSpinBox, QStackedWidget, QToolButton, QVBoxLayout, QWidget)
 
 import icons
 from flow_layout import FlowLayout
@@ -123,7 +123,7 @@ ROWS = [
     ("booking", "check", "alert", "Bei Feierabend prüfen",
      "Pausen, Stempelung, Buchungen außerhalb der Personalzeit, Quote unter Ziel.", "day_checks_enabled", True),
 
-    # Darstellung: alles, was nur die Anzeige ändert (mit Vorschau, settings_preview.py)
+    # Darstellung: alles, was nur die Anzeige ändert; Auswahl über Kacheln mit Skelett-Bild
     ("view/Aussehen", "tiles", "palette", "Design", "Hell, Dunkel, wie Windows oder eigene Farben. Gilt sofort.",
      "theme", [("system", "Wie &Windows"), ("light", "&Hell"), ("dark", "&Dunkel"), ("custom", "&Eigene Farben")]),
     ("view/Aussehen", "button", "palette", "Aktivitätstypen und Farben", "Farbe je Art in der Timeline.",
@@ -347,22 +347,6 @@ def _set_quiet(box, on):
         box.setText("An" if on else "Aus")
 
 
-class _Combo(QComboBox):
-    """Auswahlliste, die beim Schließen Bescheid gibt (Vorschau zurück auf den Stand)."""
-
-    def __init__(self, on_close):
-        super().__init__()
-        self._on_close = on_close
-
-    def hidePopup(self):
-        super().hidePopup()
-        self._on_close()
-
-
-# Schalter am Hauptfenster -> Config-Schlüssel, damit die Vorschau den umgeschalteten Wert zeigen kann
-ACTION_KEYS = {"dark_action": "dark_mode", "pc_blocks_action": "pc_blocks", "pc_list_action": "show_pc_in_list"}
-
-
 class _ElidedLabel(QLabel):
     """Wert rechts in einer Zeile (z. B. Pfad): so breit wie nötig, höchstens maximumWidth,
     in schmalen Fenstern in der Mitte mit „…“ gekürzt (voller Text als Tooltip).
@@ -466,22 +450,19 @@ class _Row(QFrame):
             self.control.setValue(int(main.config.get(target, low) or 0))
             self.control.valueChanged.connect(lambda v: self._set_config(target, v, after))
         elif kind == "theme":
-            self.control = _Combo(lambda: None)
+            self.control = QComboBox()
             self.control.setAccessibleName(title)
             for value, text in main.THEME_CHOICES:
                 self.control.addItem(text.replace("&", ""), value)
             self.control.activated.connect(lambda i: self._choose_theme(self.control.itemData(i)))
         elif kind == "choice":
             options, _after = extra
-            self.control = _Combo(lambda: window.preview_hover(None))
+            self.control = QComboBox()
             self.control.setAccessibleName(title)
             for value, text in (options(main) if callable(options) else options):
                 self.control.addItem(text, value)
             self.control.activated.connect(
                 lambda i: self._set_config(target, self.control.itemData(i), extra[1]))
-            # Vorschau schon beim Durchgehen der Liste, bevor etwas gewählt ist
-            self.control.highlighted.connect(
-                lambda i: window.preview_hover(self.spec, self.control.itemData(i), self.control.itemText(i)))
         else:  # button
             if extra:
                 self.value = _ElidedLabel()
@@ -520,7 +501,6 @@ class _Row(QFrame):
             tile.setText(label if "&" in label else label.replace("&", "&&"))
             tile.setAccessibleName(f"{self.spec[3]}: {label.replace('&', '')}")
             tile.clicked.connect(lambda _c=False, v=value: self._pick(v))
-            tile.installEventFilter(self)
             group.addButton(tile)
             flow.addWidget(tile)
             self.tiles[value] = tile
@@ -555,7 +535,6 @@ class _Row(QFrame):
     def _pick(self, value):
         target = self.spec[5]
         main = self.window.main
-        self.window.preview_hover(None)
         if target == "theme":
             main.choose_theme(value)
         elif target.endswith("_action"):
@@ -563,21 +542,6 @@ class _Row(QFrame):
         else:
             self._set_config(target, value, {"timeline_range": "range", "list_view": "view"}.get(target))
         self.refresh()
-
-    def eventFilter(self, obj, event):
-        # Darüberfahren über eine Kachel: Vorschau zeigt diese Variante (nicht beim Design)
-        target = self.spec[5]
-        if obj in self.tiles.values() and target != "theme":
-            if event.type() == QEvent.Enter:
-                value = next(v for v, t in self.tiles.items() if t is obj)
-                key = ACTION_KEYS.get(target, target)
-                if target.endswith("_action"):
-                    value = value == "on"
-                spec = (row_page(self.spec), "choice", self.spec[2], self.spec[3], "", key, None)
-                self.window.preview_hover(spec, value, obj.text().replace("&", ""))
-            elif event.type() == QEvent.Leave:
-                self.window.preview_hover(None)
-        return super().eventFilter(obj, event)
 
     def retheme(self):
         """Neues Design: Symbol und Kachelbilder in den neuen Farben (ohne Neuaufbau)."""
@@ -599,16 +563,6 @@ class _Row(QFrame):
             self.refresh()
         else:
             self._sync_toggle(on)
-        self.window.refresh_preview_later()
-
-    # Vorschau: beim Darüberfahren zeigen, wie es nach dem Umschalten aussähe
-    def enterEvent(self, event):
-        self.window.preview_hover(self.spec)
-        super().enterEvent(event)
-
-    def leaveEvent(self, event):
-        self.window.preview_hover(None)
-        super().leaveEvent(event)
 
     def _run(self):
         target = self.spec[5]
@@ -632,7 +586,6 @@ class _Row(QFrame):
             main.change_view(value)
         elif after == "range":
             main.show_preferred_range()
-        self.window.refresh_preview_later()
         if key in ("booking_rate_status", "booking_target_percent"):
             import week_dialogs
             week_dialogs.update_rate_button(main)
@@ -747,14 +700,12 @@ class _Tile(QFrame):
 class SettingsWindow(QDialog):
     """Alle Einstellungen in einem Fenster. Bleibt offen, während du weiterarbeitest."""
 
-    HOVER_DELAY_MS = 120
-
     def __init__(self, main):
         super().__init__(main)
         self.main = main
         self.setWindowTitle("Zeitzeuge – Einstellungen")
         self.setObjectName("settings_window")
-        # Maximieren erlauben: die Vorschau (Seite „Ansicht“) wächst mit dem Fenster
+        # Maximieren erlauben: lange Seiten (Aufzeichnung, Darstellung) brauchen dann nicht zu blättern
         self.setWindowFlag(Qt.WindowMinMaxButtonsHint, True)
         self.setMinimumSize(720, 480)
         # Mindestens 3 Kacheln nebeneinander ohne Scrollleiste, auf großen Bildschirmen mehr Platz
@@ -770,19 +721,6 @@ class SettingsWindow(QDialog):
         self.rows, self.tiles, self.tile_grids = [], [], []
         self.status, self.collapsed, self.status_pics = {}, {}, []
         self.prompt_settings = None
-        self.preview = None  # Vorschau auf der Seite „Ansicht“ (settings_preview.py)
-        self._preview_timer = QTimer(self)
-        self._preview_timer.setSingleShot(True)
-        self._preview_timer.setInterval(0)
-        self._preview_timer.timeout.connect(self._refresh_preview)
-        self._preview_stale = False  # Änderung, während die Seite „Ansicht“ nicht zu sehen war
-        # Darüberfahren: erst zeichnen, wenn die Maus kurz auf einer Zeile bleibt. Beim Wischen
-        # über viele Zeilen sonst eine volle Neuzeichnung je Zeile (Fenster wirkt zäh).
-        self._hover_pending = None
-        self._hover_timer = QTimer(self)
-        self._hover_timer.setSingleShot(True)
-        self._hover_timer.setInterval(self.HOVER_DELAY_MS)
-        self._hover_timer.timeout.connect(self._apply_hover)
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -828,11 +766,6 @@ class SettingsWindow(QDialog):
         self._timer = QTimer(self)
         self._timer.timeout.connect(self.refresh_tiles)
         self._timer.start(3000)
-        # Änderungen aus dem Hauptfenster (Menü Ansicht, Zeilen der Timeline) auch in der Vorschau
-        for action in list(getattr(main, "row_actions", {}).values()):
-            action.toggled.connect(self.refresh_preview_later)
-        for action in getattr(main, "view_actions", {}).values():
-            action.triggered.connect(self.refresh_preview_later)
         self.nav.setCurrentRow(0)
 
     # ---- Aufbau
@@ -900,15 +833,7 @@ class SettingsWindow(QDialog):
         layout = QVBoxLayout(page)
         layout.setContentsMargins(SPACE_2XL, SPACE_XL, SPACE_2XL, SPACE_XL)
         layout.setSpacing(SPACE_S)
-        # Seite „Darstellung“: Titel und Vorschau bleiben stehen, nur die Einstellungen darunter blättern
         head = layout
-        if key == "view":
-            fixed = QWidget()
-            fixed.setObjectName("settings_page")
-            head = QVBoxLayout(fixed)
-            head.setContentsMargins(SPACE_2XL, SPACE_XL, SPACE_2XL, SPACE_S)
-            head.setSpacing(SPACE_XS)
-            layout.setContentsMargins(SPACE_2XL, SPACE_XS, SPACE_2XL, SPACE_XL)
         title = QLabel(name)
         title.setObjectName("page_title")
         head.addWidget(title)
@@ -917,10 +842,6 @@ class SettingsWindow(QDialog):
         sub.setWordWrap(True)
         head.addWidget(sub)
         head.addSpacing(SPACE_S)
-        if key == "view":
-            from settings_preview import PreviewPane
-            self.preview = PreviewPane(self.main)
-            head.addWidget(self.preview, 1)
         if key == "home":
             self._status_rows(layout)
         if key == "prompts":
@@ -941,21 +862,6 @@ class SettingsWindow(QDialog):
             self._tile_columns = 0
             self._place_tiles(3)
         layout.addStretch(1)
-        if key == "view":
-            # Oben Vorschau, unten Einstellungen; die Trennlinie lässt sich ziehen. Mehr
-            # Fensterhöhe (z. B. maximiert) geht zuerst an die Vorschau.
-            split = QSplitter(Qt.Vertical)
-            split.setChildrenCollapsible(False)
-            split.addWidget(fixed)
-            split.addWidget(self._scroll(page))
-            split.setStretchFactor(0, 0)
-            split.setStretchFactor(1, 1)
-            self.view_splitter = split
-            self._view_head = fixed
-            self._view_split_dragged = False
-            split.splitterMoved.connect(self._on_view_split_moved)
-            self.preview.timeline.height_limits_changed.connect(self._fit_view_split)
-            return split
         return self._scroll(page)
 
     # ---- Übersicht: Zustand je Bereich
@@ -1057,7 +963,6 @@ class SettingsWindow(QDialog):
         if self.prompt_settings is not None:
             self.prompt_settings.retheme(tokens)
         self.refresh()
-        self.refresh_preview_later()
 
     def refresh_status(self):
         for key, (mark, text) in self.status.items():
@@ -1088,31 +993,9 @@ class SettingsWindow(QDialog):
             for col in range(3):
                 grid.setColumnStretch(col, 1 if col < columns else 0)
 
-    def _on_view_split_moved(self, *_args):
-        self._view_split_dragged = True  # gezogene Höhe der Vorschau behalten
-
-    def _fit_view_split(self):
-        """Vorschau kompakt halten: nur so hoch, dass alle Zeilen der Timeline passen;
-        der Rest geht an die Einstellungen. Nach Ziehen an der Trennlinie bleibt die Wahl."""
-        split = getattr(self, "view_splitter", None)
-        if split is None or self._view_split_dragged:
-            return
-        total = sum(split.sizes())
-        if total <= 0:
-            return
-        top = self._view_head.minimumSizeHint().height() if self.preview.isVisible() else 0
-        split.setSizes([top, max(0, total - top)])
-
-    # Unter dieser Fensterhöhe passt die feste Vorschau (Seite „Ansicht“) nicht mehr neben die
-    # Einstellungen und würde sie überdecken (z. B. Full HD mit 200 % Anzeige): dann ausblenden
-    PREVIEW_MIN_WINDOW_HEIGHT = 600
-
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self._fit_tiles()
-        if self.preview is not None:
-            self.preview.setVisible(self.height() >= self.PREVIEW_MIN_WINDOW_HEIGHT)
-            self._fit_view_split()
 
     def _fit_tiles(self):
         # Erst wenn die Seite zu sehen ist, hat das Stylesheet die Kacheln fertig vermessen
@@ -1122,55 +1005,6 @@ class SettingsWindow(QDialog):
             # Platz rechts der Navigation abzüglich Seitenrand (2 × 28) und Scrollbalken
             free = self.width() - self.nav.width() - 56 - 12 + spacing
             self._place_tiles(max(1, min(3, free // need)))
-
-    # ---- Vorschau (Seite „Ansicht“)
-
-    def preview_hover(self, spec, value=None, text=None):
-        """Variante zeigen: Schalter umgedreht oder Eintrag einer Auswahl; spec None = aktueller Stand."""
-        if self.preview is None:
-            return
-        changes, caption = None, ""
-        if spec is not None:
-            main = self.main
-            kind, title, target, extra = spec[1], spec[3], spec[5], spec[6]
-            key = ACTION_KEYS.get(target) if kind == "toggle" else target
-            if kind == "toggle" and key:
-                on = not getattr(main, target).isChecked()
-                changes, caption = {key: on}, f"So sähe es aus mit „{title}“ {'an' if on else 'aus'}"
-            elif kind == "check":
-                on = not bool(main.config.get(target, extra))
-                changes, caption = {key: on}, f"So sähe es aus mit „{title}“ {'an' if on else 'aus'}"
-            elif kind == "choice" and value is not None and value != main.config.get(target):
-                changes, caption = {key: value}, f"So sähe es aus mit „{title}: {text}“"
-        self._hover_pending = (changes, caption)
-        self._hover_timer.start()  # neu starten: nur die Zeile zählt, auf der die Maus bleibt
-
-    def _apply_hover(self):
-        if self.preview is None or self._hover_pending is None:
-            return
-        changes, caption = self._hover_pending
-        self._hover_pending = None
-        current = self.preview.variant
-        if (changes or None) == (current[0] if current else None):
-            return  # zeigt schon genau das
-        if not self.preview.isVisible():
-            self._preview_stale = True
-            return
-        self.preview.show_variant(changes, caption)
-
-    def refresh_preview_later(self):
-        """Nach einer Änderung (auch aus dem Hauptfenster) die Vorschau einmal neu zeichnen."""
-        if self.preview is not None and not self._preview_timer.isActive():
-            self._preview_timer.start()
-
-    def _refresh_preview(self):
-        if self.preview is None:
-            return
-        if not self.preview.isVisible():  # erst zeichnen, wenn die Seite „Ansicht“ gezeigt wird
-            self._preview_stale = True
-            return
-        self._preview_stale = False
-        self.preview.show_variant(None)
 
     def _results_page(self):
         page = QWidget()
@@ -1198,10 +1032,6 @@ class SettingsWindow(QDialog):
         self.stack.setCurrentIndex(self.pages[key])
         self._fit_tiles()
         self.refresh()
-        if key == "view":
-            if self._preview_stale:
-                self._refresh_preview()
-            QTimer.singleShot(0, self._fit_view_split)  # erst mit sichtbarer Seite messen
 
     def show_page(self, key):
         """Bereich zeigen, z. B. show_page("sources"). Frühere Namen gelten weiter (PAGE_ALIASES)."""
@@ -1285,5 +1115,3 @@ class SettingsWindow(QDialog):
         self._timer.start(3000)
         self._fit_tiles()
         self.refresh()
-        if self._preview_stale and self.current_page() == "view":
-            self.refresh_preview_later()
