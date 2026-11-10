@@ -228,6 +228,11 @@ if window.tray:
 else:
     print("Kein Infobereich gefunden, Tray-Bilder fehlen")
 
+# Leerer Tag (keine Spuren)
+window.date_edit.setDate(QDate(DAY.year, DAY.month, DAY.day).addDays(1))
+wait(1.5)
+shot("12_leerer_tag", frame())
+
 window.quit_app()
 # Ohne Event-Loop stürzt die Qt-Bindung beim Aufräumen sporadisch ab (auch mit altem Code, nicht in der App)
 os._exit(0)

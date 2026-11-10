@@ -285,7 +285,7 @@ Fährst du über einen Knopf, erklärt ein Hinweis, was er tut. Im schmalen Fens
 Alles, was nur die Anzeige ändert, nie die Daten:
 
 - **Tagesliste:** Die Ansichten (Alle, Einzeln, Arbeitsblöcke, Telefonate – nur 3CX- und Teams-Anrufe, jeder einzeln –, Dokumentation, Zuordnung ohne KI, KI-Vorschläge, Buchungsabgleich) wählst du über die Chips über der Liste. Fährst du über einen Chip, steht dort, was die Ansicht zeigt. Im Menü stehen **PC-Verlauf in der Liste** und **Was zeigen die Ansichten? …** (F1), das alle mit Beispielen erklärt.
-- **Zeilen der Timeline** (Untermenü, auch per Rechtsklick auf die Legende links): jede Zeile mit einem Kästchen in ihrer Farbe zum Ein- und Ausblenden, dazu **Alle Zeilen einblenden**. Leere Zeilen blendet Zeitzeuge von selbst aus.
+- **Zeilen der Timeline** (Untermenü, auch per Rechtsklick auf die Legende links): jede Zeile mit einem Kästchen in ihrer Farbe zum Ein- und Ausblenden, dazu **Alle Zeilen einblenden**. **Zeilen abwechselnd hinterlegen** zeigt graue Streifen statt feiner Linien zwischen den Zeilen. Leere Zeilen blendet Zeitzeuge von selbst aus.
 - **PC-Aktivität als Arbeitsblöcke:** an = Blöcke je Tätigkeit, aus = jedes Fenster einzeln.
 - **Übersichten:** Wochenabschluss, Offene Tätigkeiten.
 - **Anpassen mit Vorschau …** öffnet die Seite **Ansicht** im Einstellungsfenster.
@@ -677,6 +677,7 @@ Läuft RDM auf einem Server, kann Zeitzeuge dessen Log auch über das Netzwerk l
 |---|---|
 | `work_days` | Arbeitszeit pro Wochentag, z. B. `"Fr": "08:00-13:00"`, leer = frei. Einstellbar unter **Einstellungen → Arbeitszeiten …** |
 | `dark_mode` | Dunkles Design |
+| `timeline_stripes` | Zeilen der Timeline abwechselnd grau hinterlegen statt feiner Linien |
 | `theme_follow_system` | Design „Wie Windows“: Hell oder Dunkel folgt der Einstellung von Windows |
 | `activity_types`, `type_colors` | Aktivitätstypen und ihre Farben |
 | ~~`teamviewer_names`~~ | Kundennamen zu TeamViewer-IDs stehen nicht mehr in der Config, sondern verschlüsselt in der Datenbank. Alte Einträge übernimmt Zeitzeuge beim ersten Start. |

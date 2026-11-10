@@ -8,11 +8,11 @@ import time
 
 from datetime import datetime
 
-from PySide6.QtCore import QTimer, QUrl
+from PySide6.QtCore import Qt, QTimer, QUrl
 from PySide6.QtGui import QDesktopServices
-from PySide6.QtWidgets import (QCheckBox, QDialog, QDialogButtonBox, QFormLayout, QInputDialog, QLabel,
+from PySide6.QtWidgets import (QCheckBox, QDialog, QDialogButtonBox, QFormLayout, QHBoxLayout, QInputDialog, QLabel,
                                QLineEdit, QMessageBox, QPushButton, QSpinBox, QSystemTrayIcon,
-                               QVBoxLayout)
+                               QToolButton, QVBoxLayout)
 
 from theme import prose
 import safe_io
@@ -198,10 +198,42 @@ class ReadersMixin:
         dialog.setWindowTitle(spec["title"])
         dialog.setMinimumWidth(520)
         layout = QVBoxLayout(dialog)
-        info = QLabel(spec["text"])
+        head = QHBoxLayout()
+        head_title = QLabel(spec["title"])
+        head_title.setObjectName("section_title")
+        head.addWidget(head_title)
+        head.addStretch(1)
+        status = QLabel("Aus")
+        status.setObjectName("status_badge")
+        head.addWidget(status)
+        layout.addLayout(head)
+
+        def set_status(text):
+            status.setText(text)
+            low = text.lower()
+            state = ("off" if low in ("aus", "") else
+                     "warn" if any(w in low for w in ("anmeld", "fehler", "nicht", "gelöscht")) else "ok")
+            status.setProperty("state", state)
+            status.style().polish(status)
+        set_status("Aus")
+
+        first, _sep, rest = spec["text"].partition("\n\n")
+        info = QLabel(first)
         info.setWordWrap(True)
         prose(info)
         layout.addWidget(info)
+        if rest:
+            more = QLabel(rest)
+            more.setWordWrap(True)
+            more.setObjectName("hint")
+            more.hide()
+            toggle = QToolButton()
+            toggle.setObjectName("link")
+            toggle.setText("Wie funktioniert die Anmeldung?")
+            toggle.setCursor(Qt.PointingHandCursor)
+            toggle.clicked.connect(lambda: (more.setVisible(not more.isVisible()), dialog.adjustSize()))
+            layout.addWidget(toggle, 0, Qt.AlignLeft)
+            layout.addWidget(more)
 
         form = QFormLayout()
         url_edit = QLineEdit(self.config.get(url_key, ""))
@@ -236,10 +268,8 @@ class ReadersMixin:
             mandant.setValue(int(self.config.get("itm_mandant") or 0))
             form.addRow("Mandant:", mandant)
         layout.addLayout(form)
+        url_edit.setFocus()  # nicht auf dem Link „Wie funktioniert …“ starten
 
-        status = QLabel("Aus")
-        status.setObjectName("hint")
-        layout.addWidget(status)
 
         def apply():
             url = url_edit.text().strip()
@@ -269,8 +299,8 @@ class ReadersMixin:
             # Status im Dialog live mitlaufen lassen
             reader = getattr(self, attr)
             if reader:
-                status.setText(reader.status)
-                reader.status_changed.connect(status.setText)
+                set_status(reader.status)
+                reader.status_changed.connect(set_status)
 
         def login():
             if user_edit is not None and user_edit.text().strip() and not mandant.value():
@@ -296,7 +326,7 @@ class ReadersMixin:
                 else:
                     from itm_auth import ItmAuth
                     ItmAuth("", mt.ITM_AUTH_FILE).forget()
-                status.setText("ITM: gespeicherte Anmeldung gelöscht")
+                set_status("ITM: gespeicherte Anmeldung gelöscht")
             forget_btn = QPushButton("Anmeldung &löschen")
             forget_btn.setToolTip("Gespeicherte Anmeldung (refreshToken) auf diesem PC löschen")
             forget_btn.clicked.connect(forget)

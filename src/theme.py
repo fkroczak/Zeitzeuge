@@ -421,6 +421,13 @@ QTableWidget { background-color: $surface; alternate-background-color: $alt;
                selection-background-color: $sel; selection-color: $seltext; }
 QTableWidget::item { padding: 2px 8px; border: none; border-bottom: 1px solid $line; }
 QTableWidget::item:selected { background-color: $sel; color: $seltext; }
+QTableWidget::item:selected:first { border-left: 3px solid $accent; padding-left: 5px; }
+QLabel#status_badge { border-radius: $radius_chippx; padding: 2px 10px; font-weight: bold; font-size: $fs_smpx;
+                      background-color: $chip; color: $muted; }
+QLabel#status_badge[state="ok"] { background-color: $rate_ok; color: $rate_ok_text; }
+QLabel#status_badge[state="warn"] { background-color: $rate_mid; color: $rate_mid_text; }
+QListWidget#type_list::item { padding: 6px 4px; border-radius: $radius_smpx; }
+QListWidget#type_list::item:selected { background-color: $sel; color: $seltext; }
 QHeaderView::section { background-color: $bar; color: $muted; border: none;
                        border-bottom: 1px solid $border; padding: 6px 8px; font-weight: bold;
                        font-size: $fs_smpx; }

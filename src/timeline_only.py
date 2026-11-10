@@ -1192,14 +1192,19 @@ class TimelineView(QGraphicsView):
                 )
                 label.setPos(x + 6, 7)
 
-        # Jede zweite Zeile leicht hinterlegt, damit die Zeilen unterscheidbar sind
+        # Zeilen unterscheidbar: feine Linien oder (Einstellung) jede zweite Zeile hinterlegt
         stripe = QColor(255, 255, 255, 10) if self.dark_mode else QColor(0, 0, 0, 10)
         # (eine feste Zeile mit Unterzeilen bleibt eine Fläche)
         row_tops = [(y, max(1, n)) for y, (_k, _p, n) in zip(fixed_tops, fixed_layout)]
         row_tops += [(free_top + i * row_h, 1) for i in range(n_lanes)]
-        for i, (y, n) in enumerate(row_tops):
-            if i % 2 == 0:
-                self.scene.addRect(0, y - self.LANE_GAP / 2, width, n * row_h, no_pen, QBrush(stripe))
+        if self.config.get("timeline_stripes"):  # wie früher: jede zweite Zeile hinterlegt
+            for i, (y, n) in enumerate(row_tops):
+                if i % 2 == 0:
+                    self.scene.addRect(0, y - self.LANE_GAP / 2, width, n * row_h, no_pen, QBrush(stripe))
+        else:  # Standard: feine Linie zwischen den Zeilen
+            line_pen = QPen(self.hour_line, 1)
+            for y, _n in row_tops[1:]:
+                self.scene.addLine(0, y - self.LANE_GAP / 2, width, y - self.LANE_GAP / 2, line_pen)
 
         # Legende links (schwebt über den Zeilen, siehe drawForeground) und Trennlinie
         colors = self.config.get("type_colors", {})
@@ -1288,6 +1293,24 @@ class TimelineView(QGraphicsView):
                 if p.get("pc_block"):
                     self._add_label(p["label"], x1, band_y, w, pc_h, label_font, metrics,
                                     readable_on(color), p.get("short_labels", ()))
+
+        # Leerer Tag: freundlicher Hinweis mitten im sichtbaren Ausschnitt
+        if not placed and not pc_band and not any(band for _k, _t, band in bands) and not self.loading:
+            title = self.scene.addSimpleText("Keine Spuren an diesem Tag", ui_font(11, bold=True))
+            title.setBrush(self.text_color)
+            sub = self.scene.addSimpleText("Kein PC-Verlauf, keine Verbindungen, keine Anrufe. "
+                                           "Mit dem Stift trägst du trotzdem eine Tätigkeit nach.", ui_font(9))
+            sub.setBrush(self.muted_text)
+            if self.fit_day or self._first_draw:
+                mid_x = (self._x(work_start) + self._x(work_end)) / 2 if work_end > work_start \
+                    else self._x(12 * 60)
+            else:
+                mid_x = self.mapToScene(self.viewport().rect().center()).x()
+            mid_y = (self.AXIS_H + height) / 2
+            title.setPos(mid_x - title.boundingRect().width() / 2, mid_y - 24)
+            sub.setPos(mid_x - sub.boundingRect().width() / 2, mid_y + 2)
+            for item in (title, sub):
+                item.setAcceptedMouseButtons(Qt.NoButton)
 
         # Jetzt-Linie
         if date == QDate.currentDate():
@@ -1527,7 +1550,7 @@ class TimelineView(QGraphicsView):
             return
         painter.save()
         painter.resetTransform()  # ab hier Koordinaten des Fensters, nicht der Szene
-        font = ui_font(8, bold=True)
+        font = ui_font(8)  # normal statt fett: die Balken stehen im Vordergrund
         painter.setFont(font)
         fm = QFontMetrics(font)
         width = self.LEFT - 6

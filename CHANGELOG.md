@@ -27,6 +27,11 @@ Testversionen aus Branches tragen die Version ihres main-Stands plus Buildnummer
   - **Tagesliste:** höhere Zeilen, Dauer einheitlich als „0:35 h“ und rechtsbündig.
   - **Aktivitätsdetails:** Werte als Text statt in Eingabefeldern (markieren und kopieren geht weiter).
   - **Zeitachse:** links unter der Legende keine halb abgeschnittene Uhrzeit mehr.
+  - **Timeline:** feine Linien zwischen den Zeilen statt grauer Streifen (die Streifen gibt es weiter unter Ansicht → Zeilen der Timeline → „Zeilen abwechselnd hinterlegen“), Legende in normaler Schrift, an Tagen ohne Spuren ein Hinweis statt leerer Fläche.
+  - **Tagesliste:** runde Farbpunkte wie in der Legende, die markierte Zeile hat links eine blaue Kante.
+  - **Aktivitätstypen verwalten:** Farbpunkt je Typ, Suchfeld, Doppelklick ändert die Farbe.
+  - **Arbeitszeiten:** Freie Tage zeigen nur „frei“, die Spalten „Pause von/bis“ erscheinen erst, wenn ein Tag eine Pause hat. „Montag übertragen“ ist ein Link.
+  - **3CX, Zeiterfassung, Ticketsystem:** Zustand oben als farbiges Abzeichen, die Erklärung zur Anmeldung klappt bei Bedarf auf.
   - **Hinweise der Werkzeugleiste** nennen zuerst den Namen des Knopfs und erscheinen auch, wenn Zeitzeuge nicht das aktive Fenster ist.
 - **Ruhigere Timeline und Statuszeile:** Ohne Zeiterfassung hat die Arbeitszeit keine eigene Zeile mehr. Sie steht als blaue Linie unter den Uhrzeiten und als zarte Fläche dahinter. Die Legende zeigt runde Farbpunkte in den Farben, die in der Zeile wirklich vorkommen (Telefon z. B. blau und orange). Der Knopf „… offen – jetzt eintragen“ unten rechts fällt weg, „Jetzt eintragen“ steht in der Kachel „Offen“. „Wiederherstellungsschlüssel einrichten“ ist ein Link statt eines umrandeten Knopfs.
 - **Design im Menü Ansicht:** Hell, Dunkel oder eigene Farben. Das dunkle Design sieht jetzt aus wie Google Chrome im dunklen Modus (Grautöne statt fast Schwarz). Unter „Eigene Farben festlegen …“ wählst du Hintergrund, Flächen, Kopfleiste, Schrift und Akzent selbst.

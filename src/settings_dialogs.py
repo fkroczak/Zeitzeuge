@@ -1,7 +1,7 @@
 import os
 
 from PySide6.QtCore import QSize, QTime
-from PySide6.QtGui import QColor, QGuiApplication
+from PySide6.QtGui import QColor, QGuiApplication, QIcon, QPainter, QPixmap
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (QAbstractItemView, QButtonGroup, QCheckBox, QColorDialog,
                                QComboBox, QDialog, QDialogButtonBox, QFrame,
@@ -9,9 +9,9 @@ from PySide6.QtWidgets import (QAbstractItemView, QButtonGroup, QCheckBox, QColo
                                QHBoxLayout, QHeaderView, QInputDialog, QLabel, QLineEdit,
                                QListWidget, QListWidgetItem, QMessageBox, QPlainTextEdit,
                                QPushButton, QRadioButton, QScrollArea, QSpinBox, QTableWidget,
-                               QTableWidgetItem, QTimeEdit, QVBoxLayout, QWidget)
+                               QTableWidgetItem, QTimeEdit, QToolButton, QVBoxLayout, QWidget)
 
-from theme import prose, readable_on, SPACE_3XL, SPACE_M, SPACE_S, SPACE_XL
+from theme import prose, SPACE_3XL, SPACE_M, SPACE_S, SPACE_XL
 def scrolling_body(dialog):
     """Inhalt eines hohen Dialogs in einen Scrollbereich, die Knöpfe bleiben unten stehen.
     So bleibt er auch auf kleinen Bildschirmen bedienbar (Full HD mit 200 % = 960 × 540).
@@ -206,14 +206,28 @@ class ActivityTypeSettingsDialog(QDialog):
     def init_ui(self):
         layout = QVBoxLayout()
         
-        # Typenliste
+        # Typenliste: Farbpunkt je Typ, Doppelklick ändert die Farbe
         type_group = QGroupBox("Aktivitätstypen")
         type_layout = QVBoxLayout()
-        
+        self.search = QLineEdit()
+        self.search.setPlaceholderText("Typ suchen …")
+        self.search.setAccessibleName("Typ suchen")
+        self.search.setClearButtonEnabled(True)
+        self.search.textChanged.connect(self.filter_types)
+        type_layout.addWidget(self.search)
+
         self.type_list = QListWidget()
+        self.type_list.setObjectName("type_list")
         self.type_list.setAccessibleName("Aktivitätstypen")
-        self.type_list.addItems(self.config.get('activity_types', []))
+        self.type_list.setIconSize(QSize(12, 12))
+        for name in self.config.get('activity_types', []):
+            self._add_item(name)
+        self.type_list.itemDoubleClicked.connect(lambda _i: self.choose_color())
+        self.setMinimumHeight(520)
         type_layout.addWidget(self.type_list)
+        hint = QLabel("Doppelklick auf einen Typ ändert seine Farbe.")
+        hint.setObjectName("hint")
+        type_layout.addWidget(hint)
         
         btn_layout = QHBoxLayout()
         add_btn = QPushButton("&Hinzufügen …")
@@ -224,23 +238,17 @@ class ActivityTypeSettingsDialog(QDialog):
         self.type_list.currentItemChanged.connect(
             lambda item, _old: remove_btn.setEnabled(item is not None))
         
+        btn_layout.addStretch(1)
         btn_layout.addWidget(add_btn)
         btn_layout.addWidget(remove_btn)
         type_layout.addLayout(btn_layout)
         type_group.setLayout(type_layout)
         layout.addWidget(type_group)
         
-        # Farbauswahl
-        color_group = QGroupBox("Farbzuordnung")
-        color_layout = QFormLayout()
-        
-        self.color_btn = QPushButton("Erst oben einen Typ wählen")
+        self.color_btn = QPushButton("&Farbe ändern …")
         self.color_btn.clicked.connect(self.choose_color)
         self.type_list.currentItemChanged.connect(self.update_color_button)
-        color_layout.addRow("Aktueller Typ:", self.color_btn)
-        
-        color_group.setLayout(color_layout)
-        layout.addWidget(color_group)
+        btn_layout.insertWidget(0, self.color_btn)
         
         # Button Box
         button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -251,10 +259,32 @@ class ActivityTypeSettingsDialog(QDialog):
         self.setLayout(layout)
         self.update_color_button()
     
+    def _dot(self, name):
+        color = QColor(self.config.get('type_colors', {}).get(name, "#4682B4"))
+        pix = QPixmap(24, 24)
+        pix.fill(Qt.transparent)
+        painter = QPainter(pix)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(color)
+        painter.drawEllipse(2, 2, 20, 20)
+        painter.end()
+        return QIcon(pix)
+
+    def _add_item(self, name):
+        item = QListWidgetItem(self._dot(name), name)
+        self.type_list.addItem(item)
+        return item
+
+    def filter_types(self, text):
+        for i in range(self.type_list.count()):
+            item = self.type_list.item(i)
+            item.setHidden(text.lower() not in item.text().lower())
+
     def add_type(self):
         text, ok = QInputDialog.getText(self, 'Neuer Typ', 'Aktivitätstyp:')
         if ok and text:
-            self.type_list.addItem(text)
+            self._add_item(text)
             if 'type_colors' not in self.config:
                 self.config['type_colors'] = {}
             if text not in self.config['type_colors']:
@@ -277,14 +307,10 @@ class ActivityTypeSettingsDialog(QDialog):
                 self.update_color_button()
     
     def update_color_button(self):
-        self.color_btn.setEnabled(self.type_list.currentItem() is not None)
-        if self.type_list.currentItem():
-            type_name = self.type_list.currentItem().text()
-            color = self.config['type_colors'].get(type_name, "#FFFFFF")
-            # Schrift dunkel oder weiß, je nachdem was auf der Farbe lesbar ist (kein reines Schwarz)
-            text = readable_on(color).name()
-            self.color_btn.setStyleSheet(f"background-color: {color}; color: {text};")
-            self.color_btn.setText(f"{type_name}: Farbe ändern …")
+        item = self.type_list.currentItem()
+        self.color_btn.setEnabled(item is not None)
+        if item:
+            item.setIcon(self._dot(item.text()))
     
     def get_types(self):
         return [self.type_list.item(i).text() for i in range(self.type_list.count())]
@@ -313,8 +339,12 @@ class WorkHoursDialog(QDialog):
         grid = QGridLayout()
         grid.setHorizontalSpacing(SPACE_M)
         grid.setVerticalSpacing(SPACE_S)
+        self.pause_heads = []  # „Pause von“, „bis“: nur sichtbar, wenn ein Tag eine Pause hat
         for col, text in enumerate(("Tag", "von", "bis", "Pause", "Pause von", "bis", "Stunden")):
-            grid.addWidget(QLabel(f"<b>{text}</b>"), 0, col)
+            head = QLabel(f"<b>{text}</b>")
+            grid.addWidget(head, 0, col)
+            if col in (4, 5):
+                self.pause_heads.append(head)
         self.rows = []
         for i, name in enumerate(self.DAY_NAMES):
             hours = work_hours(config, i)
@@ -343,6 +373,10 @@ class WorkHoursDialog(QDialog):
                 w.toggled.connect(self.update_totals)
             for w in (t_from, t_to, p_from, p_to):
                 w.timeChanged.connect(self.update_totals)
+            for w in (t_from, t_to, has_pause):  # freie Tage: Spalten bleiben stehen (Pause klappt ganz weg)
+                policy = w.sizePolicy()
+                policy.setRetainSizeWhenHidden(True)
+                w.setSizePolicy(policy)
             for col, w in enumerate((active, t_from, t_to, has_pause, p_from, p_to, total)):
                 grid.addWidget(w, i + 1, col)
             self.rows.append((active, t_from, t_to, total, has_pause, p_from, p_to))
@@ -352,9 +386,12 @@ class WorkHoursDialog(QDialog):
         self.week_total = QLabel()
         layout.addWidget(self.week_total)
 
-        copy_btn = QPushButton("Montag auf alle Arbeitstage übertragen")
+        copy_btn = QToolButton()
+        copy_btn.setObjectName("link")
+        copy_btn.setText("Montag auf alle Arbeitstage übertragen")
+        copy_btn.setCursor(Qt.PointingHandCursor)
         copy_btn.clicked.connect(self.copy_monday)
-        layout.addWidget(copy_btn)
+        layout.addWidget(copy_btn, 0, Qt.AlignLeft)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self.accept)
@@ -383,14 +420,18 @@ class WorkHoursDialog(QDialog):
         return a.secsTo(b) // 60 if a < b else 0
 
     def update_totals(self):
+        any_pause = any(active.isChecked() and has_pause.isChecked()
+                        for active, _f, _t, _total, has_pause, _pf, _pt in self.rows)
+        for head in self.pause_heads:
+            head.setVisible(any_pause)
         week, errors = 0, 0
         for active, t_from, t_to, total, has_pause, p_from, p_to in self.rows:
             on = active.isChecked()
-            t_from.setEnabled(on)
-            t_to.setEnabled(on)
-            has_pause.setEnabled(on)
-            p_from.setEnabled(on and has_pause.isChecked())
-            p_to.setEnabled(on and has_pause.isChecked())
+            t_from.setVisible(on)
+            t_to.setVisible(on)
+            has_pause.setVisible(on)
+            p_from.setVisible(on and has_pause.isChecked())
+            p_to.setVisible(on and has_pause.isChecked())
             if not on:
                 total.setText("frei")
                 continue

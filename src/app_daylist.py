@@ -5,7 +5,7 @@ Teil von TimelineApp (main_timeline.py), nur über main_timeline laden.
 import re
 
 from PySide6.QtCore import Qt, QDate, QTimer
-from PySide6.QtGui import QIcon, QPixmap
+from PySide6.QtGui import QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import QApplication, QInputDialog, QHeaderView, QTableWidgetItem
 
 from vpn_reader import vpn_sources
@@ -95,11 +95,14 @@ class DayListMixin:
         index = self.customer_index()  # Kundenliste: Kunde zur Spur (customers.py)
         for row, a in enumerate(entries):
             start, end = parse_time(a["start"]), parse_time(a["end"])
-            pix = QPixmap(10, 10)
-            if "app" in a:
-                pix.fill(self.timeline.block_color(a))
-            else:
-                pix.fill(entry_color(a, self.config))
+            pix = QPixmap(20, 20)  # runder Farbpunkt wie in der Legende der Timeline
+            pix.fill(Qt.transparent)
+            painter = QPainter(pix)
+            painter.setRenderHint(QPainter.Antialiasing)
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(self.timeline.block_color(a) if "app" in a else entry_color(a, self.config))
+            painter.drawEllipse(3, 3, 14, 14)
+            painter.end()
             type_item = QTableWidgetItem(QIcon(pix), type_label(a))
             customer_text = customers.with_customer(a, index)
             details = a.get("details", "")

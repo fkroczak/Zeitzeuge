@@ -367,6 +367,12 @@ class MenusMixin:
         self.pc_blocks_action.toggled.connect(lambda on, p=blocks: p.setIcon(icons.check_box(p.data(), on)))
         blocks.setIcon(icons.check_box(accent, self.pc_blocks_action.isChecked()))
         self._rows_blocks_proxy = blocks
+        # Zeilen abwechselnd grau hinterlegen (früherer Standard) statt feiner Linien
+        self.stripes_action = QAction("Zeilen abwechselnd &hinterlegen", self)
+        self.stripes_action.setCheckable(True)
+        self.stripes_action.setChecked(self.config.get("timeline_stripes", False))
+        self.stripes_action.toggled.connect(self.toggle_stripes)
+        self._add_check(menu, self.stripes_action, accent)
         menu.addSeparator()
         self.row_actions = {}
         for key, text in TIMELINE_ROWS:
@@ -406,6 +412,11 @@ class MenusMixin:
             self.config["timeline_row_order"] = list(order)
         else:
             self.config.pop("timeline_row_order", None)
+        mt.save_config(self.config)
+        self.timeline.draw_timeline(self.current_date)
+
+    def toggle_stripes(self, on):
+        self.config["timeline_stripes"] = on
         mt.save_config(self.config)
         self.timeline.draw_timeline(self.current_date)
 
