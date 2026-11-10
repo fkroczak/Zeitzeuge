@@ -42,3 +42,67 @@ def test_vorschlag_aus_termin():
     assert rc.suggestion(S, E, ACTS, index) == ("Stadtwerke Nordhafen", "Workshop Nordhafen")
     # Termin füllt weniger als die Hälfte: kein Vorschlag
     assert rc.suggestion(datetime(2026, 10, 21, 10, 40), datetime(2026, 10, 21, 12, 0), ACTS, index) is None
+
+
+def test_schaetzung_kunde_und_kategorie():
+    """Zeitraum wie „Kennwortauswertung für die Jugendhilfe“: Anruf beim Kunden, Kollege am
+    Telefon, Exporte in Excel/Explorer, interner Termin, Büronetz."""
+    d = "2026-11-10"
+
+    def x(a, b, **kw):
+        return {"start": f"{d} {a}:00", "end": f"{d} {b}:00", **kw}
+    acts = [x("13:45", "15:30", type="Netzwerk", customer_name="itm-gruppe.local"),
+            x("15:00", "15:30", type="Termin", customer_name="Ausbildungsnachweise prüfen"),
+            x("14:50", "15:14", type="Telefonat", customer_name="Joerg Spiekermann (00492962971452)",
+              direction="Ausgehend"),
+            x("14:00", "14:10", type="Telefonat", customer_name="Sven Brüggemann (787)",
+              direction="Eingehend", colleague=True),
+            x("14:20", "14:24", type="Datei geöffnet",
+              customer_name="Benutzer mit Fehlversuchen (Top 50)-data-2026-11-10.csv"),
+            x("14:30", "14:32", type="Datei geöffnet", customer_name="Kennwortstatus_20261110_1430.csv")]
+    pcs = [x("13:45", "14:17", type="PC: Chrome", app="chrome.exe", customer_name="Neuer Tab"),
+           x("14:17", "14:31", type="PC: Outlook", app="outlook.exe", customer_name="Posteingang"),
+           x("14:31", "14:42", type="PC: Excel", app="excel.exe", customer_name="Kennwortstatus_20261110_1430.csv")]
+    index = cl.Index([{"name": "Jugendhilfe Olsberg", "traces": [{"kind": "phone", "value": "02962 971452"}]}])
+    cats = ["Fernwartung", "Telefonsupport", "Cloud-/M365-Administration", "Zugangsdaten / Sicherheit",
+            "E-Mail / Kommunikation", "Beratung / Abstimmung", "Interne Tätigkeit"]
+    s, e = datetime(2026, 11, 10, 13, 45), datetime(2026, 11, 10, 15, 30)
+    found = rc.estimate(s, e, acts, pcs, index, cats)
+    name, pct, why = found["customers"][0]
+    assert name == "Jugendhilfe Olsberg" and 50 <= pct < 100 and why.startswith("Anruf Joerg"), found
+    assert found["categories"][0][0] == "Zugangsdaten / Sicherheit", found
+    assert all(c in cats for c, _p, _w in found["categories"])
+    rows = dict(rc.estimate_rows(found))
+    assert rows["Kunde (vermutet)"].startswith("Jugendhilfe Olsberg ")
+    # Bisherige Buchungen beim Kunden ziehen die Kategorie mit
+    history = [{"customer": "Jugendhilfe Olsberg", "category": "Cloud-/M365-Administration",
+                "start": f"{d} 08:00:00", "end": f"{d} 12:00:00"}]
+    later = rc.estimate(s, e, acts, pcs, index, cats, history=history)
+    assert [c for c, _p, _w in later["categories"]] == ["Zugangsdaten / Sicherheit",
+                                                         "Cloud-/M365-Administration"], later
+    # Keine Spur zu einem Kunden: kein Kunde, Kategorie nur aus der eigenen Liste
+    none = rc.estimate(s, e, acts, pcs, cl.Index([]), ["Interne Tätigkeit"])
+    assert none == {"customers": [], "categories": []}
+
+
+def test_kategorie_aus_text():
+    """Fernwartung laut Quellen, dein Text sagt aber Drucker und 3CX eingerichtet."""
+    d = "2026-11-10"
+    acts = [{"start": f"{d} 16:02:00", "end": f"{d} 16:29:00", "type": "Telefonat",
+             "customer_name": "Nada Urbaitis-Hodroj (015152292043)", "direction": "Eingehend"},
+            {"start": f"{d} 16:05:00", "end": f"{d} 16:17:00", "type": "TeamViewer",
+             "customer_name": "TeamViewer 1 142 855 164", "tv_id": "1142855164"}]
+    cats = ["Fernwartung", "Telefonsupport", "Server-/Netzwerkadministration", "Interne Tätigkeit"]
+    s, e = datetime(2026, 11, 10, 16, 2), datetime(2026, 11, 10, 16, 29)
+    before = [c for c, _p, _w in rc.estimate(s, e, acts, [], cl.Index([]), cats)["categories"]]
+    assert set(before) == {"Telefonsupport", "Fernwartung"}, before
+    text = "- Rücksprache mit Kunden\n- Aufschalten auf Kundensystem\n- Einrichtung Drucker\n" \
+           "- Einrichtung 3CX\n- Diverse Anpassungen\n- Tests OK"
+    top = rc.estimate(s, e, acts, [], cl.Index([]), cats, text=text)["categories"][0]
+    assert top[0] == "Server-/Netzwerkadministration" and "Drucker" in top[2], top
+    # Gelernt: „Lexware“ stand bisher zweimal bei Interne Tätigkeit
+    history = [{"category": "Interne Tätigkeit", "text": "Lexware Update"},
+               {"category": "Interne Tätigkeit", "text": "Lexware Stand geprüft"}]
+    top = rc.estimate(s, e, acts, [], cl.Index([]), cats, history=history,
+                      text="Lexware aktualisiert")["categories"][0]
+    assert top[0] == "Interne Tätigkeit" and "lexware" in top[2], top

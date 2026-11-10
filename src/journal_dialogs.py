@@ -22,6 +22,7 @@ from billing import hours_text
 import customers as customer_list
 from grouping import format_tv_id
 from journal import TIME_FMT, describe, suggest_category, suggest_customer
+import range_context
 import snippets as snippet_logic
 from m42_booking import ticket_label as mb_ticket_label
 from tickets import format_ticket_text
@@ -437,7 +438,7 @@ class EntryDialog(QDialog):
 
     def __init__(self, start, end, customers, categories, customer="", category="", text="",
                  tv_id=None, title="Tätigkeit nachtragen", info="", can_delete=False, parent=None,
-                 trace=None, rule_subject=None, context_for=None, **form_options):
+                 trace=None, rule_subject=None, context_for=None, guess_for=None, **form_options):
         super().__init__(parent)
         self.setWindowTitle(title)
         self.setMinimumWidth(620)  # Datum und Zeit, Häkchen und „Text einfügen“ je in einer Zeile
@@ -452,12 +453,21 @@ class EntryDialog(QDialog):
         self.form = _EntryForm(start, end, customers, categories, customer, category, text,
                                tv_id, self, trace=trace, rule_subject=rule_subject, **form_options)
         # Zeitraum nachtragen (Companion): was die Quellen in dieser Zeit sagen, Feinjustieren
+        # guess_for(start, end, text): range_context.estimate, vermuteter Kunde und Kategorie
         self.context_for = context_for
+        self.guess_for = guess_for
         self.context_rows = None
+        self._auto_category = category  # vorbelegt, darf beim Tippen nachgeführt werden
         if context_for:
             layout.addWidget(self._context_card())
             self.form.start_edit.timeChanged.connect(lambda _t: self.update_context())
             self.form.end_edit.timeChanged.connect(lambda _t: self.update_context())
+            if guess_for:  # beim Tippen neu schätzen, aber erst nach einer kurzen Pause
+                self._text_timer = QTimer(self)
+                self._text_timer.setSingleShot(True)
+                self._text_timer.setInterval(400)
+                self._text_timer.timeout.connect(self.update_context)
+                self.form.text_edit.textChanged.connect(self._text_timer.start)
             self.update_context()
         layout.addWidget(self.form)
         self.buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -493,13 +503,27 @@ class EntryDialog(QDialog):
         while self.context_rows.rowCount():
             self.context_rows.removeRow(0)
         start, end = self.form.times()
-        rows = self.context_for(start, end) if end > start else []
+        rows = list(self.context_for(start, end)) if end > start else []
+        if self.guess_for and end > start:
+            guess = self.guess_for(start, end, self.form.text_edit.toPlainText())
+            rows += range_context.estimate_rows(guess)
+            self._follow_category(guess)
         for source, text in rows or [("", "Keine Spuren in dieser Zeit.")]:
             name = QLabel(source)
             name.setObjectName("hint")
             value = QLabel(text)
             value.setWordWrap(True)
             self.context_rows.addRow(name, value)
+
+    def _follow_category(self, guess):
+        """Vermutete Kategorie eintragen, solange du keine andere gewählt hast."""
+        edit = self.form.category_edit
+        if edit.currentText().strip() not in ("", self._auto_category):
+            return  # selbst gewählt: bleibt
+        cats = guess.get("categories") or []
+        if cats and cats[0][1] >= 30 and cats[0][0] != edit.currentText().strip():
+            self._auto_category = cats[0][0]
+            edit.setCurrentText(cats[0][0])
 
     def _delete(self):
         self.deleted = True
