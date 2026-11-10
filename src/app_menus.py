@@ -571,6 +571,7 @@ class MenusMixin:
         self._icon_actions += [
             (menu.addAction("&Nachfragen und Benachrichtigungen …", self.edit_prompt_settings), "bell"),
             (menu.addAction("Kunden&liste …", self.edit_customers), "users"),
+            (menu.addAction("&Orte und Fahrzeiten …", self.edit_travel_settings), "map_pin"),
             (menu.addAction("Text&bausteine …", self.edit_snippets), "edit"),
         ]
         # Datenspeicher: im Einstellungsfenster unter „Daten & Schutz“. Die Aktionen gibt es
@@ -680,7 +681,7 @@ class MenusMixin:
                       ("&Netzwerk …", self.edit_wlan_settings, "wlan"),
                       ("&Zuletzt geöffnete Dateien …", self.edit_recent_files_settings, "files"),
                       ("Bro&wser-Verlauf …", self.edit_browser_settings, "browser"),
-                      ("&Fahrten (vermutet) …", self.edit_travel_settings, "travel")):
+                      ("&Fahrten: Orte und Fahrzeiten …", self.edit_travel_settings, "travel")):
             if entry is None:
                 setup.addSeparator()  # Webseiten im Hintergrund
                 continue
@@ -1102,18 +1103,13 @@ class MenusMixin:
         )
 
     def edit_travel_settings(self):
-        self._edit_log_settings(
-            "travel", [], "Fahrten (vermutet)",
-            enabled_text="Fahrten vermuten und vorschlagen",
-            paths=False, timezone=False,
-            hint="Hat ein Outlook-Termin einen Ort (kein Teams, kein Link), ist die Zeit davor ohne "
-                 "Arbeit am PC vermutlich die Hinfahrt, die Zeit danach die Rückfahrt (höchstens "
-                 "90 Minuten, ab 10 Minuten). Ebenso eine Lücke beim Wechsel in ein Kundennetz "
-                 "(Netzwerk mit Kunde in der Kundenliste). Fahrten stehen neben dem Termin in der "
-                 "Zeile Outlook, Zeitzeuge fragt danach wie bei Verbindungen und schlägt "
-                 "„Fahrt / Reise“ vor. Orte, die keine Fahrt sind (z. B. Besprechungsraum), trägst "
-                 "du unter travel_ignore_locations in der zeitzeuge_config.json ein.",
-        )
+        from travel_dialogs import TravelSettingsDialog
+        dialog = TravelSettingsDialog(self.config, self.known_customers(), self)
+        if dialog.exec() == QDialog.Accepted:
+            self.config.update(dialog.values())
+            mt.save_config(self.config)
+            self.sync_source_actions()
+            self.timeline.refresh()
 
     def edit_sophos_settings(self):
         self._edit_log_settings(

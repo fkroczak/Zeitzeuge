@@ -18,6 +18,9 @@ Testversionen aus Branches tragen die Version ihres main-Stands plus Buildnummer
 26.10.2026 können sie nicht mehr lesen.
 
 ### Neu
+- **Fahrzeit zum Kunden berechnen:** In der Kundenliste hat jeder Kunde jetzt „Adresse und Fahrzeit“. „Berechnen“ fragt OpenStreetMap nach der Fahrzeit mit dem Auto vom Büro (aufgerundet auf 5 Minuten). Nach außen gehen dabei nur die beiden Adressen, und nur auf Knopfdruck. Die Startadresse (Büro) steht unter Einstellungen → Orte und Fahrzeiten. Termine des Kunden (über Name oder Mail-Domains) bekommen diese Fahrzeit als vermutete Hin- und Rückfahrt.
+- **Menü Einstellungen → Orte und Fahrzeiten …** (neben der Kundenliste) öffnet Startadresse, Orte und Fahrzeiten direkt. Unter Datenquellen → Einrichten heißt der Eintrag jetzt „Fahrten: Orte und Fahrzeiten …“.
+- **Orte und Kunden mit Fahrzeit:** Unter Einstellungen → Orte und Fahrzeiten trägst du Orte oder Kunden (aus der Kundenliste wählbar) mit ihrer Fahrzeit ein. Steht der Name im Ort, im Betreff oder beim Kunden eines Termins, plant Zeitzeuge genau diese Fahrzeit statt der ganzen Lücke (bis 90 Min.) davor. 0 Minuten heißt keine Fahrt, z. B. für den eigenen Besprechungsraum. Eine vermutete Fahrt reicht nie mehr in einen anderen Termin hinein.
 - **Feinschliff am Aussehen:**
   - **Design „Wie Windows“** im Menü Ansicht: Hell oder Dunkel folgt der Einstellung von Windows. Das doppelte Häkchen „Dunkles Design“ im Menü Einstellungen fällt weg.
   - **Dunkle Titelleiste** unter Windows 10/11 im dunklen Design.
@@ -116,6 +119,8 @@ Testversionen aus Branches tragen die Version ihres main-Stands plus Buildnummer
 - **Remotedesktop (mstsc) aus dem Windows-Ereignisprotokoll:** Zeitzeuge liest zusätzlich `Microsoft-Windows-TerminalServices-RDPClient/Operational` (Aufbau 1024, Trennung 1026). Das füllt Zeiten, in denen Zeitzeuge nicht lief, und macht Beginn und Ende sekundengenau; mit der eigenen Aufzeichnung wird es zu einer Sitzung zusammengeführt. Abschaltbar unter Datenquellen → Remotedesktop (mstsc).
 
 ### Behoben
+- **Zeitzeuge wirkte aufgehängt nach „Suchen …“ beim Ticket im Nachfrage-Fenster:** Die Ticketsuche konnte hinter dem Nachfrage-Fenster (immer im Vordergrund) landen und sperrte dabei das ganze Programm. Jetzt liegt sie obenauf und sperrt nur das Nachfrage-Fenster.
+- **Kachel Buchungsquote** saß tiefer als die anderen Kacheln; Überschrift und Zahlen stehen jetzt auf einer Höhe.
 - **ITM: Nachträglich gestempeltes Gehen kam nicht an.** Ein vergangener Tag wurde pro Sitzung nur einmal gelesen, und Aktualisieren (F5) las ITM gar nicht neu. Lief Zeitzeuge z. B. über den Ruhezustand weiter, blieb der Stand vom Mittag („13:21 – jetzt“). Jetzt liest F5 auch ITM neu, ein Tag mit fehlendem Gehen wird beim Anzeigen erneut gelesen (höchstens alle 5 Minuten), und nach dem Tageswechsel liest Zeitzeuge den Vortag noch einmal.
 - **Personalzeit: „13:21 – jetzt“ an einem vergangenen Tag.** Fehlte in ITM das Gehen, lief der Abschnitt bis Mitternacht und alles danach galt als „nicht gebucht“. Jetzt steht er gestrichelt als „13:21 – Gehen fehlt“ bis zum geplanten Feierabend da, zählt nicht als Personalzeit (wie bei ITM) und erzeugt keine Lücke „nicht gebucht“.
 - **Anrufe:** Zwei Anrufe in derselben Minute an dieselbe Nummer (z. B. 13:23 min und 0:02 min um 14:40) zählten als ein Anruf, der kurze überschrieb das Gespräch. Jetzt bleiben beide; Zeitzeuge unterscheidet sie an der Dauer. Fehlende Anrufe kommen beim nächsten Lesen der 3CX-Liste dazu, solange sie dort noch stehen.
