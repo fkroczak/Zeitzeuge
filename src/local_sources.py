@@ -70,6 +70,11 @@ def _t(text):
     return timefmt.parse(text)  # wie strptime, aber schnell (Archiv mit Tausenden Einträgen)
 
 
+def _day(item):
+    """Tag eines Eintrags (JJJJ-MM-TT, nach Beginn): so liegt er in der Datenbank."""
+    return str(item.get("start", ""))[:10]
+
+
 def _no_window():
     return {"creationflags": 0x08000000} if sys.platform == "win32" else {}  # CREATE_NO_WINDOW
 
@@ -477,6 +482,7 @@ class LocalReader:
         self.history_func = f.get("history", read_history)
         self.threaded = f.get("threaded", True)
         self._data = None
+        self._dirty = set()   # Tage, die beim nächsten _save geschrieben werden
         self._changes = 0     # zählt jede Änderung am Archiv (für den Zwischenspeicher von entries)
         self._entries = None  # (Stand, Einträge) vom letzten entries()
         self._lock = threading.Lock()
@@ -490,24 +496,37 @@ class LocalReader:
 
     # ------------------------------------------------------------ Archiv
 
+    KEYS = ("locked", "sessions", "wlan", "events", "files", "browser")
+
     def _archive(self):
+        """Alle Spuren im Speicher. In der Datenbank liegt je Tag ein Dokument (Tag = Beginn
+        des Eintrags), damit eine Änderung nur ihren Tag neu schreibt. Das frühere eine
+        Dokument für alle Tage (Tag "") wird beim ersten Lesen aufgeteilt."""
         if self._data is None:
-            data, locked = {}, False
+            docs, locked = {}, False
             if self.archive_file:
                 try:
                     store, name = datastore.locate(self.archive_file, "single")
-                    data = store.get(name, "", {})
+                    docs = store.all(name)
                 except (datastore.Busy, datastore.Locked):
                     locked = True
-            parsed = {}
-            for key in ("locked", "sessions", "wlan", "events", "files", "browser"):
-                value = data.get(key) if isinstance(data, dict) else None
-                parsed[key] = [v for v in value or [] if isinstance(v, dict) and self._valid(v)]
+            parsed = {key: [] for key in self.KEYS}
+            for doc in docs.values():
+                for key in self.KEYS:
+                    value = doc.get(key) if isinstance(doc, dict) else None
+                    parsed[key] += [v for v in value or [] if isinstance(v, dict) and self._valid(v)]
             if locked:
                 return parsed
             self._data = parsed
             self._changes += 1
+            if "" in docs:  # altes Format: auf Tage verteilen, dann das alte Dokument löschen
+                self._dirty = {_day(v) for items in parsed.values() for v in items} | {""}
+                self._save()
         return self._data
+
+    def _touch(self, item):
+        """Tag des Eintrags beim nächsten Speichern schreiben."""
+        self._dirty.add(_day(item))
 
     def prune(self, before):
         """Einträge, die vor before enden, aus dem Archiv löschen (Spuren-Verlauf begrenzen)."""
@@ -515,6 +534,8 @@ class LocalReader:
             self._archive()
             if self._data is None:  # gerade gesperrt: beim nächsten Lauf
                 return 0
+            self._dirty |= {_day(v) for items in self._data.values() if isinstance(items, list)
+                            for v in items if isinstance(v, dict) and str(v.get("end", ""))[:10] < before}
             removed = retention.prune_entries(self._data, before)
         if removed:
             self._save()
@@ -529,19 +550,30 @@ class LocalReader:
             return False
 
     def _save(self):
+        """Geänderte Tage schreiben (siehe _touch); Tage ohne Einträge werden gelöscht."""
         self._changes += 1  # wird nach jeder Änderung aufgerufen
-        if not self.archive_file or self._data is None:
+        if not self.archive_file or self._data is None or not self._dirty:
             return
+        dirty, self._dirty = self._dirty, set()
+        by_day = {d: {key: [] for key in self.KEYS} for d in dirty if d}
+        for key in self.KEYS:
+            for v in self._data.get(key) or []:
+                doc = by_day.get(_day(v))
+                if doc is not None:
+                    doc[key].append(v)
+        empty = [d for d, doc in by_day.items() if not any(doc.values())]
+        for d in empty:
+            del by_day[d]
         try:
             store, name = datastore.locate(self.archive_file, "single")
-            store.put(name, "", self._data)
+            store.put_many(name, by_day, delete=empty + ([""] if "" in dirty else []))
         except (datastore.Busy, datastore.Locked) as e:
+            self._dirty |= dirty  # beim nächsten Mal erneut
             safe_io.report(f"Spuren vom PC: Speichern fehlgeschlagen ({e})")
 
     # ------------------------------------------------------------ Aufzeichnung
 
-    @staticmethod
-    def _track(items, live, now, gap):
+    def _track(self, items, live, now, gap):
         """Laufende Einträge (live: Schlüssel -> Felder) fortschreiben. True = geändert."""
         stamp, changed, still = _fmt(now), False, set()
         for item in items:
@@ -552,11 +584,14 @@ class LocalReader:
             else:
                 item["end"] = stamp
                 still.add(item["id"])
+            self._touch(item)
             changed = True
         for key, fields in live.items():
             if key not in still:
                 start = fields.pop("_start", None) or now
-                items.append({"id": key, "start": _fmt(start), "end": stamp, "running": True, **fields})
+                item = {"id": key, "start": _fmt(start), "end": stamp, "running": True, **fields}
+                items.append(item)
+                self._touch(item)
                 changed = True
         return changed
 
@@ -658,6 +693,7 @@ class LocalReader:
             for e in results["events"]:
                 if (e["start"], e["kind"]) not in known:
                     data["events"].append(e)
+                    self._touch(e)
                     changed = True
         if "networks" in results:
             live = {f"net-{n['name']}": {"ssid": n["name"], "adapter": n["adapter"],
@@ -668,7 +704,9 @@ class LocalReader:
             known = {(f["start"], f["name"]) for f in data["files"]}
             for when, name in results["files"]:
                 if (_fmt(when), name) not in known:
-                    data["files"].append({"start": _fmt(when), "end": _fmt(when), "name": name})
+                    item = {"start": _fmt(when), "end": _fmt(when), "name": name}
+                    data["files"].append(item)
+                    self._touch(item)
                     changed = True
         if "browser" in results:
             stored = {(b["start"], b["domain"]): b for b in data["browser"]}
@@ -680,6 +718,7 @@ class LocalReader:
                     if old:
                         data["browser"].remove(old)
                     data["browser"].append(item)
+                    self._touch(item)
                     changed = True
         if changed:
             self._save()

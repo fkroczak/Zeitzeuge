@@ -66,6 +66,9 @@ def affected(store, name, imported, before):
     """Was beim Löschen vor before wegfiele: {"days": [...], "rows": n, "imported_days": n}."""
     own_days = [d for d in store.row_days(name) if d < before] if store else []
     rows = store.rows_before(name, before)[1] if store else 0
+    packed = [d for d in store.days(name) if d and d < before] if store else []  # verdichtete Tage
+    own_days = sorted(set(own_days) | set(packed))
+    rows += sum(len(store.get(name, d) or []) for d in packed)
     other = imported.pc_days_before(before) if imported else []
     return {"days": sorted(set(own_days) | set(other)), "rows": rows,
             "imported_days": len(other)}
@@ -74,7 +77,14 @@ def affected(store, name, imported, before):
 def purge_step(store, name, before, chunk=CHUNK):
     """Einen Schritt löschen. Gibt (gelöscht, fertig?) zurück."""
     deleted = store.delete_rows_before(name, before, limit=chunk)
-    return deleted, deleted < chunk
+    if deleted >= chunk:
+        return deleted, False
+    # zuletzt die verdichteten Tage (activity_tracker.compact_days)
+    packed = [d for d in store.days(name) if d and d < before]
+    if packed:
+        deleted += sum(len(store.get(name, d) or []) for d in packed)
+        store.delete_docs_before(name, before)
+    return deleted, True
 
 
 def purge(store, name, imported, before, chunk=CHUNK):

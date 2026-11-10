@@ -11,6 +11,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ["ZEITZEUGE_DATA"] = tempfile.mkdtemp()
 
 from PySide6.QtCore import QDate  # noqa: E402
+from PySide6.QtTest import QTest  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
 import timeline_only  # noqa: E402
@@ -62,5 +63,23 @@ assert seen and len(calls) == 1, calls
 assert view._draw_memo is None
 view.activities_for(D)
 assert len(calls) == 2, "nach dem Zeichnen nicht mehr gemerkt"
+
+# Aufzeichnung meldet eine Änderung: nur diese Quelle neu, ein Zeichnen für mehrere Meldungen
+draws = []
+view.draw_timeline = lambda date: draws.append(date)
+view._tv_index = object()  # Logs gelten als gelesen
+view.loading = False
+view._local_index = view._sophos_index = "alt"
+view._remote_cache["x"] = []
+view.reload_source("local")
+view.reload_source("vpn")
+assert view._local_index is None and view._sophos_index is None and not view._remote_cache
+assert not view.loading, "keine Logs neu lesen"
+QTest.qWait(300)
+assert len(draws) == 1, draws
+view._local_index = "alt"
+view.reload_source("local", draw=False)  # anderer Tag angezeigt: nur verwerfen
+QTest.qWait(300)
+assert view._local_index is None and len(draws) == 1
 print("ok")
 os._exit(0)

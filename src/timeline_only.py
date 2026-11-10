@@ -538,6 +538,8 @@ class TimelineView(QGraphicsView):
     logs_loaded = Signal(object, object, object)
     # Logs werden gelesen (True) oder sind fertig (False) – für die Ladeanzeige
     loading_changed = Signal(bool)
+    # Hintergrund-Thread hat für reload_source vorgelesen (z. B. Ereignisprotokoll): Quelle
+    _source_ready = Signal(str)
 
     # Kräftige, gut unterscheidbare Farben je Programm (Band "PC")
     APP_COLORS = ["#2F7BFF", "#FF7A00", "#18B34B", "#9B3DF2", "#FF2E8A",
@@ -626,6 +628,13 @@ class TimelineView(QGraphicsView):
         self._resize_timer.setSingleShot(True)
         self._resize_timer.setInterval(40)
         self._resize_timer.timeout.connect(self._apply_resize)
+        # Aufzeichnungen (mstsc, VPN, Spuren vom PC) melden sich alle 30 Sekunden kurz
+        # nacheinander: ein Neuzeichnen für alle (reload_source)
+        self._source_timer = QTimer(self)
+        self._source_timer.setSingleShot(True)
+        self._source_timer.setInterval(150)
+        self._source_timer.timeout.connect(self._redraw_sources)
+        self._source_ready.connect(self._apply_source)
         self._rendered_h = None    # Höhe der Fläche beim letzten Zeichnen
         # Jetzt-Linie mit Uhrzeit-Pille: jede Minute verschieben, auch ohne neues Zeichnen
         # (z. B. Aufzeichnung pausiert). Nur die zwei Teile, nicht die ganze Szene.
@@ -734,6 +743,44 @@ class TimelineView(QGraphicsView):
         # Auch ein älteres, noch laufendes Einlesen abwarten (nicht nur das letzte)
         for thread in list(self._threads):
             thread.join(max(0, end - time.monotonic()))
+
+    SOURCE_INDEX = {"rdp": "_rdp_index", "vpn": "_sophos_index", "local": "_local_index"}
+
+    def reload_source(self, name, draw=True):
+        """Nur eine selbst aufgezeichnete Quelle neu aufbereiten ("rdp", "vpn", "local").
+
+        Statt refresh(): die Logs von TeamViewer, RDM und VPN bleiben, wie sie sind. Für
+        mstsc wird das Windows-Ereignisprotokoll (wevtutil, bis zu Sekunden) vorher im
+        Hintergrund gelesen, damit die Oberfläche nie darauf wartet."""
+        if self.loading:  # gleich kommen ohnehin alle Quellen neu
+            return
+        if name == "rdp" and (self.config.get("mstsc_enabled", True)
+                              or self.config.get("rdmbetter_enabled", True)):
+            def prefetch():
+                try:
+                    self.rdp_reader.event_sessions()
+                except Exception as e:  # Timeline darf daran nie scheitern
+                    print(f"RDP-Ereignisprotokoll nicht vorab gelesen: {e}")
+                if not self._closing:
+                    self._source_ready.emit("rdp" if draw else "rdp-nodraw")
+            thread = threading.Thread(target=prefetch, daemon=True, name="RDP-Ereignisse")
+            self._threads = [t for t in self._threads if t.is_alive()] + [thread]
+            thread.start()
+            return
+        self._apply_source(name if draw else f"{name}-nodraw")
+
+    def _apply_source(self, name):
+        if self._closing:
+            return
+        name, _sep, flag = name.partition("-")
+        setattr(self, self.SOURCE_INDEX[name], None)
+        self._remote_cache.clear()
+        if flag != "nodraw":
+            self._source_timer.start()
+
+    def _redraw_sources(self):
+        if not self.loading and not self._closing:  # beim Lesen zeichnet _on_logs_loaded
+            self.draw_timeline(self.current_date)
 
     def _start_first_load(self):
         self.loading = False

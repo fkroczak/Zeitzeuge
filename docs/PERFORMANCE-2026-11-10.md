@@ -68,19 +68,50 @@ Ergänzungen in `tests/perf_cache_test.py` (Zeitformat, Arbeitsblöcke, Spuren v
 
 Datenbank: WAL und `synchronous=NORMAL`, passt.
 
-## Empfehlungen für später (größerer Umbau)
+## Zweite Runde: die vier größeren Umbauten (umgesetzt)
 
-1. **mstsc-/VPN-Aufzeichnung löst ein komplettes Neueinlesen aus.** Solange eine RDP-Sitzung oder ein
-   VPN-Tunnel offen ist, meldet die 30-Sekunden-Aufzeichnung jedes Mal eine Änderung und
-   `refresh()` liest alle Logs und zeichnet neu (jetzt ~75–110 ms alle 30 Sekunden). Besser: nur
-   die geänderte Quelle neu aufbereiten. Achtung: Dafür muss das Windows-Ereignisprotokoll
-   (`rdp_reader.event_sessions`, wevtutil) weiter im Hintergrund gelesen werden, sonst hängt
-   die Oberfläche bis zu Sekunden. Deshalb hier bewusst nicht umgebaut.
-2. **Spuren vom PC liegen als ein Dokument für alle Tage in der Datenbank.** Jede Änderung
-   verschlüsselt und schreibt das ganze Archiv (12 ms bei 90 Tagen, wächst mit der Aufbewahrung).
-   Je Tag ablegen wie Anrufe und Outlook.
-3. **Abgeschlossene Tage der Fensteraufzeichnung verdichten.** Ein vergangener Tag wird beim
-   ersten Anzeigen Zeile für Zeile entschlüsselt (3000 Zeilen ≈ 15 ms). Nach Tagesende als ein
-   Dokument (oder gleich als Arbeitsblöcke) speichern.
-4. **Tagesliste als Modell (`QAbstractTableModel`) statt `QTableWidget`.** Bei vollem PC-Verlauf in
-   der Liste (Tausende Zeilen) entfällt das Anlegen von sechs Objekten je Zeile.
+Gemessen mit CPU-Zeit, je bestes von 6 Durchgängen, alt und neu abwechselnd (die Maschine
+schwankt sonst um ±20 %):
+
+| Messung | vor der 2. Runde | nachher |
+|---|---:|---:|
+| Tag wechseln, je Tag | 122–129 ms | 106–118 ms |
+| Timeline zeichnen (heute) | 98–108 ms | 75–95 ms |
+| Tagesliste mit 4200 Zeilen (jedes Fenster einzeln) | 445 ms | 119 ms |
+| Vergangenen Tag lesen (3000 Fensterabschnitte) | 16,7 ms | 5,8 ms (verdichtet) |
+| Spuren vom PC speichern (eine Änderung, 90 Tage Archiv) | 12,6 ms | 1,3 ms |
+
+1. **mstsc, VPN und Spuren vom PC bereiten nur ihre eigene Quelle neu auf.** Bisher löste jede
+   Änderung (bei offener RDP-Sitzung oder VPN alle 30 Sekunden) `refresh()` aus: alle Logs neu
+   lesen, alle Quellen neu aufbereiten, zeichnen. Jetzt `TimelineView.reload_source("rdp" |
+   "vpn" | "local")`: nur der Index dieser Quelle wird verworfen, mehrere Meldungen kurz
+   hintereinander ergeben ein Zeichnen. Für mstsc liest ein Hintergrund-Thread vorher das
+   Windows-Ereignisprotokoll (wevtutil), die Oberfläche wartet nie darauf. Läuft gerade ein
+   Neueinlesen, passiert nichts (es bringt die Änderung ohnehin mit).
+2. **Spuren vom PC je Tag gespeichert.** Ablage `lokal_spuren` hat jetzt ein Dokument je Tag (Tag =
+   Beginn des Eintrags). Eine Änderung schreibt nur ihren Tag (`LocalReader._touch` merkt ihn
+   vor). Das frühere eine Dokument (Tag "") wird beim ersten Lesen auf Tage verteilt und
+   gelöscht. Kürzen nach Aufbewahrung löscht leere Tage.
+3. **Vergangene Tage der Fensteraufzeichnung verdichtet.** `activity_tracker.compact_days` fasst die
+   Zeilen jedes abgeschlossenen Tags zu einem Dokument (Ablage `aktivitaet`, gleicher Tag)
+   zusammen, einmal am Tag im Hintergrund (`RetentionRunner.compact`, eine Minute nach dem Start,
+   danach stündlich geprüft). `Store.compact_rows` liest, schreibt und löscht unter der Sperre;
+   eine Zeile, die gerade dazukommt, bleibt als Zeile und kommt beim nächsten Mal dazu. Wie beim
+   Löschen werden die alten Zeilen erst mit Nullen überschrieben. `read_segments` liest Dokument
+   und Zeilen. Das automatische Löschen nach Aufbewahrung zählt und löscht verdichtete Tage mit.
+   Der erste Lauf nach dem Update braucht für 90 volle Tage etwa 3 Sekunden (im Hintergrund).
+4. **Tagesliste als Modell (`src/day_list_view.py`).** Statt sechs `QTableWidgetItem` je Zeile
+   bekommt die Liste nur die Einträge; eine Zeile wird erst aufbereitet, wenn Qt sie zeigt.
+   Zwei Fallen, die dabei auffielen:
+   - Mit „an Inhalt anpassen“ fragt Qt beim Messen jede Zelle nach vielen Rollen ab, jede
+     Abfrage ein Sprung nach Python (148.000 Aufrufe für 20 Tage) – das war langsamer als
+     vorher. Jetzt sucht `fit_widths` je Spalte die breiteste Zeile in Python und lässt Qt nur
+     diese eine Zelle messen (1.300 Aufrufe).
+   - Das Stylesheet galt nur für `QTableWidget`. Die Liste heißt jetzt `QTableView#day_list` und
+     ist in `theme.py` bei denselben Regeln eingetragen (Abstände, Auswahl, blaue Kante).
+   Für bestehenden Code und Tests hat `DayListView` weiter `rowCount()`, `item(r, c).text()`,
+   `toolTip()`, `currentRow()` und `cellDoubleClicked`.
+
+Tests: `tests/perf_cache_test.py` (Verdichten mit nachträglicher Zeile, Löschen verdichteter Tage,
+Spuren je Tag samt Umzug aus dem alten Format, nur geänderter Tag wird geschrieben),
+`tests/draw_cache_test.py` (`reload_source`: nur die Quelle, ein Zeichnen für mehrere Meldungen).

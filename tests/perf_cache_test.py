@@ -109,3 +109,62 @@ def test_spuren_vom_pc_zwischenspeicher():
     assert reader.entries()[0]["customer_name"] == "gesperrt"
     reader.config["pcstate_enabled"] = False
     assert reader.entries() == [], "Schalter wirkt sofort"
+
+
+def test_vergangene_tage_verdichten_und_loeschen():
+    import retention
+    folder = os.path.join(tempfile.mkdtemp(), "aktivitaet")
+    store = datastore.register(datastore.Store(os.path.join(os.path.dirname(folder), "zeitzeuge.db")).unlock())
+    try:
+        store.append_many("aktivitaet", [(D, seg(f"09:0{i}:00", f"09:0{i}:30", title=f"t{i}")) for i in range(5)])
+        store.append("aktivitaet", "2026-10-23", {**seg("08:00:00", "08:10:00"),
+                                                  "start": "2026-10-23 08:00:00", "end": "2026-10-23 08:10:00"})
+        before = at.read_segments(folder, D)
+        assert at.compact_days(folder, today="2026-10-23") == 1, "heute wird nicht verdichtet"
+        assert store.row_count("aktivitaet", D) == 0 and store.days("aktivitaet") == [D]
+        assert store.row_count("aktivitaet", "2026-10-23") == 1
+        assert at.read_segments(folder, D) == before, "gleiche Abschnitte, gleiche Reihenfolge"
+        # Kommt danach noch eine Zeile für den Tag, wird sie gelesen und beim nächsten Mal angehängt
+        store.append("aktivitaet", D, seg("10:00:00", "10:05:00", "late.exe"))
+        assert [s["app"] for s in at.read_segments(folder, D)][-1] == "late.exe"
+        at.compact_days(folder, today="2026-10-23")
+        assert len(at.read_segments(folder, D)) == 6 and store.row_count("aktivitaet", D) == 0
+        # Löschen nach Aufbewahrung: verdichtete Tage zählen und verschwinden
+        info = retention.affected(store, "aktivitaet", None, "2026-10-23")
+        assert info["days"] == [D] and info["rows"] == 6, info
+        total, _other = retention.purge(store, "aktivitaet", None, "2026-10-23")
+        assert total == 6 and store.days("aktivitaet") == [] and at.read_segments(folder, D) == []
+        assert store.row_count("aktivitaet", "2026-10-23") == 1, "Tag ab Stichtag bleibt"
+    finally:
+        datastore.unregister(os.path.dirname(folder))
+
+
+def test_spuren_vom_pc_je_tag_gespeichert():
+    import local_sources as ls
+    tmp = tempfile.mkdtemp()
+    archive = os.path.join(tmp, "lokal_spuren.json")
+    store = datastore.register(datastore.Store(os.path.join(tmp, "zeitzeuge.db")).unlock())
+    try:
+        old = {"files": [{"start": "2026-11-01 09:00:00", "end": "2026-11-01 09:00:00", "name": "a.docx"},
+                         {"start": "2026-11-02 09:00:00", "end": "2026-11-02 09:00:00", "name": "b.docx"}]}
+        store.put("lokal_spuren", "", old)  # früheres Format: ein Dokument für alle Tage
+        funcs = {"locked": lambda: state["locked"], "processes": lambda: [], "titles": lambda: {},
+                 "events": lambda: [], "wlan": lambda: "", "history": lambda path, since: [], "threaded": False}
+        state = {"locked": False}
+        reader = ls.LocalReader({"recent_files_dirs": [], "browser_paths": []}, archive, funcs=funcs)
+        assert len(reader.entries()) == 2
+        assert store.days("lokal_spuren") == ["2026-11-01", "2026-11-02"], "auf Tage verteilt, altes weg"
+        writes = []
+        real = store.put_many
+        store.put_many = lambda name, by_day, delete=(): writes.append(sorted(by_day)) or real(name, by_day, delete)
+        state["locked"] = True
+        t = datetime(2026, 11, 3, 9, 0, 0)
+        for i in range(4):
+            reader.sample(now=t.replace(minute=i))
+        assert writes and all(w == ["2026-11-03"] for w in writes), "nur der geänderte Tag"
+        store.put_many = real
+        again = ls.LocalReader({}, archive, funcs=funcs)
+        assert sorted(e["type"] for e in again.entries()) == sorted([ls.LOCKED, ls.FILE_TYPE, ls.FILE_TYPE])
+        assert again.prune("2026-11-02") == 1 and "2026-11-01" not in store.days("lokal_spuren")
+    finally:
+        datastore.unregister(tmp)

@@ -6,6 +6,7 @@ Wie perf_bench.py, aber mit allen großen Quellen in der Datenbank:
   - Anrufe (40 je Arbeitstag, ein Jahr), Outlook (Termine und Mails), Tätigkeiten
   - Spuren vom PC (Browser, Dateien, Netzwerk, Sperren) für 90 Tage
   - TeamViewer- und RDM-Logs für ein Jahr
+Am Ende: vergangenen Tag lesen vor und nach dem Verdichten (compact_days).
 --profile schreibt je Messung die 25 teuersten Funktionen (cProfile, kumuliert).
 Kein Test (läuft nicht in pytest).
 """
@@ -210,6 +211,31 @@ def main():
             w.date_edit.setDate(d)
             app.processEvents()
     per = measure("Tag wechseln (20 Tage, gesamt)", switch, max(1, runs // 2))
+    print(f"{'  = je Tag':<36}{ms(per / len(days))}")
+    w.date_edit.setDate(date)
+    app.processEvents()
+    import activity_tracker as at
+    past = date.addDays(-1)
+    while past.dayOfWeek() > 5:
+        past = past.addDays(-1)
+    past_str = past.toString("yyyy-MM-dd")
+
+    def read_past():
+        at._segment_cache.clear()
+        at.read_segments(mt.ACTIVITY_DIR, past_str)
+    measure("Vergangenen Tag lesen (Zeilen)", read_past, runs)
+    t0 = time.perf_counter()
+    at.compact_days(mt.ACTIVITY_DIR)
+    print(f"{'Verdichten (alle vergangenen Tage)':<36}{ms(time.perf_counter() - t0)}")
+    measure("Vergangenen Tag lesen (verdichtet)", read_past, runs)
+    tl._pc_cache.clear()
+    tl._block_cache = None
+
+    def switch_packed():
+        at._segment_cache.clear()
+        tl._pc_cache.clear()
+        switch()
+    per = measure("Tag wechseln, verdichtet (20 Tage)", switch_packed, max(1, runs // 2))
     print(f"{'  = je Tag':<36}{ms(per / len(days))}")
     w.date_edit.setDate(date)
     app.processEvents()

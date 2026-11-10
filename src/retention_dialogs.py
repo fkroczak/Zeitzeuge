@@ -3,6 +3,7 @@
 Logik in retention.py. Die Ausführung läuft in kleinen Schritten über QTimer im
 Hauptthread (die Datenbank hat eine Verbindung mit Lock), so hängt das Fenster nie merklich.
 """
+import threading
 from datetime import date
 
 from PySide6.QtCore import QObject, QTimer
@@ -69,6 +70,8 @@ class RetentionRunner(QObject):
         self.last_day = None   # Tag des letzten vollständigen Laufs
         self._running = None   # (Speicher, Name, Stichtag, bisher gelöscht) während eines Laufs
         self._traces_done = None  # (Tag, Tage) des letzten Kürzens des Spuren-Verlaufs
+        self._compacted = None     # Tag des letzten Verdichtens (compact)
+        self._compact_thread = None
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.check)
         QTimer.singleShot(START_DELAY_MS, self.check)
@@ -105,8 +108,28 @@ class RetentionRunner(QObject):
             timeline._local_index = timeline._rdp_index = timeline._sophos_index = None
             timeline._remote_cache.clear()
 
+    def compact(self):
+        """Fensterverlauf vergangener Tage verdichten (einmal am Tag, im Hintergrund)."""
+        today = date.today()
+        if self._compacted == today or (self._compact_thread and self._compact_thread.is_alive()):
+            return
+        self._compacted = today
+
+        def run():
+            try:
+                import activity_tracker
+                timeline = getattr(self.window, "timeline", None)
+                activity_tracker.compact_days(self.activity_dir,
+                                              stop=lambda: bool(getattr(timeline, "_closing", False)))
+            except (datastore.Busy, datastore.Locked, OSError) as e:
+                safe_io.log(f"PC-Verlauf verdichten: {e}")
+                self._compacted = None  # in einer Stunde erneut
+        self._compact_thread = threading.Thread(target=run, daemon=True, name="PC-Verlauf verdichten")
+        self._compact_thread.start()
+
     def check(self, force=False):
         self.prune_traces()
+        self.compact()
         on, days = retention.settings(self.window.config)
         today = date.today()
         if not on or self._running or (self.last_day == today and not force):
