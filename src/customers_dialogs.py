@@ -15,13 +15,14 @@ Kunden: Fenster „Kundenliste“ und die Befehle dazu im Hauptfenster.
 Logik und Ablage in customers.py (ohne Qt).
 """
 import copy
+import threading
 from datetime import datetime, timedelta
 
-from PySide6.QtCore import QDate, QSize, Qt, QTimer
+from PySide6.QtCore import QDate, QSize, Qt, QTimer, Signal
 from PySide6.QtWidgets import (QCheckBox, QDialog, QDialogButtonBox, QFrame, QHBoxLayout,
                                QInputDialog, QLabel, QLineEdit, QListWidget, QListWidgetItem,
-                               QMessageBox, QPushButton, QScrollArea, QToolButton, QVBoxLayout,
-                               QWidget)
+                               QMessageBox, QPushButton, QScrollArea, QSpinBox, QToolButton,
+                               QVBoxLayout, QWidget)
 
 from flow_layout import FlowLayout
 from theme import theme_for, prose, SPACE_L, SPACE_M, SPACE_S, SPACE_XS
@@ -170,6 +171,8 @@ class CustomersDialog(QDialog):
                     "host": "z. B. srv01 oder *.kunde.local",
                     "ip": "z. B. 10.20.0.0/16"}
 
+    route_done = Signal(object, object, str)  # Kunde, Fahrzeit in Minuten oder None, Fehler
+
     def __init__(self, config, parent=None, suggestions=None, hits=None, hours=None):
         super().__init__(parent)
         self.config = config
@@ -303,6 +306,7 @@ class CustomersDialog(QDialog):
         self.calendar_check.setAccessibleName("Kalendertermine zuordnen")
         cal_row.addWidget(self.calendar_check)
         box_layout.addWidget(cal)
+        box_layout.addWidget(self._address_row(theme))
         detail.addWidget(box)
 
         bottom = QHBoxLayout()
@@ -344,7 +348,118 @@ class CustomersDialog(QDialog):
         self.name_edit.editingFinished.connect(self._name_edited)
         self.number_edit.textEdited.connect(self._number_edited)
         self.calendar_check.toggled.connect(self._calendar_toggled)
+        self.address_edit.textEdited.connect(self._address_edited)
+        self.minutes_spin.valueChanged.connect(self._minutes_changed)
+        self.route_button.clicked.connect(self.calculate_route)
+        self.route_done.connect(self._on_route, Qt.QueuedConnection)
         self._fill(self.customers[0] if self.customers else None)
+
+    def _address_row(self, theme):
+        """Zeile „Adresse und Fahrzeit“: Fahrzeit von Hand oder über OpenStreetMap berechnen."""
+        row = QFrame()
+        row.setObjectName("card_row")
+        layout = QHBoxLayout(row)
+        layout.setContentsMargins(SPACE_M, SPACE_M, SPACE_M, SPACE_M)
+        pin = QLabel()
+        pin.setPixmap(icons.icon("map_pin", theme["muted"]).pixmap(QSize(16, 16)))
+        pin.setFixedWidth(20)
+        pin.setAlignment(Qt.AlignTop)
+        layout.addWidget(pin)
+        text = QVBoxLayout()
+        head = QLabel("Adresse und Fahrzeit")
+        head.setObjectName("card_title")
+        text.addWidget(head)
+        hint = QLabel("Für vermutete Fahrten zu Terminen dieses Kunden. „Berechnen“ fragt "
+                      "OpenStreetMap nach der Fahrzeit vom Büro (Startadresse unter Orte und "
+                      "Fahrzeiten). Dabei gehen nur die beiden Adressen nach außen.")
+        hint.setObjectName("hint")
+        hint.setWordWrap(True)
+        text.addWidget(hint)
+        line = QHBoxLayout()
+        self.address_edit = QLineEdit()
+        self.address_edit.setPlaceholderText("Straße Nr., PLZ Ort")
+        self.address_edit.setAccessibleName("Adresse des Kunden")
+        line.addWidget(self.address_edit, 1)
+        self.minutes_spin = QSpinBox()
+        self.minutes_spin.setRange(-1, 600)
+        self.minutes_spin.setSpecialValueText("–")  # -1: keine Fahrzeit hinterlegt
+        self.minutes_spin.setSuffix(" Min.")
+        self.minutes_spin.setAccessibleName("Fahrzeit in Minuten (0 = keine Fahrt)")
+        self.minutes_spin.setToolTip("Fahrzeit vom Büro. 0 = keine Fahrt, – = nicht hinterlegt")
+        line.addWidget(self.minutes_spin)
+        self.route_button = QPushButton("&Berechnen")
+        self.route_button.setAutoDefault(False)
+        self.route_button.setAccessibleName("Fahrzeit über OpenStreetMap berechnen")
+        line.addWidget(self.route_button)
+        text.addLayout(line)
+        self.route_status = QLabel()
+        self.route_status.setObjectName("hint")
+        self.route_status.setWordWrap(True)
+        self.route_status.hide()
+        text.addWidget(self.route_status)
+        layout.addLayout(text, 1)
+        return row
+
+    def _address_edited(self, text):
+        current = self._current()
+        if current is None:
+            return
+        if text.strip():
+            current["address"] = " ".join(text.split())
+        else:
+            current.pop("address", None)
+
+    def _minutes_changed(self, value):
+        current = self._current()
+        if current is None or getattr(self, "_showing", False):
+            return
+        if value < 0:
+            current.pop("travel_minutes", None)
+        else:
+            current["travel_minutes"] = value
+
+    def calculate_route(self):
+        """Fahrzeit vom Büro zur Adresse über OpenStreetMap (im Hintergrund)."""
+        current = self._current()
+        if current is None:
+            return
+        address = self.address_edit.text().strip()
+        home = str(self.config.get("travel_home_address") or "").strip()
+        if not address:
+            self._route_message("⚠ Bitte zuerst die Adresse des Kunden eintragen.")
+            return
+        if not home:
+            self._route_message("⚠ Bitte zuerst die Startadresse (Büro) eintragen: Einstellungen → "
+                                "Orte und Fahrzeiten.")
+            return
+        self.route_button.setEnabled(False)
+        self._route_message("Frage OpenStreetMap …")
+
+        def work():
+            import route
+            try:
+                self.route_done.emit(current, route.drive_minutes(home, address), "")
+            except Exception as e:
+                self.route_done.emit(current, None, str(e))
+
+        threading.Thread(target=work, daemon=True, name="Fahrzeit berechnen").start()
+
+    def _on_route(self, customer, minutes, error):
+        self.route_button.setEnabled(True)
+        if minutes is None:
+            self._route_message(f"⚠ Fahrzeit nicht berechnet: {error}")
+            return
+        customer["travel_minutes"] = minutes
+        if customer is self._current():
+            self._showing = True
+            self.minutes_spin.setValue(minutes)
+            self._showing = False
+        self._route_message(f"Fahrzeit für {customer['name']}: etwa {minutes} Min. mit dem Auto "
+                            "(OpenStreetMap, ohne Verkehr). Du kannst sie ändern.")
+
+    def _route_message(self, text):
+        self.route_status.setText(text)
+        self.route_status.setVisible(bool(text))
 
     def _add_suggestions(self, layout, renames):
         """Kasten „Neu entdeckt“: Umbenennen in den Matrix42-Namen, Stichwort übernehmen
@@ -480,7 +595,8 @@ class CustomersDialog(QDialog):
         current = self._current()
         has = current is not None
         self.empty.setVisible(not self.customers)
-        for w in (self.name_edit, self.number_edit, self.delete_btn, self.calendar_check):
+        for w in (self.name_edit, self.number_edit, self.delete_btn, self.calendar_check,
+                  self.address_edit, self.minutes_spin, self.route_button):
             w.setEnabled(has)
         for section in self.sections.values():
             section.setEnabled(has)
@@ -491,6 +607,12 @@ class CustomersDialog(QDialog):
         self.calendar_check.blockSignals(True)
         self.calendar_check.setChecked(current.get("calendar", True))
         self.calendar_check.blockSignals(False)
+        self.address_edit.setText(current.get("address", ""))
+        self._showing = True  # Anzeigen ändert die Fahrzeit nicht
+        minutes = cl.travel_minutes(current)
+        self.minutes_spin.setValue(-1 if minutes is None else minutes)
+        self._showing = False
+        self._route_message("")
         for kind, section in self.sections.items():
             section.show_traces([t for t in current["traces"] if t["kind"] == kind], self.hits)
 

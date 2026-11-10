@@ -571,6 +571,7 @@ class MenusMixin:
         self._icon_actions += [
             (menu.addAction("&Nachfragen und Benachrichtigungen …", self.edit_prompt_settings), "bell"),
             (menu.addAction("Kunden&liste …", self.edit_customers), "users"),
+            (menu.addAction("&Orte und Fahrzeiten …", self.edit_travel_settings), "map_pin"),
             (menu.addAction("Text&bausteine …", self.edit_snippets), "edit"),
         ]
         # Datenspeicher: im Einstellungsfenster unter „Daten & Schutz“. Die Aktionen gibt es
@@ -680,7 +681,7 @@ class MenusMixin:
                       ("&Netzwerk …", self.edit_wlan_settings, "wlan"),
                       ("&Zuletzt geöffnete Dateien …", self.edit_recent_files_settings, "files"),
                       ("Bro&wser-Verlauf …", self.edit_browser_settings, "browser"),
-                      ("&Fahrten (vermutet) …", self.edit_travel_settings, "travel")):
+                      ("&Fahrten: Orte und Fahrzeiten …", self.edit_travel_settings, "travel")):
             if entry is None:
                 setup.addSeparator()  # Webseiten im Hintergrund
                 continue

@@ -227,7 +227,7 @@ SOURCE_TILES = [
     ("recent_files_enabled", "files", "Zuletzt geöffnete Dateien", "Dateiname und Uhrzeit",
      "edit_recent_files_settings", None),
     ("browser_enabled", "browser", "Browser-Verlauf", "Nur Domains und Tickets", "edit_browser_settings", None),
-    ("travel_enabled", "travel", "Fahrten (vermutet)", "Termine mit Ort, Kundennetze", "edit_travel_settings", None),
+    ("travel_enabled", "travel", "Fahrten (vermutet)", "Orte, Kundenadressen, Fahrzeiten", "edit_travel_settings", None),
     ("tracking", "tracking", "Aktive Fenster", "Band „PC“, alle 5 s · Fenster-Filter", "edit_tracking_filters",
      None),
 ]

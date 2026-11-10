@@ -54,6 +54,22 @@ def test_orte_mit_fahrzeit():
     assert travel.places_from_config({"travel_ignore_locations": ["Büro"]}) == [{"name": "Büro", "minutes": 0}]
 
 
+def test_kunde_mit_fahrzeit():
+    pc = [e("07:50", "08:40", "PC: Outlook", "Posteingang", app="outlook.exe")]
+    entries = [e("09:30", "11:00", "Termin", "Jour fixe", details="Ort: Werk 2",
+                 email_domains=["creacam.de"]),
+               e("12:05", "12:10", "Telefonat", "Anruf")]
+    # Kunde über die Mail-Domains des Termins: seine Fahrzeit gilt
+    trips = travel.suggest(entries, pc, customer_minutes=lambda a: 20 if "creacam.de" in a["email_domains"] else None)
+    assert [(t["start"][11:16], t["end"][11:16]) for t in trips] == [("09:10", "09:30"), ("11:00", "11:20")]
+    # Kundenname im Betreff: Kunden mit Fahrzeit stehen in den Orten
+    places = travel.places_from_config({"travel_places": [{"name": "Werk", "minutes": 0}]},
+                                       [{"name": "Jour", "travel_minutes": 30}, {"name": "Ohne"}])
+    assert places == [{"name": "Werk", "minutes": 0}, {"name": "Jour", "minutes": 30}]
+    # eingetragener Ort mit 0 Minuten schlägt die Fahrzeit des Kunden
+    assert travel.suggest(entries, pc, places=places, customer_minutes=lambda a: 20) == []
+
+
 def test_fahrt_nicht_in_anderen_termin():
     """Vor-Ort-Termin bis 12:00, danach Termin um 13:00: Fahrt erst ab 12:00, nicht ab 11:30."""
     entries = [e("09:00", "12:00", "Termin", "St. Niklas - USV tausch", details="Ort: Kirchweg 1"),

@@ -12,7 +12,8 @@ Zwei Hinweise, beide nur Vorschläge (Typ "Fahrt (vermutet)"):
 
 Lücken unter MIN_MINUTES zählen nicht, längere als max_minutes werden auf max_minutes vor
 dem Termin (bzw. danach) gekürzt. Bekannte Orte (Einstellung „Orte und Fahrzeiten“,
-travel_places) haben eine feste Fahrzeit: Sie ersetzt max_minutes, 0 heißt keine Fahrt
+travel_places) und Kunden mit Fahrzeit (Kundenliste, berechnet über OpenStreetMap) haben eine
+feste Fahrzeit: Sie ersetzt max_minutes, 0 heißt keine Fahrt
 (eigenes Büro, Besprechungsraum). Ein Ort passt, wenn sein Name im Ort oder im Betreff
 bzw. Kunden des Termins steht. Andere Termine zählen als belegt: Eine Fahrt überlappt sie nie. Die Fahrt trägt den Betreff und die Teilnehmer-Domains
 des Termins, damit Kunde und Nachfrage („Was hast du gemacht?“) passen.
@@ -48,26 +49,38 @@ def is_place(location, ignore=()):
 
 
 def place_minutes(appointment, places):
-    """Fahrzeit des am besten passenden bekannten Orts (längster Name) oder None.
+    """Fahrzeit des am besten passenden bekannten Orts oder None. Passt ein Ort mit 0 Minuten
+    (Besprechungsraum, Büro), gilt immer 0, sonst der längste passende Name.
     places: [{"name": "Besprechungsraum", "minutes": 0}, …]"""
     text = f"{_location(appointment)} {appointment.get('customer_name') or ''}".lower()
     best = None
     for place in places or ():
         name = str(place.get("name") or "").strip().lower()
-        if name and name in text and (best is None or len(name) > len(best[0])):
-            try:
-                best = (name, max(0, int(place.get("minutes") or 0)))
-            except (TypeError, ValueError):
-                continue
+        if not name or name not in text:
+            continue
+        try:
+            minutes = max(0, int(place.get("minutes") or 0))
+        except (TypeError, ValueError):
+            continue
+        if minutes == 0:
+            return 0
+        if best is None or len(name) > len(best[0]):
+            best = (name, minutes)
     return best[1] if best else None
 
 
-def places_from_config(config):
-    """Bekannte Orte aus der Einstellung, dazu die alten travel_ignore_locations (= 0 Min.)."""
+def places_from_config(config, customers=()):
+    """Bekannte Orte aus der Einstellung, dazu die alten travel_ignore_locations (= 0 Min.)
+    und Kunden mit Fahrzeit (customers: Kundenliste, Name passt im Ort oder Betreff)."""
     places = [p for p in (config.get("travel_places") or []) if isinstance(p, dict)]
     known = {str(p.get("name", "")).strip().lower() for p in places}
     places += [{"name": n, "minutes": 0} for n in (config.get("travel_ignore_locations") or [])
                if n and n.strip().lower() not in known]
+    known |= {str(p.get("name", "")).strip().lower() for p in places}
+    for c in customers or ():
+        minutes = c.get("travel_minutes")
+        if minutes is not None and c.get("name") and c["name"].strip().lower() not in known:
+            places.append({"name": c["name"], "minutes": minutes})
     return places
 
 
@@ -103,10 +116,11 @@ def _free(spans, start, end):
 
 
 def suggest(entries, pc_entries=(), customer_net=None, ignore_locations=(),
-            min_minutes=MIN_MINUTES, max_minutes=MAX_MINUTES, places=()):
+            min_minutes=MIN_MINUTES, max_minutes=MAX_MINUTES, places=(), customer_minutes=None):
     """Vermutete Fahrten eines Tages. entries: alle Einträge (mit Outlook und Netzwerk),
     pc_entries: aktive Fenster. customer_net(name) -> Kundenname oder "" (Kundenliste).
-    places: bekannte Orte mit Fahrzeit (place_minutes)."""
+    places: bekannte Orte mit Fahrzeit (place_minutes). customer_minutes(termin) -> Fahrzeit
+    des Kunden, dem der Termin gehört (z. B. über die Mail-Domains), oder None."""
     busy = busy_spans(entries, pc_entries)
     appointments = []
     for e in entries:
@@ -132,6 +146,8 @@ def suggest(entries, pc_entries=(), customer_net=None, ignore_locations=(),
         except (KeyError, TypeError, ValueError):
             continue
         known = place_minutes(a, places)
+        if known is None and customer_minutes:
+            known = customer_minutes(a)
         if known == 0:
             continue  # eigenes Büro, Besprechungsraum: keine Fahrt
         limit = timedelta(minutes=known if known is not None else max_minutes)

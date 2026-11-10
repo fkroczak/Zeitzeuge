@@ -23,8 +23,10 @@ Wie Stichwörter greifen Pfad, Host und IP nur, wenn keine genauere Spur passt (
 IP, Host, Pfad, Stichwort).
 
 Ablage: config["customers"] = [{"name": "Müller GmbH", "number": "K-10234",
-"calendar": True, "traces": [{"kind", "value"}]}]. number (Kundennummer) und calendar
-(Termine über die Mail-Domains zuordnen, Standard an) sind optional.
+"calendar": True, "address": "Hauptstr. 5, 70173 Stuttgart", "travel_minutes": 25,
+"traces": [{"kind", "value"}]}]. number (Kundennummer), calendar (Termine über die
+Mail-Domains zuordnen, Standard an), address und travel_minutes (Fahrzeit vom Büro, von
+Hand oder über OpenStreetMap berechnet, siehe route.py) sind optional.
 Wie teamviewer_names sind das Nutzdaten: main_timeline.save_config legt sie verschlüsselt in
 die Datenbank (Ablage "kunden"), nicht in zeitzeuge_config.json.
 
@@ -225,8 +227,25 @@ def _valid_list(raw):
             item["number"] = number
         if c.get("calendar") is False:
             item["calendar"] = False
+        address = " ".join(str(c.get("address") or "").split())
+        if address:
+            item["address"] = address
+        minutes = travel_minutes(c)
+        if minutes is not None:
+            item["travel_minutes"] = minutes
         result.append(item)
     return result
+
+
+def travel_minutes(customer):
+    """Fahrzeit zum Kunden in Minuten (eingetragen oder berechnet) oder None."""
+    value = customer.get("travel_minutes") if isinstance(customer, dict) else None
+    if value is None or value == "":
+        return None
+    try:
+        return max(0, int(value))
+    except (TypeError, ValueError):
+        return None
 
 
 def _find(customers, name):

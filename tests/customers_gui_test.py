@@ -150,8 +150,31 @@ def gui_test():
     assert dialog.add_trace("tv", "123 456 789")
     assert dialog.rename_customer("Müller AG")
     assert dialog.add_customer("Meier KG") and not dialog.add_customer("meier kg")
+    # Adresse und Fahrzeit: „Berechnen“ fragt OpenStreetMap (hier nachgebaut) im Hintergrund
+    import route
+    dialog.customer_list.setCurrentRow(next(i for i in range(dialog.customer_list.count())
+                                            if dialog._shown[i]["name"] == "Müller AG"))
+    dialog.calculate_route()
+    assert "Adresse" in dialog.route_status.text()  # erst Adresse eintragen
+    dialog.address_edit.setText("Hauptstr. 5, Stuttgart")
+    dialog.address_edit.textEdited.emit("Hauptstr. 5, Stuttgart")
+    dialog.calculate_route()
+    assert "Startadresse" in dialog.route_status.text()
+    window.config["travel_home_address"] = "Büroweg 1, Esslingen"
+    asked = []
+    route.drive_minutes = lambda a, b: asked.append((a, b)) or 25
+    dialog.calculate_route()
+    QTest.qWait(300)
+    assert asked == [("Büroweg 1, Esslingen", "Hauptstr. 5, Stuttgart")], asked
+    assert dialog.minutes_spin.value() == 25 and "25 Min." in dialog.route_status.text()
+    dialog.minutes_spin.setValue(30)  # von Hand ändern
     dialog.apply()
     main_timeline.save_config(window.config)
+    mueller = next(c for c in window.config["customers"] if c["name"] == "Müller AG")
+    assert mueller["address"] == "Hauptstr. 5, Stuttgart" and mueller["travel_minutes"] == 30, mueller
+    meier = next(c for c in window.config["customers"] if c["name"] == "Meier KG")
+    assert "travel_minutes" not in meier and "address" not in meier, meier
+    assert "&Orte und Fahrzeiten …" in [a.text() for a in window.menu_button.menu().actions()]
     assert window.config["teamviewer_names"] == {"123456789": "Müller AG"}
     call = {"start": t(now), "end": t(now), "type": "Telefonat",
             "customer_name": "Max (0711 123456)", "phone": "0711 123456"}

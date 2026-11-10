@@ -858,9 +858,16 @@ class TimelineView(QGraphicsView):
             return entries  # nichts, woraus sich eine Fahrt ergibt: aktive Fenster nicht lesen
         try:
             index = customers.index(self.config)
+            own = customers.customer_list(self.config)
+            minutes = {c["name"]: c["travel_minutes"] for c in own if "travel_minutes" in c}
+
+            def customer_minutes(appointment):  # Kunde des Termins, z. B. über die Mail-Domains
+                return minutes.get(index.customer_for(appointment)) if minutes else None
+
             trips = travel.suggest(entries, self.pc_entries_for(date),
                                    customer_net=lambda name: index.lookup("net", name),
-                                   places=travel.places_from_config(self.config),
+                                   places=travel.places_from_config(self.config, own),
+                                   customer_minutes=customer_minutes,
                                    max_minutes=int(self.config.get("travel_max_minutes", travel.MAX_MINUTES)))
         except Exception as e:  # Vorschläge dürfen die Timeline nie leeren
             print(f"Fehler bei den vermuteten Fahrten: {e}")

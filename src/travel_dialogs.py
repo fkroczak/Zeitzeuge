@@ -1,8 +1,9 @@
-"""Einstellungen „Fahrten (vermutet)“: Schalter, längste Fahrt und Orte mit fester Fahrzeit."""
+"""Einstellungen „Orte und Fahrzeiten“ (Fahrten vermutet): Schalter, Startadresse (Büro),
+längste Fahrt und Orte mit fester Fahrzeit. Kunden-Adressen stehen in der Kundenliste."""
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QComboBox, QDialog, QDialogButtonBox,
-                               QHBoxLayout, QHeaderView, QLabel, QPushButton, QSpinBox,
+                               QHBoxLayout, QHeaderView, QLabel, QLineEdit, QPushButton, QSpinBox,
                                QTableWidget, QTableWidgetItem, QVBoxLayout)
 
 from theme import prose
@@ -11,7 +12,9 @@ import travel
 HINT = ("Hat ein Outlook-Termin einen Ort (kein Teams, kein Link), ist die Zeit davor ohne Arbeit "
         "am PC vermutlich die Hinfahrt, die Zeit danach die Rückfahrt. Ebenso eine Lücke beim "
         "Wechsel in ein Kundennetz. Zeitzeuge fragt danach und schlägt „Fahrt / Reise“ vor.\n\n"
-        "Unten trägst du Orte und Kunden mit ihrer Fahrzeit ein. Steht der Name im Ort, im "
+        "Kunden mit Adresse: In der Kundenliste berechnet „Berechnen“ die Fahrzeit vom Büro über "
+        "OpenStreetMap (nur die beiden Adressen gehen nach außen).\n\n"
+        "Unten trägst du weitere Orte und Kunden mit ihrer Fahrzeit ein. Steht der Name im Ort, im "
         "Betreff oder beim Kunden des Termins, gilt genau diese Fahrzeit. 0 Minuten heißt keine "
         "Fahrt, z. B. für euren Besprechungsraum oder das eigene Büro.")
 
@@ -19,7 +22,7 @@ HINT = ("Hat ein Outlook-Termin einen Ort (kein Teams, kein Link), ist die Zeit 
 class TravelSettingsDialog(QDialog):
     def __init__(self, config, customers=(), parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Fahrten (vermutet)")
+        self.setWindowTitle("Orte und Fahrzeiten")
         self.setMinimumWidth(580)
         layout = QVBoxLayout(self)
 
@@ -30,6 +33,15 @@ class TravelSettingsDialog(QDialog):
         hint.setWordWrap(True)
         prose(hint)
         layout.addWidget(hint)
+
+        home = QHBoxLayout()
+        home_label = QLabel("&Startadresse (Büro):")
+        self.home_edit = QLineEdit(str(config.get("travel_home_address") or ""))
+        self.home_edit.setPlaceholderText("Straße Nr., PLZ Ort")
+        home_label.setBuddy(self.home_edit)
+        home.addWidget(home_label)
+        home.addWidget(self.home_edit, 1)
+        layout.addLayout(home)
 
         row = QHBoxLayout()
         row.addWidget(QLabel("Unbekannte Orte: Fahrt höchstens"))
@@ -128,6 +140,7 @@ class TravelSettingsDialog(QDialog):
 
     def values(self):
         return {"travel_enabled": self.enabled_box.isChecked(),
+                "travel_home_address": " ".join(self.home_edit.text().split()),
                 "travel_max_minutes": self.max_spin.value(),
                 "travel_places": self.places(),
                 "travel_ignore_locations": []}  # steckt jetzt in travel_places (0 Min.)

@@ -247,3 +247,13 @@ def test_ordner_host_ip_und_kalender():
     # Treffer je Merkmal
     hits = cl.count_hits(index, [rdp, termin], [{"app": "winword.exe", "customer_name": "Avangard - Word"}])
     assert hits == {("host", "*.schmidt.local"): 1, ("path", "e:\\kundenprojekte\\avangard"): 1}
+
+
+def test_adresse_und_fahrzeit_bleiben():
+    config = {"customers": [{"name": "Creacam", "address": " Hauptstr. 5,  Stuttgart ",
+                             "travel_minutes": "25", "traces": []},
+                            {"name": "Ohne", "travel_minutes": "", "traces": []}]}
+    first, second = cl.apply_list(config, config["customers"])
+    assert first["address"] == "Hauptstr. 5, Stuttgart" and first["travel_minutes"] == 25
+    assert "address" not in second and "travel_minutes" not in second
+    assert cl.travel_minutes({"travel_minutes": 0}) == 0 and cl.travel_minutes({}) is None
