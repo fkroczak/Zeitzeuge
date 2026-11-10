@@ -10,9 +10,12 @@ on:
 
 # Neuer Push auf denselben Branch bricht den älteren, noch laufenden Lauf ab (nicht auf main und Tags,
 # dort soll jeder Stand ein Release werden).
+# main und Tags bekommen je Commit eine eigene Gruppe, damit kein wartender Lauf verworfen wird.
 concurrency:
-  group: build-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/v') }}
+  group: >-
+    ${{ (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    && format('build-{0}-{1}', github.ref, github.sha) || format('build-{0}', github.ref) }}
+  cancel-in-progress: true
 
 permissions:
   contents: write  # für Releases bei Tags
@@ -242,51 +245,48 @@ jobs:
           path: dist/ZeitZeuge.exe
           retention-days: 5
 
-      - name: Dateien für das Release weitergeben
+      # Release als Entwurf anlegen; veröffentlicht wird es erst im Job „release“, wenn alle Tests
+      # grün sind. Release-Dateien zählen nicht zum Artefakt-Speicher (der oft voll ist).
+      - name: Release-Entwurf anlegen (main oder Tag v*)
         if: >-
           (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
           startsWith(github.ref, 'refs/tags/v')
-        uses: actions/upload-artifact@v6
-        with:
-          name: release-dateien
-          path: |
-            dist/Zeitzeuge-Setup.exe
-            dist/ZeitZeuge.exe
-            dist/ZeitZeuge-Ordner.zip
-          retention-days: 1
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          # Entwurf aus einem früheren Versuch desselben Stands entfernen
+          $alt = gh release view "v$env:ZZ_VERSION" --repo $env:GITHUB_REPOSITORY --json isDraft 2>$null | ConvertFrom-Json
+          if ($alt -and $alt.isDraft) { gh release delete "v$env:ZZ_VERSION" --repo $env:GITHUB_REPOSITORY --yes }
+          gh release create "v$env:ZZ_VERSION" --repo $env:GITHUB_REPOSITORY --draft `
+            --target $env:GITHUB_SHA --title "Zeitzeuge $env:ZZ_VERSION" --generate-notes `
+            dist/Zeitzeuge-Setup.exe dist/ZeitZeuge.exe dist/ZeitZeuge-Ordner.zip
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-  # Release erst, wenn Bau und alle Tests grün sind
+  # Veröffentlicht den Entwurf, wenn Bau und alle Tests grün sind; sonst wird er gelöscht.
   release:
     needs: [test, build]
     if: >-
+      always() && needs.build.result == 'success' && (
       (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-      startsWith(github.ref, 'refs/tags/v')
+      startsWith(github.ref, 'refs/tags/v'))
     runs-on: ubuntu-latest
     env:
       ZZ_VERSION: ${{ needs.build.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/download-artifact@v7
-        with:
-          name: release-dateien
-          path: dist
-
-      # Jeder Stand von main wird ein Release v<Version> (Tag legt die Aktion selbst an).
+      # Jeder Stand von main wird ein Release v<Version> (der Tag entsteht beim Veröffentlichen).
       # Der feste Link .../releases/latest/download/ZeitZeuge.exe zeigt immer auf das neueste.
-      - name: Release anlegen (main oder Tag v*)
-        if: >-
-          (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-          startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ env.ZZ_VERSION }}
-          target_commitish: ${{ github.sha }}
-          name: Zeitzeuge ${{ env.ZZ_VERSION }}
-          files: |
-            dist/Zeitzeuge-Setup.exe
-            dist/ZeitZeuge.exe
-            dist/ZeitZeuge-Ordner.zip
-          generate_release_notes: true
-          make_latest: true
+      - name: Release veröffentlichen
+        shell: pwsh
+        run: |
+          if ("${{ needs.test.result }}" -ne "success") {
+            Write-Host "::error title=Release::Tests nicht grün, Entwurf v$env:ZZ_VERSION wird gelöscht"
+            gh release delete "v$env:ZZ_VERSION" --repo $env:GITHUB_REPOSITORY --yes
+            exit 1
+          }
+          gh release edit "v$env:ZZ_VERSION" --repo $env:GITHUB_REPOSITORY --draft=false --latest
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       # Nur die 10 neuesten Releases behalten; ältere samt Tag löschen.
       - name: Alte Releases löschen (10 bleiben)
