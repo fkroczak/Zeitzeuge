@@ -25,6 +25,10 @@ Qt-eigenen Mitteln.
 | Kleines Fenster und 100/150/200 %: abgeschnittene Texte, waagerechte Scrollleisten, passt auf 960 × 540 (Full HD bei 200 %); Screenshots | `tests/layout_check.py` | nein, von Hand | Befundliste |
 | Abstände, Schrift, Rundungen nur aus Tokens | `docs/DESIGN-TOKENS.md`, `src/theme.py` | Review | Regel |
 
+„Blockiert“ heißt: Der Lauf wird rot und es entsteht kein Release. Die Tests laufen parallel zum
+Bau der EXE (Job „Tests“, aufgeteilt in 3CX, M42 und Rest); Testversionen aus Branches stehen
+deshalb auch bei roten Tests zum Download bereit, nur das Release auf main wartet auf alle Tests.
+
 `tests/ui_audit_test.py` öffnet Hauptfenster und alle Einstellungsdialoge ohne Bildschirm
 und prüft:
 
