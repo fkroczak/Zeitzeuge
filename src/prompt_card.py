@@ -13,7 +13,7 @@ Die Felder kommen aus journal_dialogs._EntryForm; die Karte ordnet sie nur neu a
 from datetime import datetime
 
 from PySide6.QtCore import QEvent, QRectF, QSize, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QGuiApplication, QPainter
+from PySide6.QtGui import QColor, QGuiApplication, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (QAbstractSpinBox, QDialog, QFrame, QGraphicsDropShadowEffect, QGridLayout,
                                QHBoxLayout, QLabel, QLayout, QPushButton, QSizePolicy, QToolButton,
                                QVBoxLayout, QWidget)
@@ -33,6 +33,62 @@ STYLE_HINTS = {"window": "Alle Felder, übersichtlich (Standard)", "compact": "A
 TIMEOUTS = [(10, "10 Sekunden"), (30, "30 Sekunden"), (60, "1 Minute"), (300, "5 Minuten"), (0, "Dauerhaft")]
 DEFAULT_TIMEOUT = {"window": 0, "compact": 10, "strip": 10, "off": 0}
 SHADOW = 14  # Rand für den Schatten um Karte und Leiste (durchsichtig)
+
+
+def style_preview(style, tokens, width=96, height=60):
+    """Kleines Bild für die Kacheln der Darstellung: Bildschirm mit Taskleiste und darauf Karte,
+    kompakte Karte, Leiste oder (Aus) nur die Zeile „Doku“. Farben aus den Tokens des Designs."""
+    pixmap = QPixmap(width * 2, height * 2)
+    pixmap.setDevicePixelRatio(2)
+    pixmap.fill(Qt.transparent)
+    p = QPainter(pixmap)
+    p.setRenderHint(QPainter.Antialiasing)
+    w, h = width, height
+    p.setPen(QPen(QColor(tokens["border"]), 1))
+    p.setBrush(QColor(tokens["bg"]))
+    p.drawRoundedRect(QRectF(0.5, 0.5, w - 1, h - 1), 6, 6)
+    p.setPen(Qt.NoPen)
+    p.setBrush(QColor(tokens["border"]))
+    p.drawRect(QRectF(1, h - 9, w - 2, 8))  # Taskleiste
+    line = QColor(tokens["muted"])
+    line.setAlpha(140)
+    accent = QColor(tokens["accent"])
+
+    def card(x, y, cw, ch, rows):
+        p.setPen(QPen(QColor(tokens["control"]), 1))
+        p.setBrush(QColor(tokens["surface"]))
+        p.drawRoundedRect(QRectF(x, y, cw, ch), 4, 4)
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor(tokens["text"]))
+        p.drawRoundedRect(QRectF(x + 5, y + 5, cw * 0.55, 3), 1.5, 1.5)
+        p.setBrush(line)
+        for i in range(rows):
+            p.drawRoundedRect(QRectF(x + 5, y + 12 + i * 6, cw - 10 - (i % 2) * 8, 3), 1.5, 1.5)
+        p.setBrush(accent)
+        p.drawRoundedRect(QRectF(x + cw - 18, y + ch - 8, 13, 4), 2, 2)
+
+    if style == "window":
+        card(w - 58, h - 57, 52, 44, 4)
+    elif style == "compact":
+        card(w - 44, h - 46, 38, 33, 2)
+    elif style == "strip":
+        p.setPen(QPen(QColor(tokens["control"]), 1))
+        p.setBrush(QColor(tokens["surface"]))
+        p.drawRoundedRect(QRectF(w - 62, h - 24, 56, 11), 5.5, 5.5)
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor(tokens["text"]))
+        p.drawRoundedRect(QRectF(w - 55, h - 20, 26, 3), 1.5, 1.5)
+        p.setBrush(accent)
+        p.drawEllipse(QRectF(w - 20, h - 22, 7, 7))
+    else:  # Aus: nur die Zeile „Doku“ im Hauptfenster
+        p.setPen(QPen(line, 1, Qt.DashLine))
+        p.setBrush(Qt.NoBrush)
+        p.drawRoundedRect(QRectF(10, 14, w - 20, 10), 3, 3)
+        p.setPen(Qt.NoPen)
+        p.setBrush(line)
+        p.drawRoundedRect(QRectF(14, 18, 18, 3), 1.5, 1.5)
+    p.end()
+    return pixmap
 
 
 def prompt_style(config):

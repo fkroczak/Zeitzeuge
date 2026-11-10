@@ -21,7 +21,7 @@ from local_sources import DEFAULT_BROWSER_HISTORY, DEFAULT_RECENT_DIR
 from rdp_reader import DEFAULT_LAUNCHER_LOG
 from vpn_reader import DEFAULT_DIRS as VPN_DEFAULT_DIRS, FORTI_TRACE_PATHS, vpn_sources
 from settings_dialogs import ActivityTypeSettingsDialog, ConnectionSettingsDialog, WorkHoursDialog
-from theme import GERMAN, STYLESHEET, SPACE_XS, theme_for
+from theme import GERMAN, STYLESHEET, SPACE_XS, default_custom_colors, theme_for
 from timeline_only import (COLOR_ROWS, DEFAULT_CALL_COLORS, LEGEND_BANDS, LEGEND_FIXED, ROW_NAMES,
                            TIMELINE_ROWS, entry_color)
 from view_help import VIEW_HELP, ViewHelpDialog, help_text
@@ -851,15 +851,22 @@ class MenusMixin:
         self.set_theme("dark" if enabled else "light")
 
     def choose_theme(self, key):
-        """Eintrag im Menü Ansicht → Design. Eigene Farben ohne gespeicherte Werte: erst festlegen."""
+        """Design wählen (Menü Ansicht → Design, Einstellungen). Eigene Farben ohne gespeicherte
+        Werte: mit den Farben des aktuellen Designs beginnen und gleich zum Festlegen zeigen."""
         if key == "custom" and not self.config.get("custom_colors"):
             self.edit_custom_colors()
         else:
             self.set_theme(key)
 
     def edit_custom_colors(self):
-        from theme_dialog import CustomColorsDialog
-        CustomColorsDialog(self).exec()
+        """Eigene Farben festlegen: Einstellungen → Darstellung, unter der Kachel „Eigene Farben“."""
+        if self.current_theme_key() != "custom":
+            if not self.config.get("custom_colors"):
+                self.config["custom_colors"] = default_custom_colors("dark" if self.dark_mode else "light")
+            self.set_theme("custom")
+        window = self.show_settings("view")
+        window.show_custom_colors()
+        return window
 
     def set_theme(self, key, save=True):
         """Design wechseln: "light", "dark" oder "custom" (config["custom_colors"])."""
@@ -952,14 +959,9 @@ class MenusMixin:
                     proxy.setIcon(icons.check_box(theme["accent"], action.isChecked()))
         self.menu_button.setIcon(icons.icon("settings", theme["bandtext"]))
         self.view_button.setIcon(icons.icon("eye", theme["bandtext"]))
-        old_window = getattr(self, "_settings_window", None)
-        if old_window is not None:  # Symbole in neuer Farbe: Fenster neu aufbauen
-            page = old_window.current_page() if old_window.isVisible() else None
-            old_window.hide()
-            old_window.deleteLater()
-            self._settings_window = None
-            if page:
-                QTimer.singleShot(0, lambda: self.show_settings(page))
+        settings = getattr(self, "_settings_window", None)
+        if settings is not None:  # Symbole in neuer Farbe; das Fenster bleibt, wie es ist
+            settings.retheme()
         self.busy_bar.set_color(theme["muted"])  # Ladebalken dunkelgrau, nicht in Akzentfarbe
         self.update_tracking_state()
         self.timeline.set_dark_mode(self.dark_mode)

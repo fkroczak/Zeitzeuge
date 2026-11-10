@@ -14,7 +14,7 @@ from ai_classifier import to_entries
 from billing import Billing
 from journal import (describe, entry_key as journal_key, open_entry, suggest_category,
                      suggest_customer, sub_entries, ticket_line)
-from journal_dialogs import (DocPromptDialog, prompt_thresholds, EntryDialog, PromptStrip, PromptWindow,
+from journal_dialogs import (prompt_thresholds, EntryDialog, PromptStrip, PromptWindow,
                              default_span, PROMPT_SOURCES, prompt_style, prompt_timeout)
 from prompt_card import entry_label
 import snippets
@@ -603,13 +603,8 @@ class DocsMixin(CustomersMixin):
             action.setChecked(True)  # löst toggle_row aus
 
     def edit_prompt_settings(self):
-        dialog = DocPromptDialog(self.config, self)
-        if dialog.exec() == QDialog.Accepted:
-            dialog.apply()
-            mt.save_config(self.config)
-            if getattr(self, "idle_watch", None):
-                self.idle_watch.minutes = self.config.get("idle_prompt_minutes", 15)
-            self.timeline.draw_timeline(self.current_date)
+        """Nachfragen und Erinnerungen: Seite „Nachfragen“ im Einstellungsfenster."""
+        return self.show_settings("prompts")
 
     # ---- Eintragen: Textbausteine, zuletzt benutzte Texte, Ticket (snippets.py, tickets.py)
 

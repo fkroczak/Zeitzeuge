@@ -208,12 +208,12 @@ window.end_of_day_reminder([{"x": 1}], mon_evening)
 assert "Außerdem" not in window.tray.messages[-1][1]
 window.config["day_checks_enabled"] = True
 
-# Einstellung im Dialog „Nachfragen und Erinnerungen“
-import journal_dialogs  # noqa: E402
-prompt = journal_dialogs.DocPromptDialog(window.config, window)
-prompt.day_checks.setChecked(False)
-prompt.apply()
+# Einstellung „Bei Feierabend prüfen“: nur noch unter Einstellungen → Buchung
+settings = window.show_settings("booking")
+row = next(r for r in settings.rows if r.spec[5] == "day_checks_enabled")
+row.control.setChecked(False)
 assert window.config["day_checks_enabled"] is False
+settings.hide()
 
 window.tray = None
 window.m42_reader = None

@@ -111,7 +111,20 @@ def gui_test():
     settings = window._settings_window
     assert settings is not None and settings.isVisible()
     pages = [settings.nav.item(i).text() for i in range(settings.nav.count())]
-    assert pages[:3] == ["Allgemein", "Ansicht", "Datenquellen"], pages
+    assert pages == ["Übersicht", "Aufzeichnung", "Nachfragen", "Zuordnung", "Buchung", "Darstellung",
+                     "Datenschutz", "Info"], pages
+    assert not any("&" in p for p in pages), "Bereiche heißen mit einem Wort, ohne „&“"
+    assert settings.current_page() == "home"
+    # Jede Einstellung genau einmal (außer den Abkürzungen auf der Übersicht)
+    from settings_window import ROWS, row_page
+    titles = [spec[3] for spec in ROWS if row_page(spec) != "home"]
+    assert len(titles) == len(set(titles)), sorted(t for t in titles if titles.count(t) > 1)
+    # Übersicht: Zustand je Bereich, Knopf springt hin
+    settings.refresh_status()
+    assert set(settings.status) == {"sources", "prompts", "booking", "data"}
+    assert "Quellen an" in settings.status["sources"][1].text()
+    settings.show_page("general")  # alter Name leitet weiter
+    assert settings.current_page() == "home"
 
     # Seite Ansicht: Vorschau mit Beispieltag, Varianten beim Darüberfahren, Änderungen sofort
     settings.show_page("view")
@@ -119,16 +132,23 @@ def gui_test():
     preview = settings.preview
     assert preview is not None and preview.isVisible()
     assert preview.table.rowCount() >= 5 and preview.timeline._legend, "Vorschau leer"
+    from PySide6.QtCore import QEvent
+    from PySide6.QtWidgets import QApplication as _App
     row = next(r for r in settings.rows if r.spec[5] == "pc_blocks_action")
-    QTest.mouseMove(row, row.rect().center())
-    settings.preview_hover(row.spec)  # wie enterEvent
+    assert row.spec[1] == "tiles" and set(row.tiles) == {"on", "off"} and row.tiles["on"].isChecked()
+    _App.sendEvent(row.tiles["off"], QEvent(QEvent.Enter))  # Maus über „Jedes Fenster“
     QTest.qWait(settings.HOVER_DELAY_MS + 80)  # Darüberfahren wird kurz gebündelt
     assert preview.variant and preview.timeline.config["pc_blocks"] is False, preview.variant
     assert window.config.get("pc_blocks", True) is True, "Darüberfahren darf nichts speichern"
     assert not any(p.get("pc_block") for p in preview.timeline._pc_band)
-    settings.preview_hover(None)
+    _App.sendEvent(row.tiles["off"], QEvent(QEvent.Leave))
     QTest.qWait(settings.HOVER_DELAY_MS + 80)
     assert preview.variant is None and any(p.get("pc_block") for p in preview.timeline._pc_band)
+    # Klick auf die Kachel schaltet um, das Menü Ansicht zieht mit
+    row.tiles["off"].click()
+    assert not window.pc_blocks_action.isChecked() and row.tiles["off"].isChecked()
+    window.pc_blocks_action.setChecked(True)
+    assert row.tiles["on"].isChecked()
     # Vorschau bleibt sichtbar und kräftig, auch ohne Maus darüber (nicht verblasst)
     assert preview.timeline.isVisible() and preview.timeline.graphicsEffect() is None
     # Viele Zeilen (PC-Verlauf, jedes Fenster einzeln) dürfen das Fenster nicht aufhalten:
@@ -158,13 +178,13 @@ def gui_test():
     preview.show_variant(None)
     assert "calls" in window.view_actions and "calls" in dict(window.VIEWS)
     # Auswahl: schon beim Durchgehen der Liste, gespeichert erst beim Wählen
-    combo = next(r for r in settings.rows if r.spec[5] == "list_view").control
-    single = combo.findData("single")
-    combo.highlighted.emit(single)
+    view_row = next(r for r in settings.rows if r.spec[5] == "list_view")
+    assert list(view_row.tiles) == [k for k, _t in window.VIEWS], "jede Ansicht eine Kachel"
+    _App.sendEvent(view_row.tiles["single"], QEvent(QEvent.Enter))
     QTest.qWait(settings.HOVER_DELAY_MS + 80)
     assert preview.timeline.config["list_view"] == "single" and window.config.get("list_view") != "single"
     rows_grouped = preview.table.rowCount()
-    combo.activated.emit(single)
+    view_row.tiles["single"].click()
     QTest.qWait(20)
     assert window.config["list_view"] == "single" and preview.variant is None
     assert window.view_actions["single"].isChecked(), "Hauptfenster folgt der Auswahl"
@@ -177,11 +197,11 @@ def gui_test():
     assert preview.timeline.config["merge_gap_minutes"] == 0
     spin.setValue(5)
     # Zeitraum beim Start
-    combo = next(r for r in settings.rows if r.spec[5] == "timeline_range").control
-    combo.activated.emit(combo.findData("day"))
+    range_row = next(r for r in settings.rows if r.spec[5] == "timeline_range")
+    range_row.tiles["day"].click()
     QTest.qWait(20)
     assert window.config["timeline_range"] == "day" and window.timeline.fit_day
-    combo.activated.emit(combo.findData("work"))
+    range_row.tiles["work"].click()
 
     # Datenquellen: Kacheln schalten dieselben Aktionen wie das Menü
     settings.show_page("sources")
@@ -226,8 +246,14 @@ def gui_test():
         d.deleteLater()
 
     # Fehlersuche & Analyse: Mitschnitte stehen hier, nicht mehr in den Einrichtungsdialogen
-    settings.show_page("debug")
-    debug_rows = [r.spec[3] for r in settings.rows if r.spec[0] == "debug"]
+    settings.show_page("debug")  # alter Name: jetzt Info → Fehlersuche, eingeklappt
+    assert settings.current_page() == "about"
+    toggle = settings.collapsed["about/Fehlersuche"]
+    assert not toggle.isChecked()
+    toggle.click()
+    from settings_window import row_section
+    debug_rows = [r.spec[3] for r in settings.rows if row_section(r.spec) == "Fehlersuche"]
+    assert all(r.isVisible() for r in settings.rows if row_section(r.spec) == "Fehlersuche")
     assert "Matrix42: Buchung mitschneiden" in debug_rows and "3CX: Direkt-Abfrage prüfen" in debug_rows
     m42_dialog = window.build_reader_dialog("m42")
     assert not [b for b in m42_dialog.findChildren(QPushButton) if "mitschneiden" in b.text()]
@@ -237,10 +263,12 @@ def gui_test():
     next(r for r in settings.rows if r.spec[3] == "Matrix42: Buchung mitschneiden").control.click()
     assert calls == [("m42", True)], calls
 
-    # Grenzwert ändern wirkt sofort
-    row = next(r for r in settings.rows if r.spec[5] == "idle_prompt_minutes")
-    row.control.setValue(25)
+    # Seite Nachfragen: Grenzwert ändern wirkt sofort und wird gespeichert
+    settings.show_page("prompts")
+    settings.prompt_settings.idle_spin.setValue(25)
     assert window.config["idle_prompt_minutes"] == 25 and window.idle_watch.minutes == 25
+    settings.prompt_settings.thresholds["calls"].setValue(3)
+    assert window.config["prompt_thresholds"]["calls"] == 3
 
     # Suche findet über Bereiche hinweg, auch über die Einheit
     settings.search.setText("minuten")
@@ -249,13 +277,36 @@ def gui_test():
     assert settings.results_found >= 1
     settings.search.setText("vpn")
     assert settings.results_found >= 2
+    settings.search.setText("feierabend")  # findet auch die Seite Nachfragen und „Bei Feierabend prüfen“
+    found = [w.text() for w in settings.findChildren(QPushButton) if w.objectName() == "result_link" and w.isVisible()]
+    assert any("Nachfragen" in t for t in found), found
+    rows = [settings.results_box.itemAt(i).widget() for i in range(settings.results_box.count())]
+    assert any(getattr(r, "spec", (0,) * 6)[5] == "day_checks_enabled" for r in rows), [getattr(r, "spec", r) for r in rows]
     settings.search.clear()
     assert settings.stack.currentIndex() != settings.results_index
 
-    # Dunkles Design aus dem Fenster: Fenster baut sich neu auf und bleibt offen
-    next(r for r in settings.rows if r.spec[5] == "dark_action").control.setChecked(True)
+    # Design aus dem Fenster: Fenster färbt sich um, bleibt dasselbe und bleibt offen
+    settings.show_page("view")
+    design = next(r for r in settings.rows if r.spec[5] == "theme" and r.spec[1] == "tiles")
+    design.tiles["dark"].click()
     QTest.qWait(50)
-    assert window.dark_mode and window._settings_window is not None and window._settings_window.isVisible()
+    assert window.dark_mode and window._settings_window is settings and settings.isVisible()
+    assert settings.current_page() == "view" and design.tiles["dark"].isChecked()
+    # Eigene Farben: klappt unter der Kachel auf, ohne eigenes Fenster
+    assert not design.custom_panel.isVisible()
+    design.tiles["custom"].click()
+    QTest.qWait(50)
+    assert window.current_theme_key() == "custom" and design.custom_panel.isVisible()
+    assert window._settings_window is settings
+    design.custom_panel.select("accent")
+    design.custom_panel.swatches[3][1].click()
+    assert window.config["custom_colors"]["accent"] == design.custom_panel.swatches[3][0]
+    assert window._settings_window is settings, "Farbe ändern baut das Fenster nicht neu auf"
+    window.set_theme("dark")
+    assert not design.custom_panel.isVisible()
+    # Menü Ansicht → „Eigene Farben festlegen …“ öffnet diese Stelle
+    assert window.edit_custom_colors() is settings and design.custom_panel.isVisible()
+    window.set_theme("dark")
 
     # Hilfe zu den Ansichten
     from view_help import ViewHelpDialog

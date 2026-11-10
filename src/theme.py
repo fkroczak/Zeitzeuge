@@ -519,7 +519,7 @@ QLabel#example { background-color: $surface; color: $text; padding: 6px 8px;
 QLabel#page_title { font-size: $fs_xlpx; font-weight: bold; }
 QLabel#row_title { font-weight: bold; }
 QLabel#row_page { color: $muted; font-size: $fs_smpx; font-weight: bold; }
-QLabel#row_value { color: $text; font-weight: bold; }
+QLabel#row_value { color: $text; font-weight: normal; }
 QListWidget#settings_nav { border: none; border-right: 1px solid $border; background-color: $surface;
                            padding: 6px 0; outline: none; }
 QListWidget#settings_nav::item { padding: 6px 10px; margin: 1px 6px; border-radius: $radiuspx; border-left: 3px solid transparent; }
@@ -528,12 +528,33 @@ QListWidget#settings_nav::item:selected { background-color: $sel; color: $seltex
 QListWidget#settings_nav::item:hover:!selected { background-color: $hover; }
 QFrame#tile { background-color: $surface; border: 1px solid $border; border-radius: $radius_cardpx; }
 QFrame#tile QLabel, QFrame#tile QCheckBox { background: transparent; }
-QCheckBox#switch { spacing: 6px; font-weight: bold; }
+QCheckBox#switch { spacing: 8px; font-weight: normal; color: $muted; }
 QCheckBox#switch::indicator { width: 30px; height: 16px; border: 2px solid $muted; border-radius: $radius_cardpx;
                               background-color: $surface; }
 QCheckBox#switch::indicator:checked { border-color: $accent; background-color: $accent; image: none; }
 QCheckBox#switch::indicator:focus { border-color: $text; }
-QFrame#setting_row { border: none; border-bottom: 1px solid $line; }
+/* Einstellungen (settings_window.py): jede Zeile eine Karte, Icon in ruhiger Kachel, Abschnitte */
+QFrame#setting_row { background-color: $surface; border: 1px solid $border; border-radius: $radius_cardpx; }
+QFrame#setting_row:hover { border-color: $control; }
+QFrame#setting_row QLabel#row_icon { background-color: $chip; border-radius: 8px; }
+QLabel#section_title { color: $muted; font-weight: bold; font-size: $fs_smpx; background: transparent; }
+QToolButton#section_toggle { color: $muted; font-weight: bold; font-size: $fs_smpx; background: transparent;
+                             border: none; padding: 2px 0; }
+QToolButton#section_toggle:hover { color: $text; }
+QToolButton#section_toggle:focus { border: 1px solid $accent; border-radius: $radiuspx; }
+/* Seite Nachfragen (journal_dialogs.PromptSettings): Kacheln der Darstellung, Liste „Fragen bei“ */
+QWidget#prompt_settings, QWidget#prompt_settings QWidget#chips { background: transparent; }
+QWidget#prompt_settings QLabel { background: transparent; }
+QToolButton#style_tile { background-color: $surface; border: 1px solid $border; border-radius: $radius_cardpx;
+                         padding: 6px 6px 8px 6px; color: $text; }
+QToolButton#style_tile:hover { border-color: $control; }
+QToolButton#style_tile:checked { border: 2px solid $accent; padding: 5px 5px 7px 5px; background-color: $sel;
+                                 color: $seltext; font-weight: bold; }
+QToolButton#style_tile:focus { border: 2px solid $accent; padding: 5px 5px 7px 5px; }
+QFrame#source_list { background-color: $surface; border: 1px solid $border; border-radius: $radius_cardpx; }
+QFrame#source_list QCheckBox, QFrame#source_list QLabel { background: transparent; }
+QFrame#source_row { background: transparent; border: none; border-bottom: 1px solid $line; }
+QFrame#source_row[last="true"] { border-bottom: none; }
 QFrame#setting_row QLabel, QFrame#setting_row QCheckBox { background: transparent; }
 QPushButton#result_link { text-align: left; background: transparent; border: 1px solid $control; border-radius: $radiuspx; padding: 8px 12px; }
 /* Hinweise (auch der Timeline-Tooltip): in beiden Designs dunkel, wie unter Windows 11 */

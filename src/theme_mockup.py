@@ -39,8 +39,9 @@ class ThemeMockup(QWidget):
 
     picked = Signal(str, QPoint)
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, skeleton=False):
         super().__init__(parent)
+        self.skeleton = skeleton  # Texte als Balken (Skelett), wie die Kacheln der Einstellungen
         self.colors = {}
         self.bar_colors = {}  # Schlüssel aus BAR_NAMES -> Farbe
         self._hover = None
@@ -145,7 +146,13 @@ class ThemeMockup(QWidget):
             p.setPen(color)
             width = p.fontMetrics().horizontalAdvance(value)
             rect = QRectF(x, y, width, p.fontMetrics().height())
-            p.drawText(rect, Qt.AlignLeft | Qt.AlignVCenter, value)
+            if self.skeleton:  # Balken in Textbreite statt Schrift
+                height = max(3.0, rect.height() * 0.45)
+                p.setPen(Qt.NoPen)
+                p.setBrush(color)
+                p.drawRoundedRect(QRectF(x, rect.center().y() - height / 2, width, height), height / 2, height / 2)
+            else:
+                p.drawText(rect, Qt.AlignLeft | Qt.AlignVCenter, value)
             if key:
                 areas.append((rect.adjusted(-3, -2, 3, 2), key))
 
@@ -193,8 +200,9 @@ class ThemeMockup(QWidget):
         p.setFont(ui_font(7, True))
         pill = QRectF(now - 18, tl.top() + 4, 36, 15)
         box(pill, pill_color, 7.5)
-        p.setPen(QColor("#FFFFFF"))
-        p.drawText(pill, Qt.AlignCenter, "16:40")
+        if not self.skeleton:
+            p.setPen(QColor("#FFFFFF"))
+            p.drawText(pill, Qt.AlignCenter, "16:40")
         # „Jetzt“-Linie vor den Balken: sie ist schmal und sonst kaum zu treffen
         areas.append((pill.adjusted(-2, -2, 2, 2), "now"))
         areas.append((QRectF(now - 4, tl.top() + 20, 8, tl.height() - 24), "now"))

@@ -13,6 +13,8 @@ Qt-eigenen Mitteln.
 | Tagesliste zusammenfassen (keine Einträge gehen verloren) | `tests/grouping_test.py` | Schritt „Tests (pytest)“ | blockiert |
 | Start des Hauptfensters | `tests/start_test.py` | Schritt „Tests (pytest)“ | blockiert |
 | Infobereich: Menü, Aufzeichnung pausieren/fortsetzen, Zustand überall gleich | `tests/tray_test.py` | Schritt „Tests (pytest)“ | blockiert |
+| Tätigkeit nachtragen/ändern wie die Nachfrage-Karte: Zeitzeile, Beschriftung über dem Feld, Ticket-Chip, Strg+Enter | `tests/entry_dialog_gui_test.py` | Schritt „Tests (pytest)“ | blockiert |
+| Einstellungen: Bereiche, Abschnitte (≤ 6 Zeilen), Kacheln in beiden Designs, eindeutige Alt-Buchstaben je Seite, keine waagerechte Scrollleiste bei 960 × 540 | `tests/settings_pages_gui_test.py` | Schritt „Tests (pytest)“ | blockiert |
 | TeamViewer-/RDM-Logs einlesen, Zeitformat streng | `tests/parser_test.py` | Schritt „Tests (pytest)“ | blockiert |
 | Klassifizierung ohne KI: Regeln, Vorrang, keine Überschneidung, Tempo | `tests/rules_test.py` | Schritt „Tests (pytest)“ | blockiert |
 | Fenster-Filter (Black-/Whitelist), Schreibfehler im Aktivitätsprotokoll | `tests/tracking_filter_test.py` | Schritt „Tests (pytest)“ | blockiert |
