@@ -360,10 +360,17 @@ class DayListMixin:
         self.date_edit.setDate(QDate.currentDate())
 
     def refresh(self):
+        """Aktualisieren (F5): alle Quellen sofort neu lesen."""
+        try:
+            if vpn_sources(self.config):
+                self.timeline.vpn_reader.update_from_logs()  # neue Sophos-Zeilen gleich mitnehmen
+        except Exception as e:
+            print(f"Fehler beim Lesen der VPN-Logs: {e}")
         self.timeline.refresh()
-        # 3CX, Matrix42 und ITM gleich mit neu lesen (sonst erst beim nächsten Durchlauf)
+        # 3CX, Matrix42, ITM und Outlook/Teams gleich mit neu lesen (sonst erst beim nächsten Durchlauf)
         names = []
-        for attr, name in (("pbx_reader", "3CX"), ("m42_reader", "Matrix42"), ("itm_reader", "ITM")):
+        for attr, name in (("pbx_reader", "3CX"), ("m42_reader", "Matrix42"), ("itm_reader", "ITM"),
+                           ("outlook_reader", "Outlook")):
             reader = getattr(self, attr, None)
             if reader is not None and hasattr(reader, "refresh"):
                 reader.refresh(self.current_date.toString("yyyy-MM-dd"))

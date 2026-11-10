@@ -488,6 +488,8 @@ class TimelineApp(MenusMixin, DayListMixin, DayCloseMixin, DocsMixin, ReadersMix
         self.timeline.entry_action.connect(self.on_entry_action)
         self.timeline.rows_menu_requested.connect(self.show_rows_menu)
         self.timeline.row_order_changed.connect(self.set_row_order)
+        self.timeline.config_changed.connect(lambda: save_config(self.config))
+        self.timeline.route_lookups = True  # Fahrzeiten zu Termin-Adressen (OpenStreetMap)
         self._rule_cache = {}
         self._prompt_window = None
         self._prompt_queue = []

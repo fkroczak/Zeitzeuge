@@ -89,6 +89,15 @@ class OutlookReader(QObject):
         self._next_outlook = 0.0
         self._wake.set()
 
+    def refresh(self, date_str=None):
+        """Aktualisieren (F5): Outlook und Teams gleich neu lesen, auch den angezeigten Tag,
+        wenn er älter ist als der regelmäßig gelesene Zeitraum."""
+        if date_str:
+            with self._lock:
+                self._done.discard(date_str)
+            self.want(date_str)
+        self.read_now()
+
     def want(self, date_str):
         """Tag anzeigen: ältere Tage einmal je Sitzung nachlesen."""
         if not self.outlook_on() or date_str in self._done:
