@@ -860,7 +860,7 @@ class TimelineView(QGraphicsView):
             index = customers.index(self.config)
             trips = travel.suggest(entries, self.pc_entries_for(date),
                                    customer_net=lambda name: index.lookup("net", name),
-                                   ignore_locations=self.config.get("travel_ignore_locations") or [],
+                                   places=travel.places_from_config(self.config),
                                    max_minutes=int(self.config.get("travel_max_minutes", travel.MAX_MINUTES)))
         except Exception as e:  # Vorschläge dürfen die Timeline nie leeren
             print(f"Fehler bei den vermuteten Fahrten: {e}")

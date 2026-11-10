@@ -198,10 +198,11 @@ class RateKpi(QFrame):
             head = QLabel("heute" if key == "today" else "7 Tage", self)  # klein neben der Zahl
             head.setObjectName("kpi_label")
             row.addWidget(value)
-            row.addWidget(head, 0, Qt.AlignBottom)
+            row.addWidget(head)  # mittig wie „Einträge“ und „von … Arbeitszeit“
             self.columns[key] = (head, value)
         row.addStretch(1)
         layout.addLayout(row)
+        layout.addStretch(1)  # Inhalt oben wie bei _Kpi: Überschriften aller Kacheln auf einer Höhe
 
     def show_rate(self, info):
         """info: week_dialogs.rate_info (label, today, today_level, seven, seven_level, text, tip)."""

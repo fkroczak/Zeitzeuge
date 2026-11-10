@@ -148,6 +148,13 @@ window.update_status_text()
 label = (today - timedelta(days=1)).strftime("%d.%m.")
 assert button.text().startswith(f"Quote {label} 25 % · 7 Tage 25 %"), button.text()
 assert f"bis {label}" in button.toolTip(), button.toolTip()
+# Kachel Buchungsquote: Überschrift und Zahl auf gleicher Höhe wie in „Erfasst“
+from PySide6.QtWidgets import QLabel as _QLabel
+app.processEvents()
+def _rows(card):
+    return sorted({x.mapTo(card, x.rect().topLeft()).y() for x in card.findChildren(_QLabel)
+                   if x.isVisibleTo(card) and x.text()})
+assert _rows(button)[:2] == _rows(window.day_summary.booked)[:2], (_rows(button), _rows(window.day_summary.booked))
 window.current_date = QDate.currentDate()
 personal.clear()
 m42.clear()

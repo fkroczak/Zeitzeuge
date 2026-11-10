@@ -1102,18 +1102,13 @@ class MenusMixin:
         )
 
     def edit_travel_settings(self):
-        self._edit_log_settings(
-            "travel", [], "Fahrten (vermutet)",
-            enabled_text="Fahrten vermuten und vorschlagen",
-            paths=False, timezone=False,
-            hint="Hat ein Outlook-Termin einen Ort (kein Teams, kein Link), ist die Zeit davor ohne "
-                 "Arbeit am PC vermutlich die Hinfahrt, die Zeit danach die Rückfahrt (höchstens "
-                 "90 Minuten, ab 10 Minuten). Ebenso eine Lücke beim Wechsel in ein Kundennetz "
-                 "(Netzwerk mit Kunde in der Kundenliste). Fahrten stehen neben dem Termin in der "
-                 "Zeile Outlook, Zeitzeuge fragt danach wie bei Verbindungen und schlägt "
-                 "„Fahrt / Reise“ vor. Orte, die keine Fahrt sind (z. B. Besprechungsraum), trägst "
-                 "du unter travel_ignore_locations in der zeitzeuge_config.json ein.",
-        )
+        from travel_dialogs import TravelSettingsDialog
+        dialog = TravelSettingsDialog(self.config, self.known_customers(), self)
+        if dialog.exec() == QDialog.Accepted:
+            self.config.update(dialog.values())
+            mt.save_config(self.config)
+            self.sync_source_actions()
+            self.timeline.refresh()
 
     def edit_sophos_settings(self):
         self._edit_log_settings(

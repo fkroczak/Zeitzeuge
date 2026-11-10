@@ -107,6 +107,7 @@ def default_config():
         "travel_enabled": True,         # vermutete Fahrten zu Terminen mit Ort und zu Kundennetzen
         "travel_ignore_locations": [],  # Orte, die keine Fahrt sind (z. B. Besprechungsraum, Büro)
         "travel_max_minutes": 90,       # längste Fahrt vor oder nach einem Termin
+        "travel_places": [],            # bekannte Orte: [{"name": "Besprechungsraum", "minutes": 0}, …]
         "browser_enabled": True,        # Browser-Verlauf: nur Domain und Ticketnummer
         "browser_paths": [
             r"%LOCALAPPDATA%\Microsoft\Edge\User Data\Default\History",
