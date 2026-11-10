@@ -495,6 +495,7 @@ class DocsMixin(CustomersMixin):
                              text, tv_id=(entry or {}).get("tv_id"), info=info, parent=self,
                              trace=hints.get("trace"), rule_subject=hints.get("rule_subject"),
                              context_for=context_for, guess_for=guess,
+                             edit_time=entry is None and span is None,  # Zeit meist noch anpassen
                              **self.entry_form_options(start, end))
         dialog.form.set_billing(self.billing())
         if dialog.exec() != QDialog.Accepted:
@@ -545,7 +546,7 @@ class DocsMixin(CustomersMixin):
         start, end = parse_time(item["start"]), parse_time(item["end"])
         dialog = EntryDialog(start, end, self.known_customers(), self.categories(),
                              item.get("customer", ""), item.get("category", ""),
-                             item.get("text", ""), title="Tätigkeit bearbeiten",
+                             item.get("text", ""), title="Tätigkeit ändern",
                              can_delete=True, parent=self,
                              goodwill=item.get("goodwill", False), travel=item.get("travel", False),
                              no_surcharge=item.get("no_surcharge", False),

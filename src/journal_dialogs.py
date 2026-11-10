@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 
 import re
 
-from PySide6.QtCore import QDate, QLocale, QModelIndex, Qt, QTime, QTimer
+from PySide6.QtCore import QDate, QEvent, QLocale, QModelIndex, Qt, QTime, QTimer
 from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QCompleter, QDateEdit, QDialog, QDialogButtonBox,
                                QFormLayout, QFrame, QHBoxLayout, QLabel, QMenu, QPlainTextEdit,
@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QCompleter, QDateEdit, QDia
                                QWidget)
 
 from theme import prose, SPACE_M, SPACE_S, SPACE_XS
+import icons
 from billing import hours_text
 import customers as customer_list
 from grouping import format_tv_id
@@ -26,6 +27,7 @@ import range_context
 import snippets as snippet_logic
 from m42_booking import ticket_label as mb_ticket_label
 from tickets import format_ticket_text
+from prompt_card import CardParts, _ElidedLabel, _icon_label, source_tile
 
 
 class _EntryForm(QWidget):
@@ -433,25 +435,67 @@ class _EntryForm(QWidget):
         }
 
 
-class EntryDialog(QDialog):
-    """Tätigkeit nachtragen oder ändern."""
+class EntryDialog(CardParts, QDialog):
+    """Tätigkeit nachtragen oder ändern, aufgebaut wie die Nachfrage-Karte (prompt_card.py):
+    Kopf mit Aufgabe, feste Zeitzeile mit Stift, Felder mit Beschriftung darüber, Chips,
+    darunter die Spuren in dieser Zeit und die Fußleiste (Löschen | Abbrechen, Speichern).
+
+    edit_time: Zeitzeile gleich offen (Nachtragen ohne gezogenen Zeitraum)."""
 
     def __init__(self, start, end, customers, categories, customer="", category="", text="",
                  tv_id=None, title="Tätigkeit nachtragen", info="", can_delete=False, parent=None,
-                 trace=None, rule_subject=None, context_for=None, guess_for=None, **form_options):
+                 trace=None, rule_subject=None, context_for=None, guess_for=None, edit_time=False,
+                 **form_options):
         super().__init__(parent)
         self.setWindowTitle(title)
-        self.setMinimumWidth(620)  # Datum und Zeit, Häkchen und „Text einfügen“ je in einer Zeile
+        self.setObjectName("entry_dialog")
+        self.setFixedWidth(600)  # wie die Karte: passt auch bei 200 % auf Full HD
         self.deleted = False
-        layout = QVBoxLayout(self)
-        if info:
-            label = QLabel(info)
-            label.setWordWrap(True)
-            prose(label)
-            label.setObjectName("hint")
-            layout.addWidget(label)
-        self.form = _EntryForm(start, end, customers, categories, customer, category, text,
-                               tv_id, self, trace=trace, rule_subject=rule_subject, **form_options)
+        pal = (parent or self).palette()
+        accent = pal.color(pal.ColorRole.Accent).name()
+        muted = pal.color(pal.ColorRole.PlaceholderText).name()
+        self.form = form = _EntryForm(start, end, customers, categories, customer, category, text,
+                                      tv_id, self, trace=trace, rule_subject=rule_subject,
+                                      **{"show_ticket": False, **form_options})
+        old = form.layout()
+        form.hide()  # nur noch Hülle; die Felder wandern in den Dialog
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        # ---- Kopf: Aufgabe, Vorschlag oder Kunde, Zeitzeile
+        top = QWidget()
+        top.setObjectName("prompt_top")
+        top.setAttribute(Qt.WA_StyledBackground)
+        head_box = QVBoxLayout(top)
+        head_box.setContentsMargins(16, 14, 16, SPACE_M)
+        head_box.setSpacing(SPACE_S + 2)
+        head = QHBoxLayout()
+        head.setSpacing(SPACE_M)
+        head.addWidget(source_tile("edit" if can_delete else "doc", accent), 0, Qt.AlignVCenter)
+        texts = QVBoxLayout()
+        texts.setSpacing(2)
+        self.title = _ElidedLabel(title)
+        self.title.setObjectName("prompt_title")
+        self.subtitle = _ElidedLabel(info or (customer if can_delete else ""))
+        self.subtitle.setObjectName("hint")
+        self.subtitle.setVisible(bool(self.subtitle.full_text()))
+        texts.addWidget(self.title)
+        texts.addWidget(self.subtitle)
+        head.addLayout(texts, 1)
+        head_box.addLayout(head)
+        head_box.addWidget(self._build_time_row(form, old, muted))
+        outer.addWidget(top)
+
+        # ---- Inhalt
+        body = QWidget()
+        body.setObjectName("prompt_body")
+        self.body_box = QVBoxLayout(body)
+        self.body_box.setContentsMargins(16, SPACE_M, 16, SPACE_M)
+        self.body_box.setSpacing(SPACE_S + 2)
+        self._build_fields(self.body_box, form, old, text_height=84)
+        outer.addWidget(body)
+
         # Zeitraum nachtragen (Companion): was die Quellen in dieser Zeit sagen, Feinjustieren
         # guess_for(start, end, text): range_context.estimate, vermuteter Kunde und Kategorie
         self.context_for = context_for
@@ -459,43 +503,101 @@ class EntryDialog(QDialog):
         self.context_rows = None
         self._auto_category = category  # vorbelegt, darf beim Tippen nachgeführt werden
         if context_for:
-            layout.addWidget(self._context_card())
-            self.form.start_edit.timeChanged.connect(lambda _t: self.update_context())
-            self.form.end_edit.timeChanged.connect(lambda _t: self.update_context())
+            self.body_box.addSpacing(SPACE_XS)
+            self.body_box.addWidget(self._context_card(muted))
+            form.start_edit.timeChanged.connect(lambda _t: self.update_context())
+            form.end_edit.timeChanged.connect(lambda _t: self.update_context())
+            form.date_edit.dateChanged.connect(lambda _d: self.update_context())
             if guess_for:  # beim Tippen neu schätzen, aber erst nach einer kurzen Pause
                 self._text_timer = QTimer(self)
                 self._text_timer.setSingleShot(True)
                 self._text_timer.setInterval(400)
                 self._text_timer.timeout.connect(self.update_context)
-                self.form.text_edit.textChanged.connect(self._text_timer.start)
+                form.text_edit.textChanged.connect(self._text_timer.start)
             self.update_context()
-        layout.addWidget(self.form)
-        self.buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        self.buttons.button(QDialogButtonBox.Ok).setText("&Speichern")
-        if can_delete:
-            delete = self.buttons.addButton("&Löschen", QDialogButtonBox.DestructiveRole)
-            delete.clicked.connect(self._delete)
-        self.buttons.accepted.connect(self.accept)
-        self.buttons.rejected.connect(self.reject)
-        layout.addWidget(self.buttons)
-        self.form.validate_hook = self.buttons.button(QDialogButtonBox.Ok).setEnabled
-        self.form.validate()
-        self.form.text_edit.setFocus()
 
-    def _context_card(self):
+        # ---- Fuß: Löschen | Abbrechen, Speichern
+        foot = QWidget()
+        foot.setObjectName("prompt_foot")
+        foot.setProperty("flat", True)  # im Fenster ohne runde Ecken
+        foot.setAttribute(Qt.WA_StyledBackground)
+        foot_box = QHBoxLayout(foot)
+        foot_box.setContentsMargins(16, SPACE_S + 2, 16, SPACE_S + 2)
+        foot_box.setSpacing(SPACE_S)
+        self.delete_btn = None
+        if can_delete:
+            self.delete_btn = QPushButton("&Löschen")
+            self.delete_btn.setObjectName("quiet_button")
+            self.delete_btn.setIcon(icons.icon("trash", muted))
+            self.delete_btn.setAutoDefault(False)
+            self.delete_btn.setToolTip("Diese Tätigkeit löschen")
+            self.delete_btn.clicked.connect(self._delete)
+            foot_box.addWidget(self.delete_btn)
+        foot_box.addStretch(1)
+        self.cancel_btn = QPushButton("Abbrechen")
+        self.cancel_btn.setAutoDefault(False)
+        self.cancel_btn.clicked.connect(self.reject)
+        foot_box.addWidget(self.cancel_btn)
+        self.save_btn = QPushButton("&Speichern")
+        self.save_btn.setDefault(True)
+        self.save_btn.setToolTip("Speichern (Strg+Enter)")
+        self.save_btn.clicked.connect(self.accept)
+        foot_box.addWidget(self.save_btn)
+        outer.addWidget(foot)
+
+        form.validate_hook = self.save_btn.setEnabled
+        form.validate()
+        if edit_time:
+            self.set_time_editing(True)  # Fokus auf „Von“
+        else:
+            form.text_edit.setFocus()
+
+    def _context_card(self, muted):
         card = QFrame()
-        card.setObjectName("card")
+        card.setObjectName("entry_context")
         box = QVBoxLayout(card)
-        box.setContentsMargins(SPACE_M, SPACE_M, SPACE_M, SPACE_M)
-        box.setSpacing(SPACE_S)
-        head = QLabel("Was die Quellen in dieser Zeit sagen")
-        head.setObjectName("card_title")
-        box.addWidget(head)
+        box.setContentsMargins(SPACE_M, SPACE_S + 2, SPACE_M, SPACE_S + 2)
+        box.setSpacing(SPACE_XS + 2)
+        head = QHBoxLayout()
+        head.setSpacing(SPACE_S)
+        head.addWidget(_icon_label("eye", muted, 14))
+        title = QLabel("In dieser Zeit")
+        title.setObjectName("prompt_label")
+        title.setToolTip("Was die Quellen in dieser Zeit sagen")
+        head.addWidget(title)
+        head.addStretch(1)
+        box.addLayout(head)
         self.context_rows = QFormLayout()
         self.context_rows.setHorizontalSpacing(SPACE_M)
         self.context_rows.setVerticalSpacing(SPACE_XS)
         box.addLayout(self.context_rows)
         return card
+
+    def eventFilter(self, obj, event):
+        if self._card_event(obj, event):
+            return True
+        return super().eventFilter(obj, event)
+
+    def event(self, event):
+        result = super().event(event)
+        if event.type() == QEvent.LayoutRequest:
+            self._fit()  # Chips umgebrochen, Ticketfeld auf/zu: Höhe nachführen
+        return result
+
+    def _fit(self):
+        layout = self.layout()
+        if layout is None or not layout.hasHeightForWidth():
+            return
+        height = max(layout.totalMinimumSize().height(), layout.totalHeightForWidth(self.width()))
+        if height != self.height():
+            self.setFixedHeight(height)
+
+    def keyPressEvent(self, event):
+        if event.key() in (Qt.Key_Return, Qt.Key_Enter) and event.modifiers() & Qt.ControlModifier:
+            if self.save_btn.isEnabled():
+                self.accept()
+            return
+        super().keyPressEvent(event)
 
     def update_context(self):
         if self.context_rows is None:

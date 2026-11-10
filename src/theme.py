@@ -384,6 +384,13 @@ QWidget#prompt_foot { background-color: $bg; border-top: 1px solid $line;
 QLabel#prompt_title { font-weight: bold; font-size: $fs_lgpx; }
 QLabel#prompt_label { color: $muted; font-weight: bold; font-size: $fs_smpx; }
 QFrame#prompt_card QLabel#prompt_src { background-color: $sel; border-radius: 9px; }
+/* Tätigkeit nachtragen/ändern (journal_dialogs.EntryDialog): Fenster mit den Teilen der Karte */
+QDialog#entry_dialog { background-color: $surface; }
+QDialog#entry_dialog QLabel, QDialog#entry_dialog QWidget#chips,
+QDialog#entry_dialog QWidget#prompt_body { background: transparent; }
+QDialog#entry_dialog QLabel#prompt_src { background-color: $sel; border-radius: 9px; }
+QWidget#prompt_foot[flat="true"] { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+QFrame#entry_context { background-color: $bg; border: 1px solid $line; border-radius: $radius_cardpx; }
 QFrame#prompt_strip QLabel#prompt_src_round { background-color: $sel; border-radius: 15px; }
 QWidget#prompt_dots { background: transparent; }
 QFrame#prompt_time { background-color: $bg; border: 1px solid $line; border-radius: 8px; }

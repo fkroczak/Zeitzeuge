@@ -118,6 +118,7 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
   - In der Tagesliste zeigt die Ansicht **KI-Vorschläge** alle Vorschläge. STRG + C kopiert sie als fertige Ticketzeilen.
 - **Tätigkeiten dokumentieren:** Was du gemacht hast, trägst du direkt in Zeitzeuge ein. Es steht in einer eigenen Zeile „Doku“ ganz oben in der Timeline.
   - **Nachtragen** (Knopf in der Werkzeugleiste): Zeit, Kunde, Kategorie und ein Satz, was du gemacht hast. Ist in der Tagesliste eine Zeile markiert, sind Zeit und Kunde schon ausgefüllt.
+    - Das Fenster sieht aus wie die Nachfrage-Karte: oben die Aufgabe („Tätigkeit nachtragen“ bzw. „Tätigkeit ändern“), darunter eine feste Zeile für **Datum und Uhrzeit** mit **Stift**. Ohne gezogenen Zeitraum ist sie gleich offen, weil du die Zeit meist noch anpasst. Kunde und Kategorie stehen nebeneinander, Ticket (**+ Ticket**), Kulanz, Reise, Kein Zuschlag und Text einfügen sind Chips. **Löschen** steht beim Ändern links unten, getrennt von Abbrechen und Speichern. **STRG + Enter** speichert.
   - Rechtsklick auf einen Eintrag: **Tätigkeit dazu eintragen …**. Rechtsklick auf eine freie Stelle der Timeline: **Tätigkeit ab hh:mm eintragen …**.
   - Timeline und Tagesliste haben dasselbe Rechtsklick-Menü. Es zeigt nur Befehle, die zum Eintrag passen.
   - **Offenes fällt auf:** Verbindungen und Telefonate ohne Dokumentation stehen gestrichelt mit „?“ in der Zeile „Doku“. Ein Klick darauf öffnet das Eintragen.
