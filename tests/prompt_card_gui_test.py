@@ -168,6 +168,28 @@ def gui_test():
     dialog.apply()
     assert window.config["prompt_mode"] == "strip" and window.config["prompt_timeout_seconds"] == 10
     assert window.config["prompt_dots_clickable"] is False
+    assert not dialog.position.isEnabled(), "Leiste: Position fest unten rechts"
+    dialog.mode.setCurrentIndex(dialog.mode.findData("window"))
+    assert dialog.position.isEnabled()
+    dialog.position.setCurrentIndex(dialog.position.findData("top_left"))
+    dialog.apply()
+    assert window.config["prompt_position"] == "top_left"
+
+    # 6. Position: Karte oben links, mit Abstand, nie außerhalb des Bildschirms
+    window._close_prompt_silently()
+    window._prompt_queue.clear()
+    window._prompt_asked.clear()
+    window._prompt_asked_spans.clear()
+    window.config["prompt_timeout_seconds"] = 0
+    window.check_prompts()
+    prompt = window._prompt_window
+    assert isinstance(prompt, PromptWindow) and prompt.position == "top_left"
+    settle(100)
+    area = app.primaryScreen().availableGeometry()
+    frame = prompt.frameGeometry()
+    assert frame.left() == area.left() + 8 and frame.top() == area.top() + 8, (frame, area)
+    window._close_prompt_silently()
+    window.config["prompt_position"] = "bottom_right"
     old = {"prompt_mode": "tray"}  # alter Name der Leiste
     assert DocPromptDialog(old, window).mode.currentData() == "strip"
     window.quit_app()

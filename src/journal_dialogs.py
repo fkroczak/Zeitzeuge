@@ -600,6 +600,12 @@ class DocPromptDialog(QDialog):
             self.mode.addItem(f"{text} – {STYLE_HINTS[key]}", key)
         self.mode.setCurrentIndex(max(0, self.mode.findData(prompt_style(config))))
         form.addRow("&Nachfragen als:", self.mode)
+        self.position = QComboBox()
+        for key, text in POSITIONS:
+            self.position.addItem(text, key)
+        self.position.setCurrentIndex(max(0, self.position.findData(prompt_position(config))))
+        self.position.setToolTip("Wo Karte und Kompakt erscheinen. Die Leiste bleibt unten rechts.")
+        form.addRow("&Position:", self.position)
         self.timeout = QComboBox()
         for seconds, text in TIMEOUTS:
             self.timeout.addItem(text, seconds)
@@ -702,12 +708,14 @@ class DocPromptDialog(QDialog):
         for w in (self.timeout, self.keep_active, self.dots):
             w.setEnabled(style != "off")
         self.strip_close.setEnabled(style == "strip")
+        self.position.setEnabled(style in ("window", "compact"))
         if _ and style in DEFAULT_TIMEOUT:  # nur bei echtem Wechsel, nicht beim Öffnen
             self.timeout.setCurrentIndex(max(0, self.timeout.findData(DEFAULT_TIMEOUT[style])))
 
     def apply(self):
         self.config["prompt_mode"] = self.mode.currentData()
         self.config["prompt_timeout_seconds"] = self.timeout.currentData()
+        self.config["prompt_position"] = self.position.currentData()
         self.config["prompt_keep_while_active"] = self.keep_active.isChecked()
         self.config["prompt_dots_clickable"] = self.dots.isChecked()
         self.config["prompt_strip_close"] = self.strip_close.currentData()
@@ -722,5 +730,5 @@ class DocPromptDialog(QDialog):
 
 
 # Nachfrage als Karte/Leiste: eigenes Modul, braucht _EntryForm von hier (daher am Ende geladen)
-from prompt_card import (DEFAULT_TIMEOUT, STYLE_HINTS, STYLES, TIMEOUTS, PromptStrip,  # noqa: E402,F401
-                         PromptWindow, prompt_style, prompt_timeout)
+from prompt_card import (DEFAULT_TIMEOUT, POSITIONS, STYLE_HINTS, STYLES, TIMEOUTS,  # noqa: E402,F401
+                         PromptStrip, PromptWindow, prompt_position, prompt_style, prompt_timeout)

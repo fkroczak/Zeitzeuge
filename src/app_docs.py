@@ -16,7 +16,7 @@ from journal import (describe, entry_key as journal_key, open_entry, suggest_cat
                      suggest_customer, sub_entries, ticket_line)
 from journal_dialogs import (DocPromptDialog, prompt_thresholds, EntryDialog, PromptStrip, PromptWindow,
                              default_span, PROMPT_SOURCES, prompt_style, prompt_timeout)
-from prompt_card import entry_label
+from prompt_card import entry_label, prompt_position
 import snippets
 import tickets
 from snippets_dialogs import SnippetsDialog
@@ -804,13 +804,14 @@ class DocsMixin(CustomersMixin):
                               dots_clickable=self.config.get("prompt_dots_clickable", True),
                               keep_while_active=keep,
                               draft=self._prompt_drafts.get(journal_key(entry), ""),
+                              position=prompt_position(self.config),
                               **self.entry_form_options(parse_time(entry["start"]),
                                                         parse_time(entry["end"])))
         window.form.set_billing(self.billing())
         window.answered.connect(self.on_prompt_answered)
         window.jump.connect(self.on_prompt_jump)
         self._prompt_window = window
-        # unten rechts über dem Infobereich, ohne dir den Fokus wegzunehmen
+        # in der gewählten Ecke (Standard unten rechts), ohne dir den Fokus wegzunehmen
         window.adjustSize()
         window.dock_bottom_right(8)  # dicht über der Taskleiste
         window.show()
