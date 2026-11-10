@@ -465,22 +465,36 @@ class DocsMixin(CustomersMixin):
             start, end = span or default_span(self.current_date.toPython(), minute)
             info, customer, category, text = "", "", "", ""
             hints = {}
-        context_for = None
+        context_for = guess = None
         if span:  # Zeitraum in der Timeline gezogen: Spuren dazu zeigen, Termin/Anruf vorschlagen
             date = QDate(start.year, start.month, start.day)
             day_acts = self.timeline.activities_for(date)
             day_pcs = self.timeline.pc_entries_for(date, min_seconds=30)
 
+            index, rule_list = self.customer_index(), self.config.get("rules")
+            history = self.journal.recent_items(60)
+
+            def guess(s, e, text=""):
+                return range_context.estimate(s, e, day_acts, day_pcs, index, categories,
+                                              rule_list, history, text=text)
+
             def context_for(s, e):
                 return range_context.context(s, e, day_acts, day_pcs)
-            found = range_context.suggestion(start, end, day_acts, self.customer_index())
+            found = range_context.suggestion(start, end, day_acts, index)
             if found:
                 customer, text = found
                 info = f"Vorschlag aus deinem {'Kalender' if text != 'Telefonat' else 'Anruf'}: {text}"
+            # Sonst: Kunde und Kategorie mit der höchsten Wahrscheinlichkeit vorbelegen
+            likely = guess(start, end)
+            if not customer and likely["customers"] and likely["customers"][0][1] >= 40:
+                customer = likely["customers"][0][0]
+            if not category and likely["categories"] and likely["categories"][0][1] >= 30:
+                category = likely["categories"][0][0]
         dialog = EntryDialog(start, end, self.known_customers(), categories, customer, category,
                              text, tv_id=(entry or {}).get("tv_id"), info=info, parent=self,
                              trace=hints.get("trace"), rule_subject=hints.get("rule_subject"),
-                             context_for=context_for, **self.entry_form_options(start, end))
+                             context_for=context_for, guess_for=guess,
+                             **self.entry_form_options(start, end))
         dialog.form.set_billing(self.billing())
         if dialog.exec() != QDialog.Accepted:
             return
