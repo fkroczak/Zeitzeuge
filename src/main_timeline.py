@@ -549,6 +549,7 @@ class TimelineApp(MenusMixin, DayListMixin, DayCloseMixin, DocsMixin, ReadersMix
         list_layout.setSpacing(0)
         self.view_chips = ViewChips(list_box)
         self.view_chips.view_chosen.connect(self.change_view)
+        self.view_chips.show_state(self.config.get("list_view", "grouped"))  # schon vor den Daten
         if hasattr(self, "view_actions"):
             self.update_view_button()  # Hinweise an die Chips
         list_layout.addWidget(self.view_chips)
@@ -673,9 +674,11 @@ class TimelineApp(MenusMixin, DayListMixin, DayCloseMixin, DocsMixin, ReadersMix
 
         self.apply_style()  # setzt auch Icons und Aufzeichnungs-Zustand
         self.timeline.setFocus()
-        # Erst zeichnen, wenn das Fenster seine echte Größe hat (spart ein Zeichnen beim Start).
-        # Die Logs liest die Timeline dabei im Hintergrund.
-        QTimer.singleShot(0, self.show_preferred_range)  # Arbeitszeit (oder ganzer Tag, wie zuletzt)
+        # Logs sofort im Hintergrund lesen; bis dahin zeigt das Fenster Umrisse (skeleton.py).
+        # Gezeichnet wird einmal, wenn die Logs da sind, im bevorzugten Zeitraum
+        # (Arbeitszeit oder ganzer Tag, wie zuletzt) und mit der echten Fenstergröße.
+        self.start_visible = not ("--minimized" in sys.argv or self.config.get("start_minimized", False))
+        self.timeline.start_first_load(self.show_preferred_range)
         self._init_protection()
         self._init_robustness()
         # PC-Verlauf nach N Tagen löschen (Standard aus), beim Start verzögert und täglich

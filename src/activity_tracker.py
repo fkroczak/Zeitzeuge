@@ -21,6 +21,7 @@ Die Daten bleiben nur auf diesem PC.
 import ctypes
 import os
 import sys
+import threading
 from datetime import datetime, timedelta
 from functools import lru_cache
 
@@ -258,6 +259,7 @@ def _valid_segment(seg):
 
 SEGMENT_CACHE_DAYS = 8
 _segment_cache = {}  # (Speicher, Ablage, Tag) -> (Stand der Datenbank, Abschnitte)
+_segment_lock = threading.Lock()  # der Lese-Thread der Timeline liest beim Start vorab
 
 
 def read_segments(folder, date_str):
@@ -270,16 +272,19 @@ def read_segments(folder, date_str):
         # Timeline, Tagesliste und Dokumentation lesen denselben Tag beim Zeichnen mehrmals:
         # gelesene Tage merken, solange sich in der Datenbank nichts geändert hat.
         key, version = (id(store), name, date_str), store.version()
-        hit = _segment_cache.pop(key, None)
+        with _segment_lock:
+            hit = _segment_cache.get(key)
         if hit is None or hit[0] != version:
             # Abgeschlossene Tage stehen verdichtet als ein Dokument (compact_days), dazu
             # Zeilen, die erst danach kamen
             packed = store.get(name, date_str) or []
             segments = (packed if isinstance(packed, list) else []) + store.rows(name, date_str)
             hit = (version, [seg for seg in segments if _valid_segment(seg)])
-        _segment_cache[key] = hit  # zuletzt benutzt ans Ende
-        while len(_segment_cache) > SEGMENT_CACHE_DAYS:
-            del _segment_cache[next(iter(_segment_cache))]
+        with _segment_lock:
+            _segment_cache.pop(key, None)
+            _segment_cache[key] = hit  # zuletzt benutzt ans Ende
+            while len(_segment_cache) > SEGMENT_CACHE_DAYS:
+                del _segment_cache[next(iter(_segment_cache))]
         return [dict(seg) for seg in hit[1]]  # Kopien: Aufrufer dürfen sie ändern
     except (datastore.Busy, datastore.Locked, OSError):  # gerade nicht lesbar
         return []

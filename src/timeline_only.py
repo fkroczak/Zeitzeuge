@@ -1,10 +1,11 @@
 # timeline_only.py
+import sys
 import threading
 import time
 from datetime import datetime
 from html import escape
 
-from PySide6.QtCore import QDate, QDateTime, QPoint, QPointF, Qt, QTimer, Signal
+from PySide6.QtCore import QDate, QDateTime, QPoint, QPointF, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import QBrush, QColor, QContextMenuEvent, QFontMetrics, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (QDialog, QDialogButtonBox, QFormLayout, QFrame, QGraphicsRectItem,
                                QGraphicsScene, QGraphicsView, QLabel, QLineEdit, QMenu,
@@ -21,6 +22,7 @@ from log_parsers import ConnectionIndex, RdmParser, TeamViewerParser, VpnParser
 from rdp_reader import RdpReader
 from local_sources import BROWSER_TYPE, FILE_TYPE, NET_TYPE, PC_STATE_TYPES, WLAN_TYPE, LocalReader
 from theme import contrast, readable_on, theme_for, ui_font
+import skeleton
 from vpn_reader import VpnReader, drop_unnamed_twins, vpn_sources
 
 TIME_FMT = "%Y-%m-%d %H:%M:%S"
@@ -587,6 +589,9 @@ class TimelineView(QGraphicsView):
         self.m42_entries = None   # date_str -> Buchungen aus Matrix42 und Lücken ohne Buchung
         self.imported = None      # übernommene Daten anderer PCs (transfer.ImportStore)
         self.outlook_entries = None  # date_str -> Termine, Mails, Teams-Anrufe (app_outlook.py)
+        # Beim Start: erstes Zeichnen (bevorzugter Zeitraum), sobald die Logs gelesen sind;
+        # vom Hauptfenster gesetzt (start_first_load). So wird der Tag nur einmal gezeichnet.
+        self.first_show = None
 
         self._remote_cache = {}  # date_str -> list[conn]
         self._tv_parser = TeamViewerParser(self.config)
@@ -669,6 +674,9 @@ class TimelineView(QGraphicsView):
 
         self.init_timeline_colors()
         self.tooltip = self._create_tooltip()
+        # Bis zum ersten Zeichnen: Umrisse von Zeilen und Balken (skeleton.py)
+        self._skeleton = True
+        skeleton.pulse().watch(self.viewport())
 
     # ----------------------------- Farben / Dark-Mode -------------------------
 
@@ -786,6 +794,67 @@ class TimelineView(QGraphicsView):
         self.loading = False
         self.refresh()
 
+    def start_first_load(self, first_show, fallback_ms=1500):
+        """Beim Start: Logs sofort im Hintergrund lesen (während das Fenster aufgebaut und mit
+        Umrissen gezeigt wird) und den Tag erst danach einmal zeichnen (first_show).
+        Dauert das Lesen länger als fallback_ms (z. B. Logs auf einem Netzlaufwerk), zeichnet
+        first_show schon ohne die Logs; sie kommen dann wie bisher nach."""
+        self.first_show = first_show
+        # Der Lese-Thread rechnet in Python; Qt braucht für jeden Aufruf in Python-Code (Zeichnen,
+        # Größen) kurz den GIL. Mit dem Standard (5 ms je Wechsel) wartet das Fenster dann
+        # spürbar. Bis zum ersten Zeichnen öfter abwechseln, danach wieder wie gewohnt.
+        self._switch_interval = sys.getswitchinterval()
+        sys.setswitchinterval(min(self._switch_interval, 0.0005))
+        # Erst die Umrisse malen lassen, dann lesen: Beides gleichzeitig kostet das erste Bild
+        # deutlich mehr Zeit, als das Lesen gewinnt. Ist das Fenster nicht zu sehen (Start im
+        # Infobereich), gleich lesen; sonst spätestens nach 250 ms.
+        self._load_after_paint = True
+        QTimer.singleShot(250 if self._will_show() else 0, self._start_load_after_paint)
+        QTimer.singleShot(fallback_ms, self._first_show_now)
+
+    def _will_show(self):
+        """Wird das Fenster gleich gezeigt? (Start im Infobereich: nein; setzt das Hauptfenster)"""
+        return getattr(self.window(), "start_visible", True)
+
+    def _start_load_after_paint(self):
+        if self._load_after_paint and not self._closing:
+            self._load_after_paint = False
+            self.refresh()
+
+    def _first_show_now(self):
+        first, self.first_show = self.first_show, None
+        if getattr(self, "_switch_interval", None):
+            sys.setswitchinterval(self._switch_interval)
+            self._switch_interval = None
+        if first and not self._closing:
+            first()
+
+    def _colleagues(self):
+        return call_import.colleagues_for(
+            self.calls_file, self.config.get("colleague_numbers") or (),
+            self.config.get("colleagues_auto", True))
+
+    def _warm_up(self):
+        """Im Lese-Thread vorab rechnen, was das Zeichnen sonst im Fenster rechnen müsste
+        (nur Teile ohne Qt, die selbst threadsicher sind: Anrufliste/Kollegen, Spuren vom PC)."""
+        try:
+            if self.calls_file:
+                self._colleagues()
+            if any(self.config.get(k, True) for k in ("pcstate_enabled", "shell_enabled", "wlan_enabled",
+                                                      "recent_files_enabled", "browser_enabled")):
+                self.local_reader.entries()
+            if self.activity_dir and self.config.get("pc_blocks", True):
+                # Aktive Fenster des Tages lesen und den Fenstern ihre Tätigkeit zuordnen
+                # (Regeln, Kundenliste). Beides wird gemerkt; das Zeichnen trifft es dann.
+                segments = read_segments(self.activity_dir, self.current_date.toString("yyyy-MM-dd"))
+                pieces = [{"start": s["start"], "end": s["end"], "app": s["app"], "title": s["title"]}
+                          for s in merge_segments(segments, min_seconds=5, max_gap=15)]
+                focus.focus_blocks(pieces, self.config.get("rules") or [],
+                                   jump_seconds=self.config.get("pc_jump_seconds", focus.JUMP_SECONDS),
+                                   keywords=customers.index(self.config))
+        except Exception as e:  # nur Vorarbeit: Fehler zeigen sich beim Zeichnen ohnehin
+            print(f"Vorab rechnen fehlgeschlagen: {e}")
+
     def _load_logs(self):
         indexes = []
         # Jede Quelle lässt sich im Menü "Datenquellen" einzeln abschalten
@@ -805,6 +874,8 @@ class TimelineView(QGraphicsView):
                 self.rdp_reader.event_sessions()
             except Exception as e:  # Timeline darf daran nie scheitern
                 print(f"RDP-Ereignisprotokoll nicht vorab gelesen: {e}")
+        if not self._closing and self._day_data is None:  # nur vor dem ersten Zeichnen
+            self._warm_up()
         if not self._closing:
             self.logs_loaded.emit(*indexes)  # Qt stellt das im GUI-Thread zu
 
@@ -822,6 +893,10 @@ class TimelineView(QGraphicsView):
             self._reload = False
             draw, self._reload_draw = self._reload_draw, False
             self.refresh(draw=draw)
+        if self.first_show is not None:
+            self._skip_draw = False
+            self._first_show_now()  # erstes Zeichnen, gleich mit den Logs
+            return
         if self._skip_draw:
             self._skip_draw = False
             self.draw_stale = True
@@ -897,9 +972,7 @@ class TimelineView(QGraphicsView):
                 self.calls_file, date_str,
                 ignore_missed=self.config.get("calls_ignore_missed", True),
                 min_seconds=self.config.get("calls_min_duration", 0),
-                colleague=call_import.colleagues_for(
-                    self.calls_file, self.config.get("colleague_numbers") or (),
-                    self.config.get("colleagues_auto", True)),
+                colleague=self._colleagues(),
             )
         if self.outlook_entries:
             try:
@@ -1211,6 +1284,7 @@ class TimelineView(QGraphicsView):
 
     def _render(self):
         """Szene aus den gesammelten Daten aufbauen (schnell, für Zoom und Größe)."""
+        self._end_skeleton()
         d = self._day_data
         date = d["date"]
         # Mittelpunkt merken, damit Zoom/Neuzeichnen die Ansicht nicht verschiebt
@@ -1660,6 +1734,53 @@ class TimelineView(QGraphicsView):
             level, x = self._wheel_zoom
             self._wheel_zoom = None
             self.set_zoom(level, x)
+
+    # Platzhalter vor dem ersten Zeichnen: (Beginn, Länge) als Anteil der Tagesbreite je Zeile
+    SKELETON_ROWS = (((0.02, 0.14), (0.17, 0.22), (0.41, 0.09), (0.52, 0.27), (0.81, 0.15)),
+                     ((0.06, 0.20), (0.48, 0.16), (0.70, 0.12)),
+                     ((0.10, 0.05), (0.24, 0.07), (0.39, 0.04), (0.58, 0.06), (0.77, 0.05)),
+                     ((0.03, 0.31), (0.57, 0.33)),
+                     ((0.15, 0.12), (0.36, 0.18), (0.66, 0.08)),
+                     ((0.08, 0.10), (0.45, 0.14)))
+
+    def drawBackground(self, painter, rect):
+        super().drawBackground(painter, rect)
+        if self._skeleton:
+            self._paint_skeleton(painter)
+            if getattr(self, "_load_after_paint", False):  # Umrisse stehen: jetzt lesen
+                QTimer.singleShot(0, self._start_load_after_paint)
+
+    def _paint_skeleton(self, painter):
+        """Umrisse von Stundenleiste, Legende und Zeilen, bis die Daten gezeichnet sind."""
+        painter.save()
+        painter.resetTransform()
+        vp = self.viewport().rect()
+        painter.fillRect(vp, self.background_color)
+        painter.setRenderHint(QPainter.Antialiasing, True)
+        fill = skeleton.color(self.text_color)
+        left, right = self.LEFT, max(self.LEFT + 100, vp.width() - self.RIGHT)
+        span = right - left
+        painter.setPen(QPen(self.hour_line, 1))
+        painter.drawLine(0, self.AXIS_H, vp.width(), self.AXIS_H)
+        for i in range(12):  # Uhrzeiten oben
+            x = left + span * i / 12
+            skeleton.bar(painter, QRectF(x + 6, 9, 30, 8), fill, 4)
+        y = self.AXIS_H + 6
+        row_h = self.LANE_H + self.LANE_GAP
+        for i, row in enumerate(self.SKELETON_ROWS):
+            h = self.PC_BAND_H if i == 0 else self.LANE_H
+            if y + h > vp.height():
+                break
+            skeleton.bar(painter, QRectF(10, y + h / 2 - 5, 64 + (i * 13) % 30, 10), fill, 5)  # Legende
+            for start, length in row:
+                skeleton.bar(painter, QRectF(left + span * start, y, span * length, h), fill, 5)
+            y += (h + 10) if i == 0 else row_h
+        painter.restore()
+
+    def _end_skeleton(self):
+        if self._skeleton:
+            self._skeleton = False
+            skeleton.pulse().unwatch(self.viewport())
 
     def drawForeground(self, painter, rect):
         """Legende links: Name und Farbe jeder Zeile, bleibt beim Blättern stehen."""

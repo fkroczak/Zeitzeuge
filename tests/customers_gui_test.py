@@ -164,7 +164,12 @@ def gui_test():
     asked = []
     route.drive_minutes = lambda a, b: asked.append((a, b)) or 25
     dialog.calculate_route()
-    QTest.qWait(300)
+    # Ergebnis kommt aus einem Thread; abwarten statt fest zu schlafen (CI unter Windows
+    # ist langsamer, und das erste Zeichnen des Hauptfensters kann gerade dazwischenkommen)
+    for _ in range(100):
+        if "25 Min." in dialog.route_status.text():
+            break
+        QTest.qWait(50)
     assert asked == [("Büroweg 1, Esslingen", "Hauptstr. 5, Stuttgart")], asked
     assert dialog.minutes_spin.value() == 25 and "25 Min." in dialog.route_status.text()
     dialog.minutes_spin.setValue(30)  # von Hand ändern

@@ -20,7 +20,10 @@ _IGNORE_NAMES = {"", "endcall", "musik", "unbekannt"}
 
 
 def _short(number):
-    digits = "".join(ch for ch in str(number or "") if ch.isdigit())
+    text = str(number or "")
+    if text.isdecimal() and text.isascii():  # häufigster Fall: nur Ziffern, ohne Umweg
+        return 0 < len(text) <= SHORT_DIGITS
+    digits = "".join(filter(str.isdigit, text))
     return 0 < len(digits) <= SHORT_DIGITS
 
 

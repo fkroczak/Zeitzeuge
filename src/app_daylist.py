@@ -90,9 +90,19 @@ class DayListMixin:
         index = self.customer_index()  # Kundenliste: Kunde zur Spur (customers.py)
         dots = {}  # Farbe -> Symbol: jeder Farbpunkt nur einmal malen
 
+        def times(a):
+            start, end = parse_time(a["start"]), parse_time(a["end"])
+            minutes = round((end - start).total_seconds() / 60)
+            return start, end, f"{minutes // 60}:{minutes % 60:02d} h"
+
+        def fit_text(a):
+            """Texte von Von, Bis, Dauer und Typ wie in make_row (nur zum Messen der Breite)."""
+            start, end, duration = times(a)
+            return [f"{start:%H:%M}", f"{end:%H:%M}", duration, type_label(a)]
+
         def make_row(a):
             """Zellen einer Zeile; die Liste ruft das erst, wenn die Zeile gebraucht wird."""
-            start, end = parse_time(a["start"]), parse_time(a["end"])
+            start, end, duration = times(a)
             color = self.timeline.block_color(a) if "app" in a else entry_color(a, self.config)
             key = QColor(color).name(QColor.HexArgb)
             if key not in dots:
@@ -109,8 +119,6 @@ class DayListMixin:
             customer_text = customers.with_customer(a, index)
             details = a.get("details", "")
             # Spalte Dauer: nur die echte Dauer; die abgerechnete Zeit steht im Hinweis
-            minutes = round((end - start).total_seconds() / 60)
-            duration = f"{minutes // 60}:{minutes % 60:02d} h"
             note = (billing.note((end - start).total_seconds(), a.get("customer_name", ""))
                     if billing and a.get("doc") else "")
             return [
@@ -124,7 +132,7 @@ class DayListMixin:
                 Cell(new_details(details, type_text, customer_text), details),
             ]
 
-        self.table.set_entries(entries, make_row)
+        self.table.set_entries(entries, make_row, fit_text)
         self.update_status_text()
 
     VIEWS = [("grouped", "Zusammengefasst"), ("single", "Einzeln"), ("blocks", "Arbeitsblöcke"),

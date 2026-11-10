@@ -8,8 +8,11 @@ fällt so fast die ganze Arbeit beim Füllen weg.
 Für bestehenden Code und Tests bietet DayListView die gewohnten Teile von QTableWidget:
 rowCount(), columnCount(), item(r, c).text()/.toolTip(), currentRow(), cellDoubleClicked.
 """
-from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt, Signal
+from PySide6.QtCore import QAbstractTableModel, QModelIndex, QRectF, Qt, Signal
+from PySide6.QtGui import QPainter, QPalette
 from PySide6.QtWidgets import QStyleOptionViewItem, QTableView
+
+import skeleton
 
 
 def _role(r):
@@ -49,11 +52,13 @@ class DayListModel(QAbstractTableModel):
         self.header_align = {}  # Spalte -> Ausrichtung im Spaltenkopf
         self.entries = []
         self.make_row = None    # Eintrag -> [Cell, …]
+        self.fit_text = None    # Eintrag -> [Text je Spalte] (nur für die Spaltenbreite, schnell)
         self._rows = {}         # Zeile -> [Cell, …], erst bei Bedarf aufbereitet
 
-    def set_entries(self, entries, make_row):
+    def set_entries(self, entries, make_row, fit_text=None):
         self.beginResetModel()
         self.entries, self.make_row, self._rows = list(entries), make_row, {}
+        self.fit_text = fit_text
         self.endResetModel()
 
     def cells(self, row):
@@ -100,13 +105,51 @@ class DayListView(QTableView):
         self.list_model = DayListModel(headers, self)
         self.setModel(self.list_model)
         self.doubleClicked.connect(lambda index: self.cellDoubleClicked.emit(index.row(), index.column()))
+        # Bis die ersten Einträge kommen: Umrisse von Zeilen (skeleton.py)
+        self._skeleton = True
+        skeleton.pulse().watch(self.viewport())
+
+    # Breite der Umrisse je Spalte (Anteil der Spaltenbreite), je Zeile etwas anders
+    SKELETON_ROWS = 8
+    SKELETON_WIDTHS = ((0.55, 0.55, 0.45, 0.7, 0.6, 0.5), (0.55, 0.55, 0.45, 0.55, 0.8, 0.35),
+                       (0.55, 0.55, 0.45, 0.8, 0.45, 0.65))
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        if self._skeleton and not self.list_model.entries:
+            self._paint_skeleton()
+
+    def _paint_skeleton(self):
+        header, row_h = self.horizontalHeader(), self.verticalHeader().defaultSectionSize()
+        painter = QPainter(self.viewport())
+        painter.setRenderHint(QPainter.Antialiasing)
+        fill = skeleton.color(self.palette().color(QPalette.Text))
+        bar_h = max(8, row_h * 0.36)
+        for r in range(self.SKELETON_ROWS):
+            widths = self.SKELETON_WIDTHS[r % len(self.SKELETON_WIDTHS)]
+            y = r * row_h + (row_h - bar_h) / 2
+            for col in range(min(len(widths), self.list_model.columnCount())):
+                x, w = header.sectionViewportPosition(col), header.sectionSize(col)
+                if w <= 16:
+                    continue
+                skeleton.bar(painter, QRectF(x + 8, y, (w - 16) * widths[col], bar_h), fill, bar_h / 2)
+        painter.end()
+
+    def end_skeleton(self):
+        if self._skeleton:
+            self._skeleton = False
+            skeleton.pulse().unwatch(self.viewport())
+            self.viewport().update()
 
     # Spalten, deren Breite set_entries an den Inhalt anpasst (Rest: Nutzer oder Stretch)
     fit_columns = ()
     FIT_ROWS = 1000  # wie Qt beim Anpassen an den Inhalt: höchstens so viele Zeilen ansehen
 
-    def set_entries(self, entries, make_row):
-        self.list_model.set_entries(entries, make_row)
+    def set_entries(self, entries, make_row, fit_text=None):
+        """fit_text(Eintrag) -> Texte der Spalten (mindestens bis zur letzten in fit_columns),
+        genau wie make_row sie zeigt: Damit misst fit_widths, ohne jede Zeile aufzubereiten."""
+        self.end_skeleton()
+        self.list_model.set_entries(entries, make_row, fit_text)
         self.fit_widths()
 
     def fit_widths(self):
@@ -120,10 +163,11 @@ class DayListView(QTableView):
             return
         metrics = self.fontMetrics()
         widest = {}
+        fit_text = model.fit_text
         for row in range(min(len(model.entries), self.FIT_ROWS)):
-            cells = model.cells(row)
+            texts = fit_text(model.entries[row]) if fit_text else [c[0] for c in model.cells(row)]
             for col in self.fit_columns:
-                width = metrics.horizontalAdvance(cells[col][0])
+                width = metrics.horizontalAdvance(texts[col])
                 if width > widest.get(col, (-1, 0))[0]:
                     widest[col] = (width, row)
         option = QStyleOptionViewItem()
