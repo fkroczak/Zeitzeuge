@@ -28,7 +28,7 @@ Testversionen aus Branches tragen die Version ihres main-Stands plus Buildnummer
   - **Dunkle Titelleiste** unter Windows 10/11 im dunklen Design.
   - **Eine Hauptfarbe:** Im hellen Design sind aktiver Chip und Hauptknopf blau statt schwarz, wie im dunklen.
   - **Kacheln** oben bündig, „Nach Kunde“ zeigt ohne Einträge einen grauen Hinweis.
-  - **Chips** zeigen die Anzahl als kleines Abzeichen neben dem Namen.
+  - **Chips** zeigen die Anzahl als kleines Abzeichen neben dem Namen. Im ausgewählten Chip ist die Zahl jetzt lesbar (war weiß auf weiß).
   - **Tagesliste:** höhere Zeilen, Dauer einheitlich als „0:35 h“ und rechtsbündig.
   - **Aktivitätsdetails:** Werte als Text statt in Eingabefeldern (markieren und kopieren geht weiter).
   - **Zeitachse:** links unter der Legende keine halb abgeschnittene Uhrzeit mehr.

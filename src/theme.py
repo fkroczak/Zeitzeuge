@@ -494,9 +494,10 @@ QToolButton#chip:hover { border-color: $control; }
 QToolButton#chip:checked { background-color: $primary; color: $onprimary; border-color: $primary; }
 QToolButton#chip QLabel { background: transparent; color: $chiptext; }
 QToolButton#chip QLabel[on="true"] { color: $onprimary; font-weight: bold; }
-QLabel#chip_count { background-color: $border; color: $chiptext; border-radius: 8px; padding: 0 6px;
-                    font-size: $fs_smpx; font-weight: bold; }
-QLabel#chip_count[on="true"] { background-color: $onprimary; color: $primary; }
+QToolButton#chip QLabel#chip_count { background-color: $border; color: $chiptext; border-radius: 8px;
+                                     padding: 0 6px; font-size: $fs_smpx; font-weight: bold; }
+/* spezifischer als „QToolButton#chip QLabel[on]“, sonst weiße Zahl auf weißem Abzeichen */
+QToolButton#chip QLabel#chip_count[on="true"] { background-color: $onprimary; color: $primary; }
 QLabel#card_title[empty="true"] { color: $muted; font-weight: normal; }
 QLabel#detail_key { color: $muted; background: transparent; }
 QLabel#detail_value { background: transparent; }
