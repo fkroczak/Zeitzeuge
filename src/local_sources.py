@@ -63,11 +63,16 @@ DEFAULT_BROWSER_IGNORE = ["google.com", "google.de", "bing.com", "duckduckgo.com
 
 
 def _fmt(when):
-    return when.strftime(TIME_FMT)
+    return timefmt.fmt(when)
 
 
 def _t(text):
     return timefmt.parse(text)  # wie strptime, aber schnell (Archiv mit Tausenden Einträgen)
+
+
+def _day(item):
+    """Tag eines Eintrags (JJJJ-MM-TT, nach Beginn): so liegt er in der Datenbank."""
+    return str(item.get("start", ""))[:10]
 
 
 def _no_window():
@@ -477,6 +482,9 @@ class LocalReader:
         self.history_func = f.get("history", read_history)
         self.threaded = f.get("threaded", True)
         self._data = None
+        self._dirty = set()   # Tage, die beim nächsten _save geschrieben werden
+        self._changes = 0     # zählt jede Änderung am Archiv (für den Zwischenspeicher von entries)
+        self._entries = None  # (Stand, Einträge) vom letzten entries()
         self._lock = threading.Lock()
         self._last_sample = None
         self._last_slow = None
@@ -488,23 +496,37 @@ class LocalReader:
 
     # ------------------------------------------------------------ Archiv
 
+    KEYS = ("locked", "sessions", "wlan", "events", "files", "browser")
+
     def _archive(self):
+        """Alle Spuren im Speicher. In der Datenbank liegt je Tag ein Dokument (Tag = Beginn
+        des Eintrags), damit eine Änderung nur ihren Tag neu schreibt. Das frühere eine
+        Dokument für alle Tage (Tag "") wird beim ersten Lesen aufgeteilt."""
         if self._data is None:
-            data, locked = {}, False
+            docs, locked = {}, False
             if self.archive_file:
                 try:
                     store, name = datastore.locate(self.archive_file, "single")
-                    data = store.get(name, "", {})
+                    docs = store.all(name)
                 except (datastore.Busy, datastore.Locked):
                     locked = True
-            parsed = {}
-            for key in ("locked", "sessions", "wlan", "events", "files", "browser"):
-                value = data.get(key) if isinstance(data, dict) else None
-                parsed[key] = [v for v in value or [] if isinstance(v, dict) and self._valid(v)]
+            parsed = {key: [] for key in self.KEYS}
+            for doc in docs.values():
+                for key in self.KEYS:
+                    value = doc.get(key) if isinstance(doc, dict) else None
+                    parsed[key] += [v for v in value or [] if isinstance(v, dict) and self._valid(v)]
             if locked:
                 return parsed
             self._data = parsed
+            self._changes += 1
+            if "" in docs:  # altes Format: auf Tage verteilen, dann das alte Dokument löschen
+                self._dirty = {_day(v) for items in parsed.values() for v in items} | {""}
+                self._save()
         return self._data
+
+    def _touch(self, item):
+        """Tag des Eintrags beim nächsten Speichern schreiben."""
+        self._dirty.add(_day(item))
 
     def prune(self, before):
         """Einträge, die vor before enden, aus dem Archiv löschen (Spuren-Verlauf begrenzen)."""
@@ -512,6 +534,8 @@ class LocalReader:
             self._archive()
             if self._data is None:  # gerade gesperrt: beim nächsten Lauf
                 return 0
+            self._dirty |= {_day(v) for items in self._data.values() if isinstance(items, list)
+                            for v in items if isinstance(v, dict) and str(v.get("end", ""))[:10] < before}
             removed = retention.prune_entries(self._data, before)
         if removed:
             self._save()
@@ -526,18 +550,30 @@ class LocalReader:
             return False
 
     def _save(self):
-        if not self.archive_file or self._data is None:
+        """Geänderte Tage schreiben (siehe _touch); Tage ohne Einträge werden gelöscht."""
+        self._changes += 1  # wird nach jeder Änderung aufgerufen
+        if not self.archive_file or self._data is None or not self._dirty:
             return
+        dirty, self._dirty = self._dirty, set()
+        by_day = {d: {key: [] for key in self.KEYS} for d in dirty if d}
+        for key in self.KEYS:
+            for v in self._data.get(key) or []:
+                doc = by_day.get(_day(v))
+                if doc is not None:
+                    doc[key].append(v)
+        empty = [d for d, doc in by_day.items() if not any(doc.values())]
+        for d in empty:
+            del by_day[d]
         try:
             store, name = datastore.locate(self.archive_file, "single")
-            store.put(name, "", self._data)
+            store.put_many(name, by_day, delete=empty + ([""] if "" in dirty else []))
         except (datastore.Busy, datastore.Locked) as e:
+            self._dirty |= dirty  # beim nächsten Mal erneut
             safe_io.report(f"Spuren vom PC: Speichern fehlgeschlagen ({e})")
 
     # ------------------------------------------------------------ Aufzeichnung
 
-    @staticmethod
-    def _track(items, live, now, gap):
+    def _track(self, items, live, now, gap):
         """Laufende Einträge (live: Schlüssel -> Felder) fortschreiben. True = geändert."""
         stamp, changed, still = _fmt(now), False, set()
         for item in items:
@@ -548,11 +584,14 @@ class LocalReader:
             else:
                 item["end"] = stamp
                 still.add(item["id"])
+            self._touch(item)
             changed = True
         for key, fields in live.items():
             if key not in still:
                 start = fields.pop("_start", None) or now
-                items.append({"id": key, "start": _fmt(start), "end": stamp, "running": True, **fields})
+                item = {"id": key, "start": _fmt(start), "end": stamp, "running": True, **fields}
+                items.append(item)
+                self._touch(item)
                 changed = True
         return changed
 
@@ -654,6 +693,7 @@ class LocalReader:
             for e in results["events"]:
                 if (e["start"], e["kind"]) not in known:
                     data["events"].append(e)
+                    self._touch(e)
                     changed = True
         if "networks" in results:
             live = {f"net-{n['name']}": {"ssid": n["name"], "adapter": n["adapter"],
@@ -664,7 +704,9 @@ class LocalReader:
             known = {(f["start"], f["name"]) for f in data["files"]}
             for when, name in results["files"]:
                 if (_fmt(when), name) not in known:
-                    data["files"].append({"start": _fmt(when), "end": _fmt(when), "name": name})
+                    item = {"start": _fmt(when), "end": _fmt(when), "name": name}
+                    data["files"].append(item)
+                    self._touch(item)
                     changed = True
         if "browser" in results:
             stored = {(b["start"], b["domain"]): b for b in data["browser"]}
@@ -676,6 +718,7 @@ class LocalReader:
                     if old:
                         data["browser"].remove(old)
                     data["browser"].append(item)
+                    self._touch(item)
                     changed = True
         if changed:
             self._save()
@@ -687,44 +730,54 @@ class LocalReader:
         """Alle Spuren für die Timeline (nur eingeschaltete Quellen)."""
         with self._lock:
             data = self._archive()
-            result = []
-            if self.on("pcstate_enabled"):
-                for s in data["locked"]:
-                    if (_t(s["end"]) - _t(s["start"])).total_seconds() >= SAMPLE_SECONDS or s.get("running"):
-                        result.append(_entry(_t(s["start"]), _t(s["end"]), LOCKED, "gesperrt",
-                                             "Bildschirm gesperrt (von Zeitzeuge aufgezeichnet)"))
-                for e in data["events"]:
-                    kind = e.get("kind", SLEEP)
-                    result.append(_entry(_t(e["start"]), _t(e["end"]), kind, kind,
-                                         f"{kind} (Windows-Ereignisprotokoll)"))
-            if self.on("shell_enabled"):
-                for s in data["sessions"]:
-                    start, end = _t(s["start"]), _t(s["end"])
-                    if not s.get("running") and (end - start).total_seconds() < MIN_SESSION_SECONDS:
-                        continue
-                    kind, host = s.get("kind", "SSH-Verbindung"), s.get("host") or ""
-                    result.append({"start": s["start"], "end": s["end"], "type": kind,
-                                   "customer_name": host, "is_suggestion": True,
-                                   "details": f"{kind} {host} ({s.get('program', '')}, von Zeitzeuge aufgezeichnet)"})
-            if self.on("wlan_enabled"):
-                for w in data["wlan"]:
-                    name = w.get("ssid", "")
-                    if "adapter" not in w:  # ältere Einträge: nur WLAN
-                        result.append(_entry(_t(w["start"]), _t(w["end"]), WLAN_TYPE, name, f"WLAN {name}"))
-                        continue
-                    how = "WLAN" if w.get("wireless") else "Kabel"
-                    extra = f", {w['category']}" if w.get("category") else ""
-                    result.append(_entry(_t(w["start"]), _t(w["end"]), NET_TYPE, name,
-                                         f"Netzwerk {name} ({how}, {w.get('adapter', '')}{extra})"))
-            if self.on("recent_files_enabled"):
-                for f in data["files"]:
-                    start = _t(f["start"])
-                    result.append(_entry(start, start + timedelta(minutes=FILE_MINUTES), FILE_TYPE,
-                                         f["name"], f"Datei geöffnet: {f['name']}"))
-            if self.on("browser_enabled"):
-                for b in data["browser"]:
-                    ticket = " · ".join(b.get("tickets") or [])
-                    name = f"{b['domain']} · {ticket}" if ticket else b["domain"]
-                    result.append(_entry(_t(b["start"]), _t(b["end"]), BROWSER_TYPE, name,
-                                         f"Browser: {name}", tickets=list(b.get("tickets") or [])))
+            key = (self._changes, id(data), tuple(self.on(k) for k in (
+                "pcstate_enabled", "shell_enabled", "wlan_enabled", "recent_files_enabled", "browser_enabled")))
+            if self._entries and self._entries[0] == key and data is self._data:
+                return [dict(e) for e in self._entries[1]]  # unverändert: nicht neu aufbereiten
+            result = self._build_entries(data)
+            if data is self._data:  # nicht merken, solange die Datenbank gesperrt war
+                self._entries = (key, result)
+            return [dict(e) for e in result]
+
+    def _build_entries(self, data):
+        result = []
+        if self.on("pcstate_enabled"):
+            for s in data["locked"]:
+                if (_t(s["end"]) - _t(s["start"])).total_seconds() >= SAMPLE_SECONDS or s.get("running"):
+                    result.append(_entry(_t(s["start"]), _t(s["end"]), LOCKED, "gesperrt",
+                                         "Bildschirm gesperrt (von Zeitzeuge aufgezeichnet)"))
+            for e in data["events"]:
+                kind = e.get("kind", SLEEP)
+                result.append(_entry(_t(e["start"]), _t(e["end"]), kind, kind,
+                                     f"{kind} (Windows-Ereignisprotokoll)"))
+        if self.on("shell_enabled"):
+            for s in data["sessions"]:
+                start, end = _t(s["start"]), _t(s["end"])
+                if not s.get("running") and (end - start).total_seconds() < MIN_SESSION_SECONDS:
+                    continue
+                kind, host = s.get("kind", "SSH-Verbindung"), s.get("host") or ""
+                result.append({"start": s["start"], "end": s["end"], "type": kind,
+                               "customer_name": host, "is_suggestion": True,
+                               "details": f"{kind} {host} ({s.get('program', '')}, von Zeitzeuge aufgezeichnet)"})
+        if self.on("wlan_enabled"):
+            for w in data["wlan"]:
+                name = w.get("ssid", "")
+                if "adapter" not in w:  # ältere Einträge: nur WLAN
+                    result.append(_entry(_t(w["start"]), _t(w["end"]), WLAN_TYPE, name, f"WLAN {name}"))
+                    continue
+                how = "WLAN" if w.get("wireless") else "Kabel"
+                extra = f", {w['category']}" if w.get("category") else ""
+                result.append(_entry(_t(w["start"]), _t(w["end"]), NET_TYPE, name,
+                                     f"Netzwerk {name} ({how}, {w.get('adapter', '')}{extra})"))
+        if self.on("recent_files_enabled"):
+            for f in data["files"]:
+                start = _t(f["start"])
+                result.append(_entry(start, start + timedelta(minutes=FILE_MINUTES), FILE_TYPE,
+                                     f["name"], f"Datei geöffnet: {f['name']}"))
+        if self.on("browser_enabled"):
+            for b in data["browser"]:
+                ticket = " · ".join(b.get("tickets") or [])
+                name = f"{b['domain']} · {ticket}" if ticket else b["domain"]
+                result.append(_entry(_t(b["start"]), _t(b["end"]), BROWSER_TYPE, name,
+                                     f"Browser: {name}", tickets=list(b.get("tickets") or [])))
         return sorted(result, key=lambda e: e["start"])

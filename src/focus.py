@@ -17,9 +17,8 @@ So geht es:
 
 Rein funktional, ohne Qt; Zeiten als Text "JJJJ-MM-TT hh:mm:ss".
 """
-from datetime import datetime
-
 import rules as rule_engine
+import timefmt
 from activity_tracker import app_label
 
 TIME_FMT = "%Y-%m-%d %H:%M:%S"
@@ -31,7 +30,7 @@ MIN_BLOCK_SECONDS = 3 * 60  # kürzere Blöcke gehen im Nachbarn auf
 
 
 def _t(text):
-    return datetime.strptime(text, TIME_FMT)
+    return timefmt.parse(text)
 
 
 def _seconds(a, b):
@@ -61,11 +60,16 @@ def focus_blocks(segments, rules=None, jump_seconds=JUMP_SECONDS, max_gap_second
     """Fensterstücke [{start, end, app, title}] -> Arbeitsblöcke (Timeline-Format, nach Zeit)."""
     compiled = rule_engine._compile_rules(rules) if rules else []
     pieces = []
+    known = {}  # (Programm, Titel) -> Tätigkeit: dieselben Fenster kommen am Tag oft vor
     for s in sorted(segments or [], key=lambda s: s["start"]):
         if s["end"] <= s["start"]:
             continue
-        pieces.append({"start": s["start"], "end": s["end"], "app": s.get("app", ""),
-                       "title": s.get("title", ""), "key": activity_of(s, compiled, keywords),
+        app, title = s.get("app", ""), s.get("title", "")
+        key = known.get((app, title))
+        if key is None:
+            key = known[(app, title)] = activity_of(s, compiled, keywords)
+        pieces.append({"start": s["start"], "end": s["end"], "app": app,
+                       "title": title, "key": key,
                        "seconds": _seconds(s["start"], s["end"])})
     if not pieces:
         return []
@@ -77,8 +81,8 @@ def focus_blocks(segments, rules=None, jump_seconds=JUMP_SECONDS, max_gap_second
             continue
         if _seconds(prev["end"], p["start"]) > max_gap_seconds:
             continue
-        nxt = next((q for q in pieces[i + 1:] if q["seconds"] >= jump_seconds or q["key"] == prev["key"]),
-                   None)
+        nxt = next((pieces[j] for j in range(i + 1, len(pieces))  # ohne Kopie des Rests
+                    if pieces[j]["seconds"] >= jump_seconds or pieces[j]["key"] == prev["key"]), None)
         returns = (nxt is not None and nxt["key"] == prev["key"]
                    and _seconds(p["end"], nxt["start"]) <= max_gap_seconds)
         same_customer = bool(p["key"][1]) and p["key"][1] == prev["key"][1]

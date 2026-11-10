@@ -7,11 +7,12 @@ Timeline holt sich die Anrufe eines Tages mit load_call_suggestions.
 
 import os
 import threading
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import colleagues
 import datastore
 import safe_io
+import timefmt
 
 TIME_FMT = "%Y-%m-%d %H:%M:%S"
 _lock = threading.Lock()
@@ -33,7 +34,7 @@ def _key(call):
 
 def _valid(call):
     try:
-        datetime.strptime(call["start"], TIME_FMT)
+        timefmt.parse(call["start"])
         return True
     except (KeyError, TypeError, ValueError):
         return False
@@ -135,7 +136,7 @@ def load_call_suggestions(path, date_str, ignore_missed=True, min_seconds=0, col
             continue
         if seconds < min_seconds:
             continue
-        start = datetime.strptime(c["start"], TIME_FMT)
+        start = timefmt.parse(c["start"])
         end = start + timedelta(seconds=max(seconds, 60))  # min. 1 min, damit sichtbar
 
         name = c.get("name") or c.get("number") or "Unbekannt"
@@ -149,8 +150,8 @@ def load_call_suggestions(path, date_str, ignore_missed=True, min_seconds=0, col
         if is_colleague:
             details.append("Kollege")
         result.append({
-            "start": start.strftime(TIME_FMT),
-            "end": end.strftime(TIME_FMT),
+            "start": timefmt.fmt(start),
+            "end": timefmt.fmt(end),
             "type": "Telefonat",
             "duration_s": seconds,  # echte Dauer (der Balken ist min. 1 min breit)
             "direction": c.get("direction", "Anruf"),  # für die Farbe (ein/aus/verpasst)

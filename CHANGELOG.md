@@ -18,6 +18,9 @@ Testversionen aus Branches tragen die Version ihres main-Stands plus Buildnummer
 26.10.2026 können sie nicht mehr lesen.
 
 ### Neu
+- **Schneller bei vollen Tagen:** Tag wechseln etwa doppelt so schnell (240 → 110 ms mit 3000–4000 Fensterwechseln am Tag), Timeline zeichnen 159 → 73 ms, das Neueinlesen alle 2 Minuten 248 → 118 ms. Die Spuren-Aufzeichnung (SSH, Sperren) zeichnet nicht mehr alle 30 Sekunden neu, wenn ein anderer Tag angezeigt wird. Details in `docs/PERFORMANCE-2026-11-10.md`.
+- **Noch schneller bei offenen Verbindungen und langen Listen:** Bei offener RDP-Sitzung oder VPN liest Zeitzeuge nicht mehr alle 30 Sekunden alle Logs neu, sondern nur die geänderte Aufzeichnung. Die Tagesliste mit vollem PC-Verlauf (4200 Zeilen) baut sich in 0,12 statt 0,45 s auf. Vergangene Tage der Fensteraufzeichnung werden einmal am Tag im Hintergrund verdichtet und lesen sich dreimal so schnell. Die Spuren vom PC liegen je Tag in der Datenbank, eine Änderung schreibt nur noch ihren Tag (1 statt 13 ms).
+- **Aktivitätsdetails als Textfelder:** Unter Einstellungen → Ansicht lassen sich die Werte (Kunde, Zeit, Details …) wieder in schreibgeschützten Textfeldern zeigen. Hineinklicken, Strg+A, Strg+C – so kopiert man einzelne Werte schneller heraus.
 - **Fahrzeit zum Kunden berechnen:** In der Kundenliste hat jeder Kunde jetzt „Adresse und Fahrzeit“. „Berechnen“ fragt OpenStreetMap nach der Fahrzeit mit dem Auto vom Büro (aufgerundet auf 5 Minuten). Nach außen gehen dabei nur die beiden Adressen, und nur auf Knopfdruck. Die Startadresse (Büro) steht unter Einstellungen → Orte und Fahrzeiten. Termine des Kunden (über Name oder Mail-Domains) bekommen diese Fahrzeit als vermutete Hin- und Rückfahrt.
 - **Menü Einstellungen → Orte und Fahrzeiten …** (neben der Kundenliste) öffnet Startadresse, Orte und Fahrzeiten direkt. Unter Datenquellen → Einrichten heißt der Eintrag jetzt „Fahrten: Orte und Fahrzeiten …“.
 - **Orte und Kunden mit Fahrzeit:** Unter Einstellungen → Orte und Fahrzeiten trägst du Orte oder Kunden (aus der Kundenliste wählbar) mit ihrer Fahrzeit ein. Steht der Name im Ort, im Betreff oder beim Kunden eines Termins, plant Zeitzeuge genau diese Fahrzeit statt der ganzen Lücke (bis 90 Min.) davor. 0 Minuten heißt keine Fahrt, z. B. für den eigenen Besprechungsraum. Eine vermutete Fahrt reicht nie mehr in einen anderen Termin hinein.
@@ -26,7 +29,7 @@ Testversionen aus Branches tragen die Version ihres main-Stands plus Buildnummer
   - **Dunkle Titelleiste** unter Windows 10/11 im dunklen Design.
   - **Eine Hauptfarbe:** Im hellen Design sind aktiver Chip und Hauptknopf blau statt schwarz, wie im dunklen.
   - **Kacheln** oben bündig, „Nach Kunde“ zeigt ohne Einträge einen grauen Hinweis.
-  - **Chips** zeigen die Anzahl als kleines Abzeichen neben dem Namen.
+  - **Chips** zeigen die Anzahl als kleines Abzeichen neben dem Namen. Im ausgewählten Chip ist die Zahl jetzt lesbar (war weiß auf weiß).
   - **Tagesliste:** höhere Zeilen, Dauer einheitlich als „0:35 h“ und rechtsbündig.
   - **Aktivitätsdetails:** Werte als Text statt in Eingabefeldern (markieren und kopieren geht weiter).
   - **Zeitachse:** links unter der Legende keine halb abgeschnittene Uhrzeit mehr.

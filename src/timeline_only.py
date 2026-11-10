@@ -7,8 +7,8 @@ from html import escape
 from PySide6.QtCore import QDate, QDateTime, QPoint, QPointF, Qt, QTimer, Signal
 from PySide6.QtGui import QBrush, QColor, QContextMenuEvent, QFontMetrics, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (QDialog, QDialogButtonBox, QFormLayout, QFrame, QGraphicsRectItem,
-                               QGraphicsScene, QGraphicsView, QLabel, QMenu,
-                               QScrollArea, QVBoxLayout)
+                               QGraphicsScene, QGraphicsView, QLabel, QLineEdit, QMenu,
+                               QPlainTextEdit, QScrollArea, QVBoxLayout)
 
 from activity_tracker import app_label, merge_segments, read_segments
 import call_import
@@ -414,6 +414,16 @@ def exec_entry_menu(parent, entry, global_pos):
     return keys.get(menu.exec(global_pos))
 
 
+def _config_of(widget):
+    """Einstellungen des Hauptfensters: erstes Fenster in der Eltern-Kette mit config."""
+    while widget is not None:
+        config = getattr(widget, "config", None)
+        if isinstance(config, dict):
+            return config
+        widget = widget.parent()
+    return {}
+
+
 class ActivityViewDialog(QDialog):
     """Nur-Anzeigen-Dialog zum Kopieren von Aktivitätsdaten."""
 
@@ -429,13 +439,22 @@ class ActivityViewDialog(QDialog):
         form.setVerticalSpacing(10)
         form.setLabelAlignment(Qt.AlignLeft)
 
+        # Einstellungen → Ansicht → „Aktivitätsdetails als Textfelder“: Werte in schreibgeschützten
+        # Feldern, dort reicht Klick + Strg+A + Strg+C zum Kopieren
+        fields = bool(_config_of(parent).get("detail_text_fields", False))
+
         def row(key, text):
-            """Nur anzeigen: Name grau, Wert als markierbarer Text (kein Eingabefeld)."""
+            """Nur anzeigen: Name grau, Wert als markierbarer Text oder als schreibgeschütztes Feld."""
             label = QLabel(key)
             label.setObjectName("detail_key")
-            value = QLabel(text or "–")
-            value.setObjectName("detail_value")
-            value.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            if fields:
+                value = QLineEdit(text or "")
+                value.setReadOnly(True)
+                value.setCursorPosition(0)
+            else:
+                value = QLabel(text or "–")
+                value.setObjectName("detail_value")
+                value.setTextInteractionFlags(Qt.TextSelectableByMouse)
             form.addRow(label, value)
 
         try:
@@ -462,7 +481,16 @@ class ActivityViewDialog(QDialog):
         if activity.get("ai"):
             text = activity.get("description", "")
             row("Sicherheit", f"{round(activity.get('confidence', 0) * 100)} %")
-        if text:
+        if text and fields:
+            details = QPlainTextEdit(text)
+            details.setReadOnly(True)
+            details.setMaximumHeight(240 if parts else 110)
+            label = QLabel("Details")
+            label.setObjectName("detail_key")
+            layout.addSpacing(8)
+            layout.addWidget(label)
+            layout.addWidget(details)
+        elif text:
             box = QFrame()
             box.setObjectName("notice")
             inner = QVBoxLayout(box)
@@ -510,6 +538,8 @@ class TimelineView(QGraphicsView):
     logs_loaded = Signal(object, object, object)
     # Logs werden gelesen (True) oder sind fertig (False) – für die Ladeanzeige
     loading_changed = Signal(bool)
+    # Hintergrund-Thread hat für reload_source vorgelesen (z. B. Ereignisprotokoll): Quelle
+    _source_ready = Signal(str)
 
     # Kräftige, gut unterscheidbare Farben je Programm (Band "PC")
     APP_COLORS = ["#2F7BFF", "#FF7A00", "#18B34B", "#9B3DF2", "#FF2E8A",
@@ -580,6 +610,11 @@ class TimelineView(QGraphicsView):
         self._threads = []      # alle gestarteten Einlese-Threads (zum Abwarten beim Beenden)
         self._closing = False   # beim Beenden: Thread darf nichts mehr melden
         self._day_data = None   # Daten vom letzten draw_timeline (Zoom zeichnet nur neu)
+        # Nur während draw_timeline: Ergebnisse, die Timeline, Tagesliste und Statuszeile
+        # mehrmals brauchen (Einträge des Tages, offene Tätigkeiten …). Danach wieder None,
+        # damit nichts veraltet.
+        self._draw_memo = None
+        self._pc_cache = {}  # (Tag, Mindestdauer, Lücke) -> (Fensterstücke, Einträge), siehe _pc_entries_for
         self.logs_loaded.connect(self._on_logs_loaded)
 
         self.zoom_level = 1.0
@@ -593,6 +628,13 @@ class TimelineView(QGraphicsView):
         self._resize_timer.setSingleShot(True)
         self._resize_timer.setInterval(40)
         self._resize_timer.timeout.connect(self._apply_resize)
+        # Aufzeichnungen (mstsc, VPN, Spuren vom PC) melden sich alle 30 Sekunden kurz
+        # nacheinander: ein Neuzeichnen für alle (reload_source)
+        self._source_timer = QTimer(self)
+        self._source_timer.setSingleShot(True)
+        self._source_timer.setInterval(150)
+        self._source_timer.timeout.connect(self._redraw_sources)
+        self._source_ready.connect(self._apply_source)
         self._rendered_h = None    # Höhe der Fläche beim letzten Zeichnen
         # Jetzt-Linie mit Uhrzeit-Pille: jede Minute verschieben, auch ohne neues Zeichnen
         # (z. B. Aufzeichnung pausiert). Nur die zwei Teile, nicht die ganze Szene.
@@ -702,6 +744,44 @@ class TimelineView(QGraphicsView):
         for thread in list(self._threads):
             thread.join(max(0, end - time.monotonic()))
 
+    SOURCE_INDEX = {"rdp": "_rdp_index", "vpn": "_sophos_index", "local": "_local_index"}
+
+    def reload_source(self, name, draw=True):
+        """Nur eine selbst aufgezeichnete Quelle neu aufbereiten ("rdp", "vpn", "local").
+
+        Statt refresh(): die Logs von TeamViewer, RDM und VPN bleiben, wie sie sind. Für
+        mstsc wird das Windows-Ereignisprotokoll (wevtutil, bis zu Sekunden) vorher im
+        Hintergrund gelesen, damit die Oberfläche nie darauf wartet."""
+        if self.loading:  # gleich kommen ohnehin alle Quellen neu
+            return
+        if name == "rdp" and (self.config.get("mstsc_enabled", True)
+                              or self.config.get("rdmbetter_enabled", True)):
+            def prefetch():
+                try:
+                    self.rdp_reader.event_sessions()
+                except Exception as e:  # Timeline darf daran nie scheitern
+                    print(f"RDP-Ereignisprotokoll nicht vorab gelesen: {e}")
+                if not self._closing:
+                    self._source_ready.emit("rdp" if draw else "rdp-nodraw")
+            thread = threading.Thread(target=prefetch, daemon=True, name="RDP-Ereignisse")
+            self._threads = [t for t in self._threads if t.is_alive()] + [thread]
+            thread.start()
+            return
+        self._apply_source(name if draw else f"{name}-nodraw")
+
+    def _apply_source(self, name):
+        if self._closing:
+            return
+        name, _sep, flag = name.partition("-")
+        setattr(self, self.SOURCE_INDEX[name], None)
+        self._remote_cache.clear()
+        if flag != "nodraw":
+            self._source_timer.start()
+
+    def _redraw_sources(self):
+        if not self.loading and not self._closing:  # beim Lesen zeichnet _on_logs_loaded
+            self.draw_timeline(self.current_date)
+
     def _start_first_load(self):
         self.loading = False
         self.refresh()
@@ -794,7 +874,20 @@ class TimelineView(QGraphicsView):
         self.remote_suggestions = day
         self._remote_cache[date_str] = day
 
+    def memo(self, key, func):
+        """func() einmal je Zeichnen berechnen (außerhalb von draw_timeline: jedes Mal)."""
+        memo = self._draw_memo
+        if memo is None:
+            return func()
+        if key not in memo:
+            memo[key] = func()
+        return memo[key]
+
     def activities_for(self, date: QDate):
+        """Alle Einträge des Tages aus allen Quellen (ohne PC-Fenster), nach Beginn sortiert."""
+        return list(self.memo(("activities", date.toString("yyyy-MM-dd")), lambda: self._activities_for(date)))
+
+    def _activities_for(self, date: QDate):
         date_str = date.toString("yyyy-MM-dd")
         self.load_remote_connections(date)
         result = [a for a in self.activities if a.get("start", "").startswith(date_str)]
@@ -883,6 +976,10 @@ class TimelineView(QGraphicsView):
 
     def pc_entries_for(self, date: QDate, min_seconds=30, max_gap=60):
         """Aktive Fenster des Tages als Einträge (für Band und Tagesliste)."""
+        key = ("pc", date.toString("yyyy-MM-dd"), min_seconds, max_gap)
+        return [dict(e) for e in self.memo(key, lambda: self._pc_entries_for(date, min_seconds, max_gap))]
+
+    def _pc_entries_for(self, date: QDate, min_seconds, max_gap):
         date_str = date.toString("yyyy-MM-dd")
         if self.tracker:
             segments = self.tracker.segments_for(date_str)
@@ -894,16 +991,26 @@ class TimelineView(QGraphicsView):
             segments = segments + self.imported.segments(date_str)
         if not segments:
             return []
-        result = []
-        for seg in merge_segments(segments, min_seconds=min_seconds, max_gap=max_gap):
-            result.append({
-                "start": seg["start"], "end": seg["end"],
-                "type": f"PC: {app_label(seg['app'])}",
-                "customer_name": seg["title"] or app_label(seg["app"]),
-                "details": seg["app"], "app": seg["app"],
-                "is_suggestion": True,
-            })
-        return result
+        # Timeline, Tagesliste, Dokumentation und Statuszeile fragen beim Zeichnen mehrmals
+        # nach demselben Tag: Ergebnis merken, solange die Fensterstücke gleich sind
+        key = (date_str, min_seconds, max_gap)
+        sig = tuple((s["start"], s["end"], s["app"], s["title"]) for s in segments)
+        cache = self._pc_cache
+        hit = cache.get(key)
+        if hit is None or hit[0] != sig:
+            result = []
+            for seg in merge_segments(segments, min_seconds=min_seconds, max_gap=max_gap):
+                result.append({
+                    "start": seg["start"], "end": seg["end"],
+                    "type": f"PC: {app_label(seg['app'])}",
+                    "customer_name": seg["title"] or app_label(seg["app"]),
+                    "details": seg["app"], "app": seg["app"],
+                    "is_suggestion": True,
+                })
+            if len(cache) >= 6:  # nur die zuletzt gezeigten Tage
+                cache.pop(next(iter(cache)))
+            hit = cache[key] = (sig, result)
+        return hit[1]  # pc_entries_for gibt Kopien heraus
 
     def missing_sources(self):
         """Quellen, für die keine einzige Logdatei gelesen werden konnte."""
@@ -1047,9 +1154,13 @@ class TimelineView(QGraphicsView):
     def draw_timeline(self, date: QDate):
         """Daten des Tages neu lesen und zeichnen (nach Änderungen an den Daten)."""
         self.draw_stale = False
-        self._day_data = self._collect(date)
-        self._render()
-        self.day_loaded.emit(self._day_data["activities"], self.pc_entries_for(date))
+        outer, self._draw_memo = self._draw_memo, {}  # je Zeichnen frisch, auch verschachtelt
+        try:
+            self._day_data = self._collect(date)
+            self._render()
+            self.day_loaded.emit(self._day_data["activities"], self.pc_entries_for(date))
+        finally:
+            self._draw_memo = outer
 
     def relayout(self):
         """Nur neu anordnen (Zoom, Fenstergröße, Design): Daten vom letzten Zeichnen,

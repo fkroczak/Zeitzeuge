@@ -138,6 +138,8 @@ def default_config():
         "theme_follow_system": False,
         # Timeline: Zeilen abwechselnd grau hinterlegen statt feiner Linien (Ansicht → Zeilen der Timeline)
         "timeline_stripes": False,
+        # Aktivitätsdetails: Werte in schreibgeschützten Textfeldern statt als Text (zum Kopieren)
+        "detail_text_fields": False,
         # Eigene Farben (Menü Ansicht → Design, theme.custom_theme): Grundlage und Grundfarben
         "custom_theme": False,
         "custom_colors": {},

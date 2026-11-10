@@ -22,6 +22,7 @@ import ctypes
 import os
 import sys
 from datetime import datetime, timedelta
+from functools import lru_cache
 
 import datastore
 import safe_io
@@ -271,13 +272,32 @@ def read_segments(folder, date_str):
         key, version = (id(store), name, date_str), store.version()
         hit = _segment_cache.pop(key, None)
         if hit is None or hit[0] != version:
-            hit = (version, [seg for seg in store.rows(name, date_str) if _valid_segment(seg)])
+            # Abgeschlossene Tage stehen verdichtet als ein Dokument (compact_days), dazu
+            # Zeilen, die erst danach kamen
+            packed = store.get(name, date_str) or []
+            segments = (packed if isinstance(packed, list) else []) + store.rows(name, date_str)
+            hit = (version, [seg for seg in segments if _valid_segment(seg)])
         _segment_cache[key] = hit  # zuletzt benutzt ans Ende
         while len(_segment_cache) > SEGMENT_CACHE_DAYS:
             del _segment_cache[next(iter(_segment_cache))]
         return [dict(seg) for seg in hit[1]]  # Kopien: Aufrufer dürfen sie ändern
     except (datastore.Busy, datastore.Locked, OSError):  # gerade nicht lesbar
         return []
+
+
+def compact_days(folder, today=None, stop=None):
+    """Abgeschlossene Tage (vor heute) von Einzelzeilen zu einem Dokument je Tag verdichten.
+    Ein verdichteter Tag liest sich deutlich schneller. stop(): True = aufhören (Beenden).
+    Gibt die Zahl verdichteter Tage zurück."""
+    today = today or datetime.now().strftime("%Y-%m-%d")
+    store, name = datastore.locate(folder, "row_files")
+    done = 0
+    for day in [d for d in store.row_days(name) if d < today]:
+        if stop and stop():
+            break
+        store.compact_rows(name, day)
+        done += 1
+    return done
 
 
 def top_apps(folder, days=7, today=None, limit=15):
@@ -317,6 +337,7 @@ def merge_segments(segments, min_seconds=30, max_gap=60):
     return [m for m in merged if _seconds(m["start"], m["end"]) >= min_seconds]
 
 
+@lru_cache(maxsize=1024)
 def app_label(app):
     name = app[:-4] if app.lower().endswith(".exe") else app
     return {"mstsc": "Remotedesktop", "chrome": "Chrome", "msedge": "Edge",

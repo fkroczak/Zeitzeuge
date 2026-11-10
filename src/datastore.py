@@ -559,6 +559,73 @@ class Store:
                 except sqlite3.DatabaseError:
                     pass
 
+    def compact_rows(self, name, day):
+        """Zeilen eines Tages in das Dokument (name, day) übernehmen und dann löschen.
+
+        Für abgeschlossene Tage: ein Dokument liest sich viel schneller als Tausende einzelne
+        Zeilen. Alles unter der Sperre, eine Zeile, die gerade dazukommt, bleibt als Zeile
+        (gelöscht werden nur die übernommenen). Unlesbare Zeilen bleiben, wie sie sind. Wie
+        beim Löschen erst mit Nullen überschreiben, dann löschen. Gibt die Zahl übernommener
+        Zeilen zurück."""
+        self._need_key()
+        aad = f"rows|{name}|{day}".encode("utf-8")
+        taken = []
+
+        def merge(c):
+            rows = c.execute("SELECT id, data FROM rows WHERE name = ? AND day = ? ORDER BY id",
+                             (name, day)).fetchall()
+            if not rows:
+                return
+            old = c.execute("SELECT data FROM docs WHERE name = ? AND day = ?", (name, day)).fetchone()
+            items = self._dec("docs", name, day, old[0]) if old else []
+            if not isinstance(items, list):
+                return  # unerwartetes Dokument: nichts anfassen
+            for row_id, blob in rows:
+                try:
+                    items.append(json.loads(self._cipher.decrypt(blob, aad)))
+                    taken.append((row_id,))
+                except (datakey.WrongKey, ValueError):
+                    pass
+            if taken:
+                c.execute("INSERT OR REPLACE INTO docs (name, day, data) VALUES (?, ?, ?)",
+                          (name, day, self._enc("docs", name, day, items)))
+                c.executemany("UPDATE rows SET data = zeroblob(length(data)) WHERE id = ?", taken)
+
+        with self._lock:
+            self.open()
+            self._conn.execute("PRAGMA secure_delete = ON")
+            try:
+                self._write_tx(merge)
+                if taken:
+                    self._checkpoint()
+                    self._write_tx(lambda c: c.executemany("DELETE FROM rows WHERE id = ?", taken))
+                    self._checkpoint()
+                return len(taken)
+            finally:
+                try:
+                    self._conn.execute("PRAGMA secure_delete = OFF")
+                except sqlite3.DatabaseError:
+                    pass
+
+    def delete_docs_before(self, name, day):
+        """Dokumente einer Ablage vor day löschen (mit Nullen überschrieben, wie Zeilen)."""
+        where = ("name = ? AND day < ? AND day != ''", (name, day))
+        with self._lock:
+            self.open()
+            self._conn.execute("PRAGMA secure_delete = ON")
+            try:
+                self._write_tx(lambda c: c.execute(
+                    f"UPDATE docs SET data = zeroblob(length(data)) WHERE {where[0]}", where[1]))
+                self._checkpoint()
+                count = self._write_tx(lambda c: c.execute(f"DELETE FROM docs WHERE {where[0]}", where[1]).rowcount)
+                self._checkpoint()
+                return count
+            finally:
+                try:
+                    self._conn.execute("PRAGMA secure_delete = OFF")
+                except sqlite3.DatabaseError:
+                    pass
+
     def _checkpoint(self):
         """WAL in die Datei übernehmen (Fehler egal: dann beim nächsten Checkpoint)."""
         try:

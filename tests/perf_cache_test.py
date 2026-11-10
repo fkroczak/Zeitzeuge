@@ -71,3 +71,100 @@ def test_zusammenfassen_unveraendert():
     segs = [seg("09:00:00", "09:00:40"), seg("09:01:30", "09:02:00"), seg("09:05:00", "09:05:10", "b.exe")]
     merged = at.merge_segments(segs, min_seconds=30, max_gap=60)
     assert [(m["app"], m["start"][11:], m["end"][11:]) for m in merged] == [("a.exe", "09:00:00", "09:02:00")]
+
+
+@pytest.mark.parametrize("when", [datetime(2026, 10, 22, 9, 5, 7), datetime(2026, 1, 1, 0, 0, 0, 999999),
+                                  datetime(999, 5, 6, 7, 8, 9)])
+def test_zeit_schreiben_gleich_wie_strftime(when):
+    assert timefmt.fmt(when) == when.strftime(timefmt.TIME_FMT)
+
+
+def test_focus_blocks_gleich_mit_wiederholten_fenstern():
+    # Gleiche Fenster (Programm + Titel) bekommen dieselbe Tätigkeit, auch über den Zwischenspeicher
+    import focus
+    segs = [seg(f"09:{m:02d}:00", f"09:{m:02d}:50", "teams.exe" if m % 3 == 1 else "outlook.exe", f"T{m % 2}")
+            for m in range(30)]
+    rules = [{"name": "Mail", "field": "app", "match": "outlook", "category": "E-Mail", "customer": "",
+              "enabled": True}]
+    blocks = focus.focus_blocks(segs, rules)
+    assert [b["category"] for b in blocks] == ["E-Mail"], "Teams-Sprünge zählen zu Outlook"
+    assert sum(len(b["windows"]) for b in blocks) == len(segs)
+
+
+def test_spuren_vom_pc_zwischenspeicher():
+    import local_sources as ls
+    state = {"locked": False}
+    reader = ls.LocalReader({"recent_files_dirs": [], "browser_paths": []}, None, funcs={
+        "locked": lambda: state["locked"], "processes": lambda: [], "titles": lambda: {},
+        "events": lambda: [], "wlan": lambda: "", "history": lambda path, since: [], "threaded": False})
+    t = datetime(2026, 11, 3, 9, 0, 0)
+    reader.sample(now=t)
+    assert reader.entries() == []
+    state["locked"] = True
+    for i in range(1, 5):
+        reader.sample(now=t.replace(second=0, minute=i))
+    first = reader.entries()
+    assert [e["type"] for e in first] == [ls.LOCKED], "Änderung kommt trotz Zwischenspeicher an"
+    first[0]["customer_name"] = "geändert"  # Kopie, nicht der Zwischenspeicher
+    assert reader.entries()[0]["customer_name"] == "gesperrt"
+    reader.config["pcstate_enabled"] = False
+    assert reader.entries() == [], "Schalter wirkt sofort"
+
+
+def test_vergangene_tage_verdichten_und_loeschen():
+    import retention
+    folder = os.path.join(tempfile.mkdtemp(), "aktivitaet")
+    store = datastore.register(datastore.Store(os.path.join(os.path.dirname(folder), "zeitzeuge.db")).unlock())
+    try:
+        store.append_many("aktivitaet", [(D, seg(f"09:0{i}:00", f"09:0{i}:30", title=f"t{i}")) for i in range(5)])
+        store.append("aktivitaet", "2026-10-23", {**seg("08:00:00", "08:10:00"),
+                                                  "start": "2026-10-23 08:00:00", "end": "2026-10-23 08:10:00"})
+        before = at.read_segments(folder, D)
+        assert at.compact_days(folder, today="2026-10-23") == 1, "heute wird nicht verdichtet"
+        assert store.row_count("aktivitaet", D) == 0 and store.days("aktivitaet") == [D]
+        assert store.row_count("aktivitaet", "2026-10-23") == 1
+        assert at.read_segments(folder, D) == before, "gleiche Abschnitte, gleiche Reihenfolge"
+        # Kommt danach noch eine Zeile für den Tag, wird sie gelesen und beim nächsten Mal angehängt
+        store.append("aktivitaet", D, seg("10:00:00", "10:05:00", "late.exe"))
+        assert [s["app"] for s in at.read_segments(folder, D)][-1] == "late.exe"
+        at.compact_days(folder, today="2026-10-23")
+        assert len(at.read_segments(folder, D)) == 6 and store.row_count("aktivitaet", D) == 0
+        # Löschen nach Aufbewahrung: verdichtete Tage zählen und verschwinden
+        info = retention.affected(store, "aktivitaet", None, "2026-10-23")
+        assert info["days"] == [D] and info["rows"] == 6, info
+        total, _other = retention.purge(store, "aktivitaet", None, "2026-10-23")
+        assert total == 6 and store.days("aktivitaet") == [] and at.read_segments(folder, D) == []
+        assert store.row_count("aktivitaet", "2026-10-23") == 1, "Tag ab Stichtag bleibt"
+    finally:
+        datastore.unregister(os.path.dirname(folder))
+
+
+def test_spuren_vom_pc_je_tag_gespeichert():
+    import local_sources as ls
+    tmp = tempfile.mkdtemp()
+    archive = os.path.join(tmp, "lokal_spuren.json")
+    store = datastore.register(datastore.Store(os.path.join(tmp, "zeitzeuge.db")).unlock())
+    try:
+        old = {"files": [{"start": "2026-11-01 09:00:00", "end": "2026-11-01 09:00:00", "name": "a.docx"},
+                         {"start": "2026-11-02 09:00:00", "end": "2026-11-02 09:00:00", "name": "b.docx"}]}
+        store.put("lokal_spuren", "", old)  # früheres Format: ein Dokument für alle Tage
+        funcs = {"locked": lambda: state["locked"], "processes": lambda: [], "titles": lambda: {},
+                 "events": lambda: [], "wlan": lambda: "", "history": lambda path, since: [], "threaded": False}
+        state = {"locked": False}
+        reader = ls.LocalReader({"recent_files_dirs": [], "browser_paths": []}, archive, funcs=funcs)
+        assert len(reader.entries()) == 2
+        assert store.days("lokal_spuren") == ["2026-11-01", "2026-11-02"], "auf Tage verteilt, altes weg"
+        writes = []
+        real = store.put_many
+        store.put_many = lambda name, by_day, delete=(): writes.append(sorted(by_day)) or real(name, by_day, delete)
+        state["locked"] = True
+        t = datetime(2026, 11, 3, 9, 0, 0)
+        for i in range(4):
+            reader.sample(now=t.replace(minute=i))
+        assert writes and all(w == ["2026-11-03"] for w in writes), "nur der geänderte Tag"
+        store.put_many = real
+        again = ls.LocalReader({}, archive, funcs=funcs)
+        assert sorted(e["type"] for e in again.entries()) == sorted([ls.LOCKED, ls.FILE_TYPE, ls.FILE_TYPE])
+        assert again.prune("2026-11-02") == 1 and "2026-11-01" not in store.days("lokal_spuren")
+    finally:
+        datastore.unregister(tmp)

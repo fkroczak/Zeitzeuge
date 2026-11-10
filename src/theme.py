@@ -369,7 +369,7 @@ QPushButton:focus { padding: 5px 13px; }
 QPushButton:default:focus { border-color: $accent; }
 QDateEdit:focus, QTimeEdit:focus, QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus,
 QComboBox:focus,
-QSpinBox:focus, QListWidget:focus, QTableWidget:focus {
+QSpinBox:focus, QListWidget:focus, QTableWidget:focus, QTableView#day_list:focus {
     border: 1px solid $accent; }
 QGraphicsView:focus { border: 1px solid $muted; }  /* Timeline ausgewählt: dunkelgrau statt Akzent */
 QToolButton#qt_toolbar_ext_button { border: 1px solid $control; background-color: $hover; }
@@ -416,12 +416,14 @@ QMenu::item:disabled { color: $muted; }
 QMenu::separator { height: 1px; background: $border; margin: 4px 0; }
 QMenu::icon { padding-left: 6px; }
 QGraphicsView { border: 1px solid $border; border-radius: $radius_cardpx; }  /* sichtbares Ende der Timeline */
-QTableWidget { background-color: $surface; alternate-background-color: $alt;
+/* QTableView#day_list: Tagesliste als Modell (day_list_view.py), aussehen wie die Tabellen */
+QTableWidget, QTableView#day_list { background-color: $surface; alternate-background-color: $alt;
                border: 1px solid $border; border-radius: $radius_cardpx; gridline-color: transparent;
                selection-background-color: $sel; selection-color: $seltext; }
-QTableWidget::item { padding: 2px 8px; border: none; border-bottom: 1px solid $line; }
-QTableWidget::item:selected { background-color: $sel; color: $seltext; }
-QTableWidget::item:selected:first { border-left: 3px solid $accent; padding-left: 5px; }
+QTableWidget::item, QTableView#day_list::item { padding: 2px 8px; border: none; border-bottom: 1px solid $line; }
+QTableWidget::item:selected, QTableView#day_list::item:selected { background-color: $sel; color: $seltext; }
+QTableWidget::item:selected:first, QTableView#day_list::item:selected:first {
+    border-left: 3px solid $accent; padding-left: 5px; }
 QLabel#status_badge { border-radius: $radius_chippx; padding: 2px 10px; font-weight: bold; font-size: $fs_smpx;
                       background-color: $chip; color: $muted; }
 QLabel#status_badge[state="ok"] { background-color: $rate_ok; color: $rate_ok_text; }
@@ -494,9 +496,10 @@ QToolButton#chip:hover { border-color: $control; }
 QToolButton#chip:checked { background-color: $primary; color: $onprimary; border-color: $primary; }
 QToolButton#chip QLabel { background: transparent; color: $chiptext; }
 QToolButton#chip QLabel[on="true"] { color: $onprimary; font-weight: bold; }
-QLabel#chip_count { background-color: $border; color: $chiptext; border-radius: 8px; padding: 0 6px;
-                    font-size: $fs_smpx; font-weight: bold; }
-QLabel#chip_count[on="true"] { background-color: $onprimary; color: $primary; }
+QToolButton#chip QLabel#chip_count { background-color: $border; color: $chiptext; border-radius: 8px;
+                                     padding: 0 6px; font-size: $fs_smpx; font-weight: bold; }
+/* spezifischer als „QToolButton#chip QLabel[on]“, sonst weiße Zahl auf weißem Abzeichen */
+QToolButton#chip QLabel#chip_count[on="true"] { background-color: $onprimary; color: $primary; }
 QLabel#card_title[empty="true"] { color: $muted; font-weight: normal; }
 QLabel#detail_key { color: $muted; background: transparent; }
 QLabel#detail_value { background: transparent; }

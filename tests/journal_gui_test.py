@@ -162,11 +162,14 @@ def gui_test():
     store.append_many(name, [(old, seg)] * 3)
     window.retention.check(force=True)
     QTest.qWait(200)
-    assert store.row_count(name, old) == 3, "trotz Standard „aus“ gelöscht"
+    import activity_tracker
+    # Fensterabschnitte zählen, nicht Zeilen: vergangene Tage werden im Hintergrund verdichtet
+    assert len(activity_tracker.read_segments(main_timeline.ACTIVITY_DIR, old)) == 3, "trotz Standard „aus“ gelöscht"
     window.config["pc_history_purge"] = True
     window.retention.check(force=True)
     QTest.qWait(300)
-    assert store.row_count(name, old) == 0, "alter PC-Verlauf nicht gelöscht"
+    assert activity_tracker.read_segments(main_timeline.ACTIVITY_DIR, old) == [], "alter PC-Verlauf nicht gelöscht"
+    assert store.row_count(name, old) == 0 and old not in store.days(name)
     assert window.journal.items(now.strftime("%Y-%m-%d")), "Tätigkeiten dürfen bleiben"
     window.config["pc_history_purge"] = False
     window.update_day_list(window.day_activities, window.pc_activities)

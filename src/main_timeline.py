@@ -34,11 +34,12 @@ from datetime import datetime
 from PySide6.QtCore import QDate, QLocale, Qt, QTimer
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (QAbstractItemView, QApplication, QHeaderView, QLabel,
-                               QMainWindow, QMessageBox, QSplitter, QTableWidget, QToolButton,
+                               QMainWindow, QMessageBox, QSplitter, QToolButton,
                                QVBoxLayout, QWidget)
 
 from ai_classifier import AI_TYPE, AiClassifier, AiStore
 from busy_bar import BusyBar
+from day_list_view import DayListView
 from day_summary import DaySummary, ViewChips
 import icons
 from version import version_details, version_label
@@ -504,9 +505,7 @@ class TimelineApp(MenusMixin, DayListMixin, DayCloseMixin, DocsMixin, ReadersMix
         # Hinweise beim Darüberfahren auch, wenn Zeitzeuge gerade nicht das aktive Fenster ist
         # (Qt zeigt sie sonst nur im aktiven Fenster, die Werkzeugleiste hat nur Symbole)
         self.setAttribute(Qt.WA_AlwaysShowToolTips)
-        self.table = QTableWidget(0, len(self.COLUMNS), self)
-        # Spaltenköpfe fett statt in Großbuchstaben (besser lesbar)
-        self.table.setHorizontalHeaderLabels(self.COLUMNS)
+        self.table = DayListView(self.COLUMNS, self)  # Modell: Zeilen erst bei Bedarf aufbereitet
         self.table.verticalHeader().setVisible(False)
         self.table.setAlternatingRowColors(True)
         self.table.setShowGrid(False)
@@ -514,11 +513,12 @@ class TimelineApp(MenusMixin, DayListMixin, DayCloseMixin, DocsMixin, ReadersMix
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.verticalHeader().setDefaultSectionSize(32)
-        self.table.horizontalHeaderItem(2).setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.table.set_header_alignment(2, Qt.AlignRight | Qt.AlignVCenter)
         header = self.table.horizontalHeader()
         header.setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        for col in range(4):
-            header.setSectionResizeMode(col, QHeaderView.ResizeToContents)
+        for col in range(4):  # Breite nach Inhalt, gemessen beim Füllen (DayListView.fit_widths)
+            header.setSectionResizeMode(col, QHeaderView.Fixed)
+        self.table.fit_columns = range(4)
         header.setSectionResizeMode(4, QHeaderView.Interactive)
         header.resizeSection(4, 300)
         header.setStretchLastSection(True)

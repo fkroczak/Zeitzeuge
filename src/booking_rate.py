@@ -16,6 +16,8 @@ aus, als hättest du nichts gebucht.
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
+import timefmt
+
 TIME_FMT = "%Y-%m-%d %H:%M:%S"
 
 # Farbstufen (Prozent). Ziel ist einstellbar (config "booking_target_percent").
@@ -65,7 +67,7 @@ def percent_text(percent):
 
 
 def _dt(text):
-    return datetime.strptime(text, TIME_FMT)
+    return timefmt.parse(text)
 
 
 def merge(spans):

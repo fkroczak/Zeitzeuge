@@ -17,6 +17,8 @@ import re
 from collections import Counter
 from datetime import datetime, timedelta
 
+import timefmt
+
 TIME_FMT = "%Y-%m-%d %H:%M:%S"
 
 # Anzeigen von Zugangsdaten (aus RDM) und ihr Kurzname im Zähler
@@ -115,8 +117,8 @@ def group_entries(entries, gap_minutes=5):
         else:
             kind = f"{proto}-Verbindung"
         merged = {
-            "start": g["start"].strftime(TIME_FMT),
-            "end": g["end"].strftime(TIME_FMT),
+            "start": timefmt.fmt(g["start"]),
+            "end": timefmt.fmt(g["end"]),
             "type": kind,
             "customer_name": name,
             "details": _summary(connections, g["creds"]),
@@ -156,8 +158,8 @@ def work_blocks(entries, gap_minutes=10):
                 kinds.append(kind)
         count = sum(len(p.get("parts", [p])) for p in b["parts"])
         result.append({
-            "start": b["start"].strftime(TIME_FMT),
-            "end": b["end"].strftime(TIME_FMT),
+            "start": timefmt.fmt(b["start"]),
+            "end": timefmt.fmt(b["end"]),
             "type": BLOCK_TYPE,
             "customer_name": ", ".join(name for name, _ in weight.most_common()),
             "details": f"{', '.join(kinds)} · {count} Einträge",
