@@ -13,7 +13,9 @@ HINT = ("Hat ein Outlook-Termin einen Ort (kein Teams, kein Link), ist die Zeit 
         "am PC vermutlich die Hinfahrt, die Zeit danach die Rückfahrt. Ebenso eine Lücke beim "
         "Wechsel in ein Kundennetz. Zeitzeuge fragt danach und schlägt „Fahrt / Reise“ vor.\n\n"
         "Kunden mit Adresse: In der Kundenliste berechnet „Berechnen“ die Fahrzeit vom Büro über "
-        "OpenStreetMap (nur die beiden Adressen gehen nach außen).\n\n"
+        "OpenStreetMap (nur die beiden Adressen gehen nach außen). Ebenso, wenn im Ort des "
+        "Termins selbst eine Adresse steht. Ohne bekannte Fahrzeit gilt für Hin- und Rückfahrt "
+        "dieselbe Dauer (die kürzere Lücke).\n\n"
         "Unten trägst du weitere Orte und Kunden mit ihrer Fahrzeit ein. Steht der Name im Ort, im "
         "Betreff oder beim Kunden des Termins, gilt genau diese Fahrzeit. 0 Minuten heißt keine "
         "Fahrt, z. B. für euren Besprechungsraum oder das eigene Büro.")
@@ -42,6 +44,13 @@ class TravelSettingsDialog(QDialog):
         home.addWidget(home_label)
         home.addWidget(self.home_edit, 1)
         layout.addLayout(home)
+        self.route_box = QCheckBox("Fahrzeit zur &Adresse im Termin-Ort berechnen (OpenStreetMap)")
+        self.route_box.setToolTip("Steht im Ort eines Outlook-Termins eine Adresse (Straße Nr. oder "
+                                  "PLZ Ort), berechnet Zeitzeuge die Fahrzeit vom Büro dorthin. Nach "
+                                  "außen gehen nur die beiden Adressen. Ändert sich die Adresse im "
+                                  "Termin, wird neu berechnet.")
+        self.route_box.setChecked(bool(config.get("travel_route_appointments", True)))
+        layout.addWidget(self.route_box)
 
         row = QHBoxLayout()
         row.addWidget(QLabel("Unbekannte Orte: Fahrt höchstens"))
@@ -141,6 +150,7 @@ class TravelSettingsDialog(QDialog):
     def values(self):
         return {"travel_enabled": self.enabled_box.isChecked(),
                 "travel_home_address": " ".join(self.home_edit.text().split()),
+                "travel_route_appointments": self.route_box.isChecked(),
                 "travel_max_minutes": self.max_spin.value(),
                 "travel_places": self.places(),
                 "travel_ignore_locations": []}  # steckt jetzt in travel_places (0 Min.)

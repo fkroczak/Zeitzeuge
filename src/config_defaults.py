@@ -108,6 +108,8 @@ def default_config():
         "travel_ignore_locations": [],  # Orte, die keine Fahrt sind (z. B. Besprechungsraum, Büro)
         "travel_max_minutes": 90,       # längste Fahrt vor oder nach einem Termin
         "travel_home_address": "",     # Startadresse (Büro) für berechnete Fahrzeiten zu Kunden
+        "travel_route_appointments": True,  # Fahrzeit zur Adresse im Termin-Ort berechnen (OpenStreetMap)
+        "travel_address_minutes": {},   # gemerkte Fahrzeiten: "büro → adresse" -> Minuten
         "travel_places": [],            # bekannte Orte: [{"name": "Besprechungsraum", "minutes": 0}, …]
         "browser_enabled": True,        # Browser-Verlauf: nur Domain und Ticketnummer
         "browser_paths": [

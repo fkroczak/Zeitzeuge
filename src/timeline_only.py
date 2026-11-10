@@ -542,6 +542,10 @@ class TimelineView(QGraphicsView):
     loading_changed = Signal(bool)
     # Hintergrund-Thread hat für reload_source vorgelesen (z. B. Ereignisprotokoll): Quelle
     _source_ready = Signal(str)
+    # Fahrzeit zu einer Termin-Adresse berechnet (Schlüssel, Minuten oder None bei Fehler)
+    _route_done = Signal(str, object)
+    # Config geändert (z. B. neue Fahrzeit gemerkt): Hauptfenster speichert sie
+    config_changed = Signal()
 
     # Kräftige, gut unterscheidbare Farben je Programm (Band "PC")
     APP_COLORS = ["#2F7BFF", "#FF7A00", "#18B34B", "#9B3DF2", "#FF2E8A",
@@ -592,6 +596,12 @@ class TimelineView(QGraphicsView):
         # Beim Start: erstes Zeichnen (bevorzugter Zeitraum), sobald die Logs gelesen sind;
         # vom Hauptfenster gesetzt (start_first_load). So wird der Tag nur einmal gezeichnet.
         self.first_show = None
+
+        # Fahrzeiten zu Termin-Adressen über OpenStreetMap nur im Hauptfenster (nicht in der
+        # Vorschau der Einstellungen); laufende und in dieser Sitzung gescheiterte Abfragen
+        self.route_lookups = False
+        self._route_asked = set()
+        self._route_done.connect(self._on_route_done)
 
         self._remote_cache = {}  # date_str -> list[conn]
         self._tv_parser = TeamViewerParser(self.config)
@@ -1034,11 +1044,59 @@ class TimelineView(QGraphicsView):
                                    customer_net=lambda name: index.lookup("net", name),
                                    places=travel.places_from_config(self.config, own),
                                    customer_minutes=customer_minutes,
+                                   address_minutes=self._address_minutes,
                                    max_minutes=int(self.config.get("travel_max_minutes", travel.MAX_MINUTES)))
         except Exception as e:  # Vorschläge dürfen die Timeline nie leeren
             print(f"Fehler bei den vermuteten Fahrten: {e}")
             return entries
         return sorted(entries + trips, key=lambda a: a["start"])
+
+    def _address_minutes(self, appointment):
+        """Fahrzeit vom Büro zur Adresse im Ort des Termins oder None.
+
+        Gemerkt in der Config (travel_address_minutes). Noch unbekannt: im Hintergrund über
+        OpenStreetMap berechnen (nur die beiden Adressen gehen nach außen), danach neu zeichnen.
+        Ändert sich die Adresse im Termin, ist das ein neuer Schlüssel und wird neu berechnet."""
+        import route
+        home = " ".join(str(self.config.get("travel_home_address") or "").split())
+        if not home or not self.config.get("travel_route_appointments", True):
+            return None
+        place = " ".join(travel._location(appointment).split())
+        if not route.looks_like_address(place):
+            return None
+        key = f"{home} → {place}".casefold()
+        known = self.config.get("travel_address_minutes")
+        if isinstance(known, dict) and key in known:
+            return known[key]
+        if self.route_lookups and key not in self._route_asked:
+            self._route_asked.add(key)
+
+            def work():
+                try:
+                    minutes = route.drive_minutes(home, place)
+                except Exception as e:  # Adresse unbekannt, offline …: Schätzung über Lücken
+                    print(f"Fahrzeit zu „{place}“ nicht berechnet: {e}")
+                    minutes = None
+                if not self._closing:
+                    self._route_done.emit(key, minutes)
+
+            thread = threading.Thread(target=work, daemon=True, name="Fahrzeit Termin")
+            self._threads = [t for t in self._threads if t.is_alive()] + [thread]
+            thread.start()
+        return None
+
+    def _on_route_done(self, key, minutes):
+        if minutes is None or self._closing:
+            return
+        known = self.config.get("travel_address_minutes")
+        if not isinstance(known, dict):
+            known = self.config["travel_address_minutes"] = {}
+        known[key] = int(minutes)
+        if len(known) > 300:  # nur die neuesten Adressen behalten
+            for old in list(known)[:-300]:
+                known.pop(old, None)
+        self.config_changed.emit()
+        self._source_timer.start()  # neu zeichnen, die Fahrt hat jetzt die echte Länge
 
     def view_entries(self, date: QDate):
         """Einträge so, wie Timeline und Liste sie zeigen (einzeln oder zusammengefasst)."""

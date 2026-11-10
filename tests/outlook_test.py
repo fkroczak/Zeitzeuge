@@ -224,6 +224,15 @@ def test_leser_ohne_outlook_und_mit_beispiel():
         reader.want("2026-10-01")
         reader.want("2026-10-01")
         assert reader._wanted == ["2026-10-01"]
+        # Aktualisieren (F5): sofort neu lesen, auch einen schon gelesenen älteren Tag
+        calls.clear()
+        reader.runner = lambda s: calls.append(s) or json.dumps(SAMPLE)
+        reader.step(NOW)
+        reader.step(NOW)
+        assert len(calls) == 1  # nur der gewünschte Tag, der Zeitraum ist noch frisch
+        reader.refresh("2026-10-01")
+        reader.step(NOW)
+        assert len(calls) == 3  # der ältere Tag noch einmal und der ganze Zeitraum
         reader.stop()
         assert reader.stopped and not reader.alive()
 

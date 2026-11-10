@@ -10,10 +10,11 @@ Zwei Hinweise, beide nur Vorschläge (Typ "Fahrt (vermutet)"):
 2. Wechsel des Netzwerks mit einer Lücke dazwischen, wenn eins der Netze einem Kunden
    gehört (Kundenliste, Spur „Netzwerk“): die Lücke ist die Fahrt dorthin oder zurück.
 
-Lücken unter MIN_MINUTES zählen nicht, längere als max_minutes werden auf max_minutes vor
+Ist die Fahrzeit nicht bekannt, gilt für Hin- und Rückfahrt dieselbe, die kürzere der beiden
+Lücken. Lücken unter MIN_MINUTES zählen nicht, längere als max_minutes werden auf max_minutes vor
 dem Termin (bzw. danach) gekürzt. Bekannte Orte (Einstellung „Orte und Fahrzeiten“,
 travel_places) und Kunden mit Fahrzeit (Kundenliste, berechnet über OpenStreetMap) haben eine
-feste Fahrzeit: Sie ersetzt max_minutes, 0 heißt keine Fahrt
+feste Fahrzeit, ebenso ein Termin, dessen Ort eine Adresse ist (route.py): Sie ersetzt max_minutes, 0 heißt keine Fahrt
 (eigenes Büro, Besprechungsraum). Ein Ort passt, wenn sein Name im Ort oder im Betreff
 bzw. Kunden des Termins steht. Andere Termine zählen als belegt: Eine Fahrt überlappt sie nie. Die Fahrt trägt den Betreff und die Teilnehmer-Domains
 des Termins, damit Kunde und Nachfrage („Was hast du gemacht?“) passen.
@@ -118,11 +119,14 @@ def _free(spans, start, end):
 
 
 def suggest(entries, pc_entries=(), customer_net=None, ignore_locations=(),
-            min_minutes=MIN_MINUTES, max_minutes=MAX_MINUTES, places=(), customer_minutes=None):
+            min_minutes=MIN_MINUTES, max_minutes=MAX_MINUTES, places=(), customer_minutes=None,
+            address_minutes=None):
     """Vermutete Fahrten eines Tages. entries: alle Einträge (mit Outlook und Netzwerk),
     pc_entries: aktive Fenster. customer_net(name) -> Kundenname oder "" (Kundenliste).
-    places: bekannte Orte mit Fahrzeit (place_minutes). customer_minutes(termin) -> Fahrzeit
-    des Kunden, dem der Termin gehört (z. B. über die Mail-Domains), oder None."""
+    places: bekannte Orte mit Fahrzeit (place_minutes). address_minutes(termin) -> Fahrzeit
+    zur Adresse im Ort des Termins (OpenStreetMap) oder None. customer_minutes(termin) ->
+    Fahrzeit des Kunden, dem der Termin gehört (z. B. über die Mail-Domains), oder None.
+    Reihenfolge: bekannter Ort, Adresse des Termins, Kunde."""
     busy = busy_spans(entries, pc_entries)
     appointments = []
     for e in entries:
@@ -148,6 +152,8 @@ def suggest(entries, pc_entries=(), customer_net=None, ignore_locations=(),
         except (KeyError, TypeError, ValueError):
             continue
         known = place_minutes(a, places)
+        if known is None and address_minutes:
+            known = address_minutes(a)
         if known is None and customer_minutes:
             known = customer_minutes(a)
         if known == 0:
@@ -156,16 +162,27 @@ def suggest(entries, pc_entries=(), customer_net=None, ignore_locations=(),
         label = a.get("customer_name") or "Termin"
         # andere Termine zählen als belegt (sonst Fahrt mitten in den Termin davor)
         others = busy + [(s, b) for s, b, e in appointments if e is not a]
+        there = back = None
         before = [b for _s, b in others if b <= a_start and b.date() == a_start.date()]
         if before or known:
             start = max(before + [a_start - limit])
             if _free(others, start, a_start):
-                add(start, a_start, label, a, "Hinfahrt")
+                there = start
         after = [s for s, _b in others if s >= a_end and s.date() == a_end.date()]
         if after or known:
             end = min(after + [a_end + limit])
             if _free(others, a_end, end):
-                add(a_end, end, label, a, "Rückfahrt")
+                back = end
+        if known is None and there is not None and back is not None:
+            # Fahrzeit unbekannt: Hin und zurück ist derselbe Weg. Die kürzere Lücke ist die
+            # bessere Schätzung, die längere enthält meist noch anderes (Pause, Einkauf …).
+            way = min(a_start - there, back - a_end)
+            if way >= timedelta(minutes=min_minutes):
+                there, back = a_start - way, a_end + way
+        if there is not None:
+            add(there, a_start, label, a, "Hinfahrt")
+        if back is not None:
+            add(a_end, back, label, a, "Rückfahrt")
 
     if customer_net:
         nets = sorted((e for e in entries if e.get("type") in ("Netzwerk", "WLAN")), key=lambda e: e["start"])
