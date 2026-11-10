@@ -4,16 +4,65 @@ on:
   push:
     branches: ["**"]
     tags: ["v*"]
-  pull_request:
+  # Kein pull_request: jeder Branch-Push läuft schon, die Prüfung erscheint auch im PR.
+  # Sonst lief jeder Commit mit offenem PR doppelt.
   workflow_dispatch:
+
+# Neuer Push auf denselben Branch bricht den älteren, noch laufenden Lauf ab (nicht auf main und Tags,
+# dort soll jeder Stand ein Release werden).
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/v') }}
 
 permissions:
   contents: write  # für Releases bei Tags
   actions: write   # alte Artefakte löschen (Speicherplatz)
 
 jobs:
+  # Tests laufen parallel zum Bau, aufgeteilt auf drei Rechner: die zwei Browser-Tests
+  # (3CX, M42) brauchen je knapp 3 Minuten, alles andere zusammen etwa 2,5 Minuten.
+  test:
+    name: Tests (${{ matrix.teil }})
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - teil: 3CX
+            args: tests/pbx_test.py
+          - teil: M42
+            args: tests/m42_test.py
+          - teil: Rest
+            args: --ignore=tests/pbx_test.py --ignore=tests/m42_test.py
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0  # version_test liest die git-Geschichte
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Abhängigkeiten installieren
+        run: pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Lesbarkeit (nur Hinweis)
+        if: matrix.teil == 'Rest'
+        run: python tests/readability_check.py
+
+      # Alle Tests (pytest.ini, tests/conftest.py): Logik-Tests direkt, Tests mit Oberfläche,
+      # Browser (Edge) oder Prozessen je als eigener Python-Prozess. Fehler erscheinen als Annotation.
+      - name: Tests (pytest)
+        env:
+          QT_QPA_PLATFORM: offscreen
+          PYTHONUTF8: "1"
+        run: python -m pytest -v -rs --durations=10 ${{ matrix.args }}
+
   build:
     runs-on: windows-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -30,35 +79,43 @@ jobs:
       # Der fertige Bootloader aus dem PyInstaller-Paket steckt auch in vielen Schadprogrammen,
       # Defender (und damit Chrome) meldet EXE-Dateien damit oft fälschlich als Virus.
       # Selbst kompiliert ist er einzigartig und fällt deutlich seltener auf.
+      # Das fertig gebaute Paket wird je PyInstaller-Version zwischengespeichert (spart knapp
+      # eine Minute); der Bootloader bleibt selbst kompiliert, nur nicht bei jedem Lauf neu.
+      - name: Selbst kompilierten Bootloader aus dem Cache holen
+        id: bootloader-cache
+        uses: actions/cache@v4
+        with:
+          path: bootloader-wheel
+          key: bootloader-${{ runner.os }}-py3.11-${{ hashFiles('requirements.txt') }}
+
       - name: PyInstaller-Bootloader selbst kompilieren
+        if: steps.bootloader-cache.outputs.cache-hit != 'true'
         shell: pwsh
         env:
           PYINSTALLER_COMPILE_BOOTLOADER: "1"
         run: |
           $pin = (Select-String -Path requirements.txt -Pattern '^pyinstaller==').Line
-          pip install --force-reinstall --no-deps --no-cache-dir --no-binary pyinstaller $pin
+          pip wheel --no-deps --no-cache-dir --no-binary pyinstaller -w bootloader-wheel $pin
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: PyInstaller mit eigenem Bootloader installieren
+        shell: pwsh
+        run: |
+          $whl = Get-ChildItem bootloader-wheel\pyinstaller-*.whl | Select-Object -First 1
+          pip install --force-reinstall --no-deps $whl.FullName
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       # Version MAJOR.MINOR.PATCH, gezählt aus der git-Geschichte von main (siehe src/version.py),
       # z. B. 4.1.3; nicht auf main: 4.1.3-test186. Ein Tag muss genau zur Version passen.
       - name: Versionsnummer bestimmen
+        id: version
         shell: pwsh
         run: |
           $v = python src/version.py
           if ($LASTEXITCODE -ne 0) { Write-Host "::error::$v"; exit 1 }
           "ZZ_VERSION=$v" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           Write-Host "::notice title=Version::Zeitzeuge $v"
-
-      - name: Lesbarkeit (nur Hinweis)
-        run: python tests/readability_check.py
-
-      # Alle Tests (pytest.ini, tests/conftest.py): Logik-Tests direkt, Tests mit Oberfläche,
-      # Browser (Edge) oder Prozessen je als eigener Python-Prozess. Fehler erscheinen als Annotation.
-      - name: Tests (pytest)
-        env:
-          QT_QPA_PLATFORM: offscreen
-          PYTHONUTF8: "1"
-        run: python -m pytest -v -rs --durations=10
 
       - name: EXE bauen
         run: pyinstaller --noconfirm --clean ZeitZeuge.spec
@@ -184,6 +241,34 @@ jobs:
           name: ZeitZeuge-${{ env.ZZ_VERSION }}
           path: dist/ZeitZeuge.exe
           retention-days: 5
+
+      - name: Dateien für das Release weitergeben
+        if: >-
+          (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+          startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@v6
+        with:
+          name: release-dateien
+          path: |
+            dist/Zeitzeuge-Setup.exe
+            dist/ZeitZeuge.exe
+            dist/ZeitZeuge-Ordner.zip
+          retention-days: 1
+
+  # Release erst, wenn Bau und alle Tests grün sind
+  release:
+    needs: [test, build]
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    env:
+      ZZ_VERSION: ${{ needs.build.outputs.version }}
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          name: release-dateien
+          path: dist
 
       # Jeder Stand von main wird ein Release v<Version> (Tag legt die Aktion selbst an).
       # Der feste Link .../releases/latest/download/ZeitZeuge.exe zeigt immer auf das neueste.
