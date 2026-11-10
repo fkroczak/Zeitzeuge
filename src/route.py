@@ -11,6 +11,7 @@ Fahrzeit beim Kunden. Nach außen gehen nur die beiden Adressen, kein Name, kein
 
 import json
 import math
+import re
 import threading
 import time
 import urllib.parse
@@ -76,3 +77,15 @@ def drive_minutes(start, target, fetch=_get_json):
         raise RouteError("keine Route gefunden")
     minutes = float(routes[0].get("duration", 0)) / 60
     return max(ROUND_TO, int(math.ceil(minutes / ROUND_TO) * ROUND_TO))
+
+
+_STREET = re.compile(r"(stra(ss|ß)e|str\.|weg|platz|gasse|allee|ring|damm|ufer|chaussee|steig|pfad"
+                     r"|markt)\s*\d", re.IGNORECASE)
+_POSTCODE = re.compile(r"(^|\D)\d{4,5}\s+\w")
+
+
+def looks_like_address(text):
+    """Sieht der Ort eines Termins wie eine Postadresse aus (Straße mit Nummer oder PLZ Ort)?
+    Nur dann fragt Zeitzeuge OpenStreetMap; „Besprechungsraum 2“ oder „bei Müller“ nicht."""
+    text = " ".join(str(text or "").split())
+    return bool(text) and bool(_STREET.search(text) or _POSTCODE.search(text))

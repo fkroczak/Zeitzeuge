@@ -26,7 +26,7 @@ def test_fahrt_zum_termin_mit_ort():
     pc = [e("07:50", "08:40", "PC: Outlook", "Posteingang", app="outlook.exe")]
     trips = travel.suggest(entries, pc)
     assert [(t["start"][11:16], t["end"][11:16], t["travel"]) for t in trips] == [
-        ("08:40", "09:30", "Hinfahrt"), ("11:00", "12:05", "Rückfahrt")], trips
+        ("08:40", "09:30", "Hinfahrt"), ("11:00", "11:50", "Rückfahrt")], trips
     assert trips[0]["email_domains"] == ["mueller.de"] and trips[0]["type"] == travel.TYPE
     # Am PC gearbeitet bis kurz vor dem Termin: keine Fahrt
     pc2 = [e("07:50", "09:25", "PC: Outlook", "x", app="outlook.exe")]
@@ -68,6 +68,47 @@ def test_kunde_mit_fahrzeit():
     assert places == [{"name": "Werk", "minutes": 0}, {"name": "Jour", "minutes": 30}]
     # eingetragener Ort mit 0 Minuten schlägt die Fahrzeit des Kunden
     assert travel.suggest(entries, pc, places=places, customer_minutes=lambda a: 20) == []
+
+
+def test_rueckfahrt_so_lang_wie_hinfahrt():
+    """Fahrzeit unbekannt: Hinfahrt 12 Min. (PC bis kurz vorher), danach 39 Min. Lücke.
+    Die Rückfahrt ist derselbe Weg, also auch 12 Min., nicht 39."""
+    entries = [e("09:00", "12:00", "Termin", "St. Niklas - USV tausch", details="Ort: Pfarrhaus")]
+    pc = [e("08:00", "08:48", "PC: Outlook", "x", app="outlook.exe"),
+          e("12:39", "13:00", "PC: Outlook", "y", app="outlook.exe")]
+    trips = travel.suggest(entries, pc)
+    assert [(t["start"][11:16], t["end"][11:16], t["travel"]) for t in trips] == [
+        ("08:48", "09:00", "Hinfahrt"), ("12:00", "12:12", "Rückfahrt")], trips
+    # umgekehrt ebenso: kurze Rückfahrt kürzt die lange Hinfahrt
+    pc = [e("08:00", "08:21", "PC: Outlook", "x", app="outlook.exe"),
+          e("12:12", "13:00", "PC: Outlook", "y", app="outlook.exe")]
+    assert [(t["start"][11:16], t["end"][11:16]) for t in travel.suggest(entries, pc)] == [
+        ("08:48", "09:00"), ("12:00", "12:12")]
+    # kürzere Lücke unter 10 Min. ist keine Fahrt: die andere bleibt, wie sie ist
+    pc = [e("08:00", "08:55", "PC: Outlook", "x", app="outlook.exe"),
+          e("12:39", "13:00", "PC: Outlook", "y", app="outlook.exe")]
+    assert [(t["start"][11:16], t["end"][11:16]) for t in travel.suggest(entries, pc)] == [("12:00", "12:39")]
+
+
+def test_fahrzeit_zur_adresse_im_termin():
+    """Steht im Ort eine Adresse, gilt deren Fahrzeit (vor der des Kunden, nach festen Orten)."""
+    pc = [e("07:50", "08:40", "PC: Outlook", "Posteingang", app="outlook.exe")]
+    entries = [e("09:30", "11:00", "Termin", "Creacam", details="Ort: Hauptstr. 5, 70173 Stuttgart"),
+               e("12:05", "12:10", "Telefonat", "Anruf")]
+    by_address = lambda a: 25 if "Hauptstr. 5" in travel._location(a) else None  # noqa: E731
+    trips = travel.suggest(entries, pc, address_minutes=by_address, customer_minutes=lambda a: 60)
+    assert [(t["start"][11:16], t["end"][11:16]) for t in trips] == [("09:05", "09:30"), ("11:00", "11:25")]
+    assert travel.suggest(entries, pc, address_minutes=by_address,
+                          places=[{"name": "Creacam", "minutes": 0}]) == []
+
+
+def test_adresse_erkennen():
+    import route
+    assert route.looks_like_address("Hauptstr. 5, Stuttgart")
+    assert route.looks_like_address("Kirchweg 12a, 88400 Biberach")
+    assert route.looks_like_address("70173 Stuttgart")
+    for text in ("Besprechungsraum 2", "St. Niklas", "Raum 1.12", "", None):
+        assert not route.looks_like_address(text), text
 
 
 def test_fahrt_nicht_in_anderen_termin():
