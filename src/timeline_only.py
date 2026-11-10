@@ -7,8 +7,8 @@ from html import escape
 from PySide6.QtCore import QDate, QDateTime, QPoint, QPointF, Qt, QTimer, Signal
 from PySide6.QtGui import QBrush, QColor, QContextMenuEvent, QFontMetrics, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (QDialog, QDialogButtonBox, QFormLayout, QFrame, QGraphicsRectItem,
-                               QGraphicsScene, QGraphicsView, QLabel, QMenu,
-                               QScrollArea, QVBoxLayout)
+                               QGraphicsScene, QGraphicsView, QLabel, QLineEdit, QMenu,
+                               QPlainTextEdit, QScrollArea, QVBoxLayout)
 
 from activity_tracker import app_label, merge_segments, read_segments
 import call_import
@@ -414,6 +414,16 @@ def exec_entry_menu(parent, entry, global_pos):
     return keys.get(menu.exec(global_pos))
 
 
+def _config_of(widget):
+    """Einstellungen des Hauptfensters: erstes Fenster in der Eltern-Kette mit config."""
+    while widget is not None:
+        config = getattr(widget, "config", None)
+        if isinstance(config, dict):
+            return config
+        widget = widget.parent()
+    return {}
+
+
 class ActivityViewDialog(QDialog):
     """Nur-Anzeigen-Dialog zum Kopieren von Aktivitätsdaten."""
 
@@ -429,13 +439,22 @@ class ActivityViewDialog(QDialog):
         form.setVerticalSpacing(10)
         form.setLabelAlignment(Qt.AlignLeft)
 
+        # Einstellungen → Ansicht → „Aktivitätsdetails als Textfelder“: Werte in schreibgeschützten
+        # Feldern, dort reicht Klick + Strg+A + Strg+C zum Kopieren
+        fields = bool(_config_of(parent).get("detail_text_fields", False))
+
         def row(key, text):
-            """Nur anzeigen: Name grau, Wert als markierbarer Text (kein Eingabefeld)."""
+            """Nur anzeigen: Name grau, Wert als markierbarer Text oder als schreibgeschütztes Feld."""
             label = QLabel(key)
             label.setObjectName("detail_key")
-            value = QLabel(text or "–")
-            value.setObjectName("detail_value")
-            value.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            if fields:
+                value = QLineEdit(text or "")
+                value.setReadOnly(True)
+                value.setCursorPosition(0)
+            else:
+                value = QLabel(text or "–")
+                value.setObjectName("detail_value")
+                value.setTextInteractionFlags(Qt.TextSelectableByMouse)
             form.addRow(label, value)
 
         try:
@@ -462,7 +481,16 @@ class ActivityViewDialog(QDialog):
         if activity.get("ai"):
             text = activity.get("description", "")
             row("Sicherheit", f"{round(activity.get('confidence', 0) * 100)} %")
-        if text:
+        if text and fields:
+            details = QPlainTextEdit(text)
+            details.setReadOnly(True)
+            details.setMaximumHeight(240 if parts else 110)
+            label = QLabel("Details")
+            label.setObjectName("detail_key")
+            layout.addSpacing(8)
+            layout.addWidget(label)
+            layout.addWidget(details)
+        elif text:
             box = QFrame()
             box.setObjectName("notice")
             inner = QVBoxLayout(box)

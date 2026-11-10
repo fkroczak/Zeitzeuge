@@ -18,6 +18,7 @@ Testversionen aus Branches tragen die Version ihres main-Stands plus Buildnummer
 26.10.2026 können sie nicht mehr lesen.
 
 ### Neu
+- **Aktivitätsdetails als Textfelder:** Unter Einstellungen → Ansicht lassen sich die Werte (Kunde, Zeit, Details …) wieder in schreibgeschützten Textfeldern zeigen. Hineinklicken, Strg+A, Strg+C – so kopiert man einzelne Werte schneller heraus.
 - **Fahrzeit zum Kunden berechnen:** In der Kundenliste hat jeder Kunde jetzt „Adresse und Fahrzeit“. „Berechnen“ fragt OpenStreetMap nach der Fahrzeit mit dem Auto vom Büro (aufgerundet auf 5 Minuten). Nach außen gehen dabei nur die beiden Adressen, und nur auf Knopfdruck. Die Startadresse (Büro) steht unter Einstellungen → Orte und Fahrzeiten. Termine des Kunden (über Name oder Mail-Domains) bekommen diese Fahrzeit als vermutete Hin- und Rückfahrt.
 - **Menü Einstellungen → Orte und Fahrzeiten …** (neben der Kundenliste) öffnet Startadresse, Orte und Fahrzeiten direkt. Unter Datenquellen → Einrichten heißt der Eintrag jetzt „Fahrten: Orte und Fahrzeiten …“.
 - **Orte und Kunden mit Fahrzeit:** Unter Einstellungen → Orte und Fahrzeiten trägst du Orte oder Kunden (aus der Kundenliste wählbar) mit ihrer Fahrzeit ein. Steht der Name im Ort, im Betreff oder beim Kunden eines Termins, plant Zeitzeuge genau diese Fahrzeit statt der ganzen Lücke (bis 90 Min.) davor. 0 Minuten heißt keine Fahrt, z. B. für den eigenen Besprechungsraum. Eine vermutete Fahrt reicht nie mehr in einen anderen Termin hinein.
