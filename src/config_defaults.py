@@ -221,7 +221,11 @@ def default_config():
                           "call": True, "outlook": True, "vpn": True, "tv": True, "pcstate": True,
                           "wlan": True, "files": True, "other": True},
         # Nachfragen nach erkannten Tätigkeiten ("Was hast du gemacht?")
-        "prompt_mode": "window",       # "window" (kleines Fenster), "tray" (nur Meldung), "off"
+        "prompt_mode": "window",       # "window" (Karte), "compact", "strip" (Leiste), "off"
+        "prompt_timeout_seconds": 0,   # Nachfrage ausblenden nach … Sekunden, 0 = dauerhaft
+        "prompt_keep_while_active": True,  # nicht ausblenden, solange getippt wird oder die Maus darauf ist
+        "prompt_dots_clickable": True,  # Punkte oben rechts: zwischen offenen Nachfragen wechseln
+        "prompt_strip_close": "front",  # ✕ an der Leiste: "front" (nur vorderste) oder "all"
         # Erst ab dieser Dauer (Minuten) nachfragen, je Art der Tätigkeit
         "prompt_thresholds": {"connections": 1, "calls": 1, "pc": 15, "meetings": 5, "mails": 0,
                               "credentials": 0, "rules": 1},

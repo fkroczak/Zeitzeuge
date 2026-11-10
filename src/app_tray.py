@@ -4,14 +4,16 @@ Teil von TimelineApp (main_timeline.py), nur über main_timeline laden.
 """
 from datetime import datetime
 
-from PySide6.QtCore import QDate, QEvent, QObject, QPoint
-from PySide6.QtGui import QFont, QGuiApplication
-from PySide6.QtWidgets import QApplication, QDialog, QMenu, QSystemTrayIcon
+from PySide6.QtCore import QDate, QEvent, QObject, QPoint, Qt, QTimer
+from PySide6.QtGui import QColor, QFont, QGuiApplication, QPainter
+from PySide6.QtWidgets import (QApplication, QDialog, QHBoxLayout, QLabel, QMenu, QSystemTrayIcon,
+                               QWidget, QWidgetAction)
 
 from activity_tracker import ActivityTracker, tracking_filters
 import icons
 from settings_dialogs import RulesDialog, TrackingFilterDialog
-from theme import theme_for
+from prompt_card import animations_enabled
+from theme import SPACE_S, theme_for
 import main_timeline as mt  # Pfade und save_config zur Laufzeit von dort (Tests ersetzen sie dort)
 
 
@@ -35,6 +37,108 @@ def tray_menu_pos(icon, size, avail):
     y = max(avail.top(), min(y, avail.bottom() - h + 1))
     return QPoint(x, y)
 
+
+
+class _RecDot(QWidget):
+    """Roter Punkt „nimmt auf“, blinkt solange das Menü offen ist."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(10, 10)
+        self.color = QColor("#DC2626")
+        self.on = True
+
+    def paintEvent(self, _event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        color = QColor(self.color)
+        color.setAlphaF(1.0 if self.on else 0.25)
+        painter.setBrush(color)
+        painter.setPen(Qt.NoPen)
+        painter.drawEllipse(1, 1, 8, 8)
+
+
+class RecordingRow(QWidgetAction):
+    """Eintrag Aufzeichnung im Infobereich: links Icon und Text der Aktion (pausieren/fortsetzen),
+    rechts der Zustand – blinkender roter Punkt „läuft“ oder grau „pausiert“."""
+
+    def __init__(self, menu, toggle):
+        super().__init__(menu)
+        self._toggle = toggle
+        self.row = QWidget()
+        self.row.setObjectName("tray_record")
+        self.row.setAttribute(Qt.WA_StyledBackground)
+        self.row.setAttribute(Qt.WA_Hover)
+        self.row.setFocusPolicy(Qt.StrongFocus)
+        self.row.setCursor(Qt.PointingHandCursor)
+        box = QHBoxLayout(self.row)
+        box.setContentsMargins(SPACE_S + 4, 6, 12, 6)
+        box.setSpacing(SPACE_S + 2)
+        self.icon = QLabel()
+        self.icon.setFixedSize(16, 16)
+        self.label = QLabel()
+        self.label.setObjectName("tray_record_text")
+        self.dot = _RecDot()
+        self.pause = QLabel()
+        self.state = QLabel()
+        self.state.setObjectName("tray_record_state")
+        for w in (self.icon, self.label):
+            box.addWidget(w)
+        box.addStretch(1)
+        box.addSpacing(16)
+        for w in (self.dot, self.pause, self.state):
+            box.addWidget(w)
+        self.setDefaultWidget(self.row)
+        self.setText("Aufzeichnung")
+        self.row.installEventFilter(self)
+        self._blink = QTimer(self)
+        self._blink.setInterval(600)
+        self._blink.timeout.connect(self._step)
+        menu.aboutToShow.connect(self._start)
+        menu.aboutToHide.connect(self._blink.stop)
+        self.recording = True
+
+    def set_state(self, recording, theme):
+        self.recording = recording
+        icon = "pause" if recording else "record"  # Icon zeigt, was ein Klick tut
+        self.icon.setPixmap(icons.icon(icon, theme["text"]).pixmap(16, 16))
+        self.label.setText("Aufzeichnung pausieren" if recording else "Aufzeichnung fortsetzen")
+        self.setText(self.label.text())
+        self.row.setAccessibleName(("Aufzeichnung läuft. Klicken zum Pausieren" if recording
+                                    else "Aufzeichnung pausiert. Klicken zum Fortsetzen"))
+        self.dot.color = QColor(theme["now"])
+        self.dot.on = True
+        self.dot.setVisible(recording)
+        self.pause.setPixmap(icons.icon("pause", theme["muted"]).pixmap(11, 11))
+        self.pause.setVisible(not recording)
+        self.state.setText("läuft" if recording else "pausiert")
+        self.dot.update()
+
+    def _start(self):
+        self.dot.on = True
+        self.dot.update()
+        if self.recording and animations_enabled():
+            self._blink.start()
+
+    def _step(self):
+        self.dot.on = not self.dot.on
+        self.dot.update()
+
+    def _activate(self):
+        menu = self.parent()
+        if isinstance(menu, QMenu):
+            menu.close()
+        self._toggle()
+
+    def eventFilter(self, obj, event):
+        if obj is self.row:
+            if event.type() == QEvent.MouseButtonRelease and event.button() == Qt.LeftButton:
+                self._activate()
+                return True
+            if event.type() == QEvent.KeyPress and event.key() in (Qt.Key_Return, Qt.Key_Enter, Qt.Key_Space):
+                self._activate()
+                return True
+        return super().eventFilter(obj, event)
 
 class _TrayMenuPlacer(QObject):
     """Rückt das Menü des Infobereichs beim Öffnen an seine feste Stelle. Windows öffnet es
@@ -119,12 +223,7 @@ class TrayMixin:
             self.tray.setIcon(icons.tray_icon(self.logo_svg, on) if self.logo_svg
                               else self.windowIcon())
             self.tray.setToolTip(f"Zeitzeuge – {text}")
-            self.tray_state_action.setText(text)
-            self.tray_state_action.setIcon(icons.state_dot(on))
-            self.tray_toggle_action.setText("Aufzeichnung &pausieren" if on
-                                            else "Aufzeichnung &fortsetzen")
-            color = theme_for(self.config)["text"]
-            self.tray_toggle_action.setIcon(icons.icon("pause" if on else "record", color))
+            self.tray_record.set_state(on, theme_for(self.config))
 
     def toggle_pc_list(self, enabled):
         self.config["show_pc_in_list"] = enabled
@@ -153,17 +252,20 @@ class TrayMixin:
         open_action.setFont(bold)
         menu.setDefaultAction(open_action)
         menu.addSeparator()
-        # Zustand als eigene Zeile, darunter der passende Befehl (Text wechselt mit dem Zustand)
-        self.tray_state_action = menu.addAction("")
-        self.tray_state_action.setEnabled(False)
-        self.tray_toggle_action = menu.addAction("", self.tracking_action.toggle)
-        refresh = menu.addAction("Logs &neu einlesen", self.refresh)
+        # Aufzeichnung: ein Eintrag, der sich umstellt; rechts der Zustand (roter Punkt = läuft)
+        self.tray_record = RecordingRow(menu, self.tracking_action.toggle)
+        menu.addAction(self.tray_record)
+        refresh = menu.addAction("&Aktualisieren", self.refresh)
+        refresh.setToolTip("Logs neu einlesen")
         menu.addSeparator()
-        menu.addMenu(self.sources_menu)
-        menu.addAction(self.open_folder_action)
+        self.tray_prompts_action = menu.addAction("Offene &Nachfragen", self.show_open_prompts)
+        notify = menu.addAction("&Benachrichtigungen …", lambda: self.show_settings("prompts"))
+        settings = menu.addAction("&Einstellungen …", self.show_settings)
         menu.addSeparator()
         quit_action = menu.addAction("&Beenden", self.request_quit)
-        self._icon_actions += [(open_action, "window"), (refresh, "refresh"), (quit_action, "power")]
+        self._icon_actions += [(open_action, "window"), (refresh, "refresh"), (self.tray_prompts_action, "doc"),
+                               (notify, "bell"), (settings, "settings"), (quit_action, "power")]
+        self.update_open_prompts_action()
         self.tray.setContextMenu(menu)
         self._tray_menu_placer = _TrayMenuPlacer(self.tray, menu)  # immer an derselben Stelle
         # Klick auf die Meldung "3CX-Anmeldung nötig" öffnet die Anmeldung
@@ -182,10 +284,7 @@ class TrayMixin:
             self.show_day_close(datetime.now().strftime("%Y-%m-%d"))
         elif getattr(self, "_tray_doc_hint", False):  # Meldung zu offenen Tätigkeiten
             self._tray_doc_hint = False
-            if self._prompt_queue and self.config.get("prompt_mode") == "tray":
-                self.show_next_prompt(force=True)
-            else:
-                self.show_open_docs()
+            self.show_open_docs()
         elif getattr(self, "_tray_week_hint", False):  # Prüfung bei Feierabend: Wochenabschluss
             self._tray_week_hint = False
             self.show_from_tray()
@@ -207,6 +306,7 @@ class TrayMixin:
         self._quitting = True
         if self._prompt_window:
             self._prompt_window.blockSignals(True)
+            self._prompt_window._done = True
             self._prompt_window.close()
         self.timeline.shutdown()
         if self.tracker:

@@ -374,8 +374,63 @@ QSpinBox:focus, QListWidget:focus, QTableWidget:focus, QTableView#day_list:focus
 QGraphicsView:focus { border: 1px solid $muted; }  /* Timeline ausgewählt: dunkelgrau statt Akzent */
 QToolButton#qt_toolbar_ext_button { border: 1px solid $control; background-color: $hover; }
 QLabel#hint { color: $muted; }
-QDialog#prompt_window { border: 2px solid $accent; }
-QLabel#prompt_head { background-color: $sel; color: $seltext; border-radius: $radiuspx; padding: 6px 8px; }
+/* Nachfrage (prompt_card.py): Karte und Leiste ohne Windows-Rahmen, mit Schatten */
+QDialog#prompt_window, QWidget#prompt_strip_window { background: transparent; }
+QFrame#prompt_card { background-color: $surface; border: 1px solid $border; border-radius: $radius_cardpx; }
+QFrame#prompt_card QLabel, QFrame#prompt_strip QLabel, QFrame#prompt_card QWidget#chips { background: transparent; }
+QWidget#prompt_top { background: transparent; border-bottom: 1px solid $line; }
+QWidget#prompt_foot { background-color: $bg; border-top: 1px solid $line;
+    border-bottom-left-radius: $radius_cardpx; border-bottom-right-radius: $radius_cardpx; }
+QLabel#prompt_title { font-weight: bold; font-size: $fs_lgpx; }
+QLabel#prompt_label { color: $muted; font-weight: bold; font-size: $fs_smpx; }
+QFrame#prompt_card QLabel#prompt_src { background-color: $sel; border-radius: 9px; }
+QFrame#prompt_strip QLabel#prompt_src_round { background-color: $sel; border-radius: 15px; }
+QWidget#prompt_dots { background: transparent; }
+QFrame#prompt_time { background-color: $bg; border: 1px solid $line; border-radius: 8px; }
+QFrame#prompt_time[editing="true"] { border-color: $accent; }
+QDateEdit#prompt_time_field, QTimeEdit#prompt_time_field { background: transparent; border: 1px solid transparent;
+    padding: 2px 4px; min-width: 0; font-weight: normal; }
+QFrame#prompt_time[editing="true"] QDateEdit#prompt_time_field,
+QFrame#prompt_time[editing="true"] QTimeEdit#prompt_time_field { background-color: $surface; border-color: $control; }
+QFrame#prompt_time QDateEdit#prompt_time_field:focus, QFrame#prompt_time QTimeEdit#prompt_time_field:focus {
+    border-color: $accent; }
+QToolButton#prompt_tool { padding: 3px; border-radius: $radiuspx; }
+QToolButton#prompt_tool:focus { padding: 2px; }
+QToolButton#prompt_dot { background-color: $border; border: none; border-radius: 4px; margin: 6px 4px; padding: 0; }
+QToolButton#prompt_dot:hover, QToolButton#prompt_dot:focus { background-color: $muted; }
+QToolButton#prompt_dot[current="true"] { background-color: $accent; }
+QCheckBox#chip_check { background-color: $chip; color: $chiptext; border: 1px solid $border;
+    border-radius: $radius_chippx; padding: 2px 10px; spacing: 0; }
+QCheckBox#chip_check::indicator { width: 0; height: 0; border: none; }
+QCheckBox#chip_check:hover { border-color: $control; }
+QCheckBox#chip_check:checked { background-color: $primary; color: $onprimary; border-color: $primary; }
+QCheckBox#chip_check:focus { border: 2px solid $accent; padding: 1px 9px; }
+QPushButton#chip_button { background-color: transparent; color: $muted; border: 1px dashed $control;
+    border-radius: $radius_chippx; padding: 2px 22px 2px 10px; min-width: 0; }
+QPushButton#chip_button:hover { color: $text; }
+QPushButton#chip_button:focus { border: 2px solid $accent; padding: 1px 21px 1px 9px; }
+QPushButton#chip_button::menu-indicator { subcontrol-origin: padding; subcontrol-position: right center; right: 8px; }
+QToolButton#ticket_chip { background-color: $sel; color: $seltext; border: 1px solid $sel;
+    border-radius: $radius_chippx; padding: 2px 10px; }
+QToolButton#ticket_chip:focus { border: 2px solid $accent; padding: 1px 9px; }
+QPushButton#link_button { background: transparent; border: none; color: $accent; padding: 1px 0; min-width: 0;
+    text-align: left; }
+QPushButton#link_button:hover { text-decoration: underline; }
+QPushButton#link_button:focus { border: 1px solid $accent; padding: 0 2px; }
+QPushButton#quiet_button { background: transparent; border-color: transparent; color: $muted; min-width: 0; }
+QPushButton#quiet_button:hover { background-color: $rate_low; color: $rate_low_text; }
+QFrame#prompt_strip { background-color: $surface; border: 1px solid $border; border-radius: 25px; }
+QFrame#prompt_strip:focus { border: 2px solid $accent; }
+QLabel#prompt_strip_title { font-weight: bold; }
+QFrame#prompt_strip QLabel#prompt_badge { background-color: $primary; color: $onprimary; border-radius: 9px; padding: 0 7px;
+    min-height: 18px; min-width: 6px; font-weight: bold; font-size: $fs_smpx; }
+QFrame#prompt_peek { background-color: $hover; border: 1px solid $border; border-top: none;
+    border-bottom-left-radius: 10px; border-bottom-right-radius: 10px; }
+/* Infobereich: Eintrag Aufzeichnung mit Zustand (app_tray.RecordingRow) */
+QWidget#tray_record { background: transparent; border-radius: $radius_smpx; }
+QWidget#tray_record:hover, QWidget#tray_record:focus { background-color: $sel; }
+QWidget#tray_record QLabel { background: transparent; }
+QLabel#tray_record_state { color: $muted; font-size: $fs_smpx; }
 QTableWidget QLabel { padding: 2px 8px; }
 QLabel#busy_text { color: $bandtext; background: transparent; font-weight: bold; padding: 2px 0; }
 QToolButton#rate_low, QLabel#rate_low { background-color: $rate_low; color: $rate_low_text; font-weight: bold; }

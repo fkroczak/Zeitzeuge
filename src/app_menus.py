@@ -933,6 +933,8 @@ class MenusMixin:
         for action, name in self._icon_actions:
             in_menu = any(isinstance(o, QMenu) for o in action.associatedObjects())
             action.setIcon(icons.icon(name, theme["text" if in_menu else "bandtext"]))
+        if getattr(self, "tray_record", None):  # Eintrag Aufzeichnung im Infobereich
+            self.tray_record.set_state(self.tracker is not None, theme)
         self.update_view_button()
         current = self.current_theme_key()
         for key, action in getattr(self, "theme_actions", {}).items():
