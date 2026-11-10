@@ -1,6 +1,6 @@
 import os
 
-from PySide6.QtCore import QSize, QTime
+from PySide6.QtCore import QSize, QTime, QTimer
 from PySide6.QtGui import QColor, QGuiApplication, QIcon, QPainter, QPixmap
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (QAbstractItemView, QButtonGroup, QCheckBox, QColorDialog,
@@ -325,7 +325,9 @@ class WorkHoursDialog(QDialog):
         from timeline_only import WEEKDAYS, work_break, work_hours
         self.weekdays = WEEKDAYS
         self.setWindowTitle("Arbeitszeiten")
-        self.setMinimumWidth(640)
+        # Breite nach Inhalt: ohne Pausenspalten schmal, mit Pause wächst der Dialog (update_totals)
+        self.setMinimumWidth(440)
+        self._any_pause = None
         layout = QVBoxLayout(self)
         layout.setSpacing(SPACE_S)
 
@@ -424,6 +426,11 @@ class WorkHoursDialog(QDialog):
                         for active, _f, _t, _total, has_pause, _pf, _pt in self.rows)
         for head in self.pause_heads:
             head.setVisible(any_pause)
+        if any_pause != self._any_pause:
+            changed = self._any_pause is not None
+            self._any_pause = any_pause
+            if changed:  # Spalten kamen dazu oder fielen weg: Größe nach dem neuen Layout
+                QTimer.singleShot(0, lambda: self.isVisible() and self.resize(self.sizeHint()))
         week, errors = 0, 0
         for active, t_from, t_to, total, has_pause, p_from, p_to in self.rows:
             on = active.isChecked()
