@@ -71,3 +71,41 @@ def test_zusammenfassen_unveraendert():
     segs = [seg("09:00:00", "09:00:40"), seg("09:01:30", "09:02:00"), seg("09:05:00", "09:05:10", "b.exe")]
     merged = at.merge_segments(segs, min_seconds=30, max_gap=60)
     assert [(m["app"], m["start"][11:], m["end"][11:]) for m in merged] == [("a.exe", "09:00:00", "09:02:00")]
+
+
+@pytest.mark.parametrize("when", [datetime(2026, 10, 22, 9, 5, 7), datetime(2026, 1, 1, 0, 0, 0, 999999),
+                                  datetime(999, 5, 6, 7, 8, 9)])
+def test_zeit_schreiben_gleich_wie_strftime(when):
+    assert timefmt.fmt(when) == when.strftime(timefmt.TIME_FMT)
+
+
+def test_focus_blocks_gleich_mit_wiederholten_fenstern():
+    # Gleiche Fenster (Programm + Titel) bekommen dieselbe Tätigkeit, auch über den Zwischenspeicher
+    import focus
+    segs = [seg(f"09:{m:02d}:00", f"09:{m:02d}:50", "teams.exe" if m % 3 == 1 else "outlook.exe", f"T{m % 2}")
+            for m in range(30)]
+    rules = [{"name": "Mail", "field": "app", "match": "outlook", "category": "E-Mail", "customer": "",
+              "enabled": True}]
+    blocks = focus.focus_blocks(segs, rules)
+    assert [b["category"] for b in blocks] == ["E-Mail"], "Teams-Sprünge zählen zu Outlook"
+    assert sum(len(b["windows"]) for b in blocks) == len(segs)
+
+
+def test_spuren_vom_pc_zwischenspeicher():
+    import local_sources as ls
+    state = {"locked": False}
+    reader = ls.LocalReader({"recent_files_dirs": [], "browser_paths": []}, None, funcs={
+        "locked": lambda: state["locked"], "processes": lambda: [], "titles": lambda: {},
+        "events": lambda: [], "wlan": lambda: "", "history": lambda path, since: [], "threaded": False})
+    t = datetime(2026, 11, 3, 9, 0, 0)
+    reader.sample(now=t)
+    assert reader.entries() == []
+    state["locked"] = True
+    for i in range(1, 5):
+        reader.sample(now=t.replace(second=0, minute=i))
+    first = reader.entries()
+    assert [e["type"] for e in first] == [ls.LOCKED], "Änderung kommt trotz Zwischenspeicher an"
+    first[0]["customer_name"] = "geändert"  # Kopie, nicht der Zwischenspeicher
+    assert reader.entries()[0]["customer_name"] == "gesperrt"
+    reader.config["pcstate_enabled"] = False
+    assert reader.entries() == [], "Schalter wirkt sofort"

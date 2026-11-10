@@ -8,13 +8,13 @@ Darunter (über der Tagesliste) eine Reihe Chips für die häufigsten Ansichten:
 
 Die Zahlen rechnet summary() ohne Qt aus (testbar), die Widgets zeigen sie nur an.
 """
-from datetime import datetime
 
 from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QProgressBar, QSizePolicy,
                                QToolButton, QVBoxLayout, QWidget)
 
 from flow_layout import FlowLayout
+import timefmt
 from theme import SPACE_XS, SPACE_S, SPACE_M, SPACE_L
 
 TIME_FMT = "%Y-%m-%d %H:%M:%S"
@@ -29,7 +29,7 @@ GROUP_GAP_AFTER = "calls"
 
 def _seconds(entries):
     """Belegte Sekunden ohne Doppelzählung überlappender Einträge."""
-    spans = sorted((datetime.strptime(e["start"], TIME_FMT), datetime.strptime(e["end"], TIME_FMT))
+    spans = sorted((timefmt.parse(e["start"]), timefmt.parse(e["end"]))
                    for e in entries if e.get("start") and e.get("end"))
     total, cur_s, cur_e = 0.0, None, None
     for s, e in spans:

@@ -21,7 +21,9 @@ Die Config-Schlüssel:
 """
 
 import math
-from datetime import datetime, timedelta
+from datetime import timedelta
+
+import timefmt
 
 TIME_FMT = "%Y-%m-%d %H:%M:%S"
 MODES = ("up", "nearest", "off")
@@ -161,7 +163,7 @@ class Billing:
 
 
 def _t(text):
-    return datetime.strptime(text, TIME_FMT)
+    return timefmt.parse(text)
 
 
 def booking_span(item, billing):

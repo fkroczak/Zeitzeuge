@@ -63,7 +63,7 @@ DEFAULT_BROWSER_IGNORE = ["google.com", "google.de", "bing.com", "duckduckgo.com
 
 
 def _fmt(when):
-    return when.strftime(TIME_FMT)
+    return timefmt.fmt(when)
 
 
 def _t(text):
@@ -477,6 +477,8 @@ class LocalReader:
         self.history_func = f.get("history", read_history)
         self.threaded = f.get("threaded", True)
         self._data = None
+        self._changes = 0     # zählt jede Änderung am Archiv (für den Zwischenspeicher von entries)
+        self._entries = None  # (Stand, Einträge) vom letzten entries()
         self._lock = threading.Lock()
         self._last_sample = None
         self._last_slow = None
@@ -504,6 +506,7 @@ class LocalReader:
             if locked:
                 return parsed
             self._data = parsed
+            self._changes += 1
         return self._data
 
     def prune(self, before):
@@ -526,6 +529,7 @@ class LocalReader:
             return False
 
     def _save(self):
+        self._changes += 1  # wird nach jeder Änderung aufgerufen
         if not self.archive_file or self._data is None:
             return
         try:
@@ -687,44 +691,54 @@ class LocalReader:
         """Alle Spuren für die Timeline (nur eingeschaltete Quellen)."""
         with self._lock:
             data = self._archive()
-            result = []
-            if self.on("pcstate_enabled"):
-                for s in data["locked"]:
-                    if (_t(s["end"]) - _t(s["start"])).total_seconds() >= SAMPLE_SECONDS or s.get("running"):
-                        result.append(_entry(_t(s["start"]), _t(s["end"]), LOCKED, "gesperrt",
-                                             "Bildschirm gesperrt (von Zeitzeuge aufgezeichnet)"))
-                for e in data["events"]:
-                    kind = e.get("kind", SLEEP)
-                    result.append(_entry(_t(e["start"]), _t(e["end"]), kind, kind,
-                                         f"{kind} (Windows-Ereignisprotokoll)"))
-            if self.on("shell_enabled"):
-                for s in data["sessions"]:
-                    start, end = _t(s["start"]), _t(s["end"])
-                    if not s.get("running") and (end - start).total_seconds() < MIN_SESSION_SECONDS:
-                        continue
-                    kind, host = s.get("kind", "SSH-Verbindung"), s.get("host") or ""
-                    result.append({"start": s["start"], "end": s["end"], "type": kind,
-                                   "customer_name": host, "is_suggestion": True,
-                                   "details": f"{kind} {host} ({s.get('program', '')}, von Zeitzeuge aufgezeichnet)"})
-            if self.on("wlan_enabled"):
-                for w in data["wlan"]:
-                    name = w.get("ssid", "")
-                    if "adapter" not in w:  # ältere Einträge: nur WLAN
-                        result.append(_entry(_t(w["start"]), _t(w["end"]), WLAN_TYPE, name, f"WLAN {name}"))
-                        continue
-                    how = "WLAN" if w.get("wireless") else "Kabel"
-                    extra = f", {w['category']}" if w.get("category") else ""
-                    result.append(_entry(_t(w["start"]), _t(w["end"]), NET_TYPE, name,
-                                         f"Netzwerk {name} ({how}, {w.get('adapter', '')}{extra})"))
-            if self.on("recent_files_enabled"):
-                for f in data["files"]:
-                    start = _t(f["start"])
-                    result.append(_entry(start, start + timedelta(minutes=FILE_MINUTES), FILE_TYPE,
-                                         f["name"], f"Datei geöffnet: {f['name']}"))
-            if self.on("browser_enabled"):
-                for b in data["browser"]:
-                    ticket = " · ".join(b.get("tickets") or [])
-                    name = f"{b['domain']} · {ticket}" if ticket else b["domain"]
-                    result.append(_entry(_t(b["start"]), _t(b["end"]), BROWSER_TYPE, name,
-                                         f"Browser: {name}", tickets=list(b.get("tickets") or [])))
+            key = (self._changes, id(data), tuple(self.on(k) for k in (
+                "pcstate_enabled", "shell_enabled", "wlan_enabled", "recent_files_enabled", "browser_enabled")))
+            if self._entries and self._entries[0] == key and data is self._data:
+                return [dict(e) for e in self._entries[1]]  # unverändert: nicht neu aufbereiten
+            result = self._build_entries(data)
+            if data is self._data:  # nicht merken, solange die Datenbank gesperrt war
+                self._entries = (key, result)
+            return [dict(e) for e in result]
+
+    def _build_entries(self, data):
+        result = []
+        if self.on("pcstate_enabled"):
+            for s in data["locked"]:
+                if (_t(s["end"]) - _t(s["start"])).total_seconds() >= SAMPLE_SECONDS or s.get("running"):
+                    result.append(_entry(_t(s["start"]), _t(s["end"]), LOCKED, "gesperrt",
+                                         "Bildschirm gesperrt (von Zeitzeuge aufgezeichnet)"))
+            for e in data["events"]:
+                kind = e.get("kind", SLEEP)
+                result.append(_entry(_t(e["start"]), _t(e["end"]), kind, kind,
+                                     f"{kind} (Windows-Ereignisprotokoll)"))
+        if self.on("shell_enabled"):
+            for s in data["sessions"]:
+                start, end = _t(s["start"]), _t(s["end"])
+                if not s.get("running") and (end - start).total_seconds() < MIN_SESSION_SECONDS:
+                    continue
+                kind, host = s.get("kind", "SSH-Verbindung"), s.get("host") or ""
+                result.append({"start": s["start"], "end": s["end"], "type": kind,
+                               "customer_name": host, "is_suggestion": True,
+                               "details": f"{kind} {host} ({s.get('program', '')}, von Zeitzeuge aufgezeichnet)"})
+        if self.on("wlan_enabled"):
+            for w in data["wlan"]:
+                name = w.get("ssid", "")
+                if "adapter" not in w:  # ältere Einträge: nur WLAN
+                    result.append(_entry(_t(w["start"]), _t(w["end"]), WLAN_TYPE, name, f"WLAN {name}"))
+                    continue
+                how = "WLAN" if w.get("wireless") else "Kabel"
+                extra = f", {w['category']}" if w.get("category") else ""
+                result.append(_entry(_t(w["start"]), _t(w["end"]), NET_TYPE, name,
+                                     f"Netzwerk {name} ({how}, {w.get('adapter', '')}{extra})"))
+        if self.on("recent_files_enabled"):
+            for f in data["files"]:
+                start = _t(f["start"])
+                result.append(_entry(start, start + timedelta(minutes=FILE_MINUTES), FILE_TYPE,
+                                     f["name"], f"Datei geöffnet: {f['name']}"))
+        if self.on("browser_enabled"):
+            for b in data["browser"]:
+                ticket = " · ".join(b.get("tickets") or [])
+                name = f"{b['domain']} · {ticket}" if ticket else b["domain"]
+                result.append(_entry(_t(b["start"]), _t(b["end"]), BROWSER_TYPE, name,
+                                     f"Browser: {name}", tickets=list(b.get("tickets") or [])))
         return sorted(result, key=lambda e: e["start"])

@@ -5,7 +5,7 @@ Teil von TimelineApp (main_timeline.py), nur über main_timeline laden.
 import re
 
 from PySide6.QtCore import Qt, QDate, QTimer
-from PySide6.QtGui import QIcon, QPainter, QPixmap
+from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import QApplication, QInputDialog, QHeaderView, QTableWidgetItem
 
 from vpn_reader import vpn_sources
@@ -93,17 +93,22 @@ class DayListMixin:
         # Ansicht "Dokumentation": abgerechnete Zeit im Hinweis der Dauer (Abrechnungstakt)
         billing = self.billing() if self.config.get("list_view") == "doc" else None
         index = self.customer_index()  # Kundenliste: Kunde zur Spur (customers.py)
+        dots = {}  # Farbe -> Symbol: jeder Farbpunkt nur einmal malen
         for row, a in enumerate(entries):
             start, end = parse_time(a["start"]), parse_time(a["end"])
-            pix = QPixmap(20, 20)  # runder Farbpunkt wie in der Legende der Timeline
-            pix.fill(Qt.transparent)
-            painter = QPainter(pix)
-            painter.setRenderHint(QPainter.Antialiasing)
-            painter.setPen(Qt.NoPen)
-            painter.setBrush(self.timeline.block_color(a) if "app" in a else entry_color(a, self.config))
-            painter.drawEllipse(3, 3, 14, 14)
-            painter.end()
-            type_item = QTableWidgetItem(QIcon(pix), type_label(a))
+            color = self.timeline.block_color(a) if "app" in a else entry_color(a, self.config)
+            key = QColor(color).name(QColor.HexArgb)
+            if key not in dots:
+                pix = QPixmap(20, 20)  # runder Farbpunkt wie in der Legende der Timeline
+                pix.fill(Qt.transparent)
+                painter = QPainter(pix)
+                painter.setRenderHint(QPainter.Antialiasing)
+                painter.setPen(Qt.NoPen)
+                painter.setBrush(color)
+                painter.drawEllipse(3, 3, 14, 14)
+                painter.end()
+                dots[key] = QIcon(pix)
+            type_item = QTableWidgetItem(dots[key], type_label(a))
             customer_text = customers.with_customer(a, index)
             details = a.get("details", "")
             details_item = QTableWidgetItem(new_details(details, type_label(a), customer_text))
@@ -419,8 +424,13 @@ class DayListMixin:
         except Exception as e:  # Aufzeichnung darf das Programm nie stören
             print(f"Fehler bei den Spuren vom PC: {e}")
             return
-        if changed and self.isVisible():
+        if not changed:
+            return
+        if self.current_date == QDate.currentDate() and self.isVisible():
             self.timeline.refresh()
+        else:  # anderer Tag angezeigt: nicht neu zeichnen, nur beim nächsten Zeichnen neu aufbereiten
+            self.timeline._local_index = None
+            self.timeline._remote_cache.clear()
 
     def mstsc_sample(self):
         try:

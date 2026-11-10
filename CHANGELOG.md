@@ -18,6 +18,7 @@ Testversionen aus Branches tragen die Version ihres main-Stands plus Buildnummer
 26.10.2026 können sie nicht mehr lesen.
 
 ### Neu
+- **Schneller bei vollen Tagen:** Tag wechseln etwa doppelt so schnell (240 → 110 ms mit 3000–4000 Fensterwechseln am Tag), Timeline zeichnen 159 → 73 ms, das Neueinlesen alle 2 Minuten 248 → 118 ms. Die Spuren-Aufzeichnung (SSH, Sperren) zeichnet nicht mehr alle 30 Sekunden neu, wenn ein anderer Tag angezeigt wird. Details in `docs/PERFORMANCE-2026-11-10.md`.
 - **Aktivitätsdetails als Textfelder:** Unter Einstellungen → Ansicht lassen sich die Werte (Kunde, Zeit, Details …) wieder in schreibgeschützten Textfeldern zeigen. Hineinklicken, Strg+A, Strg+C – so kopiert man einzelne Werte schneller heraus.
 - **Fahrzeit zum Kunden berechnen:** In der Kundenliste hat jeder Kunde jetzt „Adresse und Fahrzeit“. „Berechnen“ fragt OpenStreetMap nach der Fahrzeit mit dem Auto vom Büro (aufgerundet auf 5 Minuten). Nach außen gehen dabei nur die beiden Adressen, und nur auf Knopfdruck. Die Startadresse (Büro) steht unter Einstellungen → Orte und Fahrzeiten. Termine des Kunden (über Name oder Mail-Domains) bekommen diese Fahrzeit als vermutete Hin- und Rückfahrt.
 - **Menü Einstellungen → Orte und Fahrzeiten …** (neben der Kundenliste) öffnet Startadresse, Orte und Fahrzeiten direkt. Unter Datenquellen → Einrichten heißt der Eintrag jetzt „Fahrten: Orte und Fahrzeiten …“.

@@ -21,6 +21,7 @@ Qt-eigenen Mitteln.
 | Export für die PAW verschlüsselt, alter Export weiter lesbar | `tests/transfer_logic_test.py` | Schritt „Tests (pytest)“ | blockiert |
 | Startzeit (Fenster sichtbar, Daten gezeichnet) | `tests/start_bench.py` | nein, von Hand | Messwert |
 | Zeichnen und Tageswechsel mit einem Jahr Logs und 1000 Fensterwechseln | `tests/perf_bench.py` | nein, von Hand | Messwert |
+| Zeichnen, Tagesliste, Tageswechsel mit allen Quellen voll (196.000 Fensterwechsel, Anrufe, Outlook, Spuren) | `tests/heavy_bench.py` | nein, von Hand | Messwert (siehe docs/PERFORMANCE-2026-11-10.md) |
 | Kleines Fenster und 100/150/200 %: abgeschnittene Texte, waagerechte Scrollleisten, passt auf 960 × 540 (Full HD bei 200 %); Screenshots | `tests/layout_check.py` | nein, von Hand | Befundliste |
 | Abstände, Schrift, Rundungen nur aus Tokens | `docs/DESIGN-TOKENS.md`, `src/theme.py` | Review | Regel |
 

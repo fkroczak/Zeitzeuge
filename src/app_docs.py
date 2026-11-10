@@ -294,6 +294,10 @@ class DocsMixin(CustomersMixin):
         Zugangsdaten, Blöcke der Zuordnung ohne KI. Was zur selben Arbeit gehört (gleicher Kunde,
         gleiche Zeit), wird ein Thema: eine Nachfrage statt mehrerer (prompt_topics.py).
         """
+        # Timeline (Zeile Doku), Tagesliste und Statuszeile brauchen das beim Zeichnen mehrmals
+        return list(self.timeline.memo(("doc_candidates", date_str), lambda: self._doc_candidates(date_str)))
+
+    def _doc_candidates(self, date_str):
         sources = self.config.get("prompt_sources", PROMPT_SOURCES)
         date = QDate.fromString(date_str, "yyyy-MM-dd")
         index = self.customer_index()

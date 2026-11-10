@@ -608,6 +608,11 @@ class TimelineView(QGraphicsView):
         self._threads = []      # alle gestarteten Einlese-Threads (zum Abwarten beim Beenden)
         self._closing = False   # beim Beenden: Thread darf nichts mehr melden
         self._day_data = None   # Daten vom letzten draw_timeline (Zoom zeichnet nur neu)
+        # Nur während draw_timeline: Ergebnisse, die Timeline, Tagesliste und Statuszeile
+        # mehrmals brauchen (Einträge des Tages, offene Tätigkeiten …). Danach wieder None,
+        # damit nichts veraltet.
+        self._draw_memo = None
+        self._pc_cache = {}  # (Tag, Mindestdauer, Lücke) -> (Fensterstücke, Einträge), siehe _pc_entries_for
         self.logs_loaded.connect(self._on_logs_loaded)
 
         self.zoom_level = 1.0
@@ -822,7 +827,20 @@ class TimelineView(QGraphicsView):
         self.remote_suggestions = day
         self._remote_cache[date_str] = day
 
+    def memo(self, key, func):
+        """func() einmal je Zeichnen berechnen (außerhalb von draw_timeline: jedes Mal)."""
+        memo = self._draw_memo
+        if memo is None:
+            return func()
+        if key not in memo:
+            memo[key] = func()
+        return memo[key]
+
     def activities_for(self, date: QDate):
+        """Alle Einträge des Tages aus allen Quellen (ohne PC-Fenster), nach Beginn sortiert."""
+        return list(self.memo(("activities", date.toString("yyyy-MM-dd")), lambda: self._activities_for(date)))
+
+    def _activities_for(self, date: QDate):
         date_str = date.toString("yyyy-MM-dd")
         self.load_remote_connections(date)
         result = [a for a in self.activities if a.get("start", "").startswith(date_str)]
@@ -911,6 +929,10 @@ class TimelineView(QGraphicsView):
 
     def pc_entries_for(self, date: QDate, min_seconds=30, max_gap=60):
         """Aktive Fenster des Tages als Einträge (für Band und Tagesliste)."""
+        key = ("pc", date.toString("yyyy-MM-dd"), min_seconds, max_gap)
+        return [dict(e) for e in self.memo(key, lambda: self._pc_entries_for(date, min_seconds, max_gap))]
+
+    def _pc_entries_for(self, date: QDate, min_seconds, max_gap):
         date_str = date.toString("yyyy-MM-dd")
         if self.tracker:
             segments = self.tracker.segments_for(date_str)
@@ -922,16 +944,26 @@ class TimelineView(QGraphicsView):
             segments = segments + self.imported.segments(date_str)
         if not segments:
             return []
-        result = []
-        for seg in merge_segments(segments, min_seconds=min_seconds, max_gap=max_gap):
-            result.append({
-                "start": seg["start"], "end": seg["end"],
-                "type": f"PC: {app_label(seg['app'])}",
-                "customer_name": seg["title"] or app_label(seg["app"]),
-                "details": seg["app"], "app": seg["app"],
-                "is_suggestion": True,
-            })
-        return result
+        # Timeline, Tagesliste, Dokumentation und Statuszeile fragen beim Zeichnen mehrmals
+        # nach demselben Tag: Ergebnis merken, solange die Fensterstücke gleich sind
+        key = (date_str, min_seconds, max_gap)
+        sig = tuple((s["start"], s["end"], s["app"], s["title"]) for s in segments)
+        cache = self._pc_cache
+        hit = cache.get(key)
+        if hit is None or hit[0] != sig:
+            result = []
+            for seg in merge_segments(segments, min_seconds=min_seconds, max_gap=max_gap):
+                result.append({
+                    "start": seg["start"], "end": seg["end"],
+                    "type": f"PC: {app_label(seg['app'])}",
+                    "customer_name": seg["title"] or app_label(seg["app"]),
+                    "details": seg["app"], "app": seg["app"],
+                    "is_suggestion": True,
+                })
+            if len(cache) >= 6:  # nur die zuletzt gezeigten Tage
+                cache.pop(next(iter(cache)))
+            hit = cache[key] = (sig, result)
+        return hit[1]  # pc_entries_for gibt Kopien heraus
 
     def missing_sources(self):
         """Quellen, für die keine einzige Logdatei gelesen werden konnte."""
@@ -1075,9 +1107,13 @@ class TimelineView(QGraphicsView):
     def draw_timeline(self, date: QDate):
         """Daten des Tages neu lesen und zeichnen (nach Änderungen an den Daten)."""
         self.draw_stale = False
-        self._day_data = self._collect(date)
-        self._render()
-        self.day_loaded.emit(self._day_data["activities"], self.pc_entries_for(date))
+        outer, self._draw_memo = self._draw_memo, {}  # je Zeichnen frisch, auch verschachtelt
+        try:
+            self._day_data = self._collect(date)
+            self._render()
+            self.day_loaded.emit(self._day_data["activities"], self.pc_entries_for(date))
+        finally:
+            self._draw_memo = outer
 
     def relayout(self):
         """Nur neu anordnen (Zoom, Fenstergröße, Design): Daten vom letzten Zeichnen,

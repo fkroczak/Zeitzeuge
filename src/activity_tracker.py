@@ -22,6 +22,7 @@ import ctypes
 import os
 import sys
 from datetime import datetime, timedelta
+from functools import lru_cache
 
 import datastore
 import safe_io
@@ -317,6 +318,7 @@ def merge_segments(segments, min_seconds=30, max_gap=60):
     return [m for m in merged if _seconds(m["start"], m["end"]) >= min_seconds]
 
 
+@lru_cache(maxsize=1024)
 def app_label(app):
     name = app[:-4] if app.lower().endswith(".exe") else app
     return {"mstsc": "Remotedesktop", "chrome": "Chrome", "msedge": "Edge",

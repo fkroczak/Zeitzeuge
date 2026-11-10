@@ -19,7 +19,9 @@ bzw. Kunden des Termins steht. Andere Termine zählen als belegt: Eine Fahrt üb
 des Termins, damit Kunde und Nachfrage („Was hast du gemacht?“) passen.
 """
 
-from datetime import datetime, timedelta
+from datetime import timedelta
+
+import timefmt
 
 TIME_FMT = "%Y-%m-%d %H:%M:%S"
 TYPE = "Fahrt (vermutet)"
@@ -31,11 +33,11 @@ _ONLINE = ("teams", "zoom", "webex", "http", "skype", "online", "telefon")
 
 
 def _t(text):
-    return datetime.strptime(text[:19], TIME_FMT)
+    return timefmt.parse(text[:19])
 
 
 def _fmt(when):
-    return when.strftime(TIME_FMT)
+    return timefmt.fmt(when)
 
 
 def is_place(location, ignore=()):
