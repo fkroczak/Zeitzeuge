@@ -139,6 +139,29 @@ def gui_test():
     assert doc.item()["ticket"] == "TCK0000049374", doc.item()
     doc.deleteLater()
 
+    # Aus dem Nachfrage-Fenster (immer im Vordergrund): Suche liegt darüber und sperrt
+    # nur dieses Fenster, nicht das ganze Programm (sonst wirkt Zeitzeuge aufgehängt)
+    from PySide6.QtCore import Qt
+    from journal_dialogs import PromptWindow
+    prompt = PromptWindow({"start": f"{D} 08:45:00", "end": f"{D} 11:09:00", "idle": True},
+                          ["Systems"], ["Fernwartung"], parent=window,
+                          **window.entry_form_options(start, end))
+    prompt.show()
+
+    def check_prompt_search():
+        search = next(w for w in app.topLevelWidgets()
+                      if isinstance(w, m42_booking_dialogs.TicketSearchDialog) and w.isVisible())
+        seen["on_top"] = bool(search.windowFlags() & Qt.WindowStaysOnTopHint)
+        seen["modality"] = search.windowModality()
+        search.reject()
+
+    QTimer.singleShot(300, check_prompt_search)
+    prompt.form.ticket_search_button.click()
+    assert seen["on_top"] and seen["modality"] == Qt.WindowModal, seen
+    prompt._done = True
+    prompt.close()
+    prompt.deleteLater()
+
     # Direkt im Feld Ticket suchen: tippen, Treffer erscheinen darunter, Auswahl setzt die Nummer
     from PySide6.QtTest import QTest
     doc = EntryDialog(start, end, ["Systems"], ["Fernwartung"], **window.entry_form_options(start, end))

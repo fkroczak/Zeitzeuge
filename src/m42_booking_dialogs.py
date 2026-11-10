@@ -6,7 +6,7 @@ Die Abfragen schickt M42Reader.book aus dem angemeldeten Edge.
 """
 from datetime import datetime
 
-from PySide6.QtCore import QObject, Qt, QTime, Signal
+from PySide6.QtCore import QObject, Qt, QTime, QTimer, Signal
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFormLayout, QHBoxLayout,
                                QLabel, QLineEdit, QListWidget, QListWidgetItem, QPlainTextEdit,
                                QPushButton, QTimeEdit, QVBoxLayout)
@@ -417,6 +417,14 @@ class TicketLookup(QObject):
 def search_ticket(reader, text="", ticket_list=None, parent=None):
     """Suchfenster zeigen. Gewähltes Ticket (dict) oder None."""
     dialog = TicketSearchDialog(reader, text, ticket_list, parent)
+    owner = parent.window() if parent is not None else None
+    if owner is not None and owner.windowFlags() & Qt.WindowStaysOnTopHint:
+        # Aus dem Nachfrage-Fenster (immer im Vordergrund): sonst kann die Suche dahinter
+        # landen, und Zeitzeuge wirkt aufgehängt, weil das gesperrte Fenster auf sie wartet
+        dialog.setWindowFlag(Qt.WindowStaysOnTopHint, True)
+    # Nur das aufrufende Fenster sperren: Hauptfenster und Infobereich bleiben bedienbar
+    dialog.setWindowModality(Qt.WindowModal if owner is not None else Qt.ApplicationModal)
+    QTimer.singleShot(0, dialog, lambda: (dialog.raise_(), dialog.activateWindow()))
     row = dialog.row if dialog.exec() == QDialog.Accepted else None
     dialog.deleteLater()  # sonst bliebe es mit tickets_found verbunden
     return row
