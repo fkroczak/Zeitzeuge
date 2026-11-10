@@ -4,11 +4,11 @@ import time
 from datetime import datetime
 from html import escape
 
-from PySide6.QtCore import QDate, QDateTime, QPoint, Qt, QTimer, Signal
+from PySide6.QtCore import QDate, QDateTime, QPoint, QPointF, Qt, QTimer, Signal
 from PySide6.QtGui import QBrush, QColor, QContextMenuEvent, QFontMetrics, QPainter, QPainterPath, QPen
-from PySide6.QtWidgets import (QDialog, QDialogButtonBox, QFormLayout, QGraphicsRectItem,
-                               QGraphicsScene, QGraphicsView, QLabel, QLineEdit, QMenu,
-                               QTextEdit, QVBoxLayout)
+from PySide6.QtWidgets import (QDialog, QDialogButtonBox, QFormLayout, QFrame, QGraphicsRectItem,
+                               QGraphicsScene, QGraphicsView, QLabel, QMenu,
+                               QScrollArea, QVBoxLayout)
 
 from activity_tracker import app_label, merge_segments, read_segments
 import call_import
@@ -152,7 +152,7 @@ LEGEND_BANDS = {"work": ("Personalzeit", "Personalzeit"), "doc": ("Dokumentation
 # config["timeline_rows"], Text im Menü. Jede lässt sich einzeln aus- und einblenden.
 TIMELINE_ROWS = [
     ("pc", "&PC-Aktivität (aktive Fenster)"),
-    ("work", "P&ersonalzeit (ITM, sonst Arbeitszeit)"),
+    ("work", "P&ersonalzeit (aus der Zeiterfassung)"),
     ("doc", "&Dokumentation (eigene Tätigkeiten)"),
     ("m42", "&Matrix42 (gebucht / nicht gebucht)"),
     ("rule", "&Zuordnung ohne KI (feste Regeln)"),
@@ -425,10 +425,18 @@ class ActivityViewDialog(QDialog):
         layout = QVBoxLayout(self)
         form = QFormLayout()
 
-        def ro_field(text):
-            w = QLineEdit(text)
-            w.setReadOnly(True)
-            return w
+        form.setHorizontalSpacing(24)
+        form.setVerticalSpacing(10)
+        form.setLabelAlignment(Qt.AlignLeft)
+
+        def row(key, text):
+            """Nur anzeigen: Name grau, Wert als markierbarer Text (kein Eingabefeld)."""
+            label = QLabel(key)
+            label.setObjectName("detail_key")
+            value = QLabel(text or "–")
+            value.setObjectName("detail_value")
+            value.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            form.addRow(label, value)
 
         try:
             start = parse_time(activity["start"])
@@ -438,10 +446,10 @@ class ActivityViewDialog(QDialog):
         except (KeyError, ValueError):
             zeit = dauer = ""
 
-        form.addRow("Typ:", ro_field(type_label(activity)))
-        form.addRow("Kunde:", ro_field(activity.get("customer_name", "")))
-        form.addRow("Zeit:", ro_field(zeit))
-        form.addRow("Dauer:", ro_field(dauer))
+        row("Typ", type_label(activity))
+        row("Kunde", activity.get("customer_name", ""))
+        row("Zeit", zeit)
+        row("Dauer", dauer)
         layout.addLayout(form)
 
         text = activity.get("details", "")
@@ -453,15 +461,27 @@ class ActivityViewDialog(QDialog):
                 f"Enthält {len(lines)} Einträge:\n" + "\n".join(lines)
         if activity.get("ai"):
             text = activity.get("description", "")
-            form.addRow("Sicherheit:", ro_field(f"{round(activity.get('confidence', 0) * 100)} %"))
+            row("Sicherheit", f"{round(activity.get('confidence', 0) * 100)} %")
         if text:
-            details = QTextEdit(text)
-            details.setReadOnly(True)
-            details.setMaximumHeight(240 if parts else 90)
-            label = QLabel("Details:")
-            label.setBuddy(details)
+            box = QFrame()
+            box.setObjectName("notice")
+            inner = QVBoxLayout(box)
+            inner.setContentsMargins(12, 10, 12, 10)
+            details = QLabel(text)
+            details.setWordWrap(True)
+            details.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            details.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+            scroll = QScrollArea()  # lange Listen (Arbeitsblöcke) scrollen statt das Fenster zu sprengen
+            scroll.setWidget(details)
+            scroll.setWidgetResizable(True)
+            scroll.setFrameShape(QFrame.NoFrame)
+            scroll.setMaximumHeight(240 if parts else 90)
+            inner.addWidget(scroll)
+            label = QLabel("Details")
+            label.setObjectName("detail_key")
+            layout.addSpacing(8)
             layout.addWidget(label)
-            layout.addWidget(details)
+            layout.addWidget(box)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Close)
         buttons.rejected.connect(self.reject)
@@ -1145,8 +1165,18 @@ class TimelineView(QGraphicsView):
                                    no_pen, QBrush(self.non_work_color))
             prev = max(prev, span_end)
 
-        # Stundenleiste
+        # Arbeitszeit: zarte Fläche im Akzent (statt eigener Zeile, die gibt es nur mit Zeiterfassung)
+        work_tint = QColor(self.accent)
+        work_tint.setAlpha(14 if self.dark_mode else 10)
+        for span_start, span_end in spans:
+            self.scene.addRect(self._x(span_start), self.AXIS_H, self._x(span_end) - self._x(span_start),
+                               height, no_pen, QBrush(work_tint))
+
+        # Stundenleiste, darunter die Arbeitszeit als feine Linie im Akzent
         self.scene.addRect(0, 0, width, self.AXIS_H, no_pen, QBrush(self.axis_bg))
+        for span_start, span_end in spans:
+            self.scene.addRect(self._x(span_start), self.AXIS_H - 3, self._x(span_end) - self._x(span_start),
+                               3, no_pen, QBrush(self.accent))
         hour_font = ui_font(8)
         step = 1 if self._ppm * 60 >= 45 else 2
         for hour in range(25):
@@ -1162,14 +1192,19 @@ class TimelineView(QGraphicsView):
                 )
                 label.setPos(x + 6, 7)
 
-        # Jede zweite Zeile leicht hinterlegt, damit die Zeilen unterscheidbar sind
+        # Zeilen unterscheidbar: feine Linien oder (Einstellung) jede zweite Zeile hinterlegt
         stripe = QColor(255, 255, 255, 10) if self.dark_mode else QColor(0, 0, 0, 10)
         # (eine feste Zeile mit Unterzeilen bleibt eine Fläche)
         row_tops = [(y, max(1, n)) for y, (_k, _p, n) in zip(fixed_tops, fixed_layout)]
         row_tops += [(free_top + i * row_h, 1) for i in range(n_lanes)]
-        for i, (y, n) in enumerate(row_tops):
-            if i % 2 == 0:
-                self.scene.addRect(0, y - self.LANE_GAP / 2, width, n * row_h, no_pen, QBrush(stripe))
+        if self.config.get("timeline_stripes"):  # wie früher: jede zweite Zeile hinterlegt
+            for i, (y, n) in enumerate(row_tops):
+                if i % 2 == 0:
+                    self.scene.addRect(0, y - self.LANE_GAP / 2, width, n * row_h, no_pen, QBrush(stripe))
+        else:  # Standard: feine Linie zwischen den Zeilen
+            line_pen = QPen(self.hour_line, 1)
+            for y, _n in row_tops[1:]:
+                self.scene.addLine(0, y - self.LANE_GAP / 2, width, y - self.LANE_GAP / 2, line_pen)
 
         # Legende links (schwebt über den Zeilen, siehe drawForeground) und Trennlinie
         colors = self.config.get("type_colors", {})
@@ -1181,8 +1216,6 @@ class TimelineView(QGraphicsView):
         # Name mittig über alle Unterzeilen einer Zeile
         for (kind, _text, band), y, (_k, _p, n) in zip(bands, band_tops, band_layout):
             name, key = LEGEND_BANDS[kind]
-            if kind == "work" and band and not band[0].get("from_itm"):
-                name = "Arbeitszeit"  # ohne ITM: Arbeitszeit aus den Einstellungen
             legend.append((y, max(1, n) * row_h - self.LANE_GAP, name, own.get(kind) or colors.get(key)))
             legend_keys.append(kind)
         for (kind, _placed, n), y in zip(fixed_layout, fixed_tops):
@@ -1196,6 +1229,15 @@ class TimelineView(QGraphicsView):
             sep_y = free_top - (6 + self.LANE_GAP) / 2
             if fixed_layout:
                 self.scene.addLine(0, sep_y, width, sep_y, QPen(self.hour_line, 1))
+        # Farbfeld = Farben, die in der Zeile wirklich vorkommen (Telefon z. B. blau und orange)
+        used = {}
+        for kind, items, _n in fixed_layout + band_layout:
+            for a, _lane in items:
+                c = entry_color(a, self.config).name().upper()
+                if c not in used.setdefault(kind, []):
+                    used[kind].append(c)
+        legend = [(ly, lh, ln, (used[k][0] if len(used[k]) == 1 else tuple(used[k][:3])) if used.get(k) else lc)
+                  for (ly, lh, ln, lc), k in zip(legend, legend_keys)]
         # Von oben nach unten sortiert (die Reihenfolge ist einstellbar)
         ordered = sorted(zip(legend, legend_keys), key=lambda pair: pair[0][0])
         self._legend = [entry for entry, _k in ordered]
@@ -1251,6 +1293,24 @@ class TimelineView(QGraphicsView):
                 if p.get("pc_block"):
                     self._add_label(p["label"], x1, band_y, w, pc_h, label_font, metrics,
                                     readable_on(color), p.get("short_labels", ()))
+
+        # Leerer Tag: freundlicher Hinweis mitten im sichtbaren Ausschnitt
+        if not placed and not pc_band and not any(band for _k, _t, band in bands) and not self.loading:
+            title = self.scene.addSimpleText("Keine Spuren an diesem Tag", ui_font(11, bold=True))
+            title.setBrush(self.text_color)
+            sub = self.scene.addSimpleText("Kein PC-Verlauf, keine Verbindungen, keine Anrufe. "
+                                           "Mit dem Stift trägst du trotzdem eine Tätigkeit nach.", ui_font(9))
+            sub.setBrush(self.muted_text)
+            if self.fit_day or self._first_draw:
+                mid_x = (self._x(work_start) + self._x(work_end)) / 2 if work_end > work_start \
+                    else self._x(12 * 60)
+            else:
+                mid_x = self.mapToScene(self.viewport().rect().center()).x()
+            mid_y = (self.AXIS_H + height) / 2
+            title.setPos(mid_x - title.boundingRect().width() / 2, mid_y - 24)
+            sub.setPos(mid_x - sub.boundingRect().width() / 2, mid_y + 2)
+            for item in (title, sub):
+                item.setAcceptedMouseButtons(Qt.NoButton)
 
         # Jetzt-Linie
         if date == QDate.currentDate():
@@ -1315,6 +1375,8 @@ class TimelineView(QGraphicsView):
             except Exception as e:  # eine fehlerhafte Zeile darf die Timeline nicht leeren
                 print(f"Fehler in der Zeile {text}: {e}")
                 entries = []
+            if kind == "work" and not any(e.get("from_itm") for e in entries):
+                entries = []  # Arbeitszeit aus den Einstellungen: nur Fläche und Linie unter den Uhrzeiten
             if entries or kind == "doc":
                 result.append((kind, text, entries))
         return result
@@ -1488,7 +1550,7 @@ class TimelineView(QGraphicsView):
             return
         painter.save()
         painter.resetTransform()  # ab hier Koordinaten des Fensters, nicht der Szene
-        font = ui_font(8, bold=True)
+        font = ui_font(8)  # normal statt fett: die Balken stehen im Vordergrund
         painter.setFont(font)
         fm = QFontMetrics(font)
         width = self.LEFT - 6
@@ -1498,19 +1560,27 @@ class TimelineView(QGraphicsView):
         panel = QColor(self.background_color)
         panel.setAlpha(232)
         painter.fillRect(0, top, width, max(0, bottom - top), panel)
+        painter.fillRect(0, 0, width, top, QColor(self.background_color))  # Zeitachse unter der Legende
         painter.setPen(QPen(self.hour_line, 1))
         painter.drawLine(width, top, width, bottom)
         for y, h, name, color in self._legend:
             center = self.mapFromScene(0, y + h / 2).y()
             if center < top or center > bottom:
                 continue
-            if color:
-                painter.fillRect(8, center - 4, 8, 8, QColor(color))
+            painter.setRenderHint(QPainter.Antialiasing, True)
+            painter.setPen(Qt.NoPen)
+            if isinstance(color, tuple):  # mehrere Farben: kleine Punkte nebeneinander
+                for i, c in enumerate(color):
+                    painter.setBrush(QColor(c))
+                    painter.drawEllipse(QPointF(12 + i * 4, center), 3.5, 3.5)
+            elif color:
+                painter.setBrush(QColor(color))
+                painter.drawEllipse(QPointF(12, center), 4, 4)
             else:  # PC: mehrere Programme, kleine Streifen
                 for i, c in enumerate(self.APP_COLORS[:3]):
                     painter.fillRect(8 + i * 3, center - 4, 2, 8, QColor(c))
             painter.setPen(self.text_color)
-            painter.drawText(22, center + (fm.ascent() - fm.descent()) // 2,
+            painter.drawText(26 if isinstance(color, tuple) and len(color) > 2 else 22, center + (fm.ascent() - fm.descent()) // 2,
                              fm.elidedText(name, Qt.ElideRight, width - 26))
         if self._row_drag is not None:  # Zeile wird verschoben: Linie, wo sie landet
             target, below = self._row_drop(self._row_drag[1])

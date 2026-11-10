@@ -4,8 +4,8 @@ Teil von TimelineApp (main_timeline.py), nur über main_timeline laden.
 """
 import re
 
-from PySide6.QtCore import QDate, QTimer
-from PySide6.QtGui import QIcon, QPixmap
+from PySide6.QtCore import Qt, QDate, QTimer
+from PySide6.QtGui import QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import QApplication, QInputDialog, QHeaderView, QTableWidgetItem
 
 from vpn_reader import vpn_sources
@@ -95,17 +95,22 @@ class DayListMixin:
         index = self.customer_index()  # Kundenliste: Kunde zur Spur (customers.py)
         for row, a in enumerate(entries):
             start, end = parse_time(a["start"]), parse_time(a["end"])
-            pix = QPixmap(10, 10)
-            if "app" in a:
-                pix.fill(self.timeline.block_color(a))
-            else:
-                pix.fill(entry_color(a, self.config))
+            pix = QPixmap(20, 20)  # runder Farbpunkt wie in der Legende der Timeline
+            pix.fill(Qt.transparent)
+            painter = QPainter(pix)
+            painter.setRenderHint(QPainter.Antialiasing)
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(self.timeline.block_color(a) if "app" in a else entry_color(a, self.config))
+            painter.drawEllipse(3, 3, 14, 14)
+            painter.end()
             type_item = QTableWidgetItem(QIcon(pix), type_label(a))
             customer_text = customers.with_customer(a, index)
             details = a.get("details", "")
             details_item = QTableWidgetItem(new_details(details, type_label(a), customer_text))
             # Spalte Dauer: nur die echte Dauer; die abgerechnete Zeit steht im Hinweis
-            duration_item = QTableWidgetItem(format_duration((end - start).total_seconds()))
+            minutes = round((end - start).total_seconds() / 60)
+            duration_item = QTableWidgetItem(f"{minutes // 60}:{minutes % 60:02d} h")
+            duration_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
             note = (billing.note((end - start).total_seconds(), a.get("customer_name", ""))
                     if billing and a.get("doc") else "")
             values = [
@@ -211,18 +216,12 @@ class DayListMixin:
             more.append(f"am PC aktiv {format_duration(mt.merged_seconds(self.pc_activities))}")
         doc = self.doc_band(self.current_date.toString("yyyy-MM-dd"))
         done = [e for e in doc if e.get("doc")]
-        open_count = len(doc) - len(done)
-        if done:  # "nichts dokumentiert" sagt schon der Knopf "… offen – jetzt eintragen"
+        if done:  # "nichts dokumentiert" sagt schon die Kachel „Offen“
             text = f"dokumentiert {format_duration(mt.merged_seconds(done))}"
             billing = self.billing()
             if billing.any_active():
                 text += f", abgerechnet {hours_text(billing.total_minutes([e['doc_item'] for e in done]))}"
             parts.append(text)
-        self.open_docs_button.setVisible(bool(open_count))
-        if open_count:
-            self.open_docs_button.setText(f"{open_count} offen – jetzt eintragen")
-            self.open_docs_button.setToolTip("Erste noch nicht dokumentierte Tätigkeit eintragen")
-            self.open_docs_button.setAccessibleName(f"{open_count} Tätigkeiten offen, jetzt eintragen")
         itm_day = self.personal_day_for(self.current_date.toString("yyyy-MM-dd"))
         if itm_day and itm_day.get("gewertet") is not None:
             text = f"Personalzeit {format_duration(itm_day['gewertet'] * 60)}"

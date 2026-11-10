@@ -39,8 +39,8 @@ class ProtectMixin:
         self.backup_timer.timeout.connect(lambda: mt.backup_store())
         self.backup_timer.start(BACKUP_INTERVAL)
         self.recovery_button = QToolButton(self)
-        # Nur umrandet: die gefüllte Hauptaktion der Statuszeile ist „offen – jetzt eintragen“
-        self.recovery_button.setObjectName("cta_secondary")
+        # Als Link: ruhig, aber in Akzentfarbe sichtbar
+        self.recovery_button.setObjectName("link")
         self.recovery_button.setText("Wiederherstellungsschlüssel einrichten")
         self.recovery_button.setToolTip("Ohne ihn kommst du auf einem neuen PC nicht an deine Daten")
         self.recovery_button.clicked.connect(self.new_recovery_code)

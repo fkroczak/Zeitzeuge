@@ -20,7 +20,7 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
 ## Funktionen
 
 - **Kennzahlen über der Timeline**: **Erfasst** (eingetragene Zeit von der gestempelten Personalzeit, ohne Zeiterfassung von der eingestellten Arbeitszeit, mit Balken), **Offen** (noch nicht eingetragene Tätigkeiten, „Jetzt eintragen“), **Vorschläge** (wartende KI-Vorschläge, „Ansehen“), **Buchungsquote** (nur mit angebundenem Ticketsystem, Klick öffnet den Wochenabschluss) und **Nach Kunde** (eingetragene Zeit der größten Kunden). Über der Tagesliste wechseln Chips die Ansicht: Alle, Einzeln, Arbeitsblöcke, Telefonate, Dokumentation, Zuordnung ohne KI, KI-Vorschläge, Buchungsabgleich (die aktive ist dunkel).
-- **Tages-Timeline** von 00:00 bis 24:00 mit markierter Arbeitszeit. Telefonate, VPN und TeamViewer haben je eine feste Zeile („Tel“, „VPN“, „TV“). So siehst du sofort, wann du telefoniert hast oder verbunden warst. Darunter folgen RDM und weitere Verbindungen; überlappen sie sich, rücken sie in die nächste Zeile. Zeilen ohne Einträge an diesem Tag blendet Zeitzeuge aus, damit die Timeline ruhig bleibt. Beim Start und beim Blättern zeigt sie die Arbeitszeit des Tages (± 30 Minuten); wählst du **Ganzer Tag**, merkt sie sich das. Dicht aufeinanderfolgende offene Einträge stehen in der Zeile Dokumentation als ein Block („? 3 offen“), der Hinweis listet sie einzeln. Passt ein Name nicht in einen Balken, steht dort eine kürzere Form oder nichts, statt eines abgeschnittenen „Chro…“. Links steht eine Legende mit Name und Farbe jeder Zeile; sie bleibt beim Blättern stehen. Zeilen verschiebst du, indem du ihren Namen in der Legende anfasst und an eine andere Stelle ziehst (PC-Aktivität bleibt oben, Remote / Weitere unten); **Zeilen der Timeline → Reihenfolge zurücksetzen** stellt den Standard wieder her. Alle Zeilen passen ohne senkrechte Scrollleiste ins Fenster, bei vielen Zeilen werden sie niedriger (UMSCHALT + Mausrad blättert, falls es trotzdem eng wird).
+- **Tages-Timeline** von 00:00 bis 24:00 mit markierter Arbeitszeit. Telefonate, VPN und TeamViewer haben je eine feste Zeile („Tel“, „VPN“, „TV“). So siehst du sofort, wann du telefoniert hast oder verbunden warst. Darunter folgen RDM und weitere Verbindungen; überlappen sie sich, rücken sie in die nächste Zeile. Zeilen ohne Einträge an diesem Tag blendet Zeitzeuge aus, damit die Timeline ruhig bleibt. Beim Start und beim Blättern zeigt sie die Arbeitszeit des Tages (± 30 Minuten); wählst du **Ganzer Tag**, merkt sie sich das. Dicht aufeinanderfolgende offene Einträge stehen in der Zeile Dokumentation als ein Block („? 3 offen“), der Hinweis listet sie einzeln. Passt ein Name nicht in einen Balken, steht dort eine kürzere Form oder nichts, statt eines abgeschnittenen „Chro…“. Links steht eine Legende mit Name und Farbpunkt jeder Zeile (bei mehreren Farben, z. B. Telefon eingehend und ausgehend, mehrere Punkte); sie bleibt beim Blättern stehen. Zeilen verschiebst du, indem du ihren Namen in der Legende anfasst und an eine andere Stelle ziehst (PC-Aktivität bleibt oben, Remote / Weitere unten); **Zeilen der Timeline → Reihenfolge zurücksetzen** stellt den Standard wieder her. Alle Zeilen passen ohne senkrechte Scrollleiste ins Fenster, bei vielen Zeilen werden sie niedriger (UMSCHALT + Mausrad blättert, falls es trotzdem eng wird).
 - **TeamViewer:** liest `Connections.txt` mit Sitzungs-ID, Beginn und Ende. Verbindungen unter 1 Minute werden ausgeblendet.
   - Statt der ID kannst du einen Namen vergeben: Rechtsklick auf die Verbindung (Tagesliste oder Timeline), dann **TeamViewer-ID benennen …**.
 - **Remote Desktop Manager (Devolutions):** liest `Connections.log`.
@@ -129,7 +129,7 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
   - **Kulanz und Reise:** Beim Eintragen setzt du die Haken **Kulanz** (nicht berechnen) und **Reise / Anfahrt**. Sie stehen in der Ticketzeile und werden beim Buchen im Ticketsystem übernommen.
   - **TeamViewer-ID zum Kunden:** Bei TeamViewer kennt Zeitzeuge oft nur die ID. Trägst du beim Dokumentieren den Kunden ein, merkt es sich den Namen für diese ID. Ab dann steht überall der Name.
   - **Erinnerung:** Nach Feierabend und beim Beenden sagt Zeitzeuge, wie viele Tätigkeiten heute noch offen sind.
-  - Sind Tätigkeiten offen, steht rechts unten der blaue Knopf **2 offen – jetzt eintragen**. Ein Klick öffnet die erste offene Tätigkeit zum Eintragen. Die Statuszeile zeigt daneben „dokumentiert 3:10 h“.
+  - Sind Tätigkeiten offen, zeigt die Kachel **Offen** über der Timeline ihre Zahl. Ein Klick auf **Jetzt eintragen** öffnet die erste offene Tätigkeit zum Eintragen. Die Statuszeile zeigt „dokumentiert 3:10 h“.
   - Dokumentierte Tätigkeiten tragen in der Timeline ein ✓, offene ein ?.
   - Jede Aktion bestätigt Zeitzeuge kurz in der Statuszeile, z. B. „Tätigkeit gespeichert“ oder „Zeitzeuge fragt in 15 Minuten noch einmal“.
   - Die Ansicht **Dokumentation** in der Tagesliste zeigt alles, STRG + C kopiert es als fertige Ticketzeilen.
@@ -162,7 +162,7 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
   - Fehlt eine TeamViewer- oder RDM-Logdatei, erscheint „Logs: TeamViewer fehlt“ mit gelbem Dreieck.
   - Ein Klick führt direkt zur Lösung: zur Anmeldung oder zu den Einstellungen. Fährst du mit der Maus darüber, steht dort der genaue Stand.
 - **Zeitlinie unter der Maus:** Eine gestrichelte senkrechte Linie folgt der Maus, oben steht die genaue Uhrzeit. Der Hinweis daneben zeigt, welche Einträge gerade liefen.
-- **Zeile „Personalzeit“:** Jeder gestempelte Abschnitt ist ein Block mit Beginn und Ende, z. B. „08:10 – 12:39“, Pausen sind Lücken. Bist du noch eingestempelt, steht dort „08:02 – jetzt“. Ohne Zeiterfassung heißt die Zeile „Arbeitszeit“ und zeigt gestrichelt die Arbeitszeit aus den Einstellungen; eine dort eingetragene Pause (Einstellungen → Allgemein → Arbeitszeiten) ist eine Lücke. Der helle Hintergrund markiert dieselben Zeiten. Blendest du die Zeile aus, steht die Personalzeit wieder im Hinweis unter der Maus.
+- **Zeile „Personalzeit“:** Jeder gestempelte Abschnitt ist ein Block mit Beginn und Ende, z. B. „08:10 – 12:39“, Pausen sind Lücken. Bist du noch eingestempelt, steht dort „08:02 – jetzt“. Ohne Zeiterfassung gibt es keine eigene Zeile: Die Arbeitszeit aus den Einstellungen steht als blaue Linie unter den Uhrzeiten und als zarte Fläche dahinter; eine dort eingetragene Pause (Einstellungen → Allgemein → Arbeitszeiten) ist eine Lücke. Blendest du die Zeile aus, steht die Personalzeit wieder im Hinweis unter der Maus.
 - **Details:** Fährst du über einen Eintrag, siehst du Kunde, Zeitraum und Dauer. Ein Klick in der Timeline, ein Doppelklick oder **Enter** in der Liste öffnet die Details.
 - **Immer aktuell:** Die Logs werden alle 2 Minuten geprüft. Mit F5 (Aktualisieren) liest du sie sofort neu ein, 3CX und Ticketsystem gleich mit (Anrufliste neu laden, Woche des angezeigten Tags). Neue Anrufe brauchen danach etwa 10–15 Sekunden. Gelesen werden nur Dateien, die sich geändert haben.
 - **Bedienung:**
@@ -174,7 +174,7 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
   - Der Hinweis an der Maus zeigt beim Ziehen Beginn, Ende und Dauer. **ESC** bricht das Ziehen ab.
   - Ein Doppelklick auf eine freie Stelle oder **Ganzer Tag** führt zurück zur Tagesansicht. **Arbeitszeit** zeigt die Arbeitszeit des Tages.
   - STRG + Mausrad zoomt an der Mausposition, das Mausrad allein blättert durch den Tag.
-  - Design: ruhige Zink-Grautöne, runde Ecken, Karten mit feinem Rand, Balken mit runden Ecken, Hauptknopf in Textfarbe, Violett für Fokus, Häkchen und Links. Gestaltet nach 16 UI-Design-Regeln (Kontrast, eine Schrift, keine Großbuchstaben, siehe `docs/quality-guardrails.md`). Hell und dunkel (Pfeil am Knopf **Einstellungen → Dunkles Design**), eigene Aktivitätstypen mit frei wählbaren Farben.
+  - Design: ruhige Zink-Grautöne, runde Ecken, Karten mit feinem Rand, Balken mit runden Ecken, Hauptknopf in Textfarbe, Violett für Fokus, Häkchen und Links. Gestaltet nach 16 UI-Design-Regeln (Kontrast, eine Schrift, keine Großbuchstaben, siehe `docs/quality-guardrails.md`). Hell, dunkel oder „Wie Windows“ (**Ansicht → Design**), unter Windows mit passender Titelleiste, eigene Aktivitätstypen mit frei wählbaren Farben.
 
 ### Tastenkürzel
 
@@ -285,12 +285,12 @@ Fährst du über einen Knopf, erklärt ein Hinweis, was er tut. Im schmalen Fens
 Alles, was nur die Anzeige ändert, nie die Daten:
 
 - **Tagesliste:** Die Ansichten (Alle, Einzeln, Arbeitsblöcke, Telefonate – nur 3CX- und Teams-Anrufe, jeder einzeln –, Dokumentation, Zuordnung ohne KI, KI-Vorschläge, Buchungsabgleich) wählst du über die Chips über der Liste. Fährst du über einen Chip, steht dort, was die Ansicht zeigt. Im Menü stehen **PC-Verlauf in der Liste** und **Was zeigen die Ansichten? …** (F1), das alle mit Beispielen erklärt.
-- **Zeilen der Timeline** (Untermenü, auch per Rechtsklick auf die Legende links): jede Zeile mit einem Kästchen in ihrer Farbe zum Ein- und Ausblenden, dazu **Alle Zeilen einblenden**. Leere Zeilen blendet Zeitzeuge von selbst aus.
+- **Zeilen der Timeline** (Untermenü, auch per Rechtsklick auf die Legende links): jede Zeile mit einem Kästchen in ihrer Farbe zum Ein- und Ausblenden, dazu **Alle Zeilen einblenden**. **Zeilen abwechselnd hinterlegen** zeigt graue Streifen statt feiner Linien zwischen den Zeilen. Leere Zeilen blendet Zeitzeuge von selbst aus.
 - **PC-Aktivität als Arbeitsblöcke:** an = Blöcke je Tätigkeit, aus = jedes Fenster einzeln.
 - **Übersichten:** Wochenabschluss, Offene Tätigkeiten.
 - **Anpassen mit Vorschau …** öffnet die Seite **Ansicht** im Einstellungsfenster.
 
-Ganzer Tag und Arbeitszeit stehen in der Werkzeugleiste, **Dunkles Design** im Pfeil-Menü am Knopf **Einstellungen**.
+Ganzer Tag und Arbeitszeit stehen in der Werkzeugleiste, das Design (Wie Windows, Hell, Dunkel, Eigene Farben) im Menü **Ansicht**. Die Knöpfe der Werkzeugleiste zeigen nur Symbole; fährst du darüber, nennt der Hinweis Namen, Tastenkürzel und was der Knopf tut.
 
 ### Fenster Einstellungen
 
@@ -677,6 +677,8 @@ Läuft RDM auf einem Server, kann Zeitzeuge dessen Log auch über das Netzwerk l
 |---|---|
 | `work_days` | Arbeitszeit pro Wochentag, z. B. `"Fr": "08:00-13:00"`, leer = frei. Einstellbar unter **Einstellungen → Arbeitszeiten …** |
 | `dark_mode` | Dunkles Design |
+| `timeline_stripes` | Zeilen der Timeline abwechselnd grau hinterlegen statt feiner Linien |
+| `theme_follow_system` | Design „Wie Windows“: Hell oder Dunkel folgt der Einstellung von Windows |
 | `activity_types`, `type_colors` | Aktivitätstypen und ihre Farben |
 | ~~`teamviewer_names`~~ | Kundennamen zu TeamViewer-IDs stehen nicht mehr in der Config, sondern verschlüsselt in der Datenbank. Alte Einträge übernimmt Zeitzeuge beim ersten Start. |
 

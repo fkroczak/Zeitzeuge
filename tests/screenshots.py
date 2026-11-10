@@ -169,6 +169,13 @@ for i, action in enumerate([a for a in menu.actions() if a.menu()]):
     action.menu().hide()
 menu.hide()
 
+# Menü Ansicht (Design)
+vmenu = window.view_button.menu()
+vmenu.popup(window.view_button.mapToGlobal(QPoint(0, window.view_button.height())))
+wait()
+shot("02b_menue_ansicht", with_popup(vmenu))
+vmenu.hide()
+
 # Tagesliste: Kontextmenü
 rect = window.table.visualItemRect(window.table.item(2, 0))
 pos = window.table.viewport().mapToGlobal(rect.center())
@@ -220,6 +227,11 @@ if window.tray:
     tracking.setChecked(True)
 else:
     print("Kein Infobereich gefunden, Tray-Bilder fehlen")
+
+# Leerer Tag (keine Spuren)
+window.date_edit.setDate(QDate(DAY.year, DAY.month, DAY.day).addDays(1))
+wait(1.5)
+shot("12_leerer_tag", frame())
 
 window.quit_app()
 # Ohne Event-Loop stürzt die Qt-Bindung beim Aufräumen sporadisch ab (auch mit altem Code, nicht in der App)

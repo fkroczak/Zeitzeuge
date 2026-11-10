@@ -82,7 +82,8 @@ view._remote_cache.clear()
 view.draw_timeline(QDate.currentDate())
 QApplication.processEvents()
 keys = list(view._legend_keys)
-assert "vpn" in keys and "call" in keys and "work" in keys, keys
+assert "vpn" in keys and "call" in keys, keys
+assert "work" not in keys, "Arbeitszeit ohne Zeiterfassung hat keine eigene Zeile"
 orders = []
 view.row_order_changed.connect(orders.append)
 

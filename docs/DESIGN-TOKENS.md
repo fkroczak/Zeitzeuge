@@ -133,7 +133,7 @@ Audit). Zeilennummern beziehen sich auf diesen Stand.
 **Hell/Dunkel-Umschaltung**: `config["dark_mode"]` (bool) → `self.dark_mode`; `toggle_dark_mode` (`app_menus.py:801`) speichert und ruft `apply_style()`: Token-Ersetzung, `setStyleSheet("")`, `QPalette` aus Tokens (Window/Base/Text/Highlight/Accent …, `app_menus.py:813–823`), `setStyleSheet(sheet)` auf dem Hauptfenster, Icons neu einfärben, Einstellungsfenster neu aufbauen, `busy_bar.set_color(muted)`, `timeline.set_dark_mode()` → `timeline_only.py:591–605 init_timeline_colors()` liest `THEMES[...]` direkt. Weitere direkte `THEMES[...]`-Leser: `app_menus.py:234/249/289/347/539`, `app_tray.py:85`, `customers_dialogs.py:181`, `settings_window.py:546`, `week_dialogs.py:185`, `timeline_only.py:1452`. Hinweis: das Sheet hängt am Hauptfenster (nicht `QApplication`); Dialoge erben es als Kinder.
 
 **Selektoren im QSS** (nur `#objectName` + Pseudozustände, **keine Property-Selektoren**):
-- Toolbar/Status: `#tools #fixed #main_toolbar #qt_toolbar_ext_button #busy_text #cta #cta_secondary`
+- Toolbar/Status: `#tools #fixed #main_toolbar #qt_toolbar_ext_button #busy_text`
 - Texte: `#hint` (51× gesetzt!), `#page_title` (20px bold), `#section_title` (14px bold), `#card_title`, `#row_title`, `#row_page`, `#row_value`, `#kpi_label`, `#kpi_value`, `#menu_header`, `#count`, `#example` (Monospace 12px), `#good` (**nirgends gesetzt**)
 - Container: `#card #card_row #tile #notice #setting_row #divider #chips #customer_detail`
 - Bedienelemente: `#chip #chip_add #link #switch #result_link #avatar #settings_nav #nav_list #view_menu`
