@@ -22,6 +22,7 @@ import customers
 from grouping import format_tv_id, group_entries
 from log_parsers import ConnectionIndex, RdmParser, TeamViewerParser, VpnParser
 from rdp_reader import RdpReader
+import sessionmgmt_reader
 from local_sources import BROWSER_TYPE, FILE_TYPE, NET_TYPE, PC_STATE_TYPES, WLAN_TYPE, LocalReader
 from theme import contrast, readable_on, theme_for, ui_font
 import skeleton
@@ -565,8 +566,8 @@ class TimelineView(QGraphicsView):
     row_order_changed = Signal(list)
     # Mindest- oder Höchsthöhe geändert (andere Zahl Zeilen): Hauptfenster passt die Aufteilung an
     height_limits_changed = Signal()
-    # Hintergrund-Thread hat TeamViewer- und RDM-Logs gelesen
-    logs_loaded = Signal(object, object, object)
+    # Hintergrund-Thread hat TeamViewer-, RDM-, VPN- und SessionMGMT-Logs gelesen
+    logs_loaded = Signal(object, object, object, object)
     # Logs werden gelesen (True) oder sind fertig (False) – für die Ladeanzeige
     loading_changed = Signal(bool)
     # Hintergrund-Thread hat für reload_source vorgelesen (z. B. Ereignisprotokoll): Quelle
@@ -636,6 +637,8 @@ class TimelineView(QGraphicsView):
         self._tv_parser = TeamViewerParser(self.config)
         self._rdm_parser = RdmParser(self.config)
         self._vpn_parser = VpnParser(self.config)
+        self._sm_parser = sessionmgmt_reader.SessionMgmtParser(self.config)
+        self._sm_index = None
         self.rdp_reader = RdpReader(self.config)  # RDM Better und mstsc
         self._rdp_index = None
         self.local_reader = LocalReader(self.config)  # Spuren vom PC (local_sources.py)
@@ -907,7 +910,8 @@ class TimelineView(QGraphicsView):
         # Jede Quelle lässt sich im Menü "Datenquellen" einzeln abschalten
         for name, parser, key in (("TeamViewer", self._tv_parser, "teamviewer_enabled"),
                                   ("RDM", self._rdm_parser, "rdm_enabled"),
-                                  ("VPN", self._vpn_parser, "vpn_enabled")):
+                                  ("VPN", self._vpn_parser, "vpn_enabled"),
+                                  ("SessionMGMT", self._sm_parser, "sessionmgmt_enabled")):
             try:
                 skip = not self.config.get(key, True)
                 indexes.append(ConnectionIndex([] if skip else parser.parse_logs()))
@@ -926,10 +930,11 @@ class TimelineView(QGraphicsView):
         if not self._closing:
             self.logs_loaded.emit(*indexes)  # Qt stellt das im GUI-Thread zu
 
-    def _on_logs_loaded(self, tv_index, rdm_index, vpn_index):
+    def _on_logs_loaded(self, tv_index, rdm_index, vpn_index, sm_index):
         if self._closing:
             return  # beim Beenden nichts mehr zeichnen
         self._tv_index, self._rdm_index, self._vpn_index = tv_index, rdm_index, vpn_index
+        self._sm_index = sm_index
         self._sophos_index = None  # Archiv der VPN-Aufzeichnung beim nächsten Zeichnen neu lesen
         self._rdp_index = None     # ebenso RDM Better und mstsc
         self._local_index = None   # und die Spuren vom PC
@@ -982,15 +987,21 @@ class TimelineView(QGraphicsView):
                 self._rdp_index = ConnectionIndex([])
 
         day = self._tv_index.get_for_date(date_str) + self._rdm_index.get_for_date(date_str)
-        day += self._rdp_index.get_for_date(date_str)
+        own = self._rdp_index.get_for_date(date_str)  # mstsc, Ereignisprotokoll, RDM Better
         if self._local_index is None:
             try:
                 self._local_index = ConnectionIndex(self.local_reader.entries())
             except Exception as e:
                 print(f"Fehler beim Lesen der Spuren vom PC: {e}")
                 self._local_index = ConnectionIndex([])
-        day += self._local_index.get_for_date(date_str)
-        day += self._vpn_index.get_for_date(date_str) + self._sophos_index.get_for_date(date_str)
+        own = own + self._local_index.get_for_date(date_str)
+        own += self._vpn_index.get_for_date(date_str) + self._sophos_index.get_for_date(date_str)
+        sm = self._sm_index.get_for_date(date_str) if self._sm_index is not None else []
+        try:  # SessionMGMT und eigene Aufzeichnung zeigen dieselbe Sitzung sonst doppelt
+            sm, own = sessionmgmt_reader.merge(sm, own)
+        except Exception as e:
+            print(f"SessionMGMT-Sitzungen nicht abgeglichen: {e}")
+        day += own + sm
         for conn in day:
             conn["is_suggestion"] = True
         self.remote_suggestions = day
@@ -1187,6 +1198,10 @@ class TimelineView(QGraphicsView):
         """Quellen, für die keine einzige Logdatei gelesen werden konnte."""
         return [name for name, parser in [("TeamViewer", self._tv_parser), ("RDM", self._rdm_parser)]
                 if parser.files_read == 0]
+
+    def sessionmgmt_missing(self):
+        """sessions.log von SessionMGMT nicht gefunden (nur für die Kachel in den Einstellungen)."""
+        return self.config.get("sessionmgmt_enabled", True) and self._sm_parser.files_read == 0
 
     def rdmbetter_missing(self):
         """launcher.log von RDM Better nicht gefunden (nur für die Kachel in den Einstellungen)."""

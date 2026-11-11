@@ -365,7 +365,9 @@ class Index:
         self.domains = {}
         self.no_calendar = set()
         words, paths, hosts, nets = {}, {}, {}, []
+        self.names = {}  # Name (Groß/Klein egal) -> Kunde, für den Tresor aus SessionMGMT
         for c in customers or []:
+            self.names.setdefault(c["name"].casefold(), c["name"])
             if c.get("calendar") is False:
                 self.no_calendar.add(c["name"])
             for t in c.get("traces") or []:
@@ -418,9 +420,14 @@ class Index:
             name = self.lookup(kind, value)
             if name and not (calendar and kind == "mail" and name in self.no_calendar):
                 return name, kind, normalize(kind, value)
+        vault = str(entry.get("vault") or "").strip() if isinstance(entry, dict) else ""
+        if vault:  # SessionMGMT: Tresor = Kunde im Devolutions Server
+            name = self.names.get(vault.casefold())
+            if name:
+                return name, "vault", vault.casefold()
         if (isinstance(entry, dict) and not entry.get("colleague")
                 and not any(entry.get(k) for k in ("doc", "ai", "rule", "m42", "m42_gap", "work"))):
-            return self.text_match(entry.get("customer_name") or "")
+            return self.text_match(" ".join(filter(None, (entry.get("customer_name"), vault))))
         return None
 
     def customer_for(self, entry):

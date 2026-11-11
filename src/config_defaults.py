@@ -95,6 +95,9 @@ def default_config():
         # RDM Better: Starts aus launcher.log (UTC), das Ende kommt aus der mstsc-Aufzeichnung
         "rdmbetter_enabled": True,
         "rdmbetter_paths": [r"%LOCALAPPDATA%\RDM Better\launcher.log"],
+        # SessionMGMT: Sitzungen mit Kunde (Tresor), Beginn und Ende aus sessions.log (UTC)
+        "sessionmgmt_enabled": True,
+        "sessionmgmt_paths": [r"%LOCALAPPDATA%\SessionMGMT\sessions.log"],
         # Remotedesktop (mstsc): offene Verbindungen alle 30 Sekunden selbst aufzeichnen
         "mstsc_enabled": True,
         "mstsc_events_enabled": True,  # zusätzlich RDPClient-Ereignisprotokoll lesen

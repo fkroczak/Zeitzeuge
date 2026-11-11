@@ -222,6 +222,7 @@ BRANDS = {
                    'stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>'),
     "rdm": ('#E8412C', 'square', _BRAND_TEXT.format(y=15.5, size=8, text="RDM")),  # Devolutions RDM
     "rdmbetter": ('#B2331F', 'square', _BRAND_TEXT.format(y=15.5, size=8, text="RDM+")),  # RDM Better
+    "sessionmgmt": ('#2B5797', 'square', _BRAND_TEXT.format(y=15.5, size=9, text="SM")),  # SessionMGMT
     # Remotedesktop (mstsc): Bildschirm mit Pfeil
     "mstsc": ('#0067B8', 'square',
               '<rect x="5" y="6" width="14" height="9.5" rx="1.2" fill="none" stroke="#FFFFFF" '
