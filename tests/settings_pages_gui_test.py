@@ -124,6 +124,13 @@ def gui_test():
                         print("  ", type(child).__name__, child.objectName(), child.minimumSizeHint().width(),
                               child.minimumWidth(), getattr(child, "text", lambda: "")()[:40]
                               if callable(getattr(child, "text", None)) else "")
+                        for part in child.findChildren(QWidget):  # Teile der zu breiten Zeile
+                            if part.isVisible():
+                                text = part.text()[:30] if callable(getattr(part, "text", None)) else ""
+                                print("      ", type(part).__name__, part.objectName(), "min",
+                                      part.minimumSizeHint().width(), "fest", part.minimumWidth(),
+                                      "hint", part.sizeHint().width(), "font", part.font().family(),
+                                      part.font().pixelSize(), part.font().pointSize(), repr(text))
             assert not (bar.isVisible() and bar.maximum() > 0), (key, bar.maximum())
     assert settings.minimumWidth() <= 960 and settings.minimumHeight() <= 540
 
