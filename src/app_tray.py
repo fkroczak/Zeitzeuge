@@ -296,7 +296,7 @@ class TrayMixin:
             return None
         from notices import NoticeCard, NoticeStrip
         from prompt_card import prompt_position
-        for old in list(getattr(self, "_notices", [])):  # gleicher Hinweis nicht doppelt
+        for old in self._live_notices():  # gleicher Hinweis nicht doppelt
             if old.windowTitle() == f"Zeitzeuge: {title}":
                 old._finish(old.closed)
         if card:
@@ -305,21 +305,25 @@ class TrayMixin:
             notice = NoticeStrip(title, text, action, kind, timeout, self)
         if on_action is not None:
             notice.acted.connect(on_action)
-        self._notices = [n for n in getattr(self, "_notices", []) if n.isVisible()] + [notice]
-        notice.destroyed.connect(lambda _o=None, n=notice: self._notices.remove(n)
-                                 if n in getattr(self, "_notices", []) else None)
+        self._notices = [n for n in self._live_notices() if n.isVisible()] + [notice]
         notice.position = prompt_position(self.config)
         notice.adjustSize()
         notice.dock_bottom_right(self._notice_margin(notice))
         notice.show()
         return notice
 
+    def _live_notices(self):
+        """Hinweise, die es noch gibt (gelöschte fallen heraus, ohne Rückruf beim Zerstören)."""
+        from shiboken6 import isValid
+        self._notices = [n for n in getattr(self, "_notices", []) if isValid(n)]
+        return list(self._notices)
+
     def _notice_margin(self, notice):
         """Abstand zum Bildschirmrand: über (bzw. unter) einer offenen Nachfrage und älteren Hinweisen."""
         margin = 8
         prompt = getattr(self, "_prompt_window", None)
         others = [prompt] if prompt is not None and prompt.isVisible() else []
-        others += [n for n in getattr(self, "_notices", []) if n is not notice and n.isVisible()]
+        others += [n for n in self._live_notices() if n is not notice and n.isVisible()]
         for other in others:
             margin += other.frameGeometry().height()
         return margin
@@ -356,9 +360,13 @@ class TrayMixin:
             self._prompt_window.blockSignals(True)
             self._prompt_window._done = True
             self._prompt_window.close()
-        for notice in list(getattr(self, "_notices", [])):  # offene Hinweise mit beenden
+        from shiboken6 import delete
+        for notice in self._live_notices():  # offene Hinweise jetzt löschen, nicht erst beim Prozessende
             notice.blockSignals(True)
+            notice._hide_timer.stop()
             notice.close()
+            delete(notice)
+        self._notices = []
         self.timeline.shutdown()
         if self.tracker:
             self.tracker.stop()

@@ -761,6 +761,9 @@ class PromptSettings(QWidget):
             grid.addWidget(widget, (i // 2) * 2 + 1, i % 2)
         for col in (0, 1):
             grid.setColumnStretch(col, 1)
+        for combo in (self.timeout, self.position, self.strip_close):  # schmal werden dürfen (200 %)
+            combo.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+            combo.setMinimumContentsLength(8)
         box.addLayout(grid)
         chips_host = QWidget()
         chips_host.setObjectName("chips")
@@ -809,7 +812,7 @@ class PromptSettings(QWidget):
         for i, (check, detail, spin) in enumerate(entries):
             spin.setPrefix("ab ")
             spin.setSuffix(" min")
-            spin.setFixedWidth(110)
+            spin.setFixedWidth(96)
             spin.setToolTip("Kürzere Tätigkeiten dieser Art nicht nachfragen")
             spin.setAccessibleName(f"Mindestdauer für {check.text().replace('&', '')}")
             spin.setEnabled(check.isChecked())
@@ -824,7 +827,7 @@ class PromptSettings(QWidget):
             hint = QLabel(detail)
             hint.setObjectName("hint")
             hint.setWordWrap(True)
-            hint.setMinimumWidth(60)  # umbrechen statt die Seite zu verbreitern
+            hint.setMinimumWidth(30)  # umbrechen statt die Seite zu verbreitern
             line.addWidget(hint, 1)
             line.addWidget(spin)
             rows.addWidget(row)

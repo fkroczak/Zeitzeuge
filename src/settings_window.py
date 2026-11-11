@@ -410,6 +410,7 @@ class _Row(QFrame):
         head = QLabel(title)
         head.setObjectName("row_title")
         head.setWordWrap(True)  # lange Titel umbrechen statt die Seite zu verbreitern
+        head.setMinimumWidth(80)  # sonst verlangt Qt je nach Schrift (Windows) mehr Breite
         text.addWidget(head)
         if show_page:
             where = QLabel(" · ".join(t for t in (dict((k, n) for k, n, _i, _s in PAGES)[page], row_section(spec)) if t))
@@ -418,6 +419,7 @@ class _Row(QFrame):
         body = QLabel(desc)
         body.setObjectName("hint")
         body.setWordWrap(True)
+        body.setMinimumWidth(80)
         prose(body)
         text.addWidget(body)
         layout.addLayout(text, 1)
@@ -900,7 +902,7 @@ class SettingsWindow(QDialog):
             text = QLabel()
             text.setObjectName("hint")
             text.setWordWrap(True)
-            text.setMinimumWidth(120)  # umbrechen statt die Seite zu verbreitern
+            text.setMinimumWidth(80)  # umbrechen statt die Seite zu verbreitern
             state.addWidget(mark)
             state.addWidget(text, 1)
             texts.addLayout(state)
@@ -908,8 +910,7 @@ class SettingsWindow(QDialog):
             button = QPushButton(f"{name} …")
             button.setAutoDefault(False)
             button.setAccessibleName(f"{name} öffnen")
-            button.setMinimumWidth(CONTROL_WIDTH)
-            fit_text(button)
+            fit_text(button)  # nur so breit wie der Text: die Übersicht passt auch in schmale Fenster
             button.clicked.connect(lambda _c=False, k=key: self.show_page(k))
             line.addWidget(button)
             layout.addWidget(row)
