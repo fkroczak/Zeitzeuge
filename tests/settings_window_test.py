@@ -130,7 +130,7 @@ def gui_test():
     # Übersicht: Zustand je Bereich, Knopf springt hin
     settings.refresh_status()
     assert set(settings.status) == {"sources", "prompts", "booking", "data"}
-    assert "Quellen an" in settings.status["sources"][1].text()
+    assert "Quellen an" in settings.status["sources"][1].full_text()
     settings.show_page("general")  # alter Name leitet weiter
     assert settings.current_page() == "home"
 

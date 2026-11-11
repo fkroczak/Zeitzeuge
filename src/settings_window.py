@@ -899,10 +899,11 @@ class SettingsWindow(QDialog):
             state.setSpacing(SPACE_S)
             mark = QLabel()
             mark.setFixedSize(16, 16)
-            text = QLabel()
+            # eine Zeile, bei Platzmangel mit „…“ (voller Text als Hinweis): Breite unabhängig von
+            # Schrift und Umbruch (unter Windows war die Übersicht sonst bei 960 × 540 zu breit)
+            from prompt_card import _ElidedLabel as _OneLine
+            text = _OneLine()
             text.setObjectName("hint")
-            text.setWordWrap(True)
-            text.setMinimumWidth(80)  # umbrechen statt die Seite zu verbreitern
             state.addWidget(mark)
             state.addWidget(text, 1)
             texts.addLayout(state)
@@ -974,7 +975,7 @@ class SettingsWindow(QDialog):
                 mark.clear()
             else:
                 mark.setPixmap(icons.source_icon(state).pixmap(16, 16))
-            text.setText(words)
+            text.set_full_text(words)
 
     def _prompts_changed(self):
         main = self.main
