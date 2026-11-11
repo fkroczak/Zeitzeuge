@@ -77,6 +77,7 @@ def gui_test():
     window.idle_sample(now + timedelta(minutes=30), 0)
     window.idle_sample(now + timedelta(minutes=60), 0)
     assert not window._idle_open
+    window.quit_app()  # Leser-Threads sauber beenden, sonst Absturz beim Prozessende unter Windows
     print("Abwesenheit am PC: OK")
 
 
@@ -85,6 +86,8 @@ try:
 except Exception:
     traceback.print_exc()
     sys.stdout.flush()
-    os._exit(1)
+    import safe_io
+    safe_io.hard_exit(1)
 sys.stdout.flush()
-os._exit(0)
+import safe_io  # Ende ohne Qt-Aufräumen (Absturz unter Windows)
+safe_io.hard_exit(0)

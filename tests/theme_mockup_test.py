@@ -42,10 +42,10 @@ QTest.keyClick(mockup, Qt.Key_Right)
 QTest.keyClick(mockup, Qt.Key_Return)
 assert picked == ["bg"], picked
 
-# Menü im Dialog: Farbfeld setzt die Farbe, „Standardfarbe“ stellt sie zurück
+# Eigene Farben im Einstellungsfenster: Farbfeld setzt die Farbe, „Standardfarbe“ stellt sie zurück
 from PySide6.QtWidgets import QWidget  # noqa: E402
 from theme import SWATCHES  # noqa: E402
-from theme_dialog import CustomColorsDialog  # noqa: E402
+from theme_dialog import CustomColorsPanel  # noqa: E402
 
 
 class FakeMain(QWidget):
@@ -73,34 +73,48 @@ class FakeMain(QWidget):
 
 
 main = FakeMain()
-dialog = CustomColorsDialog(main)
-assert not hasattr(dialog, "buttons"), "keine Liste mit Farben mehr"
-menu = dialog.color_menu("accent")
-color, button = menu.swatches[3]
+panel = CustomColorsPanel(main)
+assert panel.mockup.skeleton, "Skizze als Skelett (Balken statt Text)"
+panel.select("accent")
+color, button = panel.swatches[3]
 assert color == SWATCHES["dark"]["accent"][3]
 button.click()
-assert dialog.colors["accent"] == color and main.config["custom_colors"]["accent"] == color
-menu = dialog.color_menu("accent")
-standard = [a for a in menu.actions() if a.text() == "&Standardfarbe"][0]
-assert standard.isEnabled()
-standard.trigger()
-assert dialog.colors["accent"] == SWATCHES["dark"]["accent"][0]
+assert panel.colors["accent"] == color and main.config["custom_colors"]["accent"] == color
+assert main.themes[-1] == "custom", "gilt sofort"
+assert panel.default_button.isEnabled()
+panel.default_button.click()
+assert panel.colors["accent"] == SWATCHES["dark"]["accent"][0]
+assert not panel.default_button.isEnabled()
 
-# Jetzt-Linie ist eine Grundfarbe
-dialog.color_menu("now").swatches[1][1].click()
-assert dialog.colors["now"] == SWATCHES["dark"]["now"][1]
+# Klick in die Skizze wählt den Bereich, darunter seine Farbvorschläge
+panel.mockup.picked.emit("now", panel.mockup.mapToGlobal(panel.mockup.rect().center()))
+assert panel.area == "now" and "Jetzt" in panel.area_label.text()
+panel.swatches[1][1].click()
+assert panel.colors["now"] == SWATCHES["dark"]["now"][1]
+
+# Grundlage wechseln: Farben des passenden Standard-Designs
+panel.base_buttons["light"].click()
+assert panel.colors["base"] == "light" and panel.colors["accent"] == SWATCHES["light"]["accent"][0]
+panel.base_buttons["dark"].click()
 
 # Balken: Farbfeld setzt die Zeilenfarbe, Standardfarbe nimmt sie wieder weg
 from theme import BAR_SWATCHES  # noqa: E402
-menu = dialog.color_menu("row:vpn")
-assert [a.text() for a in menu.actions() if a.text() == "&Standardfarbe"][0]
-menu.swatches[4][1].click()
+panel.select("row:vpn")
+assert not panel.default_button.isEnabled()
+panel.swatches[4][1].click()
 assert main.config["row_colors"]["vpn"] == BAR_SWATCHES[4]
-assert dialog.mockup.bar_colors["row:vpn"] == BAR_SWATCHES[4]
-dialog.color_menu("row:call:Eingehend").swatches[0][1].click()
+assert panel.mockup.bar_colors["row:vpn"] == BAR_SWATCHES[4]
+panel.select("row:call:Eingehend")
+panel.swatches[0][1].click()
 assert main.config["call_colors"]["Eingehend"] == BAR_SWATCHES[0]
-# Abbrechen: auch die Balkenfarben wie vorher (vorher gab es keine eigenen)
-dialog.reject()
-assert "row_colors" not in main.config and "call_colors" not in main.config, main.config
+panel.select("row:vpn")
+panel.default_button.click()
+assert "vpn" not in main.config["row_colors"]
+# Alle Farben zurücksetzen
+panel.select("accent")
+panel.swatches[2][1].click()
+panel.reset_button.click()
+assert panel.colors["accent"] == SWATCHES["dark"]["accent"][0]
 print("ok")
-os._exit(0)
+import safe_io  # Ende ohne Qt-Aufräumen (Absturz unter Windows)
+safe_io.hard_exit(0)

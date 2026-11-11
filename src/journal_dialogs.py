@@ -10,14 +10,16 @@ from datetime import datetime, timedelta
 
 import re
 
-from PySide6.QtCore import QDate, QLocale, QModelIndex, Qt, QTime, QTimer
-from PySide6.QtGui import QStandardItem, QStandardItemModel
-from PySide6.QtWidgets import (QCheckBox, QComboBox, QCompleter, QDateEdit, QDialog, QDialogButtonBox,
-                               QFormLayout, QFrame, QHBoxLayout, QLabel, QMenu, QPlainTextEdit,
-                               QPushButton, QSpinBox, QTimeEdit, QVBoxLayout,
+from PySide6.QtCore import QDate, QEvent, QLocale, QModelIndex, QSize, Qt, QTime, QTimer, Signal
+from PySide6.QtGui import QIcon, QStandardItem, QStandardItemModel
+from PySide6.QtWidgets import (QButtonGroup, QCheckBox, QComboBox, QCompleter, QDateEdit, QDialog,
+                               QFormLayout, QFrame, QGridLayout, QHBoxLayout, QLabel, QMenu, QPlainTextEdit,
+                               QPushButton, QSpinBox, QTimeEdit, QToolButton, QVBoxLayout,
                                QWidget)
 
-from theme import prose, SPACE_M, SPACE_S, SPACE_XS
+from theme import theme_for, SPACE_M, SPACE_S, SPACE_XS
+from flow_layout import FlowLayout
+import icons
 from billing import hours_text
 import customers as customer_list
 from grouping import format_tv_id
@@ -26,6 +28,7 @@ import range_context
 import snippets as snippet_logic
 from m42_booking import ticket_label as mb_ticket_label
 from tickets import format_ticket_text
+from prompt_card import CardParts, _ElidedLabel, _icon_label, source_tile
 
 
 class _EntryForm(QWidget):
@@ -433,25 +436,67 @@ class _EntryForm(QWidget):
         }
 
 
-class EntryDialog(QDialog):
-    """Tätigkeit nachtragen oder ändern."""
+class EntryDialog(CardParts, QDialog):
+    """Tätigkeit nachtragen oder ändern, aufgebaut wie die Nachfrage-Karte (prompt_card.py):
+    Kopf mit Aufgabe, feste Zeitzeile mit Stift, Felder mit Beschriftung darüber, Chips,
+    darunter die Spuren in dieser Zeit und die Fußleiste (Löschen | Abbrechen, Speichern).
+
+    edit_time: Zeitzeile gleich offen (Nachtragen ohne gezogenen Zeitraum)."""
 
     def __init__(self, start, end, customers, categories, customer="", category="", text="",
                  tv_id=None, title="Tätigkeit nachtragen", info="", can_delete=False, parent=None,
-                 trace=None, rule_subject=None, context_for=None, guess_for=None, **form_options):
+                 trace=None, rule_subject=None, context_for=None, guess_for=None, edit_time=False,
+                 **form_options):
         super().__init__(parent)
         self.setWindowTitle(title)
-        self.setMinimumWidth(620)  # Datum und Zeit, Häkchen und „Text einfügen“ je in einer Zeile
+        self.setObjectName("entry_dialog")
+        self.setFixedWidth(600)  # wie die Karte: passt auch bei 200 % auf Full HD
         self.deleted = False
-        layout = QVBoxLayout(self)
-        if info:
-            label = QLabel(info)
-            label.setWordWrap(True)
-            prose(label)
-            label.setObjectName("hint")
-            layout.addWidget(label)
-        self.form = _EntryForm(start, end, customers, categories, customer, category, text,
-                               tv_id, self, trace=trace, rule_subject=rule_subject, **form_options)
+        pal = (parent or self).palette()
+        accent = pal.color(pal.ColorRole.Accent).name()
+        muted = pal.color(pal.ColorRole.PlaceholderText).name()
+        self.form = form = _EntryForm(start, end, customers, categories, customer, category, text,
+                                      tv_id, self, trace=trace, rule_subject=rule_subject,
+                                      **{"show_ticket": False, **form_options})
+        old = form.layout()
+        form.hide()  # nur noch Hülle; die Felder wandern in den Dialog
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        # ---- Kopf: Aufgabe, Vorschlag oder Kunde, Zeitzeile
+        top = QWidget()
+        top.setObjectName("prompt_top")
+        top.setAttribute(Qt.WA_StyledBackground)
+        head_box = QVBoxLayout(top)
+        head_box.setContentsMargins(16, 14, 16, SPACE_M)
+        head_box.setSpacing(SPACE_S + 2)
+        head = QHBoxLayout()
+        head.setSpacing(SPACE_M)
+        head.addWidget(source_tile("edit" if can_delete else "doc", accent), 0, Qt.AlignVCenter)
+        texts = QVBoxLayout()
+        texts.setSpacing(2)
+        self.title = _ElidedLabel(title)
+        self.title.setObjectName("prompt_title")
+        self.subtitle = _ElidedLabel(info or (customer if can_delete else ""))
+        self.subtitle.setObjectName("hint")
+        self.subtitle.setVisible(bool(self.subtitle.full_text()))
+        texts.addWidget(self.title)
+        texts.addWidget(self.subtitle)
+        head.addLayout(texts, 1)
+        head_box.addLayout(head)
+        head_box.addWidget(self._build_time_row(form, old, muted))
+        outer.addWidget(top)
+
+        # ---- Inhalt
+        body = QWidget()
+        body.setObjectName("prompt_body")
+        self.body_box = QVBoxLayout(body)
+        self.body_box.setContentsMargins(16, SPACE_M, 16, SPACE_M)
+        self.body_box.setSpacing(SPACE_S + 2)
+        self._build_fields(self.body_box, form, old, text_height=84)
+        outer.addWidget(body)
+
         # Zeitraum nachtragen (Companion): was die Quellen in dieser Zeit sagen, Feinjustieren
         # guess_for(start, end, text): range_context.estimate, vermuteter Kunde und Kategorie
         self.context_for = context_for
@@ -459,43 +504,101 @@ class EntryDialog(QDialog):
         self.context_rows = None
         self._auto_category = category  # vorbelegt, darf beim Tippen nachgeführt werden
         if context_for:
-            layout.addWidget(self._context_card())
-            self.form.start_edit.timeChanged.connect(lambda _t: self.update_context())
-            self.form.end_edit.timeChanged.connect(lambda _t: self.update_context())
+            self.body_box.addSpacing(SPACE_XS)
+            self.body_box.addWidget(self._context_card(muted))
+            form.start_edit.timeChanged.connect(lambda _t: self.update_context())
+            form.end_edit.timeChanged.connect(lambda _t: self.update_context())
+            form.date_edit.dateChanged.connect(lambda _d: self.update_context())
             if guess_for:  # beim Tippen neu schätzen, aber erst nach einer kurzen Pause
                 self._text_timer = QTimer(self)
                 self._text_timer.setSingleShot(True)
                 self._text_timer.setInterval(400)
                 self._text_timer.timeout.connect(self.update_context)
-                self.form.text_edit.textChanged.connect(self._text_timer.start)
+                form.text_edit.textChanged.connect(self._text_timer.start)
             self.update_context()
-        layout.addWidget(self.form)
-        self.buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        self.buttons.button(QDialogButtonBox.Ok).setText("&Speichern")
-        if can_delete:
-            delete = self.buttons.addButton("&Löschen", QDialogButtonBox.DestructiveRole)
-            delete.clicked.connect(self._delete)
-        self.buttons.accepted.connect(self.accept)
-        self.buttons.rejected.connect(self.reject)
-        layout.addWidget(self.buttons)
-        self.form.validate_hook = self.buttons.button(QDialogButtonBox.Ok).setEnabled
-        self.form.validate()
-        self.form.text_edit.setFocus()
 
-    def _context_card(self):
+        # ---- Fuß: Löschen | Abbrechen, Speichern
+        foot = QWidget()
+        foot.setObjectName("prompt_foot")
+        foot.setProperty("flat", True)  # im Fenster ohne runde Ecken
+        foot.setAttribute(Qt.WA_StyledBackground)
+        foot_box = QHBoxLayout(foot)
+        foot_box.setContentsMargins(16, SPACE_S + 2, 16, SPACE_S + 2)
+        foot_box.setSpacing(SPACE_S)
+        self.delete_btn = None
+        if can_delete:
+            self.delete_btn = QPushButton("&Löschen")
+            self.delete_btn.setObjectName("quiet_button")
+            self.delete_btn.setIcon(icons.icon("trash", muted))
+            self.delete_btn.setAutoDefault(False)
+            self.delete_btn.setToolTip("Diese Tätigkeit löschen")
+            self.delete_btn.clicked.connect(self._delete)
+            foot_box.addWidget(self.delete_btn)
+        foot_box.addStretch(1)
+        self.cancel_btn = QPushButton("Abbrechen")
+        self.cancel_btn.setAutoDefault(False)
+        self.cancel_btn.clicked.connect(self.reject)
+        foot_box.addWidget(self.cancel_btn)
+        self.save_btn = QPushButton("&Speichern")
+        self.save_btn.setDefault(True)
+        self.save_btn.setToolTip("Speichern (Strg+Enter)")
+        self.save_btn.clicked.connect(self.accept)
+        foot_box.addWidget(self.save_btn)
+        outer.addWidget(foot)
+
+        form.validate_hook = self.save_btn.setEnabled
+        form.validate()
+        if edit_time:
+            self.set_time_editing(True)  # Fokus auf „Von“
+        else:
+            form.text_edit.setFocus()
+
+    def _context_card(self, muted):
         card = QFrame()
-        card.setObjectName("card")
+        card.setObjectName("entry_context")
         box = QVBoxLayout(card)
-        box.setContentsMargins(SPACE_M, SPACE_M, SPACE_M, SPACE_M)
-        box.setSpacing(SPACE_S)
-        head = QLabel("Was die Quellen in dieser Zeit sagen")
-        head.setObjectName("card_title")
-        box.addWidget(head)
+        box.setContentsMargins(SPACE_M, SPACE_S + 2, SPACE_M, SPACE_S + 2)
+        box.setSpacing(SPACE_XS + 2)
+        head = QHBoxLayout()
+        head.setSpacing(SPACE_S)
+        head.addWidget(_icon_label("eye", muted, 14))
+        title = QLabel("In dieser Zeit")
+        title.setObjectName("prompt_label")
+        title.setToolTip("Was die Quellen in dieser Zeit sagen")
+        head.addWidget(title)
+        head.addStretch(1)
+        box.addLayout(head)
         self.context_rows = QFormLayout()
         self.context_rows.setHorizontalSpacing(SPACE_M)
         self.context_rows.setVerticalSpacing(SPACE_XS)
         box.addLayout(self.context_rows)
         return card
+
+    def eventFilter(self, obj, event):
+        if self._card_event(obj, event):
+            return True
+        return super().eventFilter(obj, event)
+
+    def event(self, event):
+        result = super().event(event)
+        if event.type() == QEvent.LayoutRequest:
+            self._fit()  # Chips umgebrochen, Ticketfeld auf/zu: Höhe nachführen
+        return result
+
+    def _fit(self):
+        layout = self.layout()
+        if layout is None or not layout.hasHeightForWidth():
+            return
+        height = max(layout.totalMinimumSize().height(), layout.totalHeightForWidth(self.width()))
+        if height != self.height():
+            self.setFixedHeight(height)
+
+    def keyPressEvent(self, event):
+        if event.key() in (Qt.Key_Return, Qt.Key_Enter) and event.modifiers() & Qt.ControlModifier:
+            if self.save_btn.isEnabled():
+                self.accept()
+            return
+        super().keyPressEvent(event)
 
     def update_context(self):
         if self.context_rows is None:
@@ -570,150 +673,231 @@ def prompt_thresholds(config):
     return result
 
 
-class DocPromptDialog(QDialog):
-    """Einstellungen: Nachfragen nach erkannten Tätigkeiten, Erinnerungen und Benachrichtigungen."""
+class PromptSettings(QWidget):
+    """Seite „Nachfragen“ im Einstellungsfenster: Darstellung (Vorschau-Kacheln), Anzeigedauer,
+    wonach ab welcher Dauer gefragt wird, „Später“ und Erinnerungen. Jede Änderung schreibt sofort
+    in config und meldet sich über changed (das Einstellungsfenster speichert)."""
 
-    SOURCES = [("connections", "&Verbindungen (TeamViewer, RDP, SSH, VPN …)"),
-               ("calls", "&Telefonate (3CX, Teams)"),
-               ("pc", "Arbeitsblöcke am P&C (z. B. M365-Admin, Remotedesktop, Ticketsystem)"),
-               ("meetings", "Teams-Bespr&echungen, an denen du teilgenommen hast"),
-               ("mails", "&Mails an Kunden aus der Kundenliste"),
-               ("credentials", "Angezeigte Zugangs&daten (RDM)"),
-               ("rules", "Blöcke der &Zuordnung ohne KI (z. B. Outlook, M365-Admin)")]
+    changed = Signal()
+
+    SOURCES = [("connections", "&Verbindungen", "TeamViewer, RDP, SSH, VPN"),
+               ("calls", "&Telefonaten", "3CX, Teams"),
+               ("pc", "Arbeitsblöcken am PC", "M365-Admin, Ticketsystem …"),
+               ("meetings", "Teams-Besprechungen", "an denen du teilgenommen hast"),
+               ("mails", "&Mails an Kunden", "aus der Kundenliste"),
+               ("credentials", "Zugangs&daten", "in RDM angezeigt"),
+               ("rules", "Blöcken aus &Regeln", "Zuordnung ohne KI")]
+    STYLE_KEYS = {"window": "&Karte", "compact": "K&ompakt", "strip": "&Leiste", "off": "A&us"}
 
     def __init__(self, config, parent=None):
         super().__init__(parent)
         self.config = config
-        self.setWindowTitle("Nachfragen und Benachrichtigungen")
-        self.setMinimumWidth(480)
-        layout = QVBoxLayout(self)
-        info = QLabel("Erkennt Zeitzeuge eine Tätigkeit ohne Dokumentation, fragt es nach: "
-                      "„Was hast du gemacht?“. So fehlt abends nichts im Ticket. Was zusammengehört "
-                      "(gleicher Kunde, gleiche Zeit), fragt es nur einmal ab.")
-        info.setWordWrap(True)
-        prose(info)
-        layout.addWidget(info)
+        self.setObjectName("prompt_settings")
+        tokens = theme_for(config)
+        box = QVBoxLayout(self)
+        box.setContentsMargins(0, 0, 0, 0)
+        box.setSpacing(SPACE_S)
 
-        form = QFormLayout()
-        self.mode = QComboBox()
+        def label(text, buddy=None):
+            widget = QLabel(text)
+            widget.setObjectName("prompt_label")
+            if buddy is not None:
+                widget.setBuddy(buddy)
+            return widget
+
+        # ---- Darstellung: vier Kacheln mit Vorschau
+        box.addWidget(label("Darstellung"))
+        tiles_host = QWidget()
+        tiles_host.setObjectName("chips")
+        tiles = FlowLayout(tiles_host, spacing=SPACE_S)  # bricht in schmalen Fenstern um
+        self.style_group = QButtonGroup(self)
+        self.style_buttons = {}
+        current = prompt_style(config)
         for key, text in STYLES:
-            self.mode.addItem(f"{text} – {STYLE_HINTS[key]}", key)
-        self.mode.setCurrentIndex(max(0, self.mode.findData(prompt_style(config))))
-        form.addRow("&Nachfragen als:", self.mode)
-        self.position = QComboBox()
-        for key, text in POSITIONS:
-            self.position.addItem(text, key)
-        self.position.setCurrentIndex(max(0, self.position.findData(prompt_position(config))))
-        self.position.setToolTip("Wo Karte und Kompakt erscheinen. Die Leiste bleibt unten rechts.")
-        form.addRow("&Position:", self.position)
+            button = QToolButton()
+            button.setObjectName("style_tile")
+            button.setCheckable(True)
+            button.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
+            button.setIcon(QIcon(style_preview(key, tokens)))
+            button.setIconSize(QSize(96, 60))
+            button.setFixedWidth(132)
+            button.setText(self.STYLE_KEYS[key])
+            button.setToolTip(STYLE_HINTS[key])
+            button.setAccessibleName(f"{text}: {STYLE_HINTS[key]}")
+            button.setChecked(key == current)
+            button.clicked.connect(lambda _c=False, k=key: self.set_style(k))
+            self.style_group.addButton(button)
+            self.style_buttons[key] = button
+            tiles.addWidget(button)
+        box.addWidget(tiles_host)
+        self.style_hint = QLabel()
+        self.style_hint.setObjectName("hint")
+        box.addWidget(self.style_hint)
+
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(SPACE_M)
+        grid.setVerticalSpacing(SPACE_XS)
         self.timeout = QComboBox()
         for seconds, text in TIMEOUTS:
             self.timeout.addItem(text, seconds)
         self.timeout.setCurrentIndex(max(0, self.timeout.findData(prompt_timeout(config))))
         self.timeout.setToolTip("Danach blendet die Nachfrage aus und bleibt unter „Offene Nachfragen“ "
                                 "im Infobereich. „Dauerhaft“: bleibt stehen, bis du antwortest.")
-        form.addRow("&Ausblenden nach:", self.timeout)
-        self.keep_active = QCheckBox("Nicht ausblenden, solange ich tippe oder die &Maus darüber ist")
-        self.keep_active.setChecked(config.get("prompt_keep_while_active", True))
-        form.addRow("", self.keep_active)
-        self.dots = QCheckBox("Punkte oben rechts an&klickbar: zwischen offenen Nachfragen wechseln")
-        self.dots.setChecked(config.get("prompt_dots_clickable", True))
-        form.addRow("Mehrere offen:", self.dots)
         self.strip_close = QComboBox()
-        self.strip_close.addItem("schließt nur die vorderste Nachfrage", "front")
-        self.strip_close.addItem("schließt alle offenen Nachfragen", "all")
+        self.strip_close.addItem("Schließt die vorderste", "front")
+        self.strip_close.addItem("Schließt alle", "all")
         self.strip_close.setCurrentIndex(max(0, self.strip_close.findData(
             config.get("prompt_strip_close", "front"))))
-        form.addRow("✕ an der &Leiste:", self.strip_close)
-        # Andere Darstellung: passende Anzeigedauer vorschlagen (Karte dauerhaft, sonst 10 s)
-        self.mode.currentIndexChanged.connect(self._style_changed)
-        self._style_changed()
+        self.strip_close.setToolTip("✕ an der Leiste: nur die vorderste oder alle offenen Nachfragen schließen")
+        self.position = QComboBox()
+        for key, text in POSITIONS:
+            self.position.addItem(text, key)
+        self.position.setCurrentIndex(max(0, self.position.findData(prompt_position(config))))
+        self.position.setToolTip("Wo Karte und Kompakt erscheinen. Die Leiste bleibt unten rechts.")
+        self.position.setAccessibleName("Position der Nachfrage")
+        for i, (name, widget) in enumerate((("Ausblenden &nach", self.timeout), ("Position", self.position),
+                                            ("✕ an der Le&iste", self.strip_close))):
+            grid.addWidget(label(name, widget), (i // 2) * 2, i % 2)
+            grid.addWidget(widget, (i // 2) * 2 + 1, i % 2)
+        for col in (0, 1):
+            grid.setColumnStretch(col, 1)
+        for combo in (self.timeout, self.position, self.strip_close):  # schmal werden dürfen (200 %)
+            combo.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+            combo.setMinimumContentsLength(8)
+        box.addLayout(grid)
+        chips_host = QWidget()
+        chips_host.setObjectName("chips")
+        chips = FlowLayout(chips_host, spacing=6)
+        self.keep_active = QCheckBox("St&ehen lassen, solange ich tippe")
+        self.keep_active.setToolTip("Nicht ausblenden, solange du tippst oder die Maus darüber ist")
+        self.keep_active.setChecked(config.get("prompt_keep_while_active", True))
+        self.dots = QCheckBox("&Punkte anklickbar")
+        self.dots.setToolTip("Punkte oben rechts in der Karte: zwischen offenen Nachfragen wechseln")
+        self.dots.setChecked(config.get("prompt_dots_clickable", True))
+        for widget in (self.keep_active, self.dots):
+            widget.setObjectName("chip_check")
+            chips.addWidget(widget)
+        box.addWidget(chips_host)
+        box.addSpacing(SPACE_M)
 
-        # Je Art: an/aus und ab welcher Dauer gefragt wird
+        # ---- Fragen bei: je Art an/aus und ab welcher Dauer
+        box.addWidget(label("Fragen bei"))
+        listing = QFrame()
+        listing.setObjectName("source_list")
+        rows = QVBoxLayout(listing)
+        rows.setContentsMargins(SPACE_M, 2, SPACE_S, 2)
+        rows.setSpacing(0)
         self.sources, self.thresholds = {}, {}
         sources = config.get("prompt_sources", PROMPT_SOURCES)
         limits = prompt_thresholds(config)
-        for i, (key, text) in enumerate(self.SOURCES):
-            box = QCheckBox(text)
-            box.setChecked(key in sources)
-            spin = QSpinBox()
-            spin.setRange(0, 240)
-            spin.setPrefix("ab ")
-            spin.setSuffix(" min")
-            spin.setSpecialValueText("immer")
-            spin.setValue(int(limits[key]))
-            spin.setToolTip("Kürzere Tätigkeiten dieser Art nicht nachfragen")
-            spin.setAccessibleName(f"Mindestdauer für {text.replace('&', '').split(' (')[0]}")
-            spin.setEnabled(box.isChecked())
-            box.toggled.connect(spin.setEnabled)
-            row = QHBoxLayout()
-            row.addWidget(box, 1)
-            row.addWidget(spin)
-            self.sources[key], self.thresholds[key] = box, spin
-            form.addRow("Fragen bei:" if i == 0 else "", row)
-
-        # Abwesenheit am PC: bei der ersten Eingabe danach fragen (idle_watch.py)
         idle_minutes = int(config.get("idle_prompt_minutes", 15) or 0)
-        self.idle_box = QCheckBox("&Abwesenheit am PC (keine Maus/Tastatur)")
+        self.idle_box = QCheckBox("&Abwesenheit am PC")
         self.idle_box.setToolTip("Bei der ersten Eingabe danach fragen, was in der Zeit war, "
                                  "z. B. Telefonat, Besprechung, Vor Ort, Pause")
         self.idle_box.setChecked(idle_minutes > 0)
         self.idle_spin = QSpinBox()
         self.idle_spin.setRange(5, 240)
-        self.idle_spin.setPrefix("ab ")
-        self.idle_spin.setSuffix(" min")
         self.idle_spin.setValue(idle_minutes if idle_minutes > 0 else 15)
-        self.idle_spin.setAccessibleName("Mindestdauer für Abwesenheit am PC")
-        self.idle_spin.setEnabled(self.idle_box.isChecked())
-        self.idle_box.toggled.connect(self.idle_spin.setEnabled)
-        idle_row = QHBoxLayout()
-        idle_row.addWidget(self.idle_box, 1)
-        idle_row.addWidget(self.idle_spin)
-        form.addRow("", idle_row)
+        entries = []
+        for key, text, detail in self.SOURCES:
+            check = QCheckBox(text)
+            check.setChecked(key in sources)
+            spin = QSpinBox()
+            spin.setRange(0, 240)
+            spin.setSpecialValueText("immer")
+            spin.setValue(int(limits[key]))
+            self.sources[key], self.thresholds[key] = check, spin
+            entries.append((check, detail, spin))
+        entries.append((self.idle_box, "keine Maus und Tastatur", self.idle_spin))
+        for i, (check, detail, spin) in enumerate(entries):
+            spin.setPrefix("ab ")
+            spin.setSuffix(" min")
+            spin.setFixedWidth(96)
+            spin.setToolTip("Kürzere Tätigkeiten dieser Art nicht nachfragen")
+            spin.setAccessibleName(f"Mindestdauer für {check.text().replace('&', '')}")
+            spin.setEnabled(check.isChecked())
+            check.toggled.connect(spin.setEnabled)
+            row = QFrame()
+            row.setObjectName("source_row")
+            row.setProperty("last", i == len(entries) - 1)
+            line = QHBoxLayout(row)
+            line.setContentsMargins(0, SPACE_XS + 1, 0, SPACE_XS + 1)
+            line.setSpacing(SPACE_S)
+            line.addWidget(check)
+            hint = QLabel(detail)
+            hint.setObjectName("hint")
+            hint.setWordWrap(True)
+            hint.setMinimumWidth(30)  # umbrechen statt die Seite zu verbreitern
+            line.addWidget(hint, 1)
+            line.addWidget(spin)
+            rows.addWidget(row)
+        box.addWidget(listing)
+        box.addSpacing(SPACE_M)
 
+        # ---- Später und Erinnern
         self.snooze = QSpinBox()
         self.snooze.setRange(1, 480)
         self.snooze.setSuffix(" min")
         self.snooze.setValue(config.get("prompt_snooze_minutes", 15))
-        form.addRow("„&Später fragen“ nach:", self.snooze)
-
-        self.end_of_day = QCheckBox("Nach &Feierabend an Offenes erinnern")
+        self.snooze.setToolTip("So lange wartet eine Nachfrage, die du auf später gestellt hast")
+        self.snooze.setFixedWidth(160)
+        box.addWidget(label("„&Später“ fragt wieder nach", self.snooze))
+        box.addWidget(self.snooze)
+        box.addSpacing(SPACE_M)
+        box.addWidget(label("Erinnern"))
+        chips_host = QWidget()
+        chips_host.setObjectName("chips")
+        chips = FlowLayout(chips_host, spacing=6)
+        self.end_of_day = QCheckBox("Nach &Feierabend an Offenes")
         self.end_of_day.setChecked(config.get("prompt_end_of_day", True))
-        form.addRow("", self.end_of_day)
-        self.on_quit = QCheckBox("Beim &Beenden an Offenes erinnern")
+        self.on_quit = QCheckBox("Beim &Beenden an Offenes")
         self.on_quit.setChecked(config.get("prompt_on_quit", True))
-        form.addRow("", self.on_quit)
-        self.day_checks = QCheckBox("Bei Feierabend &prüfen: Pausen, Stempelung, Buchungen")
-        self.day_checks.setToolTip("Mehr als 6 Stunden ohne 30 Minuten Pause, PC aktiv aber "
-                                   "ausgestempelt, Buchung außerhalb der Personalzeit, "
-                                   "Buchungen überschneiden sich, Quote unter Ziel")
-        self.day_checks.setChecked(config.get("day_checks_enabled", True))
-        form.addRow("", self.day_checks)
-
-        # Meldungen unten rechts (Windows-Benachrichtigungen), die nur informieren
-        self.close_hint = QCheckBox("Hinweis „Zeitzeuge &läuft weiter“ beim Schließen des Fensters")
-        self.close_hint.setToolTip("Erscheint einmal je Start, wenn du das Fenster schließt und "
-                                   "Zeitzeuge im Infobereich weiter aufzeichnet")
+        self.close_hint = QCheckBox("Hinweis „Zeitzeuge läuft &weiter“")
+        self.close_hint.setToolTip("Windows-Meldung, wenn du das Fenster schließt und Zeitzeuge "
+                                   "im Infobereich weiter aufzeichnet (einmal je Start)")
         self.close_hint.setChecked(config.get("tray_hint_on_close", True))
-        form.addRow("Benachrichtigungen:", self.close_hint)
-        layout.addLayout(form)
+        self.windows_notes = QCheckBox("Als Windows-Benac&hrichtigung")
+        self.windows_notes.setToolTip("Hinweise (Feierabend, Anmeldung nötig, Störungen) als Sprechblase von "
+                                      "Windows statt als Karte oder Leiste wie die Nachfrage")
+        self.windows_notes.setChecked(config.get("notify_windows", False))
+        for widget in (self.end_of_day, self.on_quit, self.close_hint, self.windows_notes):
+            widget.setObjectName("chip_check")
+            chips.addWidget(widget)
+        box.addWidget(chips_host)
 
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        buttons.accepted.connect(self.accept)
-        buttons.rejected.connect(self.reject)
-        layout.addWidget(buttons)
+        self._sync_style(current)
+        for widget in (self.keep_active, self.dots, self.idle_box, self.end_of_day, self.on_quit,
+                       self.close_hint, self.windows_notes, *self.sources.values()):
+            widget.toggled.connect(self.apply)
+        for widget in (self.idle_spin, self.snooze, *self.thresholds.values()):
+            widget.valueChanged.connect(self.apply)
+        for widget in (self.timeout, self.position, self.strip_close):
+            widget.activated.connect(self.apply)
 
-    def _style_changed(self, *_):
-        style = self.mode.currentData()
-        for w in (self.timeout, self.keep_active, self.dots):
-            w.setEnabled(style != "off")
-        self.strip_close.setEnabled(style == "strip")
-        self.position.setEnabled(style in ("window", "compact"))
-        if _ and style in DEFAULT_TIMEOUT:  # nur bei echtem Wechsel, nicht beim Öffnen
-            self.timeout.setCurrentIndex(max(0, self.timeout.findData(DEFAULT_TIMEOUT[style])))
+    def retheme(self, tokens):
+        for key, button in self.style_buttons.items():
+            button.setIcon(QIcon(style_preview(key, tokens)))
 
-    def apply(self):
-        self.config["prompt_mode"] = self.mode.currentData()
+    def current_style(self):
+        return next((k for k, b in self.style_buttons.items() if b.isChecked()), "window")
+
+    def set_style(self, key):
+        """Andere Darstellung: passende Anzeigedauer vorschlagen (Karte dauerhaft, sonst 10 s)."""
+        self.style_buttons[key].setChecked(True)
+        if key in DEFAULT_TIMEOUT:
+            self.timeout.setCurrentIndex(max(0, self.timeout.findData(DEFAULT_TIMEOUT[key])))
+        self._sync_style(key)
+        self.apply()
+
+    def _sync_style(self, key):
+        self.style_hint.setText(STYLE_HINTS[key])
+        for widget in (self.timeout, self.keep_active, self.dots):
+            widget.setEnabled(key != "off")
+        self.strip_close.setEnabled(key == "strip")
+        self.position.setEnabled(key in ("window", "compact"))
+
+    def apply(self, *_):
+        self.config["prompt_mode"] = self.current_style()
         self.config["prompt_timeout_seconds"] = self.timeout.currentData()
         self.config["prompt_position"] = self.position.currentData()
         self.config["prompt_keep_while_active"] = self.keep_active.isChecked()
@@ -725,10 +909,12 @@ class DocPromptDialog(QDialog):
         self.config["idle_prompt_minutes"] = self.idle_spin.value() if self.idle_box.isChecked() else 0
         self.config["prompt_end_of_day"] = self.end_of_day.isChecked()
         self.config["prompt_on_quit"] = self.on_quit.isChecked()
-        self.config["day_checks_enabled"] = self.day_checks.isChecked()
         self.config["tray_hint_on_close"] = self.close_hint.isChecked()
+        self.config["notify_windows"] = self.windows_notes.isChecked()
+        self.changed.emit()
 
 
 # Nachfrage als Karte/Leiste: eigenes Modul, braucht _EntryForm von hier (daher am Ende geladen)
 from prompt_card import (DEFAULT_TIMEOUT, POSITIONS, STYLE_HINTS, STYLES, TIMEOUTS,  # noqa: E402,F401
-                         PromptStrip, PromptWindow, prompt_position, prompt_style, prompt_timeout)
+                         PromptStrip, PromptWindow, prompt_position, prompt_style, prompt_timeout,
+                         style_preview)

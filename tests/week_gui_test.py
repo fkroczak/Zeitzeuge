@@ -184,6 +184,20 @@ window.timeline.pc_entries_for = lambda date, min_seconds=30, max_gap=60: [
     {"start": f"{D} 16:40:00", "end": f"{D} 17:20:00"}] if date.toString("yyyy-MM-dd") == D else []
 mon_evening = datetime(2026, 10, 19, 18, 0)
 window._reminded_day = None
+# Standard: Karte im Stil der Nachfrage, mit Liste und Knopf „Wochenabschluss“
+from notices import NoticeCard  # noqa: E402
+opened = []
+window.show_week = lambda *a: opened.append("week")
+window.end_of_day_reminder([], datetime(2026, 10, 19, 18, 0))
+card = window._notices[-1]
+assert isinstance(card, NoticeCard) and card.title.text() == "Feierabend: bitte prüfen", card.title.text()
+assert any("aber ausgestempelt" in label.text() for label in card.findChildren(type(card.title)))
+assert card.action_button.text() == "Wochenabschluss" and window.tray.messages == []
+card.action_button.click()
+assert opened == ["week"], "Knopf öffnet den Wochenabschluss"
+# „Als Windows-Benachrichtigung“: wie bisher eine Sprechblase
+window.config["notify_windows"] = True
+window._reminded_day = None
 window.end_of_day_reminder([], datetime(2026, 10, 19, 16, 45))  # vor dem geplanten Ende: nichts
 assert window.tray.messages == []
 window.end_of_day_reminder([], mon_evening)
@@ -207,17 +221,19 @@ assert len(window.tray.messages) == count
 window.end_of_day_reminder([{"x": 1}], mon_evening)
 assert "Außerdem" not in window.tray.messages[-1][1]
 window.config["day_checks_enabled"] = True
+window.config["notify_windows"] = False
 
-# Einstellung im Dialog „Nachfragen und Erinnerungen“
-import journal_dialogs  # noqa: E402
-prompt = journal_dialogs.DocPromptDialog(window.config, window)
-prompt.day_checks.setChecked(False)
-prompt.apply()
+# Einstellung „Bei Feierabend prüfen“: nur noch unter Einstellungen → Buchung
+settings = window.show_settings("booking")
+row = next(r for r in settings.rows if r.spec[5] == "day_checks_enabled")
+row.control.setChecked(False)
 assert window.config["day_checks_enabled"] is False
+settings.hide()
 
 window.tray = None
 window.m42_reader = None
 window.quit_app()
 print("Wochenabschluss ok")
 sys.stdout.flush()
-os._exit(0)
+import safe_io  # Ende ohne Qt-Aufräumen (Absturz unter Windows)
+safe_io.hard_exit(0)

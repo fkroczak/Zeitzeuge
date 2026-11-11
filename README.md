@@ -1,4 +1,4 @@
-Im Fenster **Einstellungen → Datenquellen** schaltest du jede Quelle in ihrer Kachel ein oder aus und siehst ihren Zustand. Schneller geht es über den Pfeil am Knopf **Einstellungen → Datenquellen …** (öffnet direkt diese Seite):
+Im Fenster **Einstellungen → Aufzeichnung** schaltest du jede Quelle in ihrer Kachel ein oder aus und siehst ihren Zustand. Schneller geht es über den Pfeil am Knopf **Einstellungen → Aufzeichnung …** (öffnet direkt diese Seite):
 
 | Gruppe | Quellen |
 |---|---|
@@ -53,7 +53,7 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
   - Offene oder fehlerhafte Buchungen meldet Zeitzeuge einmal im Infobereich, zum Beispiel „Buchung vom 21.10. 08:02 ist seit über 12 Stunden offen – Ausstempeln vergessen?“ oder „Ende liegt vor dem Start“.
   - Die letzten 45 Tage holt Zeitzeuge in einer Abfrage. Tage, die noch fehlen, sind damit auch offline da.
 - **Gebuchte Zeiten aus dem Ticketsystem (nur im Firmennetz):** Zeitzeuge liest deine Buchungen aus dem Kalender des Ticketsystems und gleicht sie mit dem Tag ab.
-  - Einrichten: **Einstellungen → Datenquellen → Einrichten → Ticketsystem …**, dort die Adresse der Kalenderseite aus der Adresszeile einfügen. Die Windows-Anmeldung klappt meist von selbst, sonst einmal **Beim Ticketsystem anmelden …**.
+  - Einrichten: **Einstellungen → Aufzeichnung**, in der Kachel **Einrichten …** (Ticketsystem), dort die Adresse der Kalenderseite aus der Adresszeile einfügen. Die Windows-Anmeldung klappt meist von selbst, sonst einmal **Beim Ticketsystem anmelden …**.
   - Edge liest die Wochenansicht unsichtbar mit eigenem Profil (`m42_profil`): die aktuelle Woche alle 10 Minuten, die letzten 4 Wochen einmal pro Sitzung (einstellbar), ältere Wochen beim Blättern. Alles landet in der Datenbank und bleibt auch außerhalb des Firmennetzes da.
   - Zeitzeuge fragt die Buchungen dabei direkt über die Schnittstelle ab, die auch die Kalenderseite nutzt. So kennt es zusätzlich Status (Neu, Freigegeben) und Tätigkeitsart; beides steht in den Details einer Buchung. Klappt die Schnittstelle nicht, liest es wie bisher aus der Seite. Ausschalten: `m42_api: false` in der `zeitzeuge_config.json`.
   - Außerhalb des Firmennetzes steht in der Statuszeile „Ticketsystem: nicht im Firmennetz“; Zeitzeuge liest weiter, sobald du wieder im Netz oder im VPN bist.
@@ -68,7 +68,7 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
 - **Buchungsquote:** Zeitzeuge rechnet aus, wie viel deiner Personalzeit im Ticketsystem gebucht ist. Ziel sind 80 % pro Tag. Unter 50 % ist die Quote rot (✗), bis unter dem Ziel gelb (!), ab dem Ziel bis 100 % grün (✓), darüber dunkelgrün (✓✓). Die Kachel **Buchungsquote** oben über der Timeline (gleich hinter „Erfasst“) zeigt „heute | 7 Tage“ mit großen Prozentzahlen in der Farbe der Stufe, z. B. „72 % ! | 81 % ✓“. Ein Klick öffnet den Wochenabschluss. Die Anzeige erscheint nur, wenn das Ticketsystem Daten liefert.
 - **7-Tage-Wert:** die letzten 7 gestempelten Tage bis heute. Heute zählt nur, wenn du gestempelt hast, und nur bis jetzt. Tage ohne Ticketsystem-Daten zählen nicht mit. Sie stehen als „Ticketsystem nicht gelesen“ da, statt als 0 %.
 - **Wochenabschluss** (Menü **Ansicht → Wochenabschluss …** oder Klick auf die Kachel Buchungsquote): Montag bis Freitag der Woche, Samstag und Sonntag nur, wenn du da gestempelt oder gebucht hast. Je Tag: Personalzeit, gebucht, Quote, Zeit ohne Buchung und offene Tätigkeiten. Darunter Hinweise wie „Dienstag: 1:20 h nicht gebucht“ und der 7-Tage-Wert. Mit ◀ ▶ (oder Bild auf/ab) blätterst du die Wochen. Enter oder Doppelklick zeigt den Tag im Hauptfenster. Das Ziel stellst du dort unter „Ziel je Tag“ ein.
-- **Prüfung bei Feierabend:** Bist du ausgestempelt und ist Feierabend, prüft Zeitzeuge den Tag einmal: mehr als 6 Stunden ohne 30 Minuten Pause (über 9 Stunden: 45 Minuten, Pausen zählen ab 15 Minuten am Stück), mehr als 6 Stunden am Stück, PC aktiv aber ausgestempelt, Buchung außerhalb der Personalzeit, Buchungen überschneiden sich, Quote unter Ziel. Die Hinweise kommen mit der Erinnerung an offene Tätigkeiten oder allein, und stehen auch im Wochenabschluss. Abschalten: Einstellungen → Nachfragen und Benachrichtigungen → „Bei Feierabend prüfen“.
+- **Prüfung bei Feierabend:** Bist du ausgestempelt und ist Feierabend, prüft Zeitzeuge den Tag einmal: mehr als 6 Stunden ohne 30 Minuten Pause (über 9 Stunden: 45 Minuten, Pausen zählen ab 15 Minuten am Stück), mehr als 6 Stunden am Stück, PC aktiv aber ausgestempelt, Buchung außerhalb der Personalzeit, Buchungen überschneiden sich, Quote unter Ziel. Die Hinweise kommen mit der Erinnerung an offene Tätigkeiten oder allein, und stehen auch im Wochenabschluss. Abschalten: Einstellungen → Buchung → „Bei Feierabend prüfen“.
 - **Im Ticketsystem buchen:** Rechtsklick auf eine eingetragene Tätigkeit → **Im Ticketsystem buchen …**. Zeitzeuge legt eine Zeiterfassung mit Status „Neu“ am Ticket an. Freigeben machst du wie gewohnt im Ticketsystem.
   - **Kulanz** und **Reise** übernimmt das Fenster aus der Tätigkeit. Bei Kulanz fragt es nach dem Grund (Standard „Kulanz“) und bucht die ganze Zeit als Kulanz.
   - Im Fenster prüfst du vorher Ticket, Von und Bis (Ende im Abrechnungstakt, änderbar), Tätigkeitsart und Beschreibung. Gebucht wird erst mit **Im Ticketsystem buchen**, nie von selbst.
@@ -76,7 +76,7 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
   - Ist im Ticketsystem zu der Zeit schon etwas gebucht, steht ein Hinweis im Fenster. Gebuchte Tätigkeiten merken sich die Nummer der Zeiterfassung (z. B. TE0000012345) und lassen sich nicht doppelt buchen.
   - Im Wochenabschluss bucht **Tag im Ticketsystem buchen …** alle noch offenen Tätigkeiten des markierten Tags nacheinander, jede mit eigenem Fenster.
   - Das Ticketsystem muss eingeschaltet und angemeldet sein (nur im Firmennetz). Zeitzeuge bucht über das unsichtbare Edge, wie die Seite des Ticketsystems selbst.
-- **Tagesabschluss** (Menü **Ansicht → Tagesabschluss …**, im Wochenabschluss oder per Klick auf die Meldung bei Feierabend): Zeitzeuge stellt den Tag aus allen Spuren zu Blöcken je Kunde zusammen, mit Ticket und kurzem Tickettext. Du prüfst die Liste und bestätigst einmal für alles. Ziel: mit wenig Aufwand rund 90 % der Personalzeit erfasst.
+- **Tagesabschluss** (Menü **Ansicht → Tagesabschluss …**, im Wochenabschluss oder über „Tagesabschluss öffnen“ in der Karte bei Feierabend): Zeitzeuge stellt den Tag aus allen Spuren zu Blöcken je Kunde zusammen, mit Ticket und kurzem Tickettext. Du prüfst die Liste und bestätigst einmal für alles. Ziel: mit wenig Aufwand rund 90 % der Personalzeit erfasst.
   - **Woher die Blöcke kommen:** deine eingetragenen Tätigkeiten, Verbindungen und Telefonate, KI-Vorschläge, die Zuordnung ohne KI und die Arbeitsblöcke am PC, in dieser Reihenfolge. Was im Ticketsystem schon gebucht ist, bleibt außen vor. Gleicher Kunde hintereinander wird ein Block, kurze Lücken (bis 10 Minuten) gehören zum Block davor. PC-Aktivität zählt nur in der Personalzeit.
   - **Ticket:** aus den Fenstertiteln im Block. Kennt Zeitzeuge zum Ticket keinen Kunden, schlägt es ihn in deinem Verlauf oder direkt im Ticketsystem nach. Ohne Ticket im Fenstertitel nimmt es das Ticket, das du zuletzt (14 Tage) für den Kunden benutzt hast, als **vermutet**. **Text:** der Satz aus dem KI-Vorschlag, sonst aus der Regel, sonst kurz aus den Spuren, z. B. „Fernwartung: RDP DC01, Telefonat“.
   - Oben steht, wie viel der Personalzeit schon gebucht ist und wie viel es mit den angehakten Zeilen wird, z. B. „mit den angehakten Zeilen 7:20 h (92 %)“.
@@ -94,12 +94,12 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
   - Die Tätigkeit kommt aus der **Zuordnung ohne KI** (Outlook und Thunderbird sind beide „E-Mail“, ein Remotedesktop-Fenster „DC01 – Remotedesktopverbindung“ ist „DC01 · Fernwartung“), sonst ist es das Programm.
   - **Kurze Sprünge** (Standard: unter 2 Minuten) zählen zur Haupttätigkeit, wenn es danach dort weitergeht oder der Kunde passt. Ein kurzer Blick in Teams mitten im Mail-Bearbeiten bleibt also im Block „E-Mail“. Blöcke unter 3 Minuten gehen im Nachbarblock auf, Pausen über 5 Minuten trennen Blöcke.
   - Fährst du über einen Block, siehst du die Anteile der Programme („Outlook 26 min (87 %), Teams 3 min (10 %)“), die Zahl der Fensterwechsel und den Fokus (Anteil der Haupttätigkeit). Rechtsklick: **Tätigkeit dazu eintragen …** mit Kunde und Kategorie des Blocks.
-  - Zwischen **Arbeitsblöcken** und **jedem Fenster einzeln** (schmales Band, eine Farbe pro Programm) schaltest du mit **Ansicht → PC-Aktivität als Arbeitsblöcke** um, ebenso per Rechtsklick auf die Legende links in der Timeline oder unter **Einstellungen → Allgemein**. Dort stellst du auch ein, bis wann ein Wechsel als kurzer Sprung gilt.
+  - Zwischen **Arbeitsblöcken** und **jedem Fenster einzeln** (schmales Band, eine Farbe pro Programm) schaltest du mit **Ansicht → Zeilen der Timeline → PC-Aktivität als Arbeitsblöcke** um, ebenso per Rechtsklick auf die Legende links in der Timeline oder unter **Einstellungen → Darstellung → PC-Aktivität**. Dort stellst du auch ein, bis wann ein Wechsel als kurzer Sprung gilt.
   - Mit **Ansicht → PC-Verlauf in der Liste** stehen die Arbeitsblöcke auch in der Tagesliste.
   - Nach 5 Minuten ohne Maus und Tastatur oder bei gesperrtem PC wird nichts aufgezeichnet.
   - Fenster mit bestimmten Wörtern im Titel werden nur als „(ausgeblendet)“ gespeichert, zum Beispiel Passwortmanager.
   - Mit dem **Fenster-Filter** lässt du private Programme ganz weg oder zeichnest nur erlaubte Programme auf.
-- **PC-Verlauf automatisch löschen:** Auf Wunsch löscht Zeitzeuge die aufgezeichneten aktiven Fenster nach einer einstellbaren Zahl von Tagen (Standard: aus, sonst 90 Tage). Das gilt auch für den Fensterverlauf, den du von einem anderen PC übernommen hast. Deine Tätigkeiten, Buchungen, KI-Vorschläge, Anrufe und Verbindungen bleiben erhalten. Einschalten unter **Einstellungen → Datenspeicher → PC-Verlauf automatisch löschen …**. Beim Einschalten zeigt Zeitzeuge, wie viele Tage betroffen sind, und fragt nach. Danach löscht es beim Start (nach einer Minute) und einmal am Tag.
+- **PC-Verlauf automatisch löschen:** Auf Wunsch löscht Zeitzeuge die aufgezeichneten aktiven Fenster nach einer einstellbaren Zahl von Tagen (Standard: aus, sonst 90 Tage). Das gilt auch für den Fensterverlauf, den du von einem anderen PC übernommen hast. Deine Tätigkeiten, Buchungen, KI-Vorschläge, Anrufe und Verbindungen bleiben erhalten. Einschalten unter **Einstellungen → Datenschutz → PC-Verlauf automatisch löschen …**. Beim Einschalten zeigt Zeitzeuge, wie viele Tage betroffen sind, und fragt nach. Danach löscht es beim Start (nach einer Minute) und einmal am Tag.
 - **Zuordnung ohne KI:** Feste Regeln ordnen Verbindungen, Telefonate und Fenster einer Kategorie und einem Kunden zu, zum Beispiel Outlook als „E-Mail / Kommunikation“ oder TeamViewer als „Fernwartung“. Das Ergebnis fließt in die Zeile „Dokumentation“ ein: Offene Einträge ohne Kunden zeigen den Kunden der passenden Regel als Vorschlag. Die eigene Zeile „Zuordnung o. KI“ ist standardmäßig aus, du kannst sie unter **Zeilen der Timeline** einschalten. Es läuft lokal, kostet nichts und braucht kein Internet (früher hieß das „Regeln“).
 - **Tagesliste** unter der Timeline mit Von, Bis, Dauer, Typ, Kunde und Details.
   - Die Statuszeile zeigt die belegte Zeit des Tages. Überschneidungen werden nicht doppelt gezählt. Datum, Zahl der Einträge und die Zeit am PC stehen im Hinweis beim Darüberfahren.
@@ -118,10 +118,13 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
   - In der Tagesliste zeigt die Ansicht **KI-Vorschläge** alle Vorschläge. STRG + C kopiert sie als fertige Ticketzeilen.
 - **Tätigkeiten dokumentieren:** Was du gemacht hast, trägst du direkt in Zeitzeuge ein. Es steht in einer eigenen Zeile „Doku“ ganz oben in der Timeline.
   - **Nachtragen** (Knopf in der Werkzeugleiste): Zeit, Kunde, Kategorie und ein Satz, was du gemacht hast. Ist in der Tagesliste eine Zeile markiert, sind Zeit und Kunde schon ausgefüllt.
+    - Das Fenster sieht aus wie die Nachfrage-Karte: oben die Aufgabe („Tätigkeit nachtragen“ bzw. „Tätigkeit ändern“), darunter eine feste Zeile für **Datum und Uhrzeit** mit **Stift**. Ohne gezogenen Zeitraum ist sie gleich offen, weil du die Zeit meist noch anpasst. Kunde und Kategorie stehen nebeneinander, Ticket (**+ Ticket**), Kulanz, Reise, Kein Zuschlag und Text einfügen sind Chips. **Löschen** steht beim Ändern links unten, getrennt von Abbrechen und Speichern. **STRG + Enter** speichert.
   - Rechtsklick auf einen Eintrag: **Tätigkeit dazu eintragen …**. Rechtsklick auf eine freie Stelle der Timeline: **Tätigkeit ab hh:mm eintragen …**.
+  - **Hinweise** erscheinen wie die Nachfrage in derselben Ecke: bei Feierabend als Karte mit kurzer Liste und einem Knopf (Tagesabschluss öffnen, Nachtragen oder Wochenabschluss), sonst als Leiste mit Aktion daneben (Anmelden, ITM öffnen, Aufzeichnung …, fehler.log öffnen). Gelb heißt bitte prüfen, blau ist eine Info. Sie blenden nach 15 s aus (läuft weiter: 6 s), solange die Maus darauf ist nicht. Wer lieber Windows-Sprechblasen hat: Einstellungen → Nachfragen → Erinnern → **Als Windows-Benachrichtigung**. Kurze Bestätigungen wie „Tätigkeit gespeichert“ stehen weiter unten in der Statuszeile.
+  - Jeder Befehl im Rechtsklick-Menü hat ein Symbol. Der erste ist fett, das tut auch ein Doppelklick. Löschen und Verwerfen stehen allein ganz unten.
   - Timeline und Tagesliste haben dasselbe Rechtsklick-Menü. Es zeigt nur Befehle, die zum Eintrag passen.
   - **Offenes fällt auf:** Verbindungen und Telefonate ohne Dokumentation stehen gestrichelt mit „?“ in der Zeile „Doku“. Ein Klick darauf öffnet das Eintragen.
-  - **Zeitzeuge fragt nach:** Endet eine TeamViewer-Sitzung, eine RDP-/SSH-/VPN-Verbindung oder ein Telefonat, erscheint unten rechts eine Karte: „Was hast du bei Beispiel AG gemacht?“. Zeit, Kunde und Kategorie sind schon ausgefüllt, du schreibst nur noch einen Satz. **Später** fragt in 15 Minuten wieder, **Nicht dokumentieren** fragt für diesen Eintrag nie mehr. Ab welcher Dauer gefragt wird, stellst du unter **Nachfragen und Benachrichtigungen …** je Art ein.
+  - **Zeitzeuge fragt nach:** Endet eine TeamViewer-Sitzung, eine RDP-/SSH-/VPN-Verbindung oder ein Telefonat, erscheint unten rechts eine Karte: „Was hast du bei Beispiel AG gemacht?“. Zeit, Kunde und Kategorie sind schon ausgefüllt, du schreibst nur noch einen Satz. **Später** fragt in 15 Minuten wieder, **Nicht dokumentieren** fragt für diesen Eintrag nie mehr. Ab welcher Dauer gefragt wird, stellst du unter **Einstellungen → Nachfragen** je Art ein.
     - **Datum und Uhrzeit** stehen in einer eigenen Zeile direkt unter der Frage, immer an derselben Stelle. Der **Stift** rechts macht sie bearbeitbar, „Fertig“ oder Enter schließt.
     - **+ Ticket** öffnet das Feld Ticket (mit Suche in Matrix42), danach steht das Ticket als Chip da; ✕ am Chip entfernt es. Ein gefundenes Ticket steht als „Vorschlag: …“ darunter und wird mit einem Klick übernommen. Kulanz, Reise, Kein Zuschlag und Text einfügen sind Chips.
     - **Mehrere offen:** Oben rechts steht „1 von 3“ mit einem Punkt je Nachfrage. Die Maus über einem Punkt zeigt Quelle und Zeit, ein Klick springt hin. Angefangener Text bleibt je Nachfrage erhalten.
@@ -130,7 +133,7 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
   - **Wonach gefragt wird:** Verbindungen (TeamViewer, RDP, SSH, VPN …) und Telefonate (3CX, Teams) ab 1 Minute, **Arbeitsblöcke am PC** mit erkannter Tätigkeit ab 15 Minuten (z. B. M365-Admin, Remotedesktop-Fenster, Ticketsystem; reine E-Mail-Arbeit nicht), **Teams-Besprechungen**, an denen du erkennbar teilgenommen hast (Teams-Anruf oder Teams mindestens 30 % der Zeit im Vordergrund), und **Mails an Kunden** aus der Kundenliste. Auf Wunsch auch angezeigte Zugangsdaten und Blöcke der Zuordnung ohne KI. Abwesenheit am PC fragt Zeitzeuge bei deiner Rückkehr ab („Du warst 42 Min. nicht am Rechner (10:15–10:57). Was hast du gemacht?“) mit Chips zur Schnellauswahl: Telefonat, Besprechung, Vor Ort, Fahrt / Reise, Pause.
   - **Keine doppelten Nachfragen:** Was zur selben Arbeit gehört, ist ein Thema mit einer Nachfrage, z. B. VPN „Kanzlei Schmidt - SSL VPN“, RDP „Kanzlei Schmidt - DC01“ und ein Telefonat mit der Kanzlei 6 Minuten danach. Gleicher Kunde mit höchstens 15 Minuten Abstand gehört zusammen; ein Arbeitsblock am PC gehört zur Verbindung, in der er liegt. Verschiedene Kunden werden nie zusammengelegt. Im Fenster steht, was dazugehört („· dazu RDP-Verbindung, Telefonat“).
   - Beantwortet, ignoriert oder zurückgestellt merkt sich Zeitzeuge **Zeitraum und Kunde** des Themas. Es fragt also nicht noch einmal, wenn du eine kürzere Zeit einträgst als erkannt, wenn die Logs später nachkommen und sich Beginn oder Name leicht ändern oder wenn nach „Später“ noch ein Telefonat zum selben Kunden dazukommt. Löschst du die Tätigkeit wieder, gilt das Thema wieder als offen.
-  - **Abwesenheit am PC:** Warst du 15 Minuten oder länger nicht an Maus und Tastatur (auch gesperrt oder im Ruhezustand), fragt Zeitzeuge bei der ersten Eingabe danach: „Was war in der Zeit?“. Knöpfe für typische Fälle füllen Kategorie und Text mit einem Klick: **Telefonat**, **Besprechung**, **Vor Ort**, **Fahrt / Reise** (setzt den Haken „Reise“) und **Pause** (speichert gleich). Die Dauer stellst du unter **Nachfragen und Benachrichtigungen …** ein, dort lässt sich die Abfrage auch abschalten.
+  - **Abwesenheit am PC:** Warst du 15 Minuten oder länger nicht an Maus und Tastatur (auch gesperrt oder im Ruhezustand), fragt Zeitzeuge bei der ersten Eingabe danach: „Was war in der Zeit?“. Knöpfe für typische Fälle füllen Kategorie und Text mit einem Klick: **Telefonat**, **Besprechung**, **Vor Ort**, **Fahrt / Reise** (setzt den Haken „Reise“) und **Pause** (speichert gleich). Die Dauer stellst du unter **Einstellungen → Nachfragen** ein, dort lässt sich die Abfrage auch abschalten.
   - **Kulanz und Reise:** Beim Eintragen setzt du die Haken **Kulanz** (nicht berechnen) und **Reise / Anfahrt**. Sie stehen in der Ticketzeile und werden beim Buchen im Ticketsystem übernommen.
   - **TeamViewer-ID zum Kunden:** Bei TeamViewer kennt Zeitzeuge oft nur die ID. Trägst du beim Dokumentieren den Kunden ein, merkt es sich den Namen für diese ID. Ab dann steht überall der Name.
   - **Erinnerung:** Nach Feierabend und beim Beenden sagt Zeitzeuge, wie viele Tätigkeiten heute noch offen sind.
@@ -156,7 +159,7 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
   - Stichwörter lernt Zeitzeuge ebenfalls aus dem Ticketsystem: Ein Wort aus dem Namen im Ticketsystem des Kunden („Weber“), das in deinen Fenstertiteln steht, während du auf diesen Kunden buchst. Mindestens 30 Minuten an 2 Tagen und 80 % beim selben Kunden: von selbst; ab 10 Minuten: Vorschlag unter „Neu entdeckt“ mit **Übernehmen**. Orte nach dem Komma und allgemeine Wörter („Systems“, „Service“, „Technik“ …) nimmt es nie.
 - **Kunde zuordnen per Rechtsklick.** Hat eine Verbindung, ein Telefonat oder eine Mail noch keinen Kunden, wählst du im Rechtsklick-Menü *Kunde zuordnen …*. „TeamViewer-ID benennen …“ gibt es weiter, es landet in derselben Kundenliste.
 - **Zeitzeuge lernt aus deinen Korrekturen.** Änderst du beim Eintragen den vorgeschlagenen Kunden, merkt Zeitzeuge ihn zur Spur („Kunde für RDM-Eintrag „srv01“ merken“ ist angehakt). Änderst du die Kategorie, bietet der Dialog „Als Regel merken: „srv01“ → Beratung“ an. Dieser Haken ist aus: Nur wenn du ihn setzt, entsteht eine Regel in der *Zuordnung ohne KI*. Sie steht vor den Standardregeln und schlägt beim nächsten Mal auch im Dialog die Kategorie vor. Doppelte Regeln legt Zeitzeuge nicht an.
-- **Abrechnungstakt:** Zeitzeuge zeigt zu jeder Tätigkeit auch die abgerechnete Zeit. Standard ist der 15-Minuten-Takt: Jede angefangene Viertelstunde wird abgerechnet. Beim Kopieren stehen echte und abgerechnete Zeiten mit Beginn und Ende in der Zeile, z. B. `10:05–10:17 (12 min) → abgerechnet 10:05–10:20 (0:15 h)  Müller GmbH · Fernwartung: Drucker eingerichtet`. Der Beginn bleibt, das Ende rückt auf den Takt. Du siehst sie auch in der Ansicht „Dokumentation“, in der Statuszeile („dokumentiert 3:10 h, abgerechnet 3:30 h“) und im Eintragen-Fenster neben der Dauer. Jede Tätigkeit wird für sich gerundet. Unter **Einstellungen → Abrechnung …** stellst du den Takt (Minuten) und die Rundung ein: „Angefangener Takt zählt“, „Auf den nächsten Takt runden“ oder „Ohne Takt“ (dann ist alles wie früher). Für einzelne Kunden kannst du einen anderen Takt oder eine andere Rundung festlegen.
+- **Abrechnungstakt:** Zeitzeuge zeigt zu jeder Tätigkeit auch die abgerechnete Zeit. Standard ist der 15-Minuten-Takt: Jede angefangene Viertelstunde wird abgerechnet. Beim Kopieren stehen echte und abgerechnete Zeiten mit Beginn und Ende in der Zeile, z. B. `10:05–10:17 (12 min) → abgerechnet 10:05–10:20 (0:15 h)  Müller GmbH · Fernwartung: Drucker eingerichtet`. Der Beginn bleibt, das Ende rückt auf den Takt. Du siehst sie auch in der Ansicht „Dokumentation“, in der Statuszeile („dokumentiert 3:10 h, abgerechnet 3:30 h“) und im Eintragen-Fenster neben der Dauer. Jede Tätigkeit wird für sich gerundet. Unter **Einstellungen → Buchung → Abrechnung …** stellst du den Takt (Minuten) und die Rundung ein: „Angefangener Takt zählt“, „Auf den nächsten Takt runden“ oder „Ohne Takt“ (dann ist alles wie früher). Für einzelne Kunden kannst du einen anderen Takt oder eine andere Rundung festlegen.
 - **Jede Zeile der Timeline ein- und ausblenden:** PC-Aktivität, Dokumentation, Zuordnung ohne KI, KI-Vorschläge, Telefon, Outlook, VPN, TeamViewer und Remote / Weitere schaltest du einzeln unter **Ansicht → Zeilen der Timeline** oder per Rechtsklick auf die Legende links in der Timeline. **Alle Zeilen einblenden** holt alles zurück. Die Tagesliste zeigt weiter alle Einträge.
 - **Verschlüsselte Datenbank:** Alle Daten (Anrufe, Fenster, Tätigkeiten, KI-Vorschläge, Personalzeit, Ticketsystem, VPN, Kundennamen) liegen in einer Datei `zeitzeuge.db`, verschlüsselt mit AES-256. Auf deinem PC öffnet sie deine Windows-Anmeldung ohne Abfrage. Für einen neuen PC gibt es einen Wiederherstellungsschlüssel, den du in RDM ablegst. Siehe [Schutz der Daten](#schutz-der-daten).
 - **Ladeanzeige:** Solange Zeitzeuge etwas lädt (Logs, 3CX, Zeiterfassung, Ticketsystem oder KI-Vorschläge), läuft in der Werkzeugleiste rechts neben „Arbeitszeit“ ein drehender Kreis mit Text, dazu ein dünner Streifen über die ganze Fensterbreite oben über der Timeline (beides schwebt, nichts verschiebt sich), z. B. „Lädt: 3CX-Anrufe · KI-Vorschläge (Claude ordnet 25.10. ein) …“. Kurze Lesevorgänge im Hintergrund erscheinen erst nach 1,5 Sekunden, damit nichts flackert.
@@ -167,7 +170,7 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
   - Fehlt eine TeamViewer- oder RDM-Logdatei, erscheint „Logs: TeamViewer fehlt“ mit gelbem Dreieck.
   - Ein Klick führt direkt zur Lösung: zur Anmeldung oder zu den Einstellungen. Fährst du mit der Maus darüber, steht dort der genaue Stand.
 - **Zeitlinie unter der Maus:** Eine gestrichelte senkrechte Linie folgt der Maus, oben steht die genaue Uhrzeit. Der Hinweis daneben zeigt, welche Einträge gerade liefen.
-- **Zeile „Personalzeit“:** Jeder gestempelte Abschnitt ist ein Block mit Beginn und Ende, z. B. „08:10 – 12:39“, Pausen sind Lücken. Bist du noch eingestempelt, steht dort „08:02 – jetzt“. Ohne Zeiterfassung gibt es keine eigene Zeile: Die Arbeitszeit aus den Einstellungen steht als blaue Linie unter den Uhrzeiten und als zarte Fläche dahinter; eine dort eingetragene Pause (Einstellungen → Allgemein → Arbeitszeiten) ist eine Lücke. Blendest du die Zeile aus, steht die Personalzeit wieder im Hinweis unter der Maus.
+- **Zeile „Personalzeit“:** Jeder gestempelte Abschnitt ist ein Block mit Beginn und Ende, z. B. „08:10 – 12:39“, Pausen sind Lücken. Bist du noch eingestempelt, steht dort „08:02 – jetzt“. Ohne Zeiterfassung gibt es keine eigene Zeile: Die Arbeitszeit aus den Einstellungen steht als blaue Linie unter den Uhrzeiten und als zarte Fläche dahinter; eine dort eingetragene Pause (Einstellungen → Buchung → Arbeitszeiten) ist eine Lücke. Blendest du die Zeile aus, steht die Personalzeit wieder im Hinweis unter der Maus.
 - **Details:** Fährst du über einen Eintrag, siehst du Kunde, Zeitraum und Dauer. Ein Klick in der Timeline, ein Doppelklick oder **Enter** in der Liste öffnet die Details.
 - **Immer aktuell:** Die Logs werden alle 2 Minuten geprüft. Mit F5 (Aktualisieren) liest du sie sofort neu ein, 3CX und Ticketsystem gleich mit (Anrufliste neu laden, Woche des angezeigten Tags). Neue Anrufe brauchen danach etwa 10–15 Sekunden. Gelesen werden nur Dateien, die sich geändert haben.
 - **Bedienung:**
@@ -291,9 +294,10 @@ Alles, was nur die Anzeige ändert, nie die Daten:
 
 - **Tagesliste:** Die Ansichten (Alle, Einzeln, Arbeitsblöcke, Telefonate – nur 3CX- und Teams-Anrufe, jeder einzeln –, Dokumentation, Zuordnung ohne KI, KI-Vorschläge, Buchungsabgleich) wählst du über die Chips über der Liste. Fährst du über einen Chip, steht dort, was die Ansicht zeigt. Im Menü stehen **PC-Verlauf in der Liste** und **Was zeigen die Ansichten? …** (F1), das alle mit Beispielen erklärt.
 - **Zeilen der Timeline** (Untermenü, auch per Rechtsklick auf die Legende links): jede Zeile mit einem Kästchen in ihrer Farbe zum Ein- und Ausblenden, dazu **Alle Zeilen einblenden**. **Zeilen abwechselnd hinterlegen** zeigt graue Streifen statt feiner Linien zwischen den Zeilen. Leere Zeilen blendet Zeitzeuge von selbst aus.
-- **PC-Aktivität als Arbeitsblöcke:** an = Blöcke je Tätigkeit, aus = jedes Fenster einzeln.
-- **Übersichten:** Wochenabschluss, Offene Tätigkeiten.
-- **Anpassen mit Vorschau …** öffnet die Seite **Ansicht** im Einstellungsfenster.
+  Dort steht auch **PC-Aktivität als Arbeitsblöcke** (an = Blöcke je Tätigkeit, aus = jedes Fenster einzeln). Fährst du über das Untermenü, steht dort, wie man Zeilen verschiebt.
+- **Übersichten:** Wochenabschluss, Tagesabschluss, Offene Tätigkeiten.
+- **Design:** Wie Windows, Hell, Dunkel, **Eigene Farben …** (öffnet die Farben gleich im Einstellungsfenster).
+- **Darstellung anpassen …** öffnet die Seite **Darstellung** im Einstellungsfenster.
 
 Ganzer Tag und Arbeitszeit stehen in der Werkzeugleiste, das Design (Wie Windows, Hell, Dunkel, Eigene Farben) im Menü **Ansicht**. Die Knöpfe der Werkzeugleiste zeigen nur Symbole; fährst du darüber, nennt der Hinweis Namen, Tastenkürzel und was der Knopf tut.
 
@@ -301,13 +305,24 @@ Ganzer Tag und Arbeitszeit stehen in der Werkzeugleiste, das Design (Wie Windows
 
 Ein Klick auf **Einstellungen** (oder STRG + ,) öffnet ein eigenes Fenster. Es bleibt offen, während du weiterarbeitest, und alles gilt sofort.
 
-- **Links die Bereiche:** Allgemein, Ansicht, Datenquellen, Nachfragen & Grenzwerte, Zuordnung & KI, Ticketsystem & Abrechnung, Kunden & Texte, Daten & Schutz, Über Zeitzeuge.
-- **Oben die Suche:** z. B. „Minuten“ zeigt alle Grenzwerte aus allen Bereichen, und du änderst sie direkt dort.
-- **Ansicht mit Vorschau:** Alle Einstellungen zur Darstellung an einer Stelle: Dunkles Design, Tagesliste, PC-Verlauf in der Liste, PC-Aktivität als Arbeitsblöcke, kurze Sprünge, Zeitraum beim Start, Zeilen der Timeline, Zusammenfassen und Arbeitsblock (Pausen), gesendete Mail als Block, Typen und Farben. Oben zeigt eine **Vorschau** einen erfundenen Beispieltag mit Timeline und Tagesliste, so wie Zeitzeuge sie mit deinen Einstellungen zeichnet. Fährst du über einen Schalter, zeigt sie schon, wie es nach dem Umschalten aussähe („So sähe es aus mit „PC-Aktivität als Arbeitsblöcke“ aus“), ohne etwas zu speichern. In Auswahllisten siehst du jede Möglichkeit, während du durch die Liste gehst. Zahlen wirken beim Ändern sofort. Erreichbar auch über **Ansicht → Anpassen mit Vorschau …**.
-- **Datenquellen als Kacheln:** je Quelle ihr Zeichen in der Farbe des Herstellers, ein Schalter An/Aus, der Zustand („läuft“, „Logdatei nicht gefunden“, „Anmeldung nötig“) und **Einrichten …**.
-- **Grenzwerte als Zahlen:** Abwesenheit am PC, „Später fragen“, Zusammenfassen und Arbeitsblock (Pausen), Leerlauf, Ziel der Buchungsquote und mehr.
+- **Links die Bereiche,** in der Reihenfolge des Arbeitstags:
+  - **Übersicht:** der Zustand auf einen Blick (Quellen an und mit Problem, Nachfragen, Buchungsquote, Datenschutz) mit Sprung in den Bereich, darunter die häufigsten Einstellungen (Design, Aktive Fenster, Mit Windows starten, Kundenliste, Textbausteine).
+  - **Aufzeichnung:** Grundlagen (Mit Windows starten, Einrichtungsassistent, Leerlauf, PAW) und die Quellen als Kacheln in Abschnitten: Fernwartung, VPN, Kommunikation, Am PC, Firmensysteme.
+  - **Nachfragen:** Darstellung als Kacheln mit Vorschau (Karte, Kompakt, Leiste, Aus), Ausblenden, wonach ab wie vielen Minuten gefragt wird, „Später“ und Erinnerungen. Früher ein eigener Dialog.
+  - **Zuordnung:** Kundenliste, Orte und Fahrzeiten, Regeln ohne KI, KI-Vorschläge, Textbausteine.
+  - **Buchung:** Matrix42, Arbeitszeiten, Abrechnung, Ziel und Anzeige der Quote, Prüfung bei Feierabend.
+  - **Darstellung:** Aussehen, Timeline und Tagesliste, gewählt über Kacheln.
+  - **Datenschutz:** Speicherort, PIN und Wiederherstellungsschlüssel, Aufbewahren, Daten für einen anderen PC.
+  - **Info:** Über Zeitzeuge, Beenden und (eingeklappt) die Fehlersuche mit den Mitschnitten.
+- **Jede Einstellung steht genau einmal.** Nur „Häufig“ auf der Übersicht wiederholt einige als Abkürzung.
+- **Oben die Suche:** z. B. „Minuten“ zeigt alle Grenzwerte aus allen Bereichen, und du änderst sie direkt dort. Die Suche findet auch die Quellen und die Optionen der Seite Nachfragen.
+- **Darstellung mit Kacheln:** Design, Timeline beim Start, PC-Aktivität, PC-Verlauf in der Liste und die Ansicht der Tagesliste wählst du über Kacheln mit kleinen Skelett-Bildern; jede Kachel zeigt, wie es danach aussieht. Ein Klick gilt sofort, auch im Hauptfenster. Zahlen wirken beim Ändern sofort. Erreichbar auch über **Ansicht → Darstellung anpassen …**.
+- **Eigene Farben:** Wählst du die Kachel **Eigene Farben**, klappt darunter eine Skizze von Zeitzeuge auf (als Skelett). Ein Klick auf einen Bereich (Kopfleiste, Hintergrund, Flächen, Schrift, Akzent, Jetzt-Linie oder einen Balken der Timeline) zeigt darunter die Farbvorschläge, **Andere Farbe …** und **Standardfarbe**. Jede Änderung gilt sofort, **Alle Farben zurücksetzen** holt das Standard-Design zurück. **Ansicht → Eigene Farben festlegen …** führt an diese Stelle.
+- **Quellen als Kacheln:** je Quelle ihr Zeichen in der Farbe des Herstellers, ein Schalter („An“/„Aus“ links, der Schalter rechts wie überall), der Zustand („läuft“, „Logdatei nicht gefunden“, „Anmeldung nötig“) und **Einrichten …**.
+- **Jede Zeile eine Karte:** Symbol in einer ruhigen Kachel, Titel, Beschreibung, rechts Schalter, Zahl oder Knopf in einer Spalte.
+- **Dialoge wie die Nachfrage-Karte:** Kundenliste, Textbausteine, Abrechnung, Regeln, KI-Vorschläge, Fenster-Filter, Orte und Fahrzeiten, Schutz sowie Tages- und Wochenabschluss haben oben Namen und einen kurzen Satz, Beschriftungen über den Feldern und unten eine Leiste mit genau einer Hauptaktion (Enter). Abbrechen oder Schließen steht links daneben, leise Aktionen ganz links.
 
-Der kleine Pfeil am Knopf **Einstellungen** zeigt Schnellzugriffe: Aufzeichnung an/aus, Datenquellen, Nachfragen, Kundenliste, Textbausteine, Über und Beenden.
+Der kleine Pfeil am Knopf **Einstellungen** zeigt Schnellzugriffe mit denselben Namen wie die Bereiche: Alle Einstellungen, Aktive Fenster aufzeichnen, Aufzeichnung, Nachfragen, unter „Zuordnung“ Kundenliste, Orte und Fahrzeiten, Textbausteine, dazu Über und Beenden.
 
 ### Einrichtungsassistent
 
@@ -317,11 +332,11 @@ Beim allerersten Start öffnet sich der Assistent **Zeitzeuge einrichten**. Er g
 2. **Ein Schritt je gewählter Quelle:** was die Quelle liest, was auf dem PC gefunden wurde (Pfad, Browser) und ein Knopf zur Einrichtung, z. B. **3CX einrichten und anmelden …**. Das sind dieselben Dialoge wie unter **Einrichten …** in den Kacheln der Datenquellen. Mit **Weiter** gilt das Häkchen „… verwenden“.
 3. **Übersicht:** welche Quelle jetzt an oder aus ist.
 
-Mit **Zurück** wählst du neu. **Abbrechen** lässt alles, was du bis dahin eingestellt hast. Danach öffnet sich der Assistent nicht mehr von selbst. Wieder aufrufen: Fenster **Einstellungen → Datenquellen → Einrichtungsassistent**. Bestehende Installationen sehen ihn nach dem Update nicht von selbst, auf einer PAW auch nicht.
+Mit **Zurück** wählst du neu. **Abbrechen** lässt alles, was du bis dahin eingestellt hast. Danach öffnet sich der Assistent nicht mehr von selbst. Wieder aufrufen: Fenster **Einstellungen → Aufzeichnung → Einrichtungsassistent**. Bestehende Installationen sehen ihn nach dem Update nicht von selbst, auf einer PAW auch nicht.
 
 ### Datenquellen ein- und ausschalten
 
-Unter **Einstellungen → Datenquellen** schaltest du jede Quelle mit einem Klick ein oder aus:
+Unter **Einstellungen → Aufzeichnung** schaltest du jede Quelle mit einem Klick ein oder aus:
 
 | Gruppe | Quellen |
 |---|---|
@@ -329,11 +344,11 @@ Unter **Einstellungen → Datenquellen** schaltest du jede Quelle mit einem Klic
 | VPN | Sophos Connect, FortiClient, weitere VPN-Logs (OpenVPN …) |
 | Telefon und Zeiten | 3CX-Anrufe, Personalzeiten |
 
-Pfade, Zeitzonen und Anmeldungen stellst du unter **Einstellungen → Datenquellen** über **Einrichten …** in der Kachel ein. Das Aufzeichnen der aktiven Fenster schaltest du direkt im Menü **Einstellungen** oder unten rechts in der Statuszeile.
+Pfade, Zeitzonen und Anmeldungen stellst du unter **Einstellungen → Aufzeichnung** über **Einrichten …** in der Kachel ein. Das Aufzeichnen der aktiven Fenster schaltest du direkt im Menü **Einstellungen** oder unten rechts in der Statuszeile.
 
 ### TeamViewer und RDM
 
-Unter **Einstellungen → Datenquellen → Einrichten → TeamViewer-Logs …** bzw. **RDM-Logs …** stellst du ein:
+Unter **Einstellungen → Aufzeichnung**, in der Kachel **Einrichten …** (TeamViewer-Logs) bzw. **RDM-Logs …** stellst du ein:
 - wo die Logdateien liegen,
 - die Zeitzone: TeamViewer speichert UTC. Mit **Sommer- und Winterzeit automatisch** (Standard) rechnet Zeitzeuge jede Zeit mit der Sommer- oder Winterzeit ihres Datums um. Ohne den Haken gilt eine feste Korrektur in Stunden, z. B. 0, wenn das Log schon Ortszeit enthält.
 
@@ -346,9 +361,9 @@ Standardpfade:
 
 ### VPN-Verbindungen
 
-Sophos Connect und FortiClient erkennt Zeitzeuge von selbst. Es liest ihre Logs und prüft alle 30 Sekunden, ob ihr VPN-Adapter verbunden ist. Beide schaltest du unter **Einstellungen → Datenquellen** einzeln ein oder aus.
+Sophos Connect und FortiClient erkennt Zeitzeuge von selbst. Es liest ihre Logs und prüft alle 30 Sekunden, ob ihr VPN-Adapter verbunden ist. Beide schaltest du unter **Einstellungen → Aufzeichnung** einzeln ein oder aus.
 
-Für andere VPN-Clients legst du unter **Einstellungen → Datenquellen → Einrichten → VPN-Logs …** fest, wo ihre Logs liegen. Du kannst einzelne Dateien oder ganze Ordner eintragen. Bei einem Ordner liest Zeitzeuge alle `.log`- und `.txt`-Dateien darin. Der Dateiname wird zum Namen der Verbindung, bei OpenVPN ist das der Profilname.
+Für andere VPN-Clients legst du unter **Einstellungen → Aufzeichnung**, in der Kachel **Einrichten …** (VPN-Logs) fest, wo ihre Logs liegen. Du kannst einzelne Dateien oder ganze Ordner eintragen. Bei einem Ordner liest Zeitzeuge alle `.log`- und `.txt`-Dateien darin. Der Dateiname wird zum Namen der Verbindung, bei OpenVPN ist das der Profilname.
 
 | VPN-Client | Standardpfad |
 |---|---|
@@ -362,15 +377,15 @@ Erkannt werden Zeilen mit Zeitstempel und „Initialization Sequence Completed�
 
 Zeitzeuge öffnet den 3CX-Webclient unsichtbar mit dem installierten Microsoft Edge und liest jede Minute die Anrufliste. Alle 5 Minuten lädt es die Seite neu, weil 3CX neue Anrufe im Hintergrund sonst nicht nachträgt. Gibt es kein Edge, nimmt es Chrome. Edge läuft dabei mit einem eigenen Profil, getrennt von deinem normalen Browser. Es ist egal, ob du sonst den 3CX-Client, die Webseite oder das Tischtelefon benutzt.
 
-1. **Einstellungen → Datenquellen → Einrichten → 3CX …** öffnen.
+1. **Einstellungen → Aufzeichnung**, in der Kachel **Einrichten …** (3CX) öffnen.
 2. 3CX-Adresse prüfen und **Bei 3CX anmelden …** klicken.
 3. Im Edge-Fenster ganz normal bei 3CX anmelden. Sobald die Anrufliste erscheint, schließt Zeitzeuge das Fenster selbst und liest danach unsichtbar im Hintergrund weiter. Das Fenster muss also nicht offen bleiben.
 
-Die Anmeldung bleibt gespeichert (`%LOCALAPPDATA%\Zeitzeuge\3cx_profil`). Läuft sie ab, meldet sich Zeitzeuge im Infobereich. Ein Klick auf die Meldung öffnet die Anmeldung. Ton, Mikrofon und Benachrichtigungen sind gesperrt, dort klingelt also nichts. Für 3CX zählt Zeitzeuge aber als zusätzlich angemeldeter Webclient.
+Die Anmeldung bleibt gespeichert (`%LOCALAPPDATA%\Zeitzeuge\3cx_profil`). Läuft sie ab, meldet sich Zeitzeuge mit einer Leiste unten rechts. „Anmelden“ öffnet die Anmeldung. Ton, Mikrofon und Benachrichtigungen sind gesperrt, dort klingelt also nichts. Für 3CX zählt Zeitzeuge aber als zusätzlich angemeldeter Webclient.
 
 Zeitzeuge scrollt die Anrufliste so viele Tage zurück, wie unter **Anrufe zurück lesen** im Dialog eingestellt ist (Standard 14, Schlüssel `calls_days_back`). Erhöhst du die Zahl, liest es die fehlenden Tage nach. Bis zu welchem Tag die Anrufe vollständig sind, merkt es sich in der Datenbank. Zeigst du einen älteren Tag an, scrollt Zeitzeuge im Hintergrund bis dorthin weiter. Das geht nur so weit zurück, wie 3CX die Anrufe selbst noch anzeigt.
 
-**Direkt-Abfrage prüfen:** Unter **Einstellungen → Fehlersuche & Analyse** holt **3CX: Direkt-Abfrage prüfen** die Anrufe ohne Webseite direkt vom 3CX-Server und vergleicht sie mit deiner gespeicherten Anrufliste. Den Bericht `3cx_pruefung_….json` legt Zeitzeuge in den Datenordner, Namen und Nummern nur maskiert. Damit lässt sich festlegen, welche Felder Dauer und Richtung tragen. Danach kann Zeitzeuge 3CX ganz ohne Edge lesen.
+**Direkt-Abfrage prüfen:** Unter **Einstellungen → Info → Fehlersuche** holt **3CX: Direkt-Abfrage prüfen** die Anrufe ohne Webseite direkt vom 3CX-Server und vergleicht sie mit deiner gespeicherten Anrufliste. Den Bericht `3cx_pruefung_….json` legt Zeitzeuge in den Datenordner, Namen und Nummern nur maskiert. Damit lässt sich festlegen, welche Felder Dauer und Richtung tragen. Danach kann Zeitzeuge 3CX ganz ohne Edge lesen.
 
 Die Einstellungen für Telefonate stehen in `zeitzeuge_config.json`:
 
@@ -391,7 +406,7 @@ Zeitzeuge fragt deine Personalzeiten direkt bei der Schnittstelle der Zeiterfass
 
 **Anmelden mit Passwort (ohne Edge):**
 
-1. **Einstellungen → Datenquellen → Einrichten → Personalzeiten …** öffnen.
+1. **Einstellungen → Aufzeichnung**, in der Kachel **Einrichten …** (Personalzeiten) öffnen.
 2. Benutzername und Mandant eintragen, dann **Bei der Zeiterfassung anmelden …** klicken.
 3. Passwort eingeben. Zeitzeuge speichert es nicht.
 
@@ -405,7 +420,7 @@ Die Anmeldung liegt in `%LOCALAPPDATA%\Zeitzeuge\itm_anmeldung.json` (unter Wind
 
 ### Outlook und Teams
 
-Einstellungen → Datenquellen → „Outlook (Termine, Mails)“ und
+Einstellungen → Aufzeichnung → „Outlook“ und
 „Teams-Anrufe“ einschalten. Unter Datenquellen → Einrichten → „Outlook und Teams …“
 stellst du ein:
 
@@ -435,12 +450,12 @@ Mit einem Mitschnitt lässt sich prüfen, ob Zeitzeuge die Daten später direkt 
 
 Im Alltag brauchst du das nicht. Die Knöpfe stehen deshalb nicht in den Einrichtungsdialogen, sondern in einem eigenen Bereich für tiefergehende Analysen.
 
-1. **Einstellungen → Fehlersuche & Analyse** öffnen (die Quelle muss eingerichtet sein).
+1. **Einstellungen → Info → Fehlersuche** öffnen (die Quelle muss eingerichtet sein).
 2. **3CX: Abfragen mitschneiden**, **Zeiterfassung: Abfragen mitschneiden** oder **Ticketsystem: Abfragen mitschneiden** öffnen. Ein Edge-Fenster öffnet sich.
 3. Falls nötig anmelden. Bei 3CX die Anrufliste ein Stück nach unten scrollen, bei der Zeiterfassung zwei oder drei andere Tage aufrufen.
 4. Das Fenster schließen. Zeitzeuge speichert `mitschnitt_pbx_….json`, `mitschnitt_itm_….json` oder `mitschnitt_m42_….json` im Datenordner.
 
-**Buchung mitschneiden (Ticketsystem):** Für „Im Ticketsystem buchen“ muss Zeitzeuge wissen, wie das Ticketsystem eine Zeiterfassung speichert. Unter **Einstellungen → Fehlersuche & Analyse** öffnest du **Ticketsystem: Buchung mitschneiden**, legst im Edge-Fenster eine Zeiterfassung an, öffnest sie noch einmal, änderst etwas und speicherst. Dann das Fenster schließen. Zeitzeuge speichert `mitschnitt_m42_buchung_….json`. Darin stehen Abfragen, die etwas speichern, vollständig. Passwörter und Token bleiben geschwärzt.
+**Buchung mitschneiden (Ticketsystem):** Für „Im Ticketsystem buchen“ muss Zeitzeuge wissen, wie das Ticketsystem eine Zeiterfassung speichert. Unter **Einstellungen → Info → Fehlersuche** öffnest du **Ticketsystem: Buchung mitschneiden**, legst im Edge-Fenster eine Zeiterfassung an, öffnest sie noch einmal, änderst etwas und speicherst. Dann das Fenster schließen. Zeitzeuge speichert `mitschnitt_m42_buchung_….json`. Darin stehen Abfragen, die etwas speichern, vollständig. Passwörter und Token bleiben geschwärzt.
 
 Aufgezeichnet werden nur Datenabfragen, keine Bilder oder Skripte. Passwörter, Token und Cookie-Werte sind geschwärzt. Von Token und Cookies bleiben Name, Länge und Ablaufzeit, damit man sieht, wie lange eine Anmeldung hält. Antworten sind gekürzt (die ersten drei Einträge einer Liste). Darin können trotzdem Namen und Telefonnummern stehen, schau die Datei also vor dem Weitergeben durch.
 
@@ -466,9 +481,9 @@ Die Vorschläge liegen pro Tag in der Datenbank.
 | `ai_auto` | `false` | Vergangene Tage ohne Vorschläge beim Anzeigen automatisch einordnen |
 | `ai_categories` | Fernwartung, Telefonsupport, … | Kategorien, aus denen Claude wählt |
 
-### Nachfragen und Benachrichtigungen
+### Nachfragen
 
-Unter **Einstellungen → Nachfragen und Benachrichtigungen …** legst du fest, wann Zeitzeuge nachfragt. Deine Tätigkeiten liegen pro Tag in der Datenbank.
+Unter **Einstellungen → Nachfragen** legst du fest, wann Zeitzeuge nachfragt. Deine Tätigkeiten liegen pro Tag in der Datenbank.
 
 | Schlüssel | Standard | Bedeutung |
 |---|---|---|
@@ -479,12 +494,13 @@ Unter **Einstellungen → Nachfragen und Benachrichtigungen …** legst du fest,
 | `prompt_dots_clickable` | `true` | Punkte oben rechts in der Karte: zwischen offenen Nachfragen wechseln |
 | `prompt_strip_close` | `front` | ✕ an der Leiste schließt nur die vorderste (`front`) oder alle (`all`) |
 | `prompt_sources` | `["connections", "calls"]` | Wonach gefragt wird: Verbindungen, Telefonate, `rules` (Blöcke aus den Regeln) |
-| `prompt_thresholds` | `{"connections": 1, "calls": 1, "rules": 1}` | Erst ab dieser Dauer (Minuten) nachfragen, je Art: Verbindungen, Telefonate, Regel-Blöcke. 0 = immer. Einstellbar unter *Nachfragen und Benachrichtigungen …* |
+| `prompt_thresholds` | `{"connections": 1, "calls": 1, "rules": 1}` | Erst ab dieser Dauer (Minuten) nachfragen, je Art: Verbindungen, Telefonate, Regel-Blöcke. 0 = immer. Einstellbar unter *Einstellungen → Nachfragen* |
 | `prompt_snooze_minutes` | `15` | „Später fragen“ fragt nach so vielen Minuten wieder |
 | `idle_prompt_minutes` | `15` | Nach so vielen Minuten ohne Maus und Tastatur bei der ersten Eingabe fragen, was in der Zeit war. 0 = aus |
 | `prompt_end_of_day` | `true` | Nach Feierabend einmal an Offenes erinnern |
 | `prompt_on_quit` | `true` | Beim Beenden an Offenes erinnern |
-| `tray_hint_on_close` | `true` | Meldung „Zeitzeuge läuft weiter“ beim Schließen des Fensters. Abschaltbar unter *Nachfragen und Benachrichtigungen …* |
+| `tray_hint_on_close` | `true` | Hinweis „Zeitzeuge läuft weiter“ beim Schließen des Fensters. Abschaltbar unter *Einstellungen → Nachfragen* |
+| `notify_windows` | `false` | Hinweise (Feierabend, Anmeldung nötig, Störungen) als Windows-Sprechblase statt als Karte oder Leiste. Einstellbar unter *Einstellungen → Nachfragen → Erinnern* |
 | `m42_url` | vorbelegt (anpassen) | Adresse der Kalenderseite des Ticketsystems |
 | `m42_reader_enabled` | `false` | Gebuchte Zeiten aus dem Ticketsystem lesen |
 | `m42_weeks_back` | `4` | So viele Wochen zurück einmal pro Sitzung lesen |
@@ -539,7 +555,7 @@ Die Kategorien sind dieselben wie bei den KI-Vorschlägen (`ai_categories`).
 
 ### Abrechnung und PC-Verlauf
 
-Unter **Einstellungen → Abrechnung …** stellst du Takt und Rundung ein, auch je Kunde. Den PC-Verlauf löschst du unter **Einstellungen → Datenspeicher → PC-Verlauf automatisch löschen …**. In der `zeitzeuge_config.json` stehen dazu:
+Unter **Einstellungen → Buchung → Abrechnung …** stellst du Takt und Rundung ein, auch je Kunde. Den PC-Verlauf löschst du unter **Einstellungen → Datenschutz → PC-Verlauf automatisch löschen …**. In der `zeitzeuge_config.json` stehen dazu:
 
 | Schlüssel | Standard | Bedeutung |
 |---|---|---|
@@ -548,7 +564,7 @@ Unter **Einstellungen → Abrechnung …** stellst du Takt und Rundung ein, auch
 | `billing_customers` | `{}` | Ausnahmen: `{"Müller GmbH": {"step": 30, "mode": "nearest"}}` |
 | `pc_history_purge` | `false` | PC-Verlauf automatisch löschen |
 | `pc_history_days` | `90` | so viele Tage behalten (7 bis 3650) |
-| `trace_history_days` | `365` | Spuren vom PC, Remotedesktop- und VPN-Verbindungen so viele Tage behalten (30 bis 3650), Älteres löscht Zeitzeuge einmal am Tag. Einstellbar unter **Einstellungen → Daten & Schutz → Spuren-Verlauf aufbewahren** |
+| `trace_history_days` | `365` | Spuren vom PC, Remotedesktop- und VPN-Verbindungen so viele Tage behalten (30 bis 3650), Älteres löscht Zeitzeuge einmal am Tag. Einstellbar unter **Einstellungen → Datenschutz → Spuren-Verlauf aufbewahren** |
 | `teamviewer_utc_auto` | – | TeamViewer: `true` Sommer-/Winterzeit automatisch, `false` feste Korrektur. Fehlt der Wert, gilt `true`, wenn die Korrektur 1 oder 2 ist |
 
 ### Wenn etwas schiefgeht
@@ -580,8 +596,8 @@ Zeitzeuge soll nie Daten verlieren und nie dauerhaft hängen. Das passiert bei P
 
 Warum die Datenbank lokal liegt: „Dokumente“ wird oft mit OneDrive synchronisiert. OneDrive lädt eine SQLite-Datei sonst mitten im Schreiben hoch oder ihre Hilfsdateien (`-wal`, `-shm`) getrennt. Das kann die Kopie in der Cloud beschädigen. Die Sicherung im Datenordner ist dagegen eine fertige Datei, die Zeitzeuge in einem Schritt ersetzt. Fehlt die lokale Datenbank (neuer PC, Profil neu), macht Zeitzeuge mit der Sicherung weiter.
 
-- **Einstellungen → Datenspeicher → Speicherort ändern …** wählt einen anderen Datenordner. Einstellungen und Sicherung ziehen mit um, danach startet Zeitzeuge neu.
-- **Einstellungen → Datenspeicher → Datenordner öffnen** zeigt den Ordner im Explorer (auch im Menü des Infobereichs).
+- **Einstellungen → Datenschutz → Speicherort ändern …** wählt einen anderen Datenordner. Einstellungen und Sicherung ziehen mit um, danach startet Zeitzeuge neu.
+- **Einstellungen → Datenschutz → Datenordner** zeigt den Ordner im Explorer (auch im Menü des Infobereichs).
 - **Erster Start nach dem Update:** Zeitzeuge übernimmt die alten Dateien (`anrufe.json`, `aktivitaet/`, `taetigkeiten/`, `ki_vorschlaege/`, `personalzeiten.json`, `m42_buchungen.json`, `vpn_verbindungen.json`, `uebernommen.json`, Kundennamen aus der Config) in die Datenbank. Jede Datei prüft es danach gegen (gleicher Inhalt, gleiche Anzahl je Tag) und verschiebt sie erst dann nach `alt-<Datum>\`. Gelöscht wird nichts. Wenn alles passt, kannst du `alt-<Datum>` selbst löschen. Bricht der Start mittendrin ab, macht Zeitzeuge beim nächsten Start dort weiter, ohne etwas doppelt einzulesen.
 - Daten aus sehr alten Versionen, die noch neben der EXE liegen, verschiebt Zeitzeuge beim Start in den Datenordner.
 
@@ -595,7 +611,7 @@ Den Schlüssel selbst speichert Zeitzeuge nur verpackt, in zwei „Schlüsselfä
 2. **Windows-Anmeldung und PIN** (wahlweise, siehe unten): Dann fragt Zeitzeuge beim Start nach der PIN.
 3. **Wiederherstellungsschlüssel:** 48 Ziffern in 8 Blöcken, wie bei BitLocker. Zeitzeuge zeigt ihn einmal beim Einrichten. Leg ihn in RDM ab (Eintrag „Zeitzeuge Wiederherstellung“). Damit öffnest du die Daten auf einem neuen PC oder mit einem anderen Windows-Konto; danach startet Zeitzeuge dort wieder ohne Abfrage. Jeder Block ist durch 11 teilbar, so meldet Zeitzeuge einen Tippfehler direkt mit dem Block.
 
-**Einstellungen → Datenspeicher → Schutz …** zeigt den Stand und hat diese Knöpfe:
+**Einstellungen → Datenschutz → PIN und Wiederherstellungsschlüssel …** zeigt den Stand und hat diese Knöpfe:
 
 - **PIN beim Start → Einschalten …:** Ab dann reicht die Windows-Anmeldung allein nicht mehr. Zeitzeuge löscht alle Fächer ohne PIN, auch die anderer PCs und Konten. Geht nur, wenn es schon einen Wiederherstellungsschlüssel gibt. **Ändern …** setzt eine neue PIN für dieses Windows-Konto, **Ausschalten** geht zurück zur Windows-Anmeldung allein.
 - **Neu erzeugen …:** neuer Wiederherstellungsschlüssel, der alte wird ungültig. Ersetze dann den Eintrag in RDM.
@@ -656,7 +672,7 @@ Aufgezeichnet wird nur, solange Zeitzeuge läuft. Schließt du das Fenster, läu
 
 Das Menü im Infobereich enthält: **Zeitzeuge öffnen** (auch per Klick auf das Symbol), den Zustand der Aufzeichnung mit **pausieren / fortsetzen**, **Logs neu einlesen**, **Datenquellen**, **Datenordner öffnen** und **Beenden**.
 
-Damit Zeitzeuge mit Windows startet: **Einstellungen → Allgemein → Mit Windows starten**. Zeitzeuge trägt sich dann für deinen Windows-Benutzer in den Autostart ein (ohne Adminrechte) und startet beim Anmelden direkt im Infobereich. Liegt die EXE später woanders, zieht Zeitzeuge den Eintrag beim nächsten Start selbst nach. Hattest du früher eine Verknüpfung in `shell:startup` angelegt, lösch sie, sonst startet Zeitzeuge zweimal (der zweite Start beendet sich still).
+Damit Zeitzeuge mit Windows startet: **Einstellungen → Aufzeichnung → Mit Windows starten** (auch auf der Übersicht). Zeitzeuge trägt sich dann für deinen Windows-Benutzer in den Autostart ein (ohne Adminrechte) und startet beim Anmelden direkt im Infobereich. Liegt die EXE später woanders, zieht Zeitzeuge den Eintrag beim nächsten Start selbst nach. Hattest du früher eine Verknüpfung in `shell:startup` angelegt, lösch sie, sonst startet Zeitzeuge zweimal (der zweite Start beendet sich still).
 
 Beim Start der EXE erscheint sofort ein **Startbild** mit Ladebalken. Darunter steht, was Zeitzeuge gerade tut: Programm entpacken, Programm laden, Datenbank öffnen, Fenster aufbauen. Es verschwindet, sobald das Fenster steht. So siehst du gleich, dass Zeitzeuge schon lädt.
 
@@ -664,8 +680,8 @@ Beim Start der EXE erscheint sofort ein **Startbild** mit Ladebalken. Darunter s
 
 Auf einer PAW (Privileged Access Workstation) laufen oft nur RDM-Verbindungen, ohne 3CX, Zeiterfassung, Ticketsystem und ohne Laufwerksfreigabe zum Arbeits-PC. So kommt trotzdem alles an einer Stelle zusammen:
 
-1. **Auf der PAW einmal einrichten:** **Einstellungen → Datenspeicher → Dieser PC ist eine PAW (nur RDM sammeln)**. Zeitzeuge sammelt dort nur die RDM-Verbindungen. TeamViewer, VPN, 3CX, Zeiterfassung, Ticketsystem, Fensteraufzeichnung und Nachfragen sind aus.
-2. **Auf dem Arbeits-PC exportieren:** **Einstellungen → Datenspeicher → Daten exportieren …**, Zeitraum wählen (Standard 31 Tage). **Als Datei speichern** erzeugt eine einzige Datei `Zeitzeuge-Export_<PC>_<Datum>.zeitzeuge`. Darf keine Datei auf die PAW, nimm **In Zwischenablage kopieren**: Der Export wird Text, der auch über eine RDP-Zwischenablage passt, die nur Text erlaubt. Beim ersten Export erzeugst du einen **Übertragungsschlüssel** (oder gibst einen vorhandenen ein) und legst ihn in RDM ab („Zeitzeuge Übertragung“).
+1. **Auf der PAW einmal einrichten:** **Einstellungen → Aufzeichnung → Dieser PC ist eine PAW**. Zeitzeuge sammelt dort nur die RDM-Verbindungen. TeamViewer, VPN, 3CX, Zeiterfassung, Ticketsystem, Fensteraufzeichnung und Nachfragen sind aus.
+2. **Auf dem Arbeits-PC exportieren:** **Einstellungen → Datenschutz → Daten exportieren …**, Zeitraum wählen (Standard 31 Tage). **Als Datei speichern** erzeugt eine einzige Datei `Zeitzeuge-Export_<PC>_<Datum>.zeitzeuge`. Darf keine Datei auf die PAW, nimm **In Zwischenablage kopieren**: Der Export wird Text, der auch über eine RDP-Zwischenablage passt, die nur Text erlaubt. Beim ersten Export erzeugst du einen **Übertragungsschlüssel** (oder gibst einen vorhandenen ein) und legst ihn in RDM ab („Zeitzeuge Übertragung“).
 3. **Auf der PAW übernehmen:** **Daten übernehmen …** → **Datei wählen** oder **Aus Zwischenablage**. Beim ersten Mal fragt Zeitzeuge nach dem Übertragungsschlüssel aus RDM und merkt ihn sich. Die PAW zeigt dann ihre RDM-Verbindungen zusammen mit Anrufen, Personalzeit, Buchungsabgleich, VPN, TeamViewer, Fenstern, Tätigkeiten und den schon erstellten KI-Vorschlägen vom Arbeits-PC.
 
 - Übernommenes steht in der Datenbank der PAW und ist mit „von <PC>“ gekennzeichnet. Ein neuerer Export ersetzt die Tage des älteren; ein älterer überschreibt nichts Neueres.
@@ -679,7 +695,7 @@ Auf einer PAW (Privileged Access Workstation) laufen oft nur RDM-Verbindungen, o
 
 ### RDM im Rechenzentrum
 
-Läuft RDM auf einem Server, kann Zeitzeuge dessen Log auch über das Netzwerk lesen. Trag unter **Einstellungen → Datenquellen → Einrichten → RDM-Logs …** den Netzwerkpfad ein, zum Beispiel `\\server\c$\Users\<name>\AppData\Local\Devolutions\RemoteDesktopManager\Connections.log`. Weicht die Zeitzone des Servers ab, gleichst du das dort mit der Zeitzonenkorrektur aus.
+Läuft RDM auf einem Server, kann Zeitzeuge dessen Log auch über das Netzwerk lesen. Trag unter **Einstellungen → Aufzeichnung**, in der Kachel **Einrichten …** (RDM-Logs) den Netzwerkpfad ein, zum Beispiel `\\server\c$\Users\<name>\AppData\Local\Devolutions\RemoteDesktopManager\Connections.log`. Weicht die Zeitzone des Servers ab, gleichst du das dort mit der Zeitzonenkorrektur aus.
 
 ### Weitere Einstellungen
 
@@ -714,7 +730,9 @@ Module in `src/`:
 | `main_timeline.py` | Start, Config laden/speichern, Hauptfenster (setzt sich aus den `app_*.py` zusammen) |
 | `app_menus.py` | Werkzeugleiste, Menü „Einstellungen“, Dialoge dazu |
 | `app_daylist.py` | Tagesliste, Statuszeile, Tageswechsel |
-| `settings_preview.py` | Vorschau mit Beispieltag auf der Seite Ansicht der Einstellungen |
+| `settings_skeletons.py` | Skelett-Bilder für die Kacheln auf der Seite Darstellung der Einstellungen |
+| `notices.py` | Hinweise als Karte oder Leiste im Stil der Nachfrage statt Windows-Sprechblasen |
+| `card_dialog.py` | Dialoge im Stil der Nachfrage-Karte: Kopf, Beschriftung über dem Feld, Fußleiste mit einer Hauptaktion |
 | `focus.py` | PC-Aktivität zu Arbeitsblöcken zusammenfassen (kurze Sprünge, Splitter, Anteile) |
 | `app_docs.py` | Tätigkeiten dokumentieren, Nachfragen, KI-Vorschläge |
 | `day_close.py` | Tagesabschluss: Vorschläge je Kunde aus allen Spuren, Lücken, Ticket und Text (ohne Qt) |

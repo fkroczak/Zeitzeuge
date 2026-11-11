@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QComboBox, QDialog,
                                QHBoxLayout, QHeaderView, QLabel, QLineEdit, QPushButton, QSpinBox,
                                QTableWidget, QTableWidgetItem, QVBoxLayout)
 
+from card_dialog import modernize
 from theme import prose
 import travel
 
@@ -105,6 +106,9 @@ class TravelSettingsDialog(QDialog):
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+        modernize(self, "Orte und Fahrzeiten", "Woher Zeitzeuge Fahrten vor und nach Terminen vermutet.",
+                  "map_pin", scroll=True)
+        self.resize(self.width(), 640)
 
     def _add_row(self, name, minutes):
         try:

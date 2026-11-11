@@ -110,4 +110,5 @@ assert window.config["pc_role"] == ""
 window.quit_app()
 print("Übertragen ok")
 sys.stdout.flush()
-os._exit(0)
+import safe_io  # Ende ohne Qt-Aufräumen (Absturz unter Windows)
+safe_io.hard_exit(0)

@@ -9,30 +9,40 @@ Teil von TimelineApp (main_timeline.py): SettingsWindow(main) bekommt das Hauptf
 import os
 
 from PySide6.QtCore import QSize, Qt, QTimer, QUrl
-from PySide6.QtGui import QCursor, QDesktopServices, QPainter
-from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QFrame, QGridLayout, QHBoxLayout, QLabel,
+from PySide6.QtGui import QCursor, QDesktopServices, QIcon, QPainter
+from PySide6.QtWidgets import (QButtonGroup, QCheckBox, QComboBox, QDialog, QFrame, QGridLayout, QHBoxLayout, QLabel,
                                QLineEdit, QListWidget, QListWidgetItem, QMessageBox, QPushButton, QScrollArea,
-                               QSpinBox, QSplitter, QStackedWidget, QVBoxLayout, QWidget)
+                               QSpinBox, QStackedWidget, QToolButton, QVBoxLayout, QWidget)
 
 import icons
+from flow_layout import FlowLayout
 from theme import theme_for, fit_text, prose, SPACE_2XL, SPACE_L, SPACE_M, SPACE_S, SPACE_XL, SPACE_XS
 import main_timeline as mt  # Pfade und save_config zur Laufzeit von dort (Tests ersetzen sie dort)
 
-# Bereiche: Schlüssel, Name, Symbol, Satz darunter
+# Bereiche: Schlüssel, Name, Symbol, Satz darunter. Reihenfolge wie der Arbeitstag:
+# aufzeichnen, nachfragen, zuordnen, buchen; danach Darstellung, Datenschutz, Info.
 PAGES = [
-    ("general", "Allgemein", "settings", "Arbeitszeiten und Pausen."),
-    ("view", "Ansicht", "eye", "Timeline, Tagesliste und Aussehen."),
-    ("sources", "Datenquellen", "plug", "Woher Zeitzeuge deine Spuren liest. Schalter und Zustand je Quelle."),
-    ("prompts", "Nachfragen & Grenzwerte", "bell", "Wann Zeitzeuge nachfragt und ab welchen Minuten."),
-    ("rules", "Zuordnung & KI", "rules", "Regeln ohne KI und KI-Vorschläge."),
-    ("booking", "Matrix42 & Abrechnung", "gauge", "Buchen, Abrechnungstakt und Buchungsquote."),
-    ("customers", "Kunden & Texte", "users", "Kundenliste mit Spuren und Textbausteine."),
-    ("data", "Daten & Schutz", "shield", "Speicherort, PIN, Löschen, Übernehmen von einem anderen PC."),
-    ("debug", "Fehlersuche & Analyse", "search", "Für tiefergehende Analysen, im Alltag nicht nötig: "
-     "aufzeichnen, wie 3CX, Matrix42 und ITM mit ihrem Server reden, z. B. wenn nach einem Update "
-     "etwas nicht mehr gelesen wird. Passwörter und Token werden geschwärzt, die Dateien landen im Datenordner."),
-    ("about", "Über Zeitzeuge", "info", "Version und Beenden."),
+    ("home", "Übersicht", "today", "Was gerade los ist und was du oft brauchst."),
+    ("sources", "Aufzeichnung", "plug", "Was Zeitzeuge mitschreibt und woher."),
+    ("prompts", "Nachfragen", "bell", "Wann und wie Zeitzeuge nach deinen Tätigkeiten fragt."),
+    ("mapping", "Zuordnung", "users", "Wie Zeitzeuge Kunde und Kategorie erkennt, und Textbausteine."),
+    ("booking", "Buchung", "gauge", "Matrix42, Arbeitszeiten, Abrechnung und Buchungsquote."),
+    ("view", "Darstellung", "eye", "Aussehen von Timeline und Tagesliste."),
+    ("data", "Datenschutz", "shield", "Wo die Daten liegen, wie lange, und wer sie lesen kann."),
+    ("about", "Info", "info", "Version, Hilfe bei Problemen und Beenden."),
 ]
+# Frühere Namen der Bereiche (Menüs, Tests, gespeicherte Seite) zeigen auf den neuen
+PAGE_ALIASES = {"general": "home", "customers": "mapping", "rules": "mapping", "debug": "about"}
+
+
+def row_page(spec):
+    """Bereich einer Zeile: „view/Timeline“ -> „view“."""
+    return spec[0].partition("/")[0]
+
+
+def row_section(spec):
+    """Abschnitt einer Zeile im Bereich: „view/Timeline“ -> „Timeline“ ("" = ohne Überschrift)."""
+    return spec[0].partition("/")[2]
 
 
 def _prompt_summary(main):
@@ -54,77 +64,58 @@ def _billing_summary(main):
     return f"{c.get('billing_step_minutes', 15)}-Minuten-Takt"
 
 
-# Zeilen: (Bereich, Art, Symbol, Titel, Beschreibung, Ziel, Zusatz)
+def _open_data_dir(main):
+    QDesktopServices.openUrl(QUrl.fromLocalFile(mt.DATA_DIR))
+
+
+# Zeilen: (Bereich/Abschnitt, Art, Symbol, Titel, Beschreibung, Ziel, Zusatz)
 #   toggle: Ziel = Name einer QAction am Hauptfenster
 #   button: Ziel = Methode am Hauptfenster (oder Funktion main -> None), Zusatz = Wert-Funktion
 #   spin:   Ziel = Config-Schlüssel, Zusatz = (min, max, Einheit, Text bei 0, Nachlauf)
 #   check:  Ziel = Config-Schlüssel, Zusatz = Standardwert
 #   choice: Ziel = Config-Schlüssel, Zusatz = ([(Wert, Text)] oder Funktion main -> Liste, Nachlauf)
+#   theme:  Auswahl des Designs als Liste (Wie Windows, Hell, Dunkel, Eigene Farben)
+#   tiles:  Auswahl als Kacheln mit Skelett-Bild (settings_skeletons.py), Zusatz = [(Wert, Text)]
+#           oder Funktion main -> Liste. Ziel: "theme", ein Config-Schlüssel oder eine QAction
+#           (Werte "on"/"off")
+# Jede Einstellung steht genau einmal; nur „Übersicht → Häufig“ wiederholt die häufigsten.
 ROWS = [
-    ("general", "toggle", "power", "Mit Windows starten",
+    ("home/Häufig", "theme", "palette", "Design", "Hell, Dunkel, wie Windows oder eigene Farben.", None, None),
+    ("home/Häufig", "toggle", "monitor", "Aktive Fenster aufzeichnen",
+     "Band „PC“: welches Programm wann vorn war. Auch im Infobereich pausierbar.", "tracking_action", None),
+    ("home/Häufig", "toggle", "power", "Mit Windows starten",
      "Startet beim Anmelden an Windows im Infobereich, damit nichts unaufgezeichnet bleibt.",
      "autostart_action", None),
-    ("general", "button", "clock", "Arbeitszeiten", "Arbeitstage und Zeiten, wenn keine ITM-Personalzeit da ist.",
-     "edit_work_hours", None),
-    # Ein/Aus und Fenster-Filter stehen auf der Kachel „Aktive Fenster“ (SOURCE_TILES), hier nur der Rest
-    ("sources", "spin", "pause", "Leerlauf nach", "Ohne Maus und Tastatur zeichnet Zeitzeuge nichts auf.",
-     "tracking_idle_minutes", (1, 60, "min", "", "idle_limit")),
+    ("home/Häufig", "button", "users", "Kundenliste", "Kunden mit ihren Spuren.", "edit_customers", None),
+    ("home/Häufig", "button", "edit", "Textbausteine", "Bausteine und Ticket-Format beim Eintragen.",
+     "edit_snippets", None),
 
-    # Ansicht: alles, was nur die Darstellung ändert (mit Vorschau, settings_preview.py)
-    ("view", "toggle", "moon", "Dunkles Design", "Dunkles Aussehen, gilt sofort. Eigene Farben: Menü Ansicht → Design.",
-     "dark_action", None),
-    ("view", "choice", "layers", "Tagesliste", "Wie die Liste unter der Timeline die Einträge zeigt (F1 erklärt alle).",
-     "list_view", (lambda main: [(k, t) for k, t in main.VIEWS], "view")),
-    ("view", "toggle", "monitor", "PC-Verlauf in der Liste", "Arbeitsblöcke am PC auch in der Tagesliste zeigen.",
-     "pc_list_action", None),
-    ("view", "toggle", "blocks", "PC-Aktivität als Arbeitsblöcke",
-     "Fenster zu Blöcken je Tätigkeit zusammenfassen statt jedes Fenster einzeln zu zeigen. "
-     "Auch im Menü Ansicht und per Rechtsklick auf die Legende der Timeline.",
-     "pc_blocks_action", None),
-    ("view", "spin", "layers", "Kurze Sprünge bis",
-     "Kürzere Wechsel zählen zur Haupttätigkeit, wenn es danach dort weitergeht oder der Kunde passt.",
-     "pc_jump_seconds", (0, 600, "s", "aus", "redraw")),
-    ("view", "choice", "clock", "Timeline beim Start",
-     "Zeitraum beim Start und beim Blättern zum nächsten Tag.",
-     "timeline_range", ([("work", "Arbeitszeit"), ("day", "Ganzer Tag")], "range")),
-    ("view", "check", "details", "Aktivitätsdetails als Textfelder",
-     "Werte im Fenster „Aktivitätsdetails“ in Textfeldern zeigen: hineinklicken, Strg+A, Strg+C.",
-     "detail_text_fields", False),
-    ("view", "button", "rows", "Zeilen der Timeline",
-     "Jede Zeile ein- oder ausblenden. Leere Zeilen blendet Zeitzeuge von selbst aus.",
-     lambda main: main.rows_menu.exec(QCursor.pos()), None),
-
-    ("sources", "button", "spark", "Einrichtungsassistent", "Alle Quellen Schritt für Schritt neu einrichten.",
+    ("sources/Grundlagen", "toggle", "power", "Mit Windows starten",
+     "Startet beim Anmelden an Windows im Infobereich, damit nichts unaufgezeichnet bleibt.",
+     "autostart_action", None),
+    ("sources/Grundlagen", "button", "spark", "Einrichtungsassistent", "Alle Quellen Schritt für Schritt neu einrichten.",
      "show_setup_wizard", None),
+    ("sources/Grundlagen", "spin", "pause", "Leerlauf nach",
+     "Ohne Maus und Tastatur zeichnet Zeitzeuge keine aktiven Fenster auf.",
+     "tracking_idle_minutes", (1, 60, "min", "", "idle_limit")),
+    ("sources/Grundlagen", "toggle", "server", "Dieser PC ist eine PAW", "Nur RDM sammeln, alles andere aus.",
+     "paw_action", None),
 
-    ("prompts", "button", "bell", "Nachfragen und Benachrichtigungen",
-     "Fenster oder Infobereich, wonach gefragt wird, Erinnerung bei Feierabend und Beenden, "
-     "Benachrichtigungen wie „Zeitzeuge läuft weiter“.",
-     "edit_prompt_settings", _prompt_summary),
-    ("prompts", "spin", "clock", "Abwesenheit am PC: fragen ab",
-     "Nach so vielen Minuten ohne Eingabe fragt Zeitzeuge bei der Rückkehr, was war.",
-     "idle_prompt_minutes", (0, 240, "min", "aus", "idle_watch")),
-    ("prompts", "spin", "pause", "„Später fragen“ nach", "So lange wartet eine zurückgestellte Nachfrage.",
-     "prompt_snooze_minutes", (1, 480, "min", "", None)),
-    ("view", "spin", "layers", "Zusammenfassen bis Pause",
-     "Ansicht „Zusammengefasst“: gleiche Verbindungen mit kürzerer Pause werden eine Zeile.",
-     "merge_gap_minutes", (0, 120, "min", "nie", "redraw")),
-    ("view", "spin", "blocks", "Arbeitsblock bis Pause",
-     "Ansicht „Arbeitsblöcke“: alles mit kürzerer Pause wird ein Block.",
-     "block_gap_minutes", (1, 240, "min", "", "redraw")),
-    ("view", "spin", "monitor", "Gesendete Mail als Block",
-     "So breit steht eine gesendete Mail in der Timeline (Outlook).",
-     "outlook_mail_minutes", (1, 60, "min", "", "redraw")),
-
-    ("rules", "button", "rules", "Zuordnung ohne KI (Regeln)", "Feste Regeln: Programm oder Verbindung → Kategorie und Kunde.",
+    ("mapping", "button", "users", "Kundenliste", "Kunden mit ihren Spuren (TeamViewer-ID, RDM, VPN, Telefon, Domain).",
+     "edit_customers", None),
+    ("mapping", "button", "map_pin", "Orte und Fahrzeiten",
+     "Startadresse, Orte und Kunden mit Fahrzeit für vermutete Fahrten.", "edit_travel_settings", None),
+    ("mapping", "button", "rules", "Regeln ohne KI", "Feste Regeln: Programm oder Verbindung → Kategorie und Kunde.",
      "edit_rules", None),
-    ("rules", "button", "spark", "KI-Vorschläge", "Modell, Schlüssel und Kategorien für Claude.",
+    ("mapping", "button", "spark", "KI-Vorschläge", "Modell, Schlüssel und Kategorien für Claude.",
      "edit_ai_settings", None),
-    ("view", "button", "palette", "Aktivitätstypen und Farben", "Farbe je Art in der Timeline.",
-     "edit_activity_types", None),
+    ("mapping", "button", "edit", "Textbausteine", "Bausteine und Ticket-Format beim Eintragen.",
+     "edit_snippets", None),
 
     ("booking", "button", "gauge", "Matrix42 einrichten", "Adresse der Kalenderseite und Anmeldung (nur im Firmennetz).",
      "open_m42_settings", None),
+    ("booking", "button", "clock", "Arbeitszeiten", "Arbeitstage und Zeiten, wenn keine ITM-Personalzeit da ist.",
+     "edit_work_hours", None),
     ("booking", "button", "tag", "Abrechnung", "Abrechnungstakt, auch je Kunde.", "edit_billing", _billing_summary),
     ("booking", "spin", "gauge", "Ziel Buchungsquote", "So viel der Personalzeit soll in Matrix42 gebucht sein.",
      "booking_target_percent", (10, 150, "%", "", "redraw")),
@@ -133,48 +124,88 @@ ROWS = [
     ("booking", "check", "alert", "Bei Feierabend prüfen",
      "Pausen, Stempelung, Buchungen außerhalb der Personalzeit, Quote unter Ziel.", "day_checks_enabled", True),
 
-    ("customers", "button", "users", "Kundenliste", "Kunden mit ihren Spuren (TeamViewer-ID, RDM, VPN, Telefon, Domain).",
-     "edit_customers", None),
-    ("customers", "button", "edit", "Textbausteine", "Bausteine und Ticket-Format beim Eintragen.",
-     "edit_snippets", None),
+    # Darstellung: alles, was nur die Anzeige ändert; Auswahl über Kacheln mit Skelett-Bild
+    ("view/Aussehen", "tiles", "palette", "Design", "Hell, Dunkel, wie Windows oder eigene Farben. Gilt sofort.",
+     "theme", [("system", "Wie &Windows"), ("light", "&Hell"), ("dark", "&Dunkel"), ("custom", "&Eigene Farben")]),
+    ("view/Aussehen", "button", "palette", "Aktivitätstypen und Farben", "Farbe je Art in der Timeline.",
+     "edit_activity_types", None),
+    ("view/Timeline", "tiles", "clock", "Timeline beim Start",
+     "Zeitraum beim Start und beim Blättern zum nächsten Tag.",
+     "timeline_range", [("work", "Arbeitszeit"), ("day", "Ganzer Tag")]),
+    ("view/Timeline", "button", "rows", "Zeilen der Timeline",
+     "Jede Zeile ein- oder ausblenden. Leere Zeilen blendet Zeitzeuge von selbst aus.",
+     lambda main: main.rows_menu.exec(QCursor.pos()), None),
+    ("view/Timeline", "tiles", "blocks", "PC-Aktivität",
+     "Fenster zu Blöcken je Tätigkeit zusammenfassen oder jedes Fenster einzeln zeigen.",
+     "pc_blocks_action", [("on", "Arbeitsblöcke"), ("off", "Jedes Fenster")]),
+    ("view/Timeline", "spin", "layers", "Kurze Sprünge bis",
+     "Kürzere Wechsel zählen zur Haupttätigkeit, wenn es danach dort weitergeht oder der Kunde passt.",
+     "pc_jump_seconds", (0, 600, "s", "aus", "redraw")),
+    ("view/Timeline", "spin", "blocks", "Arbeitsblock bis Pause",
+     "Ansicht „Arbeitsblöcke“: alles mit kürzerer Pause wird ein Block.",
+     "block_gap_minutes", (1, 240, "min", "", "redraw")),
+    ("view/Timeline", "spin", "monitor", "Gesendete Mail als Block",
+     "So breit steht eine gesendete Mail in der Timeline (Outlook).",
+     "outlook_mail_minutes", (1, 60, "min", "", "redraw")),
+    ("view/Tagesliste", "tiles", "layers", "Ansicht der Tagesliste",
+     "Wie die Liste unter der Timeline die Einträge zeigt (F1 erklärt alle).",
+     "list_view", lambda main: list(main.VIEWS)),
+    ("view/Tagesliste", "tiles", "monitor", "PC-Verlauf in der Liste", "Arbeitsblöcke am PC auch in der Tagesliste zeigen.",
+     "pc_list_action", [("off", "Nur Einträge"), ("on", "Mit PC-Verlauf")]),
+    ("view/Tagesliste", "spin", "layers", "Zusammenfassen bis Pause",
+     "Ansicht „Zusammengefasst“: gleiche Verbindungen mit kürzerer Pause werden eine Zeile.",
+     "merge_gap_minutes", (0, 120, "min", "nie", "redraw")),
+    ("view/Tagesliste", "check", "details", "Aktivitätsdetails als Textfelder",
+     "Werte im Fenster „Aktivitätsdetails“ in Textfeldern zeigen: hineinklicken, Strg+A, Strg+C.",
+     "detail_text_fields", False),
 
-    ("data", "button", "folder", "Datenordner öffnen", "Ordner mit Einstellungen und Sicherung im Explorer zeigen.",
-     lambda main: QDesktopServices.openUrl(QUrl.fromLocalFile(mt.DATA_DIR)),
-     lambda _m: os.path.normpath(mt.DATA_DIR)),
-    ("data", "button", "folder", "Speicherort ändern", "Daten in einen anderen Ordner verschieben (startet neu).",
+    ("data/Speicherort", "button", "folder", "Datenordner", "Einstellungen, Datenbank und Sicherung. Auch die Mitschnitte der Fehlersuche.",
+     _open_data_dir, lambda _m: os.path.normpath(mt.DATA_DIR)),
+    ("data/Speicherort", "button", "folder", "Speicherort ändern", "Daten in einen anderen Ordner verschieben (startet neu).",
      "change_data_dir", None),
-    ("data", "button", "lock", "Schutz", "PIN beim Start und Wiederherstellungsschlüssel.", "show_protection", None),
-    ("data", "button", "trash", "PC-Verlauf automatisch löschen", "Aufgezeichnete Fenster nach einigen Tagen löschen.",
+    ("data/Schutz", "button", "lock", "PIN und Wiederherstellungsschlüssel",
+     "Daten sind verschlüsselt. PIN beim Start, Schlüssel für den Notfall.", "show_protection", None),
+    ("data/Aufbewahren", "button", "trash", "PC-Verlauf automatisch löschen", "Aufgezeichnete Fenster nach einigen Tagen löschen.",
      lambda main: main.retention.edit(),
      lambda m: f"nach {m.config.get('pc_history_days', 90)} Tagen" if m.config.get("pc_history_purge") else "aus"),
-    ("data", "spin", "trash", "Spuren-Verlauf aufbewahren",
+    ("data/Aufbewahren", "spin", "trash", "Spuren-Verlauf aufbewahren",
      "Spuren vom PC, Remotedesktop und VPN: Älteres wird einmal am Tag gelöscht. Tätigkeiten bleiben.",
      "trace_history_days", (30, 3650, "Tage", "", None)),
-    ("data", "button", "upload", "Daten exportieren", "Für einen anderen PC, z. B. die PAW.", "export_data", None),
-    ("data", "button", "download", "Daten übernehmen", "Von einem anderen PC einlesen.", "import_data", None),
-    ("data", "toggle", "server", "Dieser PC ist eine PAW", "Nur RDM sammeln, alles andere aus.", "paw_action", None),
-
-    ("debug", "button", "record", "3CX: Abfragen mitschneiden",
-     "Edge-Fenster mit dem 3CX-Webclient öffnen und aufzeichnen, was die Seite abfragt.",
-     lambda main: main.record_source("pbx"), None),
-    ("debug", "button", "phone", "3CX: Direkt-Abfrage prüfen",
-     "Anrufe ohne Webseite direkt vom 3CX-Server holen und mit der gespeicherten Anrufliste vergleichen.",
-     "check_pbx_direct", None),
-    ("debug", "button", "record", "Matrix42: Abfragen mitschneiden",
-     "Edge-Fenster mit dem Matrix42-Kalender öffnen und aufzeichnen, was die Seite abfragt.",
-     lambda main: main.record_source("m42"), None),
-    ("debug", "button", "record", "Matrix42: Buchung mitschneiden",
-     "Aufzeichnen, wie Matrix42 eine Zeiterfassung speichert. Du legst dabei selbst eine Buchung an.",
-     lambda main: main.record_source("m42", booking=True), None),
-    ("debug", "button", "record", "ITM: Abfragen mitschneiden",
-     "Edge-Fenster mit der ITM-Zeiterfassung öffnen und aufzeichnen, was die Seite abfragt.",
-     lambda main: main.record_source("itm"), None),
-    ("debug", "button", "folder", "Datenordner öffnen", "Dort liegen die Mitschnitte (mitschnitt_…json).",
-     lambda main: QDesktopServices.openUrl(QUrl.fromLocalFile(mt.DATA_DIR)), None),
+    ("data/Anderer PC", "button", "upload", "Daten exportieren", "Für einen anderen PC, z. B. die PAW.", "export_data", None),
+    ("data/Anderer PC", "button", "download", "Daten übernehmen", "Von einem anderen PC einlesen.", "import_data", None),
 
     ("about", "button", "info", "Über Zeitzeuge", "Version, Neuigkeiten und Projektseite.", "show_about", None),
     ("about", "button", "power", "Zeitzeuge beenden", "Aufzeichnung und Datenquellen stoppen.",
      lambda main: _confirm_quit(main), None),
+    ("about/Fehlersuche", "button", "record", "3CX: Abfragen mitschneiden",
+     "Edge-Fenster mit dem 3CX-Webclient öffnen und aufzeichnen, was die Seite abfragt.",
+     lambda main: main.record_source("pbx"), None),
+    ("about/Fehlersuche", "button", "phone", "3CX: Direkt-Abfrage prüfen",
+     "Anrufe ohne Webseite direkt vom 3CX-Server holen und mit der gespeicherten Anrufliste vergleichen.",
+     "check_pbx_direct", None),
+    ("about/Fehlersuche", "button", "record", "Matrix42: Abfragen mitschneiden",
+     "Edge-Fenster mit dem Matrix42-Kalender öffnen und aufzeichnen, was die Seite abfragt.",
+     lambda main: main.record_source("m42"), None),
+    ("about/Fehlersuche", "button", "record", "Matrix42: Buchung mitschneiden",
+     "Aufzeichnen, wie Matrix42 eine Zeiterfassung speichert. Du legst dabei selbst eine Buchung an.",
+     lambda main: main.record_source("m42", booking=True), None),
+    ("about/Fehlersuche", "button", "record", "ITM: Abfragen mitschneiden",
+     "Edge-Fenster mit der ITM-Zeiterfassung öffnen und aufzeichnen, was die Seite abfragt.",
+     lambda main: main.record_source("itm"), None),
+]
+# Eingeklappte Abschnitte (im Alltag nicht nötig): Bereich/Abschnitt -> Satz darunter
+COLLAPSED = {"about/Fehlersuche": "Für tiefergehende Analysen, z. B. wenn nach einem Update etwas nicht mehr "
+             "gelesen wird. Passwörter und Token werden geschwärzt, die Mitschnitte landen im Datenordner."}
+
+# Suchbegriffe für die Seite „Nachfragen“ (dort keine Zeilen, sondern eigene Bedienelemente)
+PROMPT_TOPICS = [
+    ("Darstellung der Nachfrage", "Karte Kompakt Leiste Aus Fenster Infobereich"),
+    ("Ausblenden nach und Position", "Sekunden Minuten dauerhaft Anzeigedauer tippen Maus Punkte ✕ Leiste "
+     "Position Ecke oben unten links rechts"),
+    ("Fragen bei", "Verbindungen Telefonate Arbeitsblöcke PC Besprechungen Mails Zugangsdaten Regeln "
+     "Grenzwerte Minuten ab Abwesenheit"),
+    ("„Später“ fragt wieder nach", "Minuten später zurückgestellt"),
+    ("Erinnern", "Feierabend Beenden Offenes Benachrichtigungen Hinweis läuft weiter Windows Sprechblase"),
 ]
 
 # Beschriftung des Knopfs je Zeile (sonst „Öffnen …“). „…“ nur, wenn noch ein Fenster kommt.
@@ -241,6 +272,16 @@ SOURCE_TILES = [
      None),
 ]
 
+# Kacheln der Aufzeichnung in Abschnitten nach Art
+TILE_GROUPS = [
+    ("Fernwartung", ["teamviewer_enabled", "rdm_enabled", "rdmbetter_enabled", "mstsc_enabled", "shell_enabled"]),
+    ("VPN", ["sophos_enabled", "forti_enabled", "vpn_enabled"]),
+    ("Kommunikation", ["pbx_reader_enabled", "teams_calls_enabled", "teams_chats_enabled", "outlook_enabled",
+                       "travel_enabled"]),
+    ("Am PC", ["tracking", "pcstate_enabled", "wlan_enabled", "recent_files_enabled", "browser_enabled"]),
+    ("Firmensysteme", ["itm_reader_enabled", "m42_reader_enabled"]),
+]
+
 STATE_TEXT = {"ok": "läuft", "warn": "Problem", "busy": "liest gerade", "off": "aus"}
 
 
@@ -292,6 +333,7 @@ def _switch(name):
     """Schalter mit Text „An“ / „Aus“ (Aussehen: theme.py, QCheckBox#switch)."""
     box = QCheckBox("Aus")
     box.setObjectName("switch")
+    box.setLayoutDirection(Qt.RightToLeft)  # Text links, Schalter bündig rechts wie die Knöpfe
     box.setAccessibleName(name)
     box.toggled.connect(lambda on: box.setText("An" if on else "Aus"))
     box.setChecked(False)
@@ -305,22 +347,6 @@ def _set_quiet(box, on):
     box.blockSignals(False)
     if box.objectName() == "switch":
         box.setText("An" if on else "Aus")
-
-
-class _Combo(QComboBox):
-    """Auswahlliste, die beim Schließen Bescheid gibt (Vorschau zurück auf den Stand)."""
-
-    def __init__(self, on_close):
-        super().__init__()
-        self._on_close = on_close
-
-    def hidePopup(self):
-        super().hidePopup()
-        self._on_close()
-
-
-# Schalter am Hauptfenster -> Config-Schlüssel, damit die Vorschau den umgeschalteten Wert zeigen kann
-ACTION_KEYS = {"dark_action": "dark_mode", "pc_blocks_action": "pc_blocks", "pc_list_action": "show_pc_in_list"}
 
 
 class _ElidedLabel(QLabel):
@@ -356,41 +382,57 @@ class _ElidedLabel(QLabel):
                          self.fontMetrics().elidedText(self._full, Qt.ElideMiddle, rect.width()))
 
 
+CONTROL_WIDTH = 150
+TILE_WIDTH = 132  # Kachel mit Skelett-Bild (96 px) und Beschriftung darunter
+
+
 class _Row(QFrame):
     """Eine Einstellung: Symbol, Titel, Beschreibung, rechts Schalter, Zahl oder „Ändern …“."""
 
     def __init__(self, window, spec, show_page=False):
         super().__init__()
-        self.setObjectName("setting_row")
+        self.setObjectName("setting_row")  # Karte mit 1 px Rand (theme.py)
         self.window, self.spec = window, spec
         main = window.main
-        page, kind, icon_name, title, desc, target, extra = spec
+        _where, kind, icon_name, title, desc, target, extra = spec
+        page = row_page(spec)
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(SPACE_XS, SPACE_M, SPACE_XS, SPACE_M)
+        layout.setContentsMargins(SPACE_M + 2, SPACE_M, SPACE_M + 2, SPACE_M)
         layout.setSpacing(SPACE_M)
         pic = QLabel()
-        pic.setPixmap(icons.icon(icon_name, window.icon_color).pixmap(20, 20))
-        pic.setAlignment(Qt.AlignTop)
-        layout.addWidget(pic)
+        pic.setObjectName("row_icon")
+        pic.setFixedSize(32, 32)
+        pic.setContentsMargins(7, 7, 7, 7)  # 18-px-Symbol mittig in der 32-px-Kachel
+        pic.setPixmap(icons.icon(icon_name, window.icon_color).pixmap(18, 18))
+        layout.addWidget(pic, 0, Qt.AlignTop)
         text = QVBoxLayout()
         text.setSpacing(SPACE_XS)
         head = QLabel(title)
         head.setObjectName("row_title")
         head.setWordWrap(True)  # lange Titel umbrechen statt die Seite zu verbreitern
+        head.setMinimumWidth(80)  # sonst verlangt Qt je nach Schrift (Windows) mehr Breite
         text.addWidget(head)
         if show_page:
-            where = QLabel(dict((k, n) for k, n, _i, _s in PAGES)[page])
+            where = QLabel(" · ".join(t for t in (dict((k, n) for k, n, _i, _s in PAGES)[page], row_section(spec)) if t))
             where.setObjectName("row_page")
             text.insertWidget(0, where)
         body = QLabel(desc)
         body.setObjectName("hint")
         body.setWordWrap(True)
+        body.setMinimumWidth(80)
         prose(body)
         text.addWidget(body)
         layout.addLayout(text, 1)
+        self.pic, self.icon_name = pic, icon_name
         self.value = None
         self.control = None
+        self.tiles = {}
+        self.custom_panel = None
 
+        if kind == "tiles":  # Auswahl als Kacheln unter dem Text, ohne Steuerelement rechts
+            self._build_tiles(text)
+            self.refresh()
+            return
         if kind == "toggle":
             action = getattr(main, target)
             self.control = _switch(title)
@@ -411,17 +453,20 @@ class _Row(QFrame):
             self.control.setAccessibleName(title)
             self.control.setValue(int(main.config.get(target, low) or 0))
             self.control.valueChanged.connect(lambda v: self._set_config(target, v, after))
+        elif kind == "theme":
+            self.control = QComboBox()
+            self.control.setAccessibleName(title)
+            for value, text in main.THEME_CHOICES:
+                self.control.addItem(text.replace("&", ""), value)
+            self.control.activated.connect(lambda i: self._choose_theme(self.control.itemData(i)))
         elif kind == "choice":
             options, _after = extra
-            self.control = _Combo(lambda: window.preview_hover(None))
+            self.control = QComboBox()
             self.control.setAccessibleName(title)
             for value, text in (options(main) if callable(options) else options):
                 self.control.addItem(text, value)
             self.control.activated.connect(
                 lambda i: self._set_config(target, self.control.itemData(i), extra[1]))
-            # Vorschau schon beim Durchgehen der Liste, bevor etwas gewählt ist
-            self.control.highlighted.connect(
-                lambda i: window.preview_hover(self.spec, self.control.itemData(i), self.control.itemText(i)))
         else:  # button
             if extra:
                 self.value = _ElidedLabel()
@@ -433,25 +478,95 @@ class _Row(QFrame):
             self.control.setAutoDefault(False)
             fit_text(self.control)  # nie schmaler als der Text, die Beschreibung bricht stattdessen um
             self.control.clicked.connect(self._run)
+        self.control.setMinimumWidth(CONTROL_WIDTH)  # Schalter, Zahlen und Knöpfe in einer Spalte
         layout.addWidget(self.control)
         self.refresh()
+
+    # ---- Kacheln mit Skelett-Bild (Seite „Darstellung“)
+
+    def _options(self):
+        extra = self.spec[6]
+        return extra(self.window.main) if callable(extra) else extra
+
+    def _build_tiles(self, text):
+        target = self.spec[5]
+        options = self._options()
+        host = QWidget()
+        host.setObjectName("chips")
+        flow = FlowLayout(host, spacing=SPACE_S)  # bricht in schmalen Fenstern um
+        group = QButtonGroup(self)
+        for value, label in options:
+            tile = QToolButton()
+            tile.setObjectName("style_tile")
+            tile.setCheckable(True)
+            tile.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
+            tile.setIconSize(QSize(96, 60))
+            tile.setFixedWidth(TILE_WIDTH)
+            tile.setText(label if "&" in label else label.replace("&", "&&"))
+            tile.setAccessibleName(f"{self.spec[3]}: {label.replace('&', '')}")
+            tile.clicked.connect(lambda _c=False, v=value: self._pick(v))
+            group.addButton(tile)
+            flow.addWidget(tile)
+            self.tiles[value] = tile
+        text.addSpacing(SPACE_XS)
+        text.addWidget(host)
+        if target == "theme":
+            from theme_dialog import CustomColorsPanel
+            self.custom_panel = CustomColorsPanel(self.window.main)
+            text.addWidget(self.custom_panel)
+        main = self.window.main
+        if target.endswith("_action"):
+            getattr(main, target).toggled.connect(self._on_action_toggled)
+        self.paint_tiles()
+
+    def paint_tiles(self):
+        import settings_skeletons
+        main = self.window.main
+        tokens = theme_for(main.config)
+        for value, tile in self.tiles.items():
+            tile.setIcon(QIcon(settings_skeletons.preview(self.spec[5], value, tokens,
+                                                          main.config.get("custom_colors"))))
+
+    def _tile_value(self):
+        target = self.spec[5]
+        main = self.window.main
+        if target == "theme":
+            return main.current_theme_key()
+        if target.endswith("_action"):
+            return "on" if getattr(main, target).isChecked() else "off"
+        return main.config.get(target, next(iter(self.tiles)))
+
+    def _pick(self, value):
+        target = self.spec[5]
+        main = self.window.main
+        if target == "theme":
+            main.choose_theme(value)
+        elif target.endswith("_action"):
+            getattr(main, target).setChecked(value == "on")
+        else:
+            self._set_config(target, value, {"timeline_range": "range", "list_view": "view"}.get(target))
+        self.refresh()
+
+    def retheme(self):
+        """Neues Design: Symbol und Kachelbilder in den neuen Farben (ohne Neuaufbau)."""
+        self.pic.setPixmap(icons.icon(self.icon_name, self.window.icon_color).pixmap(18, 18))
+        if self.tiles:
+            self.paint_tiles()
+
+    def _choose_theme(self, key):
+        main = self.window.main
+        if key != main.current_theme_key():
+            QTimer.singleShot(0, lambda: main.choose_theme(key))  # baut das Fenster neu auf
 
     def _sync_toggle(self, on):
         if self.control.isChecked() != on:
             _set_quiet(self.control, on)
 
     def _on_action_toggled(self, on):
-        self._sync_toggle(on)
-        self.window.refresh_preview_later()
-
-    # Vorschau: beim Darüberfahren zeigen, wie es nach dem Umschalten aussähe
-    def enterEvent(self, event):
-        self.window.preview_hover(self.spec)
-        super().enterEvent(event)
-
-    def leaveEvent(self, event):
-        self.window.preview_hover(None)
-        super().leaveEvent(event)
+        if self.tiles:
+            self.refresh()
+        else:
+            self._sync_toggle(on)
 
     def _run(self):
         target = self.spec[5]
@@ -475,7 +590,6 @@ class _Row(QFrame):
             main.change_view(value)
         elif after == "range":
             main.show_preferred_range()
-        self.window.refresh_preview_later()
         if key in ("booking_rate_status", "booking_target_percent"):
             import week_dialogs
             week_dialogs.update_rate_button(main)
@@ -483,6 +597,13 @@ class _Row(QFrame):
     def refresh(self):
         kind, target, extra = self.spec[1], self.spec[5], self.spec[6]
         main = self.window.main
+        if kind == "tiles":
+            current = self._tile_value()
+            for value, tile in self.tiles.items():
+                tile.setChecked(value == current)
+            if self.custom_panel is not None:
+                self.custom_panel.setVisible(current == "custom")
+            return
         if self.value is not None and extra:
             self.value.set_full_text(str(extra(main)))
         elif kind == "spin":
@@ -499,6 +620,10 @@ class _Row(QFrame):
             self.control.blockSignals(False)
         elif kind == "toggle":
             self._sync_toggle(getattr(main, target).isChecked())
+        elif kind == "theme":
+            self.control.blockSignals(True)
+            self.control.setCurrentIndex(max(0, self.control.findData(main.current_theme_key())))
+            self.control.blockSignals(False)
 
 
 class _Tile(QFrame):
@@ -579,14 +704,12 @@ class _Tile(QFrame):
 class SettingsWindow(QDialog):
     """Alle Einstellungen in einem Fenster. Bleibt offen, während du weiterarbeitest."""
 
-    HOVER_DELAY_MS = 120
-
     def __init__(self, main):
         super().__init__(main)
         self.main = main
         self.setWindowTitle("Zeitzeuge – Einstellungen")
         self.setObjectName("settings_window")
-        # Maximieren erlauben: die Vorschau (Seite „Ansicht“) wächst mit dem Fenster
+        # Maximieren erlauben: lange Seiten (Aufzeichnung, Darstellung) brauchen dann nicht zu blättern
         self.setWindowFlag(Qt.WindowMinMaxButtonsHint, True)
         self.setMinimumSize(720, 480)
         # Mindestens 3 Kacheln nebeneinander ohne Scrollleiste, auf großen Bildschirmen mehr Platz
@@ -599,20 +722,9 @@ class SettingsWindow(QDialog):
             self.resize(1040, 660)
         theme = theme_for(main.config)
         self.icon_color = theme["text"]
-        self.rows, self.tiles = [], []
-        self.preview = None  # Vorschau auf der Seite „Ansicht“ (settings_preview.py)
-        self._preview_timer = QTimer(self)
-        self._preview_timer.setSingleShot(True)
-        self._preview_timer.setInterval(0)
-        self._preview_timer.timeout.connect(self._refresh_preview)
-        self._preview_stale = False  # Änderung, während die Seite „Ansicht“ nicht zu sehen war
-        # Darüberfahren: erst zeichnen, wenn die Maus kurz auf einer Zeile bleibt. Beim Wischen
-        # über viele Zeilen sonst eine volle Neuzeichnung je Zeile (Fenster wirkt zäh).
-        self._hover_pending = None
-        self._hover_timer = QTimer(self)
-        self._hover_timer.setSingleShot(True)
-        self._hover_timer.setInterval(self.HOVER_DELAY_MS)
-        self._hover_timer.timeout.connect(self._apply_hover)
+        self.rows, self.tiles, self.tile_grids = [], [], []
+        self.status, self.collapsed, self.status_pics = {}, {}, []
+        self.prompt_settings = None
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -627,7 +739,8 @@ class SettingsWindow(QDialog):
         self.search.setPlaceholderText("Einstellung suchen, z. B. Minuten, VPN, PIN")
         self.search.setAccessibleName("Einstellungen durchsuchen")
         self.search.setClearButtonEnabled(True)
-        self.search.addAction(icons.icon("search", theme["muted"]), QLineEdit.ActionPosition.LeadingPosition)
+        self.search_action = self.search.addAction(icons.icon("search", theme["muted"]),
+                                                   QLineEdit.ActionPosition.LeadingPosition)
         self.search.textChanged.connect(self.on_search)
         top.addWidget(self.search, 1)
         outer.addLayout(top)
@@ -657,11 +770,6 @@ class SettingsWindow(QDialog):
         self._timer = QTimer(self)
         self._timer.timeout.connect(self.refresh_tiles)
         self._timer.start(3000)
-        # Änderungen aus dem Hauptfenster (Menü Ansicht, Zeilen der Timeline) auch in der Vorschau
-        for action in list(getattr(main, "row_actions", {}).values()):
-            action.toggled.connect(self.refresh_preview_later)
-        for action in getattr(main, "view_actions", {}).values():
-            action.triggered.connect(self.refresh_preview_later)
         self.nav.setCurrentRow(0)
 
     # ---- Aufbau
@@ -673,21 +781,63 @@ class SettingsWindow(QDialog):
         scroll.setWidget(widget)
         return scroll
 
+    def _section(self, layout, text, key=None):
+        """Überschrift eines Abschnitts. Eingeklappte Abschnitte (COLLAPSED): Knopf mit Pfeil,
+        die Zeilen darunter erst nach Klick. Gibt das Layout für die Zeilen zurück."""
+        layout.addSpacing(SPACE_M)
+        if key not in COLLAPSED:
+            title = QLabel(text)
+            title.setObjectName("section_title")
+            layout.addWidget(title)
+            return layout
+        toggle = QToolButton()
+        toggle.setObjectName("section_toggle")
+        toggle.setText(text)
+        toggle.setCheckable(True)
+        toggle.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        toggle.setArrowType(Qt.RightArrow)
+        toggle.setAccessibleName(f"{text} aufklappen")
+        layout.addWidget(toggle)
+        box = QWidget()
+        box.setObjectName("settings_page")
+        inner = QVBoxLayout(box)
+        inner.setContentsMargins(0, 0, 0, 0)
+        inner.setSpacing(SPACE_S)
+        hint = QLabel(COLLAPSED[key])
+        hint.setObjectName("hint")
+        hint.setWordWrap(True)
+        inner.addWidget(hint)
+        box.hide()
+        layout.addWidget(box)
+
+        def flip(on):
+            box.setVisible(on)
+            toggle.setArrowType(Qt.DownArrow if on else Qt.RightArrow)
+        toggle.toggled.connect(flip)
+        self.collapsed[key] = toggle
+        return inner
+
+    def _rows(self, layout, key):
+        """Zeilen eines Bereichs, nach Abschnitten (Reihenfolge wie in ROWS)."""
+        sections = []
+        for spec in ROWS:
+            if row_page(spec) == key and row_section(spec) not in sections:
+                sections.append(row_section(spec))
+        for section in sections:
+            target = self._section(layout, section, f"{key}/{section}") if section else layout
+            for spec in ROWS:
+                if row_page(spec) == key and row_section(spec) == section:
+                    row = _Row(self, spec)
+                    self.rows.append(row)
+                    target.addWidget(row)
+
     def _page(self, key, name, subtitle):
         page = QWidget()
         page.setObjectName("settings_page")
         layout = QVBoxLayout(page)
         layout.setContentsMargins(SPACE_2XL, SPACE_XL, SPACE_2XL, SPACE_XL)
-        layout.setSpacing(SPACE_XS)
-        # Seite „Ansicht“: Titel und Vorschau bleiben stehen, nur die Einstellungen darunter blättern
+        layout.setSpacing(SPACE_S)
         head = layout
-        if key == "view":
-            fixed = QWidget()
-            fixed.setObjectName("settings_page")
-            head = QVBoxLayout(fixed)
-            head.setContentsMargins(SPACE_2XL, SPACE_XL, SPACE_2XL, SPACE_S)
-            head.setSpacing(SPACE_XS)
-            layout.setContentsMargins(SPACE_2XL, SPACE_XS, SPACE_2XL, SPACE_XL)
         title = QLabel(name)
         title.setObjectName("page_title")
         head.addWidget(title)
@@ -696,50 +846,143 @@ class SettingsWindow(QDialog):
         sub.setWordWrap(True)
         head.addWidget(sub)
         head.addSpacing(SPACE_S)
-        if key == "view":
-            from settings_preview import PreviewPane
-            self.preview = PreviewPane(self.main)
-            head.addWidget(self.preview, 1)
-        if key == "sources":  # Einrichtungsassistent ganz oben, darunter die Kacheln
-            for spec in ROWS:
-                if spec[0] == key and spec[1] == "button" and spec[5] == "show_setup_wizard":
-                    row = _Row(self, spec)
-                    self.rows.append(row)
-                    layout.addWidget(row)
-            layout.addSpacing(SPACE_S)
-            self.tile_grid = QGridLayout()
-            self.tile_grid.setSpacing(SPACE_M)
-            for spec in SOURCE_TILES:
-                self.tiles.append(_Tile(self, spec))
+        if key == "home":
+            self._status_rows(layout)
+        if key == "prompts":
+            from journal_dialogs import PromptSettings
+            self.prompt_settings = PromptSettings(self.main.config)
+            self.prompt_settings.changed.connect(self._prompts_changed)
+            layout.addWidget(self.prompt_settings)
+        self._rows(layout, key)
+        if key == "sources":  # nach den Grundlagen die Quellen als Kacheln, nach Art
+            for group, keys in TILE_GROUPS:
+                self._section(layout, group)
+                grid = QGridLayout()
+                grid.setSpacing(SPACE_M)
+                tiles = [_Tile(self, spec) for k in keys for spec in SOURCE_TILES if spec[0] == k]
+                self.tiles += tiles
+                self.tile_grids.append((grid, tiles))
+                layout.addLayout(grid)
             self._tile_columns = 0
             self._place_tiles(3)
-            layout.addLayout(self.tile_grid)
-            layout.addSpacing(SPACE_M)
-            pc = QLabel("Aktive Fenster")  # Aufzeichnung am PC: Schalter, Filter, Leerlauf
-            pc.setObjectName("row_title")
-            layout.addWidget(pc)
-        for spec in ROWS:
-            if spec[0] == key and not (key == "sources" and spec[5] == "show_setup_wizard"):
-                row = _Row(self, spec)
-                self.rows.append(row)
-                layout.addWidget(row)
         layout.addStretch(1)
-        if key == "view":
-            # Oben Vorschau, unten Einstellungen; die Trennlinie lässt sich ziehen. Mehr
-            # Fensterhöhe (z. B. maximiert) geht zuerst an die Vorschau.
-            split = QSplitter(Qt.Vertical)
-            split.setChildrenCollapsible(False)
-            split.addWidget(fixed)
-            split.addWidget(self._scroll(page))
-            split.setStretchFactor(0, 0)
-            split.setStretchFactor(1, 1)
-            self.view_splitter = split
-            self._view_head = fixed
-            self._view_split_dragged = False
-            split.splitterMoved.connect(self._on_view_split_moved)
-            self.preview.timeline.height_limits_changed.connect(self._fit_view_split)
-            return split
         return self._scroll(page)
+
+    # ---- Übersicht: Zustand je Bereich
+
+    STATUS = [("sources", "plug", "Aufzeichnung"), ("prompts", "bell", "Nachfragen"),
+              ("booking", "gauge", "Buchung"), ("data", "shield", "Datenschutz")]
+
+    def _status_rows(self, layout):
+        title = QLabel("Zustand")
+        title.setObjectName("section_title")
+        layout.addWidget(title)
+        for key, icon_name, name in self.STATUS:
+            row = QFrame()
+            row.setObjectName("setting_row")
+            line = QHBoxLayout(row)
+            line.setContentsMargins(SPACE_M + 2, SPACE_M, SPACE_M + 2, SPACE_M)
+            line.setSpacing(SPACE_M)
+            pic = QLabel()
+            pic.setObjectName("row_icon")
+            pic.setFixedSize(32, 32)
+            pic.setContentsMargins(7, 7, 7, 7)  # 18-px-Symbol mittig in der 32-px-Kachel
+            pic.setPixmap(icons.icon(icon_name, self.icon_color).pixmap(18, 18))
+            self.status_pics.append((pic, icon_name))
+            line.addWidget(pic, 0, Qt.AlignTop)
+            texts = QVBoxLayout()
+            texts.setSpacing(SPACE_XS)
+            head = QLabel(name)
+            head.setObjectName("row_title")
+            texts.addWidget(head)
+            state = QHBoxLayout()
+            state.setSpacing(SPACE_S)
+            mark = QLabel()
+            mark.setFixedSize(16, 16)
+            # eine Zeile, bei Platzmangel mit „…“ (voller Text als Hinweis): Breite unabhängig von
+            # Schrift und Umbruch (unter Windows war die Übersicht sonst bei 960 × 540 zu breit)
+            from prompt_card import _ElidedLabel as _OneLine
+            text = _OneLine()
+            text.setObjectName("hint")
+            state.addWidget(mark)
+            state.addWidget(text, 1)
+            texts.addLayout(state)
+            # Knopf unter dem Zustand statt daneben: Titel und Knopf teilen sich die Breite nicht,
+            # so passt die Übersicht auch unter Windows (breitere Schrift) in 960 × 540
+            button = QPushButton(f"{name} …")
+            button.setAutoDefault(False)
+            button.setAccessibleName(f"{name} öffnen")
+            button.clicked.connect(lambda _c=False, k=key: self.show_page(k))
+            texts.addWidget(button, 0, Qt.AlignLeft)
+            line.addLayout(texts, 1)
+            layout.addWidget(row)
+            self.status[key] = (mark, text)
+
+    def _status_text(self, key):
+        """(Zustand ok/warn/off, Text) für die Übersicht."""
+        main = self.main
+        if key == "sources":
+            states = [tile_state(main, spec[0], spec[5])[0] for spec in SOURCE_TILES]
+            on = len([s for s in states if s != "off"])
+            warn = states.count("warn")
+            text = f"{on} von {len(states)} Quellen an"
+            return ("warn", f"{text} · {warn} mit Problem") if warn else ("ok", text)
+        if key == "prompts":
+            count = main.open_prompt_count() if hasattr(main, "open_prompt_count") else 0
+            summary = _prompt_summary(main)
+            if summary == "aus":
+                return "off", "Nachfragen aus"
+            return ("warn" if count else "ok"), f"{summary} · {count} offen" if count else summary
+        if key == "booking":
+            import week_dialogs
+            if not week_dialogs.has_m42(main):
+                return "off", "Matrix42 nicht eingerichtet"
+            try:
+                info = week_dialogs.rate_info(main)
+            except (KeyError, TypeError, ValueError, AttributeError):
+                return "warn", "Quote gerade nicht lesbar"
+            return ("ok" if info["level"] in ("ok", "over") else "warn"), info["text"]
+        if key == "data":
+            try:
+                _win, pin, recovery, _transfer, _where = main.protection_state()
+            except Exception:  # Zustand darf die Einstellungen nie blockieren
+                return "warn", "Zustand unbekannt"
+            ok = recovery != "fehlt noch"
+            return ("ok" if ok else "warn"), f"Verschlüsselt · PIN {pin} · Wiederherstellungsschlüssel {recovery}"
+        return "off", ""
+
+    def retheme(self):
+        """Design gewechselt (auch eigene Farben): Symbole und Kachelbilder neu malen. Das Fenster
+        bleibt stehen, mit Seite, Scrollstand und aufgeklapptem „Eigene Farben“."""
+        tokens = theme_for(self.main.config)
+        self.icon_color = tokens["text"]
+        icon_of = {k: i for k, _n, i, _s in PAGES}
+        for i in range(self.nav.count()):
+            item = self.nav.item(i)
+            item.setIcon(icons.icon(icon_of[item.data(Qt.UserRole)], self.icon_color))
+        self.search_action.setIcon(icons.icon("search", tokens["muted"]))
+        for pic, name in self.status_pics:
+            pic.setPixmap(icons.icon(name, self.icon_color).pixmap(18, 18))
+        for row in self.rows:
+            row.retheme()
+        if self.prompt_settings is not None:
+            self.prompt_settings.retheme(tokens)
+        self.refresh()
+
+    def refresh_status(self):
+        for key, (mark, text) in self.status.items():
+            state, words = self._status_text(key)
+            if state == "off":
+                mark.clear()
+            else:
+                mark.setPixmap(icons.source_icon(state).pixmap(16, 16))
+            text.set_full_text(words)
+
+    def _prompts_changed(self):
+        main = self.main
+        mt.save_config(main.config)
+        if getattr(main, "idle_watch", None):
+            main.idle_watch.minutes = main.config.get("idle_prompt_minutes", 15)
 
     def _place_tiles(self, columns):
         """Kacheln in so vielen Spalten wie nebeneinander passen (1–3), sonst ragen sie rechts
@@ -747,95 +990,26 @@ class SettingsWindow(QDialog):
         if columns == self._tile_columns:
             return
         self._tile_columns = columns
-        for tile in self.tiles:
-            self.tile_grid.removeWidget(tile)
-        for i, tile in enumerate(self.tiles):
-            self.tile_grid.addWidget(tile, i // columns, i % columns)
-        for col in range(3):
-            self.tile_grid.setColumnStretch(col, 1 if col < columns else 0)
-
-    def _on_view_split_moved(self, *_args):
-        self._view_split_dragged = True  # gezogene Höhe der Vorschau behalten
-
-    def _fit_view_split(self):
-        """Vorschau kompakt halten: nur so hoch, dass alle Zeilen der Timeline passen;
-        der Rest geht an die Einstellungen. Nach Ziehen an der Trennlinie bleibt die Wahl."""
-        split = getattr(self, "view_splitter", None)
-        if split is None or self._view_split_dragged:
-            return
-        total = sum(split.sizes())
-        if total <= 0:
-            return
-        top = self._view_head.minimumSizeHint().height() if self.preview.isVisible() else 0
-        split.setSizes([top, max(0, total - top)])
-
-    # Unter dieser Fensterhöhe passt die feste Vorschau (Seite „Ansicht“) nicht mehr neben die
-    # Einstellungen und würde sie überdecken (z. B. Full HD mit 200 % Anzeige): dann ausblenden
-    PREVIEW_MIN_WINDOW_HEIGHT = 600
+        for grid, tiles in self.tile_grids:
+            for tile in tiles:
+                grid.removeWidget(tile)
+            for i, tile in enumerate(tiles):
+                grid.addWidget(tile, i // columns, i % columns)
+            for col in range(3):
+                grid.setColumnStretch(col, 1 if col < columns else 0)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self._fit_tiles()
-        if self.preview is not None:
-            self.preview.setVisible(self.height() >= self.PREVIEW_MIN_WINDOW_HEIGHT)
-            self._fit_view_split()
 
     def _fit_tiles(self):
         # Erst wenn die Seite zu sehen ist, hat das Stylesheet die Kacheln fertig vermessen
         if self.tiles and self.tiles[0].isVisible():
-            need = max(t.minimumSizeHint().width() for t in self.tiles) + self.tile_grid.spacing()
+            spacing = self.tile_grids[0][0].spacing()
+            need = max(t.minimumSizeHint().width() for t in self.tiles) + spacing
             # Platz rechts der Navigation abzüglich Seitenrand (2 × 28) und Scrollbalken
-            free = self.width() - self.nav.width() - 56 - 12 + self.tile_grid.spacing()
+            free = self.width() - self.nav.width() - 56 - 12 + spacing
             self._place_tiles(max(1, min(3, free // need)))
-
-    # ---- Vorschau (Seite „Ansicht“)
-
-    def preview_hover(self, spec, value=None, text=None):
-        """Variante zeigen: Schalter umgedreht oder Eintrag einer Auswahl; spec None = aktueller Stand."""
-        if self.preview is None:
-            return
-        changes, caption = None, ""
-        if spec is not None:
-            main = self.main
-            kind, title, target, extra = spec[1], spec[3], spec[5], spec[6]
-            key = ACTION_KEYS.get(target) if kind == "toggle" else target
-            if kind == "toggle" and key:
-                on = not getattr(main, target).isChecked()
-                changes, caption = {key: on}, f"So sähe es aus mit „{title}“ {'an' if on else 'aus'}"
-            elif kind == "check":
-                on = not bool(main.config.get(target, extra))
-                changes, caption = {key: on}, f"So sähe es aus mit „{title}“ {'an' if on else 'aus'}"
-            elif kind == "choice" and value is not None and value != main.config.get(target):
-                changes, caption = {key: value}, f"So sähe es aus mit „{title}: {text}“"
-        self._hover_pending = (changes, caption)
-        self._hover_timer.start()  # neu starten: nur die Zeile zählt, auf der die Maus bleibt
-
-    def _apply_hover(self):
-        if self.preview is None or self._hover_pending is None:
-            return
-        changes, caption = self._hover_pending
-        self._hover_pending = None
-        current = self.preview.variant
-        if (changes or None) == (current[0] if current else None):
-            return  # zeigt schon genau das
-        if not self.preview.isVisible():
-            self._preview_stale = True
-            return
-        self.preview.show_variant(changes, caption)
-
-    def refresh_preview_later(self):
-        """Nach einer Änderung (auch aus dem Hauptfenster) die Vorschau einmal neu zeichnen."""
-        if self.preview is not None and not self._preview_timer.isActive():
-            self._preview_timer.start()
-
-    def _refresh_preview(self):
-        if self.preview is None:
-            return
-        if not self.preview.isVisible():  # erst zeichnen, wenn die Seite „Ansicht“ gezeigt wird
-            self._preview_stale = True
-            return
-        self._preview_stale = False
-        self.preview.show_variant(None)
 
     def _results_page(self):
         page = QWidget()
@@ -863,18 +1037,31 @@ class SettingsWindow(QDialog):
         self.stack.setCurrentIndex(self.pages[key])
         self._fit_tiles()
         self.refresh()
-        if key == "view":
-            if self._preview_stale:
-                self._refresh_preview()
-            QTimer.singleShot(0, self._fit_view_split)  # erst mit sichtbarer Seite messen
 
     def show_page(self, key):
-        """Bereich zeigen, z. B. show_page("sources")."""
+        """Bereich zeigen, z. B. show_page("sources"). Frühere Namen gelten weiter (PAGE_ALIASES)."""
+        key = PAGE_ALIASES.get(key, key)
         for i in range(self.nav.count()):
             if self.nav.item(i).data(Qt.UserRole) == key:
                 self.nav.setCurrentRow(i)
                 self._show_row(i)
                 return
+
+    def show_custom_colors(self):
+        """Seite „Darstellung“ mit aufgeklapptem „Eigene Farben“ zeigen."""
+        row = next((r for r in self.rows if r.custom_panel is not None), None)
+        if row is None:
+            return
+        self.show_page("view")
+        row.refresh()
+        QTimer.singleShot(0, lambda: row.parentWidget() and self._scroll_to(row))
+
+    def _scroll_to(self, widget):
+        area = widget.parentWidget()
+        while area is not None and not isinstance(area, QScrollArea):
+            area = area.parentWidget()
+        if area is not None:
+            area.ensureWidgetVisible(widget)
 
     def current_page(self):
         item = self.nav.currentItem()
@@ -890,17 +1077,23 @@ class SettingsWindow(QDialog):
             self._show_row(self.nav.currentRow())
             return
         names = {k: n for k, n, _i, _s in PAGES}
-        found = [spec for spec in ROWS if matches(text, spec[3], spec[4], names[spec[0]], _unit_words(spec))]
-        tiles = [spec for spec in SOURCE_TILES if matches(text, spec[2], spec[3], "Datenquellen")]
-        for spec in tiles:
-            row = QPushButton(icons.brand_icon(spec[1]), f"  {spec[2]} – Datenquellen")
+        # Übersicht wiederholt nur Zeilen anderer Bereiche: nicht doppelt finden
+        found = [spec for spec in ROWS if row_page(spec) != "home"
+                 and matches(text, spec[3], spec[4], names[row_page(spec)], row_section(spec), _unit_words(spec))]
+        tiles = [spec for spec in SOURCE_TILES if matches(text, spec[2], spec[3], "Aufzeichnung Datenquellen")]
+        topics = [t for t in PROMPT_TOPICS if matches(text, t[0], t[1], "Nachfragen")]
+        links = [(icons.brand_icon(spec[1]), f"  {spec[2]} – Aufzeichnung", "sources") for spec in tiles]
+        links += [(icons.icon("bell", self.icon_color), f"  {title} – Nachfragen", "prompts")
+                  for title, _words in topics]
+        for icon, label, page in links:
+            row = QPushButton(icon, label)
             row.setObjectName("result_link")
             row.setAutoDefault(False)
-            row.clicked.connect(lambda: self.show_page("sources"))
+            row.clicked.connect(lambda _c=False, p=page: self.show_page(p))
             self.results_box.addWidget(row)
         for spec in found:
             self.results_box.addWidget(_Row(self, spec, show_page=True))
-        count = len(found) + len(tiles)
+        count = len(found) + len(links)
         self.results_title.setText(f"{count} Treffer für „{text}“" if count
                                    else f"Nichts gefunden für „{text}“")
         self.results_found = count
@@ -915,6 +1108,8 @@ class SettingsWindow(QDialog):
         for row in self.rows:
             row.refresh()
         self.refresh_tiles()
+        if self.isVisible():
+            self.refresh_status()
 
     def hideEvent(self, event):
         super().hideEvent(event)
@@ -925,5 +1120,3 @@ class SettingsWindow(QDialog):
         self._timer.start(3000)
         self._fit_tiles()
         self.refresh()
-        if self._preview_stale and self.current_page() == "view":
-            self.refresh_preview_later()

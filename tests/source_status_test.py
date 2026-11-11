@@ -78,4 +78,5 @@ window.pbx_reader = window.itm_reader = None  # Fake-Leser nicht beim Beenden st
 window.quit_app()
 print("Statuszeile ok")
 sys.stdout.flush()
-os._exit(0)
+import safe_io  # Ende ohne Qt-Aufräumen (Absturz unter Windows)
+safe_io.hard_exit(0)

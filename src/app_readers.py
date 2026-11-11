@@ -11,7 +11,7 @@ from datetime import datetime
 from PySide6.QtCore import Qt, QTimer, QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (QCheckBox, QDialog, QDialogButtonBox, QFormLayout, QHBoxLayout, QInputDialog, QLabel,
-                               QLineEdit, QMessageBox, QPushButton, QSpinBox, QSystemTrayIcon,
+                               QLineEdit, QMessageBox, QPushButton, QSpinBox,
                                QToolButton, QVBoxLayout)
 
 from theme import prose
@@ -91,12 +91,9 @@ class ReadersMixin:
             self.update_source_indicators()
 
     def on_pbx_login_required(self):
-        if self.tray:
-            self.tray.showMessage(
-                "3CX-Anmeldung nötig",
-                "Zeitzeuge kann die Anrufliste nicht lesen. Klick hier, um dich anzumelden.",
-                QSystemTrayIcon.Warning, 8000,
-            )
+        self.notify("3CX-Anmeldung nötig", "Zeitzeuge kann die Anrufliste nicht lesen.", action="Anmelden",
+                    on_action=self.show_pbx_login, timeout=15,
+                    balloon="Zeitzeuge kann die Anrufliste nicht lesen. Klick hier, um dich anzumelden.")
 
     def show_pbx_login(self):
         if not self.pbx_reader:
@@ -432,11 +429,11 @@ class ReadersMixin:
             if d == self.current_date.toString("yyyy-MM-dd") else None
         )
         self.itm_reader.login_required.connect(
-            lambda: self.tray and self.tray.showMessage(
-                "ITM-Anmeldung nötig",
-                "Zeitzeuge kann die Personalzeiten nicht lesen. Klick hier, um dich anzumelden.",
-                QSystemTrayIcon.Warning, 8000,
-            )
+            lambda: self.notify("ITM-Anmeldung nötig", "Zeitzeuge kann die Personalzeiten nicht lesen.",
+                                action="Anmelden", timeout=15,
+                                on_action=lambda: self.itm_reader and self.itm_reader.show_login(self),
+                                balloon="Zeitzeuge kann die Personalzeiten nicht lesen. "
+                                        "Klick hier, um dich anzumelden.")
         )
         self.itm_reader.recording_done.connect(self.on_recording_done)
         self._watch_reader(self.itm_reader)
@@ -460,8 +457,9 @@ class ReadersMixin:
         """Fehlerhafte Buchungen in ITM (je Buchung einmal)."""
         text = "\n".join(texts[:3]) + (f"\n(und {len(texts) - 3} weitere)" if len(texts) > 3 else "")
         self.statusBar().showMessage("ITM: " + texts[0], 30000)
-        if self.tray:
-            self.tray.showMessage("ITM-Zeiterfassung prüfen", text, QSystemTrayIcon.Warning, 10000)
+        url = self.config.get("itm_url", "")
+        self.notify("ITM-Zeiterfassung prüfen", texts[0], action="ITM öffnen" if url else "",
+                    on_action=lambda: QDesktopServices.openUrl(QUrl(url)), timeout=15, balloon=text)
 
     def stop_itm_reader(self):
         if self.itm_reader:
@@ -493,11 +491,11 @@ class ReadersMixin:
             if d == self.current_date.toString("yyyy-MM-dd") else None
         )
         self.m42_reader.login_required.connect(
-            lambda: self.tray and self.tray.showMessage(
-                "Matrix42-Anmeldung nötig",
-                "Zeitzeuge kann die gebuchten Zeiten nicht lesen. Klick hier, um dich anzumelden.",
-                QSystemTrayIcon.Warning, 8000,
-            )
+            lambda: self.notify("Matrix42-Anmeldung nötig", "Zeitzeuge kann die gebuchten Zeiten nicht lesen.",
+                                action="Anmelden", timeout=15,
+                                on_action=lambda: self.m42_reader and self.m42_reader.show_login(self),
+                                balloon="Zeitzeuge kann die gebuchten Zeiten nicht lesen. "
+                                        "Klick hier, um dich anzumelden.")
         )
         self.m42_reader.recording_done.connect(self.on_recording_done)
         self.m42_reader.day_read.connect(lambda _d: self.schedule_customer_discovery())
@@ -568,8 +566,9 @@ class ReadersMixin:
     def on_reader_trouble(self, text):
         """Ein Leser hat mehrmals hintereinander nichts lesen können (einmal pro Störung)."""
         self.statusBar().showMessage(text, 30000)
-        if self.tray:
-            self.tray.showMessage("Zeitzeuge", text, QSystemTrayIcon.Warning, 8000)
+        head, _dot, rest = text.partition(". ")
+        self.notify(head.rstrip("."), rest, action="Aufzeichnung …", timeout=15, balloon=text,
+                    on_action=lambda: self.show_settings("sources"))
 
     def show_problems(self, startup=False):
         """Gemerkte Probleme (kaputte Dateien, Fehler) in Statuszeile und Infobereich zeigen."""
@@ -583,4 +582,8 @@ class ReadersMixin:
         if self.tray and (startup or (not self.isVisible()
                                       and now - self._last_tray_problem > self.TRAY_PROBLEM_GAP)):
             self._last_tray_problem = now
-            self.tray.showMessage("Zeitzeuge", "\n".join(problems[-3:]), QSystemTrayIcon.Warning, 10000)
+            log = safe_io._log_path
+            more = f"und {len(problems) - 1} weitere, siehe fehler.log" if len(problems) > 1 else ""
+            self.notify(problems[-1], more, action="fehler.log öffnen" if log else "", timeout=15,
+                        on_action=lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(log)),
+                        balloon="\n".join(problems[-3:]))

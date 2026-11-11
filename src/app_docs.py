@@ -8,13 +8,13 @@ import os
 from datetime import datetime, timedelta
 
 from PySide6.QtCore import QDate, QTimer
-from PySide6.QtWidgets import QApplication, QDialog, QMessageBox, QSystemTrayIcon
+from PySide6.QtWidgets import QApplication, QDialog, QMessageBox
 
 from ai_classifier import to_entries
 from billing import Billing
 from journal import (describe, entry_key as journal_key, open_entry, suggest_category,
                      suggest_customer, sub_entries, ticket_line)
-from journal_dialogs import (DocPromptDialog, prompt_thresholds, EntryDialog, PromptStrip, PromptWindow,
+from journal_dialogs import (prompt_thresholds, EntryDialog, PromptStrip, PromptWindow,
                              default_span, PROMPT_SOURCES, prompt_style, prompt_timeout)
 from prompt_card import entry_label, prompt_position
 import snippets
@@ -495,6 +495,7 @@ class DocsMixin(CustomersMixin):
                              text, tv_id=(entry or {}).get("tv_id"), info=info, parent=self,
                              trace=hints.get("trace"), rule_subject=hints.get("rule_subject"),
                              context_for=context_for, guess_for=guess,
+                             edit_time=entry is None and span is None,  # Zeit meist noch anpassen
                              **self.entry_form_options(start, end))
         dialog.form.set_billing(self.billing())
         if dialog.exec() != QDialog.Accepted:
@@ -545,7 +546,7 @@ class DocsMixin(CustomersMixin):
         start, end = parse_time(item["start"]), parse_time(item["end"])
         dialog = EntryDialog(start, end, self.known_customers(), self.categories(),
                              item.get("customer", ""), item.get("category", ""),
-                             item.get("text", ""), title="Tätigkeit bearbeiten",
+                             item.get("text", ""), title="Tätigkeit ändern",
                              can_delete=True, parent=self,
                              goodwill=item.get("goodwill", False), travel=item.get("travel", False),
                              no_surcharge=item.get("no_surcharge", False),
@@ -602,13 +603,8 @@ class DocsMixin(CustomersMixin):
             action.setChecked(True)  # löst toggle_row aus
 
     def edit_prompt_settings(self):
-        dialog = DocPromptDialog(self.config, self)
-        if dialog.exec() == QDialog.Accepted:
-            dialog.apply()
-            mt.save_config(self.config)
-            if getattr(self, "idle_watch", None):
-                self.idle_watch.minutes = self.config.get("idle_prompt_minutes", 15)
-            self.timeline.draw_timeline(self.current_date)
+        """Nachfragen und Erinnerungen: Seite „Nachfragen“ im Einstellungsfenster."""
+        return self.show_settings("prompts")
 
     # ---- Eintragen: Textbausteine, zuletzt benutzte Texte, Ticket (snippets.py, tickets.py)
 
@@ -974,26 +970,32 @@ class DocsMixin(CustomersMixin):
         lines = [f"- {f.text}" for f in findings[:4]]
         if len(findings) > 4:
             lines.append(f"- und {len(findings) - 4} weitere (Knopf „Wochenabschluss“)")
+        items = [f.text for f in findings]
         if close_text:  # Klick öffnet den Tagesabschluss; er enthält auch das Offene
-            self._tray_close_hint = True
             title = ("Feierabend: noch nicht alles dokumentiert" if open_items else
                      "Feierabend: bitte prüfen" if findings else "Feierabend: Tagesabschluss bereit")
             text = f"Heute sind noch {len(open_items)} Tätigkeiten offen.\n" if open_items else ""
-            text += f"{close_text} Klick hier zum Prüfen und Buchen."
+            balloon = text + f"{close_text} Klick hier zum Prüfen und Buchen."
             if lines:
-                text += "\nAußerdem:\n" + "\n".join(lines)
-            self.tray.showMessage(title, text, QSystemTrayIcon.Warning, 15000)
+                balloon += "\nAußerdem:\n" + "\n".join(lines)
+            self.notify(title, (text + close_text).strip(), items=items, card=True,
+                        action="Tagesabschluss öffnen", balloon=balloon, flag="_tray_close_hint",
+                        on_action=lambda: (self.show_from_tray(),
+                                           self.show_day_close(datetime.now().strftime("%Y-%m-%d"))))
         elif open_items:
-            self._tray_doc_hint = True
-            text = f"Heute sind noch {len(open_items)} Tätigkeiten offen. Klick hier zum Nachtragen."
+            text = f"Heute sind noch {len(open_items)} Tätigkeiten offen."
+            balloon = text + " Klick hier zum Nachtragen."
             if lines:
-                text += "\nAußerdem:\n" + "\n".join(lines)
-            self.tray.showMessage("Feierabend: noch nicht alles dokumentiert", text,
-                                  QSystemTrayIcon.Warning, 15000)
+                balloon += "\nAußerdem:\n" + "\n".join(lines)
+            self.notify("Feierabend: noch nicht alles dokumentiert", text, items=items, card=True,
+                        action="Nachtragen", balloon=balloon, flag="_tray_doc_hint",
+                        on_action=self.show_open_docs)
         else:
-            self._tray_week_hint = True
-            self.tray.showMessage("Feierabend: bitte prüfen", "\n".join(lines) +
-                                  "\nDetails im Wochenabschluss (Knopf in der Werkzeugleiste).", QSystemTrayIcon.Warning, 15000)
+            self.notify("Feierabend: bitte prüfen", "Details im Wochenabschluss.", items=items, card=True,
+                        action="Wochenabschluss",
+                        balloon="\n".join(lines) + "\nDetails im Wochenabschluss (Knopf in der Werkzeugleiste).",
+                        flag="_tray_week_hint",
+                        on_action=lambda: (self.show_from_tray(), self.show_week()))
 
     # ---------------------- In Matrix42 buchen (m42_booking.py) -----------------
 

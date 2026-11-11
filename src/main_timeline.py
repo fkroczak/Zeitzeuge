@@ -824,5 +824,4 @@ if __name__ == "__main__":
         window.quit_app()
     # Direkt beenden: die Qt-Bindung räumt beim Interpreter-Ende sporadisch in falscher Reihenfolge auf
     # (Zugriffsfehler unter Windows). quit_app hat da schon alles gespeichert und gestoppt.
-    sys.stdout and sys.stdout.flush()
-    os._exit(code)
+    safe_io.hard_exit(code)

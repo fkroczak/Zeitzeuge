@@ -13,7 +13,7 @@ Die Felder kommen aus journal_dialogs._EntryForm; die Karte ordnet sie nur neu a
 from datetime import datetime
 
 from PySide6.QtCore import QEvent, QRectF, QSize, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QGuiApplication, QPainter
+from PySide6.QtGui import QColor, QGuiApplication, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (QAbstractSpinBox, QDialog, QFrame, QGraphicsDropShadowEffect, QGridLayout,
                                QHBoxLayout, QLabel, QLayout, QPushButton, QSizePolicy, QToolButton,
                                QVBoxLayout, QWidget)
@@ -36,6 +36,62 @@ DEFAULT_TIMEOUT = {"window": 0, "compact": 10, "strip": 10, "off": 0}
 POSITIONS = [("bottom_right", "Unten rechts"), ("top_right", "Oben rechts"),
              ("bottom_left", "Unten links"), ("top_left", "Oben links")]
 SHADOW = 14  # Rand für den Schatten um Karte und Leiste (durchsichtig)
+
+
+def style_preview(style, tokens, width=96, height=60):
+    """Kleines Bild für die Kacheln der Darstellung: Bildschirm mit Taskleiste und darauf Karte,
+    kompakte Karte, Leiste oder (Aus) nur die Zeile „Doku“. Farben aus den Tokens des Designs."""
+    pixmap = QPixmap(width * 2, height * 2)
+    pixmap.setDevicePixelRatio(2)
+    pixmap.fill(Qt.transparent)
+    p = QPainter(pixmap)
+    p.setRenderHint(QPainter.Antialiasing)
+    w, h = width, height
+    p.setPen(QPen(QColor(tokens["border"]), 1))
+    p.setBrush(QColor(tokens["bg"]))
+    p.drawRoundedRect(QRectF(0.5, 0.5, w - 1, h - 1), 6, 6)
+    p.setPen(Qt.NoPen)
+    p.setBrush(QColor(tokens["border"]))
+    p.drawRect(QRectF(1, h - 9, w - 2, 8))  # Taskleiste
+    line = QColor(tokens["muted"])
+    line.setAlpha(140)
+    accent = QColor(tokens["accent"])
+
+    def card(x, y, cw, ch, rows):
+        p.setPen(QPen(QColor(tokens["control"]), 1))
+        p.setBrush(QColor(tokens["surface"]))
+        p.drawRoundedRect(QRectF(x, y, cw, ch), 4, 4)
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor(tokens["text"]))
+        p.drawRoundedRect(QRectF(x + 5, y + 5, cw * 0.55, 3), 1.5, 1.5)
+        p.setBrush(line)
+        for i in range(rows):
+            p.drawRoundedRect(QRectF(x + 5, y + 12 + i * 6, cw - 10 - (i % 2) * 8, 3), 1.5, 1.5)
+        p.setBrush(accent)
+        p.drawRoundedRect(QRectF(x + cw - 18, y + ch - 8, 13, 4), 2, 2)
+
+    if style == "window":
+        card(w - 58, h - 57, 52, 44, 4)
+    elif style == "compact":
+        card(w - 44, h - 46, 38, 33, 2)
+    elif style == "strip":
+        p.setPen(QPen(QColor(tokens["control"]), 1))
+        p.setBrush(QColor(tokens["surface"]))
+        p.drawRoundedRect(QRectF(w - 62, h - 24, 56, 11), 5.5, 5.5)
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor(tokens["text"]))
+        p.drawRoundedRect(QRectF(w - 55, h - 20, 26, 3), 1.5, 1.5)
+        p.setBrush(accent)
+        p.drawEllipse(QRectF(w - 20, h - 22, 7, 7))
+    else:  # Aus: nur die Zeile „Doku“ im Hauptfenster
+        p.setPen(QPen(line, 1, Qt.DashLine))
+        p.setBrush(Qt.NoBrush)
+        p.drawRoundedRect(QRectF(10, 14, w - 20, 10), 3, 3)
+        p.setPen(Qt.NoPen)
+        p.setBrush(line)
+        p.drawRoundedRect(QRectF(14, 18, 18, 3), 1.5, 1.5)
+    p.end()
+    return pixmap
 
 
 def prompt_style(config):
@@ -297,7 +353,212 @@ class _Dock:
             self.move(x, y)
 
 
-class PromptWindow(_AutoHide, _Dock, QDialog):
+class CardParts:
+    """Gemeinsame Teile von Nachfrage-Karte und Dialog „Tätigkeit nachtragen“: feste Zeitzeile
+    mit Stift, Kunde/Kategorie/Tätigkeit mit Beschriftung darüber, Chips und Ticket als Chip.
+    Die Felder kommen aus journal_dialogs._EntryForm (form) und werden nur umgehängt (old)."""
+
+    def hold(self):
+        """Karte: nicht mehr automatisch ausblenden (_AutoHide). Im Dialog nichts zu tun."""
+
+    # ---- Zeitzeile
+
+    def _build_time_row(self, form, old, muted):
+        self.time_row = QFrame()
+        self.time_row.setObjectName("prompt_time")
+        self.time_row.setProperty("editing", False)
+        time = QHBoxLayout(self.time_row)
+        time.setContentsMargins(SPACE_S + 2, 3, 4, 3)
+        time.setSpacing(SPACE_XS + 2)
+        for w in (form.date_edit, form.start_edit, form.end_edit, form.duration):
+            _detach(w, old)
+        form.date_edit.show()
+        time.addWidget(_icon_label("calendar", muted, 14))
+        time.addWidget(form.date_edit)
+        time.addSpacing(SPACE_S)
+        time.addWidget(_icon_label("clock", muted, 14))
+        time.addWidget(form.start_edit)
+        dash = QLabel("–")
+        dash.setObjectName("hint")
+        time.addWidget(dash)
+        time.addWidget(form.end_edit)
+        form.duration.setWordWrap(False)
+        form.duration.setObjectName("hint")
+        time.addWidget(form.duration, 1)
+        self.time_btn = QToolButton()
+        self.time_btn.setObjectName("prompt_tool")
+        self.time_btn.setAccessibleName("Datum und Uhrzeit bearbeiten")
+        self.time_btn.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self.time_btn.clicked.connect(lambda: self.set_time_editing(not self.time_editing()))
+        time.addWidget(self.time_btn)
+        for w in (form.date_edit, form.start_edit, form.end_edit):
+            w.setObjectName("prompt_time_field")
+            w.installEventFilter(self)
+        self.set_time_editing(False)
+        return self.time_row
+
+    def time_editing(self):
+        return bool(self.time_row.property("editing"))
+
+    def set_time_editing(self, on):
+        form = self.form
+        for w in (form.date_edit, form.start_edit, form.end_edit):
+            w.setReadOnly(not on)
+            w.setButtonSymbols(QAbstractSpinBox.UpDownArrows if on and w is not form.date_edit
+                               else QAbstractSpinBox.NoButtons)
+            w.setFocusPolicy(Qt.StrongFocus if on else Qt.NoFocus)
+        form.date_edit.setCalendarPopup(on)
+        self.time_row.setProperty("editing", on)
+        self.time_btn.setText("Fertig" if on else "")
+        self.time_btn.setToolTip("Fertig" if on else "Datum und Uhrzeit bearbeiten")
+        _text, accent, muted = _theme_colors(self.parent() or self)
+        self.time_btn.setIcon(icons.icon("check_mark" if on else "edit", accent if on else muted))
+        for w in (self.time_row, form.date_edit, form.start_edit, form.end_edit):
+            w.style().unpolish(w)
+            w.style().polish(w)
+        if on:
+            self.hold()
+            form.start_edit.setFocus()
+
+    # ---- Kunde, Kategorie, Tätigkeit, Chips, Ticket
+
+    def _build_fields(self, body_box, form, old, compact=False, text_height=64):
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(SPACE_M)
+        grid.setVerticalSpacing(SPACE_XS)
+        for col, (name, w) in enumerate((("&Kunde", form.customer_edit), ("Kate&gorie", form.category_edit))):
+            _detach(w, old)
+            if compact:
+                w.lineEdit().setPlaceholderText(name.replace("&", ""))
+                grid.addWidget(w, 0, col)
+            else:
+                label = QLabel(name)
+                label.setObjectName("prompt_label")
+                label.setBuddy(w)
+                grid.addWidget(label, 0, col)
+                grid.addWidget(w, 1, col)
+            grid.setColumnStretch(col, 1)
+        body_box.addLayout(grid)
+
+        _detach(form.text_edit, old)
+        if not compact:
+            label = QLabel("&Tätigkeit")
+            label.setObjectName("prompt_label")
+            label.setBuddy(form.text_edit)
+            body_box.addSpacing(2)
+            body_box.addWidget(label)
+        form.text_edit.setFixedHeight(text_height)
+        body_box.addWidget(form.text_edit)
+
+        # Chips: + Ticket, Merken, Kulanz, Reise, Zuschlag, Text einfügen
+        chips_host = QWidget()
+        chips_host.setObjectName("chips")
+        chips = FlowLayout(chips_host, spacing=6)
+        self.ticket_add = QToolButton()
+        self.ticket_add.setObjectName("chip_add")
+        self.ticket_add.setText("+ T&icket")
+        self.ticket_add.setToolTip("Ticketnummer eintragen oder in Matrix42 suchen")
+        self.ticket_add.clicked.connect(self._open_ticket)
+        self.ticket_chip = QToolButton()
+        self.ticket_chip.setObjectName("ticket_chip")
+        self.ticket_chip.setToolTip("Ticket entfernen")
+        self.ticket_chip.clicked.connect(self._remove_ticket)
+        chips.addWidget(self.ticket_add)
+        chips.addWidget(self.ticket_chip)
+        for w in (form.remember_tv, form.learn_rule):
+            if w is not None:
+                _detach(w, old)
+                w.setObjectName("chip_check")
+                chips.addWidget(w)
+        for w in (form.goodwill_box, form.travel_box, form.surcharge_box):
+            _detach(w, old)
+            w.setObjectName("chip_check")
+            chips.addWidget(w)
+        form.travel_box.setText("&Reise")
+        form.surcharge_box.setText("Kein &Zuschlag")
+        _detach(form.insert_button, old)
+        form.insert_button.setObjectName("chip_button")
+        form.insert_button.setText("Text &einfügen")
+        chips.addWidget(form.insert_button)
+        body_box.addWidget(chips_host)
+
+        # Ticket: Feld erst nach „+ Ticket“, danach als Chip; Vorschlag darunter als Link
+        self.ticket_row = QWidget()
+        self.ticket_row.setObjectName("chips")
+        ticket_box = QHBoxLayout(self.ticket_row)
+        ticket_box.setContentsMargins(0, 0, 0, 0)
+        ticket_box.setSpacing(SPACE_S)
+        for w in (form.ticket_edit, form.ticket_search_button):
+            if w is not None:
+                _detach(w, old)
+                ticket_box.addWidget(w, 1 if w is form.ticket_edit else 0)
+        form.ticket_edit.show()
+        form.ticket_edit.lineEdit().returnPressed.connect(self._close_ticket)
+        body_box.addWidget(self.ticket_row)
+        for w in (form.ticket_status, form.ticket_take, form.error):
+            _detach(w, old)
+            body_box.addWidget(w)
+        if form.ticket_suggestions:
+            top_label = form.ticket_suggestions[0]["label"]
+            form.ticket_take.setText(f"Vorschlag: {top_label.replace('&', '&&')}")
+        form.ticket_take.setObjectName("link_button")
+        form.ticket_take.setCursor(Qt.PointingHandCursor)
+        form.ticket_take.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
+        form.text_edit.installEventFilter(self)
+        self._sync_ticket(collapse=True)
+        form.ticket_edit.currentTextChanged.connect(lambda _t: self._sync_ticket())
+
+    def _sync_ticket(self, collapse=False):
+        ticket = self.form.ticket_edit.currentText().strip()
+        open_row = self.ticket_row.isVisibleTo(self) and not collapse
+        self.ticket_row.setVisible(open_row)
+        self.ticket_chip.setText(f"{ticket}  ✕")
+        self.ticket_chip.setAccessibleName(f"Ticket {ticket} entfernen")
+        self.ticket_chip.setVisible(bool(ticket) and not open_row)
+        self.ticket_add.setVisible(not ticket and not open_row)
+        if not open_row:
+            self.form.ticket_status.hide()
+
+    def _open_ticket(self):
+        self.hold()
+        self.ticket_row.show()
+        self._sync_ticket()
+        self.form.ticket_edit.setFocus()
+
+    def _close_ticket(self):
+        if self.form._lookup is not None and self.form._completer.popup().isVisible():
+            return
+        self._sync_ticket(collapse=True)
+        self.form.text_edit.setFocus()
+
+    def _remove_ticket(self):
+        self.form.ticket_edit.setCurrentText("")
+        self._sync_ticket(collapse=True)
+
+    def _card_event(self, obj, event):
+        """Für eventFilter: Ticket nach Verlassen als Chip zeigen, Doppelklick öffnet die Zeit."""
+        form = self.form
+        if obj is form.text_edit and event.type() == QEvent.FocusIn \
+                and form.ticket_edit.currentText().strip() and self.ticket_row.isVisibleTo(self):
+            QTimer.singleShot(0, lambda: self._sync_ticket(collapse=True))  # Ticket übernommen
+        if obj in (form.date_edit, form.start_edit, form.end_edit) and not self.time_editing() \
+                and event.type() == QEvent.MouseButtonDblClick:
+            self.set_time_editing(True)
+            return True
+        return False
+
+
+def source_tile(icon_name, color, size=36):
+    """Kachel links im Kopf mit Linien-Icon (Quelle bzw. Aufgabe)."""
+    tile = QLabel()
+    tile.setObjectName("prompt_src")
+    tile.setFixedSize(size, size)
+    tile.setAlignment(Qt.AlignCenter)
+    tile.setPixmap(icons.icon(icon_name, color).pixmap(20, 20))
+    return tile
+
+
+class PromptWindow(_AutoHide, _Dock, CardParts, QDialog):
     """Nachfrage als Karte. Bleibt oben, nimmt aber nicht den Fokus weg.
 
     Signal answered(action, entry, item): action = "save" | "later" | "ignore" | "timeout".
@@ -396,12 +657,7 @@ class PromptWindow(_AutoHide, _Dock, QDialog):
 
         head = QHBoxLayout()
         head.setSpacing(SPACE_M)
-        tile = QLabel()
-        tile.setObjectName("prompt_src")
-        tile.setFixedSize(36, 36)
-        tile.setAlignment(Qt.AlignCenter)
-        tile.setPixmap(icons.icon(source_icon_name(entry), accent).pixmap(20, 20))
-        head.addWidget(tile, 0, Qt.AlignTop)
+        head.addWidget(source_tile(source_icon_name(entry), accent), 0, Qt.AlignTop)
         texts = QVBoxLayout()
         texts.setSpacing(2)
         self.title = _ElidedLabel(entry_title(entry, form.customer_edit.currentText()))
@@ -417,41 +673,7 @@ class PromptWindow(_AutoHide, _Dock, QDialog):
             form.customer_edit.currentTextChanged.connect(
                 lambda t: self.title.set_full_text(entry_title(entry, t)))
 
-        # Zeitzeile: immer an derselben Stelle, Stift macht die Felder bearbeitbar
-        self.time_row = QFrame()
-        self.time_row.setObjectName("prompt_time")
-        self.time_row.setProperty("editing", False)
-        time = QHBoxLayout(self.time_row)
-        time.setContentsMargins(SPACE_S + 2, 3, 4, 3)
-        time.setSpacing(SPACE_XS + 2)
-        for w in (form.date_edit, form.start_edit, form.end_edit, form.duration):
-            _detach(w, old)
-        form.date_edit.show()
-        time.addWidget(_icon_label("calendar", muted, 14))
-        time.addWidget(form.date_edit)
-        time.addSpacing(SPACE_S)
-        time.addWidget(_icon_label("clock", muted, 14))
-        time.addWidget(form.start_edit)
-        dash = QLabel("–")
-        dash.setObjectName("hint")
-        time.addWidget(dash)
-        time.addWidget(form.end_edit)
-        form.duration.setWordWrap(False)
-        form.duration.setObjectName("hint")
-        time.addWidget(form.duration, 1)
-        self.time_btn = QToolButton()
-        self.time_btn.setObjectName("prompt_tool")
-        self.time_btn.setIcon(icons.icon("edit", muted))
-        self.time_btn.setToolTip("Datum und Uhrzeit bearbeiten")
-        self.time_btn.setAccessibleName("Datum und Uhrzeit bearbeiten")
-        self.time_btn.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-        self.time_btn.clicked.connect(lambda: self.set_time_editing(not self.time_editing()))
-        time.addWidget(self.time_btn)
-        for w in (form.date_edit, form.start_edit, form.end_edit):
-            w.setObjectName("prompt_time_field")
-            w.installEventFilter(self)
-        self.set_time_editing(False)
-        head_box.addWidget(self.time_row)
+        head_box.addWidget(self._build_time_row(form, old, muted))
         box.addWidget(top)
 
         # ---- Inhalt: Kunde, Kategorie, Tätigkeit, Chips
@@ -463,91 +685,8 @@ class PromptWindow(_AutoHide, _Dock, QDialog):
         self.quick_buttons = []
         if entry.get("idle"):
             body_box.addLayout(self._quick_choices())
-
-        grid = QGridLayout()
-        grid.setHorizontalSpacing(SPACE_M)
-        grid.setVerticalSpacing(SPACE_XS)
-        for col, (name, w) in enumerate((("&Kunde", form.customer_edit), ("Kate&gorie", form.category_edit))):
-            _detach(w, old)
-            if compact:
-                w.lineEdit().setPlaceholderText(name.replace("&", ""))
-                grid.addWidget(w, 0, col)
-            else:
-                label = QLabel(name)
-                label.setObjectName("prompt_label")
-                label.setBuddy(w)
-                grid.addWidget(label, 0, col)
-                grid.addWidget(w, 1, col)
-            grid.setColumnStretch(col, 1)
-        body_box.addLayout(grid)
-
-        _detach(form.text_edit, old)
-        if not compact:
-            label = QLabel("&Tätigkeit")
-            label.setObjectName("prompt_label")
-            label.setBuddy(form.text_edit)
-            body_box.addSpacing(2)
-            body_box.addWidget(label)
-        form.text_edit.setFixedHeight(52 if compact else 64)
-        body_box.addWidget(form.text_edit)
-
-        # Chips: + Ticket, Merken, Kulanz, Reise, Zuschlag, Text einfügen
-        chips_host = QWidget()
-        chips_host.setObjectName("chips")
-        chips = FlowLayout(chips_host, spacing=6)
-        self.ticket_add = QToolButton()
-        self.ticket_add.setObjectName("chip_add")
-        self.ticket_add.setText("+ T&icket")
-        self.ticket_add.setToolTip("Ticketnummer eintragen oder in Matrix42 suchen")
-        self.ticket_add.clicked.connect(self._open_ticket)
-        self.ticket_chip = QToolButton()
-        self.ticket_chip.setObjectName("ticket_chip")
-        self.ticket_chip.setToolTip("Ticket entfernen")
-        self.ticket_chip.clicked.connect(self._remove_ticket)
-        chips.addWidget(self.ticket_add)
-        chips.addWidget(self.ticket_chip)
-        for w in (form.remember_tv, form.learn_rule):
-            if w is not None:
-                _detach(w, old)
-                w.setObjectName("chip_check")
-                chips.addWidget(w)
-        for w in (form.goodwill_box, form.travel_box, form.surcharge_box):
-            _detach(w, old)
-            w.setObjectName("chip_check")
-            chips.addWidget(w)
-        form.surcharge_box.setText("Kein &Zuschlag")
-        _detach(form.insert_button, old)
-        form.insert_button.setObjectName("chip_button")
-        form.insert_button.setText("Text &einfügen")
-        chips.addWidget(form.insert_button)
-        body_box.addWidget(chips_host)
-
-        # Ticket: Feld erst nach „+ Ticket“, danach als Chip; Vorschlag darunter als Link
-        self.ticket_row = QWidget()
-        self.ticket_row.setObjectName("chips")
-        ticket_box = QHBoxLayout(self.ticket_row)
-        ticket_box.setContentsMargins(0, 0, 0, 0)
-        ticket_box.setSpacing(SPACE_S)
-        for w in (form.ticket_edit, form.ticket_search_button):
-            if w is not None:
-                _detach(w, old)
-                ticket_box.addWidget(w, 1 if w is form.ticket_edit else 0)
-        form.ticket_edit.show()
-        form.ticket_edit.lineEdit().returnPressed.connect(self._close_ticket)
-        body_box.addWidget(self.ticket_row)
-        for w in (form.ticket_status, form.ticket_take, form.error):
-            _detach(w, old)
-            body_box.addWidget(w)
-        if form.ticket_suggestions:
-            top_label = form.ticket_suggestions[0]["label"]
-            form.ticket_take.setText(f"Vorschlag: {top_label.replace('&', '&&')}")
-        form.ticket_take.setObjectName("link_button")
-        form.ticket_take.setCursor(Qt.PointingHandCursor)
-        form.ticket_take.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
-        form.text_edit.installEventFilter(self)
+        self._build_fields(body_box, form, old, compact=compact, text_height=52 if compact else 64)
         form.text_edit.textChanged.connect(self.hold)
-        self._sync_ticket(collapse=True)
-        form.ticket_edit.currentTextChanged.connect(lambda _t: self._sync_ticket())
 
         if entry.get("idle"):
             note = QLabel("Bleibt verschlüsselt auf diesem PC.")
@@ -622,59 +761,6 @@ class PromptWindow(_AutoHide, _Dock, QDialog):
         """Älterer Weg: nur die Zahl der weiteren offenen Nachfragen."""
         self.set_queue([], 0, pending)
 
-    # ---- Zeitzeile
-
-    def time_editing(self):
-        return bool(self.time_row.property("editing"))
-
-    def set_time_editing(self, on):
-        form = self.form
-        for w in (form.date_edit, form.start_edit, form.end_edit):
-            w.setReadOnly(not on)
-            w.setButtonSymbols(QAbstractSpinBox.UpDownArrows if on and w is not form.date_edit
-                               else QAbstractSpinBox.NoButtons)
-            w.setFocusPolicy(Qt.StrongFocus if on else Qt.NoFocus)
-        form.date_edit.setCalendarPopup(on)
-        self.time_row.setProperty("editing", on)
-        self.time_btn.setText("Fertig" if on else "")
-        self.time_btn.setToolTip("Fertig" if on else "Datum und Uhrzeit bearbeiten")
-        _text, accent, muted = _theme_colors(self.parent() or self)
-        self.time_btn.setIcon(icons.icon("check_mark" if on else "edit", accent if on else muted))
-        for w in (self.time_row, form.date_edit, form.start_edit, form.end_edit):
-            w.style().unpolish(w)
-            w.style().polish(w)
-        if on:
-            self.hold()
-            form.start_edit.setFocus()
-
-    # ---- Ticket
-
-    def _sync_ticket(self, collapse=False):
-        ticket = self.form.ticket_edit.currentText().strip()
-        open_row = self.ticket_row.isVisibleTo(self) and not collapse
-        self.ticket_row.setVisible(open_row)
-        self.ticket_chip.setText(f"{ticket}  ✕")
-        self.ticket_chip.setVisible(bool(ticket) and not open_row)
-        self.ticket_add.setVisible(not ticket and not open_row)
-        if not open_row:
-            self.form.ticket_status.hide()
-
-    def _open_ticket(self):
-        self.hold()
-        self.ticket_row.show()
-        self._sync_ticket()
-        self.form.ticket_edit.setFocus()
-
-    def _close_ticket(self):
-        if self.form._lookup is not None and self.form._completer.popup().isVisible():
-            return
-        self._sync_ticket(collapse=True)
-        self.form.text_edit.setFocus()
-
-    def _remove_ticket(self):
-        self.form.ticket_edit.setCurrentText("")
-        self._sync_ticket(collapse=True)
-
     # ---- Abwesenheit: Schnellauswahl
 
     def _quick_choices(self):
@@ -715,13 +801,7 @@ class PromptWindow(_AutoHide, _Dock, QDialog):
     # ---- Fenster
 
     def eventFilter(self, obj, event):
-        form = self.form
-        if obj is form.text_edit and event.type() == QEvent.FocusIn \
-                and form.ticket_edit.currentText().strip() and self.ticket_row.isVisibleTo(self):
-            QTimer.singleShot(0, lambda: self._sync_ticket(collapse=True))  # Ticket übernommen
-        if obj in (form.date_edit, form.start_edit, form.end_edit) and not self.time_editing() \
-                and event.type() == QEvent.MouseButtonDblClick:
-            self.set_time_editing(True)
+        if self._card_event(obj, event):
             return True
         return super().eventFilter(obj, event)
 

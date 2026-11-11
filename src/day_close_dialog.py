@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QDialog, QDialogButtonBox, QHB
                                QLabel, QMessageBox, QPushButton, QTableWidget, QTableWidgetItem,
                                QToolButton, QVBoxLayout)
 
+from card_dialog import modernize, nav_icons
 import day_close as dc
 import m42_booking as mb
 import prompt_topics
@@ -156,6 +157,10 @@ class DayCloseDialog(QDialog):
             if hasattr(reader, "tickets_found"):
                 reader.tickets_found.connect(self.on_ticket_customer, Qt.QueuedConnection)
         self.fill()
+        # Datum als Untertitel, Blättern im Kopf; Werkzeuge bleiben über der Tabelle
+        nav_icons(self, self.prev_button, self.next_button)
+        modernize(self, "Tagesabschluss", icon="check_mark", intro=False, subtitle_label=self.title,
+                  head=[self.prev_button, self.next_button], right=[self.doc_button], primary=self.book_button)
 
     # ---- Daten
 
@@ -174,7 +179,7 @@ class DayCloseDialog(QDialog):
 
     def fill(self):
         day = datetime.strptime(self.date_str, "%Y-%m-%d")
-        self.title.setText(f"Tagesabschluss · {DAY_NAMES[day.weekday()]}, {day:%d.%m.%Y}")
+        self.title.setText(f"{DAY_NAMES[day.weekday()]}, {day:%d.%m.%Y}")
         self.next_button.setEnabled(day.date() < datetime.now().date())
         try:
             self.plan = self.window.day_close_plan(self.date_str)

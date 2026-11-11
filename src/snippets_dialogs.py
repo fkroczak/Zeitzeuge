@@ -5,6 +5,7 @@ und Muster für Ticketnummern. Logik in snippets.py und tickets.py.
 from PySide6.QtWidgets import (QCheckBox, QDialog, QDialogButtonBox, QFormLayout, QLabel,
                                QPlainTextEdit, QPushButton, QVBoxLayout)
 
+from card_dialog import modernize
 import snippets
 import tickets
 
@@ -66,6 +67,7 @@ class SnippetsDialog(QDialog):
         layout.addWidget(buttons)
         self.patterns_edit.textChanged.connect(self.validate)
         self.validate()
+        modernize(self, "Textbausteine", "Häufige Sätze für „Text einfügen“. Ein Baustein je Zeile.", "edit")
 
     def patterns(self):
         return [p.strip() for p in self.patterns_edit.toPlainText().splitlines() if p.strip()]

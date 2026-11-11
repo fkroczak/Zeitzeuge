@@ -31,7 +31,7 @@ def flush_deletes():
 def gui_test():
     global app, window
     import main_timeline
-    from journal_dialogs import DocPromptDialog, PromptStrip, PromptWindow
+    from journal_dialogs import PromptSettings, PromptStrip, PromptWindow
     from PySide6.QtTest import QTest
     from PySide6.QtWidgets import QApplication, QSystemTrayIcon
 
@@ -158,22 +158,26 @@ def gui_test():
     prompt._answer("ignore")
     settle()
 
-    # 5. Einstellungen: Darstellung wechseln schlägt die Dauer vor, alles wird gespeichert
-    dialog = DocPromptDialog(window.config, window)
-    dialog.mode.setCurrentIndex(dialog.mode.findData("window"))
-    assert dialog.timeout.currentData() == 0, "Karte: dauerhaft vorgeschlagen"
-    dialog.mode.setCurrentIndex(dialog.mode.findData("strip"))
-    assert dialog.timeout.currentData() == 10 and dialog.strip_close.isEnabled()
-    dialog.dots.setChecked(False)
-    dialog.apply()
+    # 5. Einstellungen (Seite „Nachfragen“): Darstellung wechseln schlägt die Dauer vor, gilt sofort
+    settings = window.edit_prompt_settings()
+    assert settings.current_page() == "prompts" and settings.prompt_settings is not None
+    pane = settings.prompt_settings
+    pane.style_buttons["window"].click()
+    assert pane.timeout.currentData() == 0, "Karte: dauerhaft vorgeschlagen"
+    pane.style_buttons["strip"].click()
+    assert pane.timeout.currentData() == 10 and pane.strip_close.isEnabled()
+    pane.dots.click()
     assert window.config["prompt_mode"] == "strip" and window.config["prompt_timeout_seconds"] == 10
     assert window.config["prompt_dots_clickable"] is False
-    assert not dialog.position.isEnabled(), "Leiste: Position fest unten rechts"
-    dialog.mode.setCurrentIndex(dialog.mode.findData("window"))
-    assert dialog.position.isEnabled()
-    dialog.position.setCurrentIndex(dialog.position.findData("top_left"))
-    dialog.apply()
+    pane.idle_spin.setValue(25)
+    assert window.config["idle_prompt_minutes"] == 25 and window.idle_watch.minutes == 25
+    assert not pane.position.isEnabled(), "Leiste: Position fest unten rechts"
+    pane.style_buttons["window"].click()
+    assert pane.position.isEnabled()
+    pane.position.setCurrentIndex(pane.position.findData("top_left"))
+    pane.position.activated.emit(pane.position.currentIndex())
     assert window.config["prompt_position"] == "top_left"
+    settings.hide()
 
     # 6. Position: Karte oben links, mit Abstand, nie außerhalb des Bildschirms
     window._close_prompt_silently()
@@ -191,7 +195,7 @@ def gui_test():
     window._close_prompt_silently()
     window.config["prompt_position"] = "bottom_right"
     old = {"prompt_mode": "tray"}  # alter Name der Leiste
-    assert DocPromptDialog(old, window).mode.currentData() == "strip"
+    assert PromptSettings(old).current_style() == "strip"
     window.quit_app()
     print("Nachfrage-Karte: OK")
 
@@ -201,6 +205,8 @@ try:
 except Exception:
     traceback.print_exc()
     sys.stdout.flush()
-    os._exit(1)
+    import safe_io
+    safe_io.hard_exit(1)
 sys.stdout.flush()
-os._exit(0)
+import safe_io  # Ende ohne Qt-Aufräumen (Absturz unter Windows)
+safe_io.hard_exit(0)

@@ -21,7 +21,7 @@ from local_sources import DEFAULT_BROWSER_HISTORY, DEFAULT_RECENT_DIR
 from rdp_reader import DEFAULT_LAUNCHER_LOG
 from vpn_reader import DEFAULT_DIRS as VPN_DEFAULT_DIRS, FORTI_TRACE_PATHS, vpn_sources
 from settings_dialogs import ActivityTypeSettingsDialog, ConnectionSettingsDialog, WorkHoursDialog
-from theme import GERMAN, STYLESHEET, SPACE_XS, theme_for
+from theme import GERMAN, STYLESHEET, SPACE_XS, default_custom_colors, theme_for
 from timeline_only import (COLOR_ROWS, DEFAULT_CALL_COLORS, LEGEND_BANDS, LEGEND_FIXED, ROW_NAMES,
                            TIMELINE_ROWS, entry_color)
 from view_help import VIEW_HELP, ViewHelpDialog, help_text
@@ -310,11 +310,11 @@ class MenusMixin:
         self.addAction(help_action)
         self._icon_actions.append((help_action, "help"))
 
-        # Zeilen der Timeline: eigenes Menü, auch per Rechtsklick auf die Legende links
+        # Zeilen der Timeline: eigenes Menü, auch per Rechtsklick auf die Legende links.
+        # „PC-Aktivität als Arbeitsblöcke“ steht nur dort (vorher doppelt in diesem Menü).
         self.rows_menu = self._build_rows_menu()
-        menu.addSeparator()
+        self._menu_header(menu, "Timeline")
         self._icon_actions.append((menu.addMenu(self.rows_menu), "rows"))
-        self._add_check(menu, self.pc_blocks_action, accent)
 
         self._menu_header(menu, "Übersichten")
         self._icon_actions.append((menu.addAction("Wochen&abschluss …", self.show_week), "gauge"))
@@ -336,13 +336,14 @@ class MenusMixin:
         self._menu_header(menu, "Design")
         self.theme_actions = {}
         for key, text in self.THEME_CHOICES:
-            action = menu.addAction(text)
-            action.triggered.connect(lambda _c=False, k=key: self.choose_theme(k))
+            if key == "custom":  # wählt eigene Farben und zeigt sie gleich zum Festlegen
+                action = menu.addAction(text + " …", self.edit_custom_colors)
+            else:
+                action = menu.addAction(text)
+                action.triggered.connect(lambda _c=False, k=key: self.choose_theme(k))
             self.theme_actions[key] = action
         menu.addSeparator()
-        self._icon_actions.append((menu.addAction("Eigene Farben &festlegen …", self.edit_custom_colors),
-                                   "edit"))
-        self._icon_actions.append((menu.addAction("An&passen mit Vorschau …",
+        self._icon_actions.append((menu.addAction("Darstellung an&passen …",
                                                   lambda: self.show_settings("view")), "eye"))
 
         self.view_button = QToolButton(self)
@@ -399,10 +400,8 @@ class MenusMixin:
             colors.addAction(f"{ROW_NAMES[key]} …", lambda k=key: self.choose_row_color(k))
         colors.addSeparator()
         colors.addAction("Alle &Standardfarben", lambda: self.set_row_color(None, None))
-        hint = menu.addAction("Leere Zeilen blendet Zeitzeuge von selbst aus")
-        hint.setEnabled(False)
-        hint = menu.addAction("Verschieben: Zeilenname links anfassen und ziehen")
-        hint.setEnabled(False)
+        menu.menuAction().setToolTip("Leere Zeilen blendet Zeitzeuge von selbst aus. "
+                                     "Verschieben: Zeilenname links anfassen und ziehen.")
         self.update_row_icons()
         return menu
 
@@ -565,11 +564,12 @@ class MenusMixin:
         self._ensure_dark_action()  # Design wählt man im Menü Ansicht (Hell, Dunkel, Wie Windows)
         # Datenquellen: im Einstellungsfenster (Kacheln mit Zustand); das Untermenü nutzt der Infobereich
         self.sources_menu = self._build_sources_menu()
-        self._icon_actions.append(
-            (menu.addAction("Daten&quellen …", lambda: self.show_settings("sources")), "plug"))
-        menu.addSeparator()
         self._icon_actions += [
-            (menu.addAction("&Nachfragen und Benachrichtigungen …", self.edit_prompt_settings), "bell"),
+            (menu.addAction("Auf&zeichnung …", lambda: self.show_settings("sources")), "plug"),
+            (menu.addAction("&Nachfragen …", self.edit_prompt_settings), "bell"),
+        ]
+        self._menu_header(menu, "Zuordnung")
+        self._icon_actions += [
             (menu.addAction("Kunden&liste …", self.edit_customers), "users"),
             (menu.addAction("&Orte und Fahrzeiten …", self.edit_travel_settings), "map_pin"),
             (menu.addAction("Text&bausteine …", self.edit_snippets), "edit"),
@@ -851,15 +851,22 @@ class MenusMixin:
         self.set_theme("dark" if enabled else "light")
 
     def choose_theme(self, key):
-        """Eintrag im Menü Ansicht → Design. Eigene Farben ohne gespeicherte Werte: erst festlegen."""
+        """Design wählen (Menü Ansicht → Design, Einstellungen). Eigene Farben ohne gespeicherte
+        Werte: mit den Farben des aktuellen Designs beginnen und gleich zum Festlegen zeigen."""
         if key == "custom" and not self.config.get("custom_colors"):
             self.edit_custom_colors()
         else:
             self.set_theme(key)
 
     def edit_custom_colors(self):
-        from theme_dialog import CustomColorsDialog
-        CustomColorsDialog(self).exec()
+        """Eigene Farben festlegen: Einstellungen → Darstellung, unter der Kachel „Eigene Farben“."""
+        if self.current_theme_key() != "custom":
+            if not self.config.get("custom_colors"):
+                self.config["custom_colors"] = default_custom_colors("dark" if self.dark_mode else "light")
+            self.set_theme("custom")
+        window = self.show_settings("view")
+        window.show_custom_colors()
+        return window
 
     def set_theme(self, key, save=True):
         """Design wechseln: "light", "dark" oder "custom" (config["custom_colors"])."""
@@ -952,14 +959,9 @@ class MenusMixin:
                     proxy.setIcon(icons.check_box(theme["accent"], action.isChecked()))
         self.menu_button.setIcon(icons.icon("settings", theme["bandtext"]))
         self.view_button.setIcon(icons.icon("eye", theme["bandtext"]))
-        old_window = getattr(self, "_settings_window", None)
-        if old_window is not None:  # Symbole in neuer Farbe: Fenster neu aufbauen
-            page = old_window.current_page() if old_window.isVisible() else None
-            old_window.hide()
-            old_window.deleteLater()
-            self._settings_window = None
-            if page:
-                QTimer.singleShot(0, lambda: self.show_settings(page))
+        settings = getattr(self, "_settings_window", None)
+        if settings is not None:  # Symbole in neuer Farbe; das Fenster bleibt, wie es ist
+            settings.retheme()
         self.busy_bar.set_color(theme["muted"])  # Ladebalken dunkelgrau, nicht in Akzentfarbe
         self.update_tracking_state()
         self.timeline.set_dark_mode(self.dark_mode)

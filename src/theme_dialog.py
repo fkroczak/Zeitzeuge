@@ -1,29 +1,23 @@
-"""Dialog „Eigene Farben“ (Menü Ansicht → Design).
+"""„Eigene Farben“ im Einstellungsfenster (Seite „Darstellung“, unter der Kachel Eigene Farben).
 
 Oben die Grundlage (Hell/Dunkel), darunter eine Skizze von Zeitzeuge (theme_mockup).
-Klick auf einen Bereich der Skizze öffnet dort ein Menü mit Farbvorschlägen (theme.SWATCHES),
+Klick auf einen Bereich der Skizze zeigt darunter die Farbvorschläge (theme.SWATCHES),
 „Andere Farbe …“ und „Standardfarbe“. Klick auf einen Balken der Timeline ändert die Farbe
 dieser Zeile wie Rechtsklick auf die Legende (config["row_colors"], Anrufe config["call_colors"]). Man wählt nur wenige Grundfarben (theme.CUSTOM_KEYS),
-alle übrigen leitet theme.custom_theme ab. Jede Änderung ist sofort im Hauptfenster zu sehen;
-Abbrechen stellt das vorherige Design wieder her.
+alle übrigen leitet theme.custom_theme ab. Jede Änderung ist sofort im Hauptfenster zu sehen.
 """
-import copy
-
 from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QColor, QIcon, QPainter, QPen, QPixmap
-from PySide6.QtWidgets import (QColorDialog, QComboBox, QDialog, QDialogButtonBox, QGridLayout,
-                               QHBoxLayout, QLabel, QMenu, QToolButton, QVBoxLayout, QWidget,
-                               QWidgetAction)
+from PySide6.QtWidgets import (QColorDialog, QHBoxLayout, QLabel, QPushButton, QToolButton, QVBoxLayout,
+                               QWidget)
 
 from theme import BAR_SWATCHES, CUSTOM_KEYS, SPACE_S, SWATCHES, default_custom_colors
 from theme_mockup import BAR_NAMES, ThemeMockup
 from timeline_only import DEFAULT_CALL_COLORS
 
-SWATCH_COLUMNS = 4
-
 
 def swatch_icon(color, selected=False, size=22):
-    """Farbfeld fürs Menü; die gewählte Farbe mit Ring."""
+    """Farbfeld; die gewählte Farbe mit Haken."""
     pix = QPixmap(size * 2, size * 2)
     pix.setDevicePixelRatio(2)
     pix.fill(Qt.transparent)
@@ -42,52 +36,140 @@ def swatch_icon(color, selected=False, size=22):
     return QIcon(pix)
 
 
-class CustomColorsDialog(QDialog):
-    def __init__(self, main):
-        super().__init__(main)
+class CustomColorsPanel(QWidget):
+    """Eigene Farben direkt im Einstellungsfenster (Seite „Darstellung“, unter der Kachel).
+
+    Grundlage Hell/Dunkel, die Skizze von Zeitzeuge (theme_mockup) und darunter die Farbvorschläge
+    für den angeklickten Bereich. Jede Änderung gilt sofort; „Standardfarbe“ und „Alle Farben
+    zurücksetzen“ holen die Farben des Standard-Designs zurück."""
+
+    def __init__(self, main, parent=None):
+        super().__init__(parent)
         self.main = main
-        self.setWindowTitle("Eigene Farben")
-        self.setMinimumWidth(720)  # Skizze gut lesbar
-        self._before = {k: copy.deepcopy(main.config.get(k))
-                        for k in ("custom_theme", "custom_colors", "dark_mode", "row_colors", "call_colors")}
+        self.setObjectName("custom_colors")
         stored = main.config.get("custom_colors") or {}
         base = stored.get("base") or ("dark" if main.dark_mode else "light")
         self.colors = {**default_custom_colors(base), **stored}
+        self.area = "accent"
 
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, SPACE_S, 0, 0)
+        layout.setSpacing(SPACE_S)
         top = QHBoxLayout()
-        label = QLabel("&Grundlage:")
-        self.base_box = QComboBox()
-        self.base_box.addItem("Dunkel", "dark")
-        self.base_box.addItem("Hell", "light")
-        self.base_box.setCurrentIndex(0 if self.colors["base"] == "dark" else 1)
-        self.base_box.setAccessibleName("Grundlage")
-        self.base_box.currentIndexChanged.connect(self._base_changed)
-        label.setBuddy(self.base_box)
+        top.setSpacing(6)
+        label = QLabel("Grundlage")
+        label.setObjectName("prompt_label")
         top.addWidget(label)
-        top.addWidget(self.base_box)
-        top.addStretch()
+        self.base_buttons = {}
+        for key, text in (("light", "He&ll"), ("dark", "D&unkel")):
+            button = QToolButton()
+            button.setObjectName("chip")
+            button.setText(text)
+            button.setCheckable(True)
+            button.setAutoExclusive(True)
+            button.setChecked(self.colors["base"] == key)
+            button.setAccessibleName(f"Grundlage {text.replace('&', '')}")
+            button.clicked.connect(lambda _c=False, k=key: self.set_base(k))
+            top.addWidget(button)
+            self.base_buttons[key] = button
+        top.addStretch(1)
         layout.addLayout(top)
-        hint = QLabel("Klick auf einen Bereich oder Balken, um seine Farbe zu ändern (Tastatur: "
-                      "Pfeiltasten, dann Eingabe). Rahmen, Auswahl und Hover passt Zeitzeuge daran an.")
+        hint = QLabel("Klick auf einen Bereich der Skizze (Tastatur: Pfeiltasten, dann Eingabe). "
+                      "Rahmen, Auswahl und Hover passt Zeitzeuge daran an. Gilt sofort.")
         hint.setObjectName("hint")
         hint.setWordWrap(True)
         layout.addWidget(hint)
-        self.mockup = ThemeMockup(self)
-        self.mockup.picked.connect(self.show_color_menu)
-        layout.addWidget(self.mockup, 1)
+        self.mockup = ThemeMockup(self, skeleton=True)
+        self.mockup.setMaximumWidth(620)
+        self.mockup.setAccessibleName("Skizze von Zeitzeuge: Bereich für die Farbe wählen")
+        self.mockup.picked.connect(lambda key, _pos: self.select(key))
+        layout.addWidget(self.mockup)
 
-        box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        reset = box.addButton("&Zurücksetzen", QDialogButtonBox.ResetRole)
-        reset.setToolTip("Alle Farben des Standard-Designs übernehmen")
-        reset.clicked.connect(lambda: self._load(default_custom_colors(self.colors["base"])))
-        box.accepted.connect(self.accept)
-        box.rejected.connect(self.reject)
-        layout.addWidget(box)
+        self.area_label = QLabel()
+        self.area_label.setObjectName("prompt_label")
+        layout.addWidget(self.area_label)
+        row = QHBoxLayout()
+        row.setSpacing(2)
+        self.swatch_row = QHBoxLayout()
+        self.swatch_row.setSpacing(2)
+        row.addLayout(self.swatch_row)
+        row.addSpacing(SPACE_S)
+        self.other_button = QPushButton("&Andere Farbe …")
+        self.other_button.setAutoDefault(False)
+        self.other_button.clicked.connect(self.pick_other)
+        row.addWidget(self.other_button)
+        self.default_button = QPushButton("&Standardfarbe")
+        self.default_button.setAutoDefault(False)
+        self.default_button.clicked.connect(self.reset_area)
+        row.addWidget(self.default_button)
+        row.addStretch(1)
+        layout.addLayout(row)
+        self.reset_button = QPushButton("Alle Farben &zurücksetzen")
+        self.reset_button.setObjectName("quiet_button")
+        self.reset_button.setAutoDefault(False)
+        self.reset_button.setToolTip("Alle Farben des Standard-Designs übernehmen")
+        self.reset_button.clicked.connect(lambda: self._load(default_custom_colors(self.colors["base"])))
+        layout.addWidget(self.reset_button, 0, Qt.AlignLeft)
 
         self.mockup.set_colors(self.colors)
         self.mockup.set_bar_colors(self.bar_colors())
-        self._apply()
+        self.select(self.area)
+
+    # ---- Bereich wählen: Farbvorschläge darunter
+
+    def select(self, key):
+        self.area = key
+        bar = key in BAR_NAMES
+        self.area_label.setText(f"Balken {BAR_NAMES[key]}" if bar else dict(CUSTOM_KEYS)[key])
+        while self.swatch_row.count():
+            widget = self.swatch_row.takeAt(0).widget()
+            if widget:
+                widget.deleteLater()
+        current = self.current(key)
+        self.swatches = []
+        for color in (BAR_SWATCHES if bar else SWATCHES[self.colors["base"]][key]):
+            button = QToolButton()
+            button.setObjectName("swatch")
+            button.setAutoRaise(True)
+            button.setIcon(swatch_icon(color, color.upper() == current))
+            button.setIconSize(QSize(24, 24))
+            button.setToolTip(color)
+            button.setAccessibleName(f"Farbe {color}")
+            button.clicked.connect(lambda _c=False, c=color: self.set_color(self.area, c))
+            self.swatch_row.addWidget(button)
+            self.swatches.append((color, button))
+        if bar:
+            self.default_button.setEnabled(self._bar_default(key)[1])
+        else:
+            self.default_button.setEnabled(current != default_custom_colors(self.colors["base"])[key].upper())
+
+    def current(self, key):
+        return QColor(self.bar_colors()[key] if key in BAR_NAMES else self.colors[key]).name().upper()
+
+    def set_color(self, key, color):
+        if key in BAR_NAMES:
+            self._set_bar(key, color)
+        else:
+            self._set(key, color)
+        self.select(key)
+
+    def pick_other(self):
+        title = f"Balken {BAR_NAMES[self.area]}" if self.area in BAR_NAMES else dict(CUSTOM_KEYS)[self.area]
+        color = QColorDialog.getColor(QColor(self.current(self.area)), self, title)
+        if color.isValid():
+            self.set_color(self.area, color.name())
+
+    def reset_area(self):
+        if self.area in BAR_NAMES:
+            self._set_bar(self.area, None)
+            self.select(self.area)
+        else:
+            self.set_color(self.area, default_custom_colors(self.colors["base"])[self.area])
+
+    def set_base(self, base):
+        # Neue Grundlage: Farben des passenden Standard-Designs, sonst passt Schrift nicht zum Grund
+        self.base_buttons[base].setChecked(True)
+        self._load(default_custom_colors(base))
 
     # ---- Balken der Timeline (Zeilenfarben, gelten sofort wie per Rechtsklick auf die Legende)
 
@@ -118,96 +200,21 @@ class CustomColorsDialog(QDialog):
             self.main.set_row_color(parts[1], color)
         self.mockup.set_bar_colors(self.bar_colors())
 
-    def _pick_bar(self, key):
-        color = QColorDialog.getColor(QColor(self.bar_colors()[key]), self, BAR_NAMES[key])
-        if color.isValid():
-            self._set_bar(key, color.name())
-
-    # ---- Menü mit Farben für einen Bereich
-
-    def color_menu(self, key):
-        """Menü für eine Grundfarbe: Vorschläge als Farbfelder, andere Farbe, Standardfarbe."""
-        bar = key in BAR_NAMES
-        menu = QMenu(self)
-        title = menu.addAction(f"Balken {BAR_NAMES[key]}" if bar else dict(CUSTOM_KEYS)[key])
-        title.setEnabled(False)
-        grid_box = QWidget(menu)
-        grid = QGridLayout(grid_box)
-        grid.setContentsMargins(SPACE_S, 0, SPACE_S, SPACE_S // 2)
-        grid.setSpacing(2)
-        current = QColor(self.bar_colors()[key] if bar else self.colors[key]).name().upper()
-        choices = BAR_SWATCHES if bar else SWATCHES[self.colors["base"]][key]
-        set_color = (lambda c: self._set_bar(key, c)) if bar else (lambda c: self._set(key, c))
-        menu.swatches = []
-        for i, color in enumerate(choices):
-            button = QToolButton(grid_box)
-            button.setAutoRaise(True)
-            button.setIcon(swatch_icon(color, color.upper() == current))
-            button.setIconSize(QSize(22, 22))
-            button.setToolTip(color)
-            button.setAccessibleName(f"Farbe {color}")
-            button.clicked.connect(lambda _c=False, c=color: (set_color(c), menu.close()))
-            grid.addWidget(button, i // SWATCH_COLUMNS, i % SWATCH_COLUMNS)
-            menu.swatches.append((color, button))
-        swatches = QWidgetAction(menu)
-        swatches.setDefaultWidget(grid_box)
-        menu.addAction(swatches)
-        menu.addSeparator()
-        if bar:
-            menu.addAction("&Andere Farbe …", lambda: self._pick_bar(key))
-            _default, own = self._bar_default(key)
-            menu.addAction("&Standardfarbe", lambda: self._set_bar(key, None)).setEnabled(own)
-            return menu
-        menu.addAction("&Andere Farbe …", lambda: self._pick(key))
-        default = default_custom_colors(self.colors["base"])[key]
-        menu.addAction("&Standardfarbe", lambda: self._set(key, default)).setEnabled(
-            current != default.upper())
-        return menu
-
-    def show_color_menu(self, key, global_pos):
-        self.color_menu(key).popup(global_pos)
-
-    # ---- Farben setzen
+    # ---- Grundfarben
 
     def _apply(self):
         cfg = self.main.config
         cfg["custom_colors"] = dict(self.colors)
         cfg["custom_theme"] = True
-        self.main.set_theme("custom", save=False)
+        self.main.set_theme("custom")
 
     def _load(self, colors):
         self.colors = dict(colors)
         self.mockup.set_colors(self.colors)
         self._apply()
+        self.select(self.area)
 
     def _set(self, key, value):
         self.colors[key] = QColor(value).name().upper()
         self.mockup.set_colors(self.colors)
         self._apply()
-
-    def _base_changed(self):
-        # Neue Grundlage: Farben des passenden Standard-Designs, sonst passt Schrift nicht zum Grund
-        self._load(default_custom_colors(self.base_box.currentData()))
-
-    def _pick(self, key):
-        color = QColorDialog.getColor(QColor(self.colors[key]), self, dict(CUSTOM_KEYS)[key])
-        if color.isValid():
-            self._set(key, color.name())
-
-    def accept(self):
-        self.main.set_theme("custom")
-        super().accept()
-
-    def reject(self):
-        for key, value in self._before.items():  # None = Schlüssel gab es vorher nicht
-            if value is None:
-                self.main.config.pop(key, None)
-            else:
-                self.main.config[key] = value
-        self.main.set_theme("custom" if self._before["custom_theme"] else
-                            ("dark" if self._before["dark_mode"] else "light"))
-        # Balkenfarben wurden sofort gespeichert: Zeilen und Timeline wieder im alten Stand
-        if hasattr(self.main, "update_row_icons"):
-            self.main.update_row_icons()
-            self.main.timeline.draw_timeline(self.main.current_date)
-        super().reject()

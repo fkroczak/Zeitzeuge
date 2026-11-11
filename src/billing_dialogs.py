@@ -4,6 +4,7 @@ from PySide6.QtWidgets import (QComboBox, QDialog, QDialogButtonBox, QFormLayout
                                QHeaderView, QLabel, QPushButton, QSpinBox, QTableWidget,
                                QVBoxLayout)
 
+from card_dialog import modernize
 from theme import prose
 import billing
 
@@ -97,6 +98,7 @@ class BillingDialog(QDialog):
         self.step.valueChanged.connect(self.validate)
         self.mode.currentIndexChanged.connect(self.validate)
         self.validate()
+        modernize(self, "Abrechnung", "Standard: jede angefangene Viertelstunde. Ausnahmen je Kunde.", "tag")
 
     def add_row(self, customer="", step=None, mode=None):
         step = step or self.step.value()

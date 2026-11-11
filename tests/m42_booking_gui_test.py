@@ -121,7 +121,10 @@ def gui_test():
     start, end = datetime(2026, 10, 19, 11, 0), datetime(2026, 10, 19, 11, 30)
     doc = EntryDialog(start, end, ["Systems"], ["Fernwartung"], customer="Systems",
                       **window.entry_form_options(start, end))
-    assert doc.form.ticket_search_button is not None and doc.form.ticket_edit.isVisibleTo(doc)
+    # Ticketfeld liegt hinter „+ Ticket“ (wie in der Nachfrage-Karte)
+    assert doc.form.ticket_search_button is not None and not doc.ticket_row.isVisibleTo(doc)
+    doc.ticket_add.click()
+    assert doc.form.ticket_edit.isVisibleTo(doc) and doc.form.ticket_search_button.isVisibleTo(doc)
 
     def pick():
         search = next(w for w in app.topLevelWidgets()
@@ -166,6 +169,7 @@ def gui_test():
     from PySide6.QtTest import QTest
     doc = EntryDialog(start, end, ["Systems"], ["Fernwartung"], **window.entry_form_options(start, end))
     doc.show()
+    doc.ticket_add.click()
     form = doc.form
     reader.searches.clear()
     form.ticket_edit.lineEdit().textEdited.emit("Prakt")  # wie getippt
@@ -201,7 +205,9 @@ try:
 except BaseException:
     traceback.print_exc(file=sys.stdout)
     sys.stdout.flush()
-    os._exit(1)
+    import safe_io
+    safe_io.hard_exit(1)
 print("Matrix42 buchen ok")
 sys.stdout.flush()
-os._exit(0)
+import safe_io  # Ende ohne Qt-Aufräumen (Absturz unter Windows)
+safe_io.hard_exit(0)

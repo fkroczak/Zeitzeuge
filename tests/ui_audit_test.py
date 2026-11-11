@@ -295,7 +295,7 @@ dialogs["Tätigkeit nachtragen"] = journal_dialogs.EntryDialog(
     tv_id="123456789", info="Erkannt: TeamViewer", can_delete=True, parent=window)
 dialogs["Nachfrage"] = journal_dialogs.PromptWindow(_tv, ["Musterkunde GmbH"], ["Fernwartung"],
                                                     pending=2, parent=window)
-dialogs["Nachfragen und Benachrichtigungen"] = journal_dialogs.DocPromptDialog(config, window)
+dialogs["Nachfragen"] = journal_dialogs.PromptSettings(config, window)
 # Eintragen mit Textbausteinen und Ticket-Vorschlag (Knopf „Übernehmen“ sichtbar)
 _found = [{"ticket": "TCK0000049374", "label": "TCK0000049374 (Outlook, 12 min)"}]
 dialogs["Tätigkeit mit Ticket-Vorschlag"] = journal_dialogs.EntryDialog(
@@ -435,10 +435,12 @@ if problems:
         if os.environ.get("GITHUB_ACTIONS"):
             print(f"::error title=Bedienbarkeit::{p}")
     sys.stdout.flush()
-    os._exit(1)
+    import safe_io
+    safe_io.hard_exit(1)
 print("Bedienbarkeit ok")
 
 # Direkt beenden: die Qt-Bindung räumt beim Interpreter-Ende sporadisch in falscher Reihenfolge auf
 # (Zugriffsfehler unter Windows, auch mit altem Code). Alle Prüfungen sind hier gelaufen.
 sys.stdout.flush()
-os._exit(0)
+import safe_io  # Ende ohne Qt-Aufräumen (Absturz unter Windows)
+safe_io.hard_exit(0)
