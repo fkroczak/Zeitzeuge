@@ -41,7 +41,7 @@ def gui_test():
     from PySide6.QtCore import Qt
     from PySide6.QtTest import QTest
     from PySide6.QtWidgets import (QAbstractButton, QApplication, QLabel, QScrollArea,
-                                   QSystemTrayIcon)
+                                   QSystemTrayIcon, QWidget)
 
     QSystemTrayIcon.isSystemTrayAvailable = staticmethod(lambda: True)
     app = QApplication(sys.argv)
@@ -116,6 +116,14 @@ def gui_test():
         for area in settings.stack.currentWidget().findChildren(QScrollArea) + (
                 [settings.stack.currentWidget()] if isinstance(settings.stack.currentWidget(), QScrollArea) else []):
             bar = area.horizontalScrollBar()
+            if bar.isVisible() and bar.maximum() > 0:  # welches Element ist zu breit?
+                inner = area.widget()
+                print(key, "Sicht", area.viewport().width(), "Inhalt", inner.minimumSizeHint().width())
+                for child in inner.findChildren(QWidget):
+                    if child.isVisible() and child.minimumSizeHint().width() > area.viewport().width() - 80:
+                        print("  ", type(child).__name__, child.objectName(), child.minimumSizeHint().width(),
+                              child.minimumWidth(), getattr(child, "text", lambda: "")()[:40]
+                              if callable(getattr(child, "text", None)) else "")
             assert not (bar.isVisible() and bar.maximum() > 0), (key, bar.maximum())
     assert settings.minimumWidth() <= 960 and settings.minimumHeight() <= 540
 
