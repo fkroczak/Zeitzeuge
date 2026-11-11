@@ -53,8 +53,10 @@ def gui_test():
     menu = window.view_button.menu()
     texts = [a.text().replace("&", "").split("\t")[0] for a in menu.actions()]
     for text in ("Was zeigen die Ansichten? …", "Zeilen der Timeline", "Wochenabschluss …",
-                 "Hell", "Dunkel", "Eigene Farben", "Eigene Farben festlegen …"):
+                 "Hell", "Dunkel", "Eigene Farben …", "Darstellung anpassen …"):
         assert text in texts, (text, texts)
+    # „Eigene Farben festlegen …“ entfällt: „Eigene Farben …“ öffnet gleich die Farben
+    assert "Eigene Farben festlegen …" not in texts, texts
     for text in ("Zusammengefasst", "Einzeln", "Ganzer Tag", "Arbeitszeit"):
         assert text not in texts, (text, texts)
     # Design direkt im Menü Ansicht: Hell/Dunkel ziehen den Schalter „Dunkles Design“ mit
@@ -68,8 +70,11 @@ def gui_test():
     import theme
     window.config["custom_colors"] = {**theme.default_custom_colors("dark"), "accent": "#C4C7C5",
                                       "band": "#3C3C3C"}
-    window.theme_actions["custom"].trigger()
+    window.theme_actions["custom"].trigger()  # öffnet die Farben im Einstellungsfenster
     assert window.dark_mode and window.current_theme_key() == "custom"
+    assert window._settings_window.current_page() == "view"
+    window._settings_window.show_page("home")
+    window._settings_window.hide()
     assert theme.theme_for(window.config)["accent"] == "#C4C7C5"
     assert window.theme_actions["custom"].font().bold()
     window.dark_action.setChecked(False)  # Schalter in den Einstellungen: zurück zum Standard
@@ -87,12 +92,15 @@ def gui_test():
     assert "Tagesabschluss …" in texts, texts
     settings_texts = [a.text().replace("&", "") for a in window.menu_button.menu().actions()]
     # Design wählt man im Menü Ansicht (Wie Windows, Hell, Dunkel, Eigene Farben), nicht doppelt hier
-    assert "Dunkles Design" not in settings_texts and "Datenquellen …" in settings_texts, settings_texts
-    # PC-Aktivität: Arbeitsblöcke <-> jedes Fenster, im Menü Ansicht und im Menü der Zeilen
-    assert "PC-Aktivität als Arbeitsblöcke" in texts, texts
+    assert "Dunkles Design" not in settings_texts and "Aufzeichnung …" in settings_texts, settings_texts
+    assert "Nachfragen …" in settings_texts and "Datenquellen …" not in settings_texts, settings_texts
+    # PC-Aktivität: Arbeitsblöcke <-> jedes Fenster, nur im Menü der Zeilen (nicht doppelt in Ansicht)
+    assert "PC-Aktivität als Arbeitsblöcke" not in texts, texts
     assert any(a.text().replace("&", "") == "PC-Aktivität als Arbeitsblöcke"
                for a in window.rows_menu.actions())
-    window._check_proxies[window.pc_blocks_action].trigger()
+    # Zeilen der Timeline: Hinweise als Tooltip, keine grauen Zeilen mehr im Menü
+    assert not [a for a in window.rows_menu.actions() if not a.isEnabled() and a.text()]
+    window._rows_blocks_proxy.trigger()
     assert window.config["pc_blocks"] is False and not window.pc_blocks_action.isChecked()
     window._rows_blocks_proxy.trigger()
     assert window.config["pc_blocks"] is True and window.pc_blocks_action.isChecked()
@@ -260,7 +268,7 @@ def gui_test():
     assert window._settings_window is settings, "Farbe ändern baut das Fenster nicht neu auf"
     window.set_theme("dark")
     assert not design.custom_panel.isVisible()
-    # Menü Ansicht → „Eigene Farben festlegen …“ öffnet diese Stelle
+    # Menü Ansicht → „Eigene Farben …“ öffnet diese Stelle
     assert window.edit_custom_colors() is settings and design.custom_panel.isVisible()
     window.set_theme("dark")
 

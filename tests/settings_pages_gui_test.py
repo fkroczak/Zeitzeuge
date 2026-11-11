@@ -106,7 +106,7 @@ def gui_test():
     window.show_settings("customers")
     assert settings.current_page() == "mapping"
     texts = [a.text().replace("&", "") for a in window.menu_button.menu().actions()]
-    assert "Nachfragen und Benachrichtigungen …" in texts, texts
+    assert "Nachfragen …" in texts and "Aufzeichnung …" in texts, texts
 
     # Schmales Fenster (Full HD bei 200 %: 960 × 540): keine waagerechte Scrollleiste
     settings.resize(settings.minimumSize())

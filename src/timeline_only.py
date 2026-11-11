@@ -15,6 +15,7 @@ from activity_tracker import app_label, merge_segments, read_segments
 import call_import
 from call_import import load_call_suggestions
 import focus
+import icons
 import travel
 import customers
 from grouping import format_tv_id, group_entries
@@ -366,7 +367,7 @@ def entry_menu_items(entry, customer_known=False):
     if "minute" in entry:  # freie Stelle in der Timeline
         return [(f"&Tätigkeit ab {hhmm(entry['minute'] // 5 * 5)} eintragen …", "add_at")]
     if entry.get("open"):
-        return [("Jetzt &eintragen …", "add"), ("&Nicht dokumentieren", "ignore")]
+        return [("Jetzt &eintragen …", "add"), None, ("&Nicht dokumentieren", "ignore")]
     if entry.get("doc") and entry.get("doc_item", {}).get("von_pc"):  # von anderem PC übernommen
         return [("Als Ticketzeile &kopieren", "copy")]
     if entry.get("doc"):
@@ -374,8 +375,9 @@ def entry_menu_items(entry, customer_known=False):
         booked = entry.get("doc_item", {}).get("m42_entry")
         book = ((f"In Matrix42 gebucht ({booked})", "m42_book", False) if booked
                 else ("In &Matrix42 buchen …", "m42_book"))
-        return [("Tätigkeit &bearbeiten …", "edit"), ("Tätigkeit &löschen", "delete"), None,
-                ("Als Ticketzeile &kopieren", "copy"), book]
+        # Ändern und Buchen oben, Kopieren in der Mitte, Löschen allein ganz unten
+        return [("Tätigkeit &bearbeiten …", "edit"), book, None,
+                ("Als Ticketzeile &kopieren", "copy"), None, ("Tätigkeit &löschen", "delete")]
     items = [("&Details öffnen", "details"), None]
     if entry.get("ai") or entry.get("rule"):
         items.append(("Als &Tätigkeit eintragen …", "add"))
@@ -385,18 +387,23 @@ def entry_menu_items(entry, customer_known=False):
         items.append(("TeamViewer-ID &benennen …", "name_tv"))
     elif not customer_known and customers.primary_trace(entry):  # RDM, VPN, Telefon, E-Mail
         items.append(("Kunde &zuordnen …", "assign_customer"))
-    if entry.get("ai"):
-        if not entry.get("von_pc"):  # übernommene Vorschläge verwirft man auf dem anderen PC
-            items += [None, ("Vorschlag &verwerfen", "reject")]
     items += [None, ("&Kopieren", "copy")]
+    if entry.get("ai") and not entry.get("von_pc"):  # übernommene verwirft man auf dem anderen PC
+        items += [None, ("Vorschlag &verwerfen", "reject")]  # Verwerfen allein ganz unten
     return items
 
 
-def exec_entry_menu(parent, entry, global_pos):
-    """Menü zu entry zeigen, gewählten Befehl zurückgeben (oder None)."""
-    menu = QMenu(parent)
+# Linien-Icons je Befehl (icons.py); der erste Eintrag ist fett: das tut auch ein Doppelklick
+MENU_ICONS = {"details": "details", "add": "edit", "add_at": "edit", "edit": "edit", "name_tv": "tag",
+              "assign_customer": "users", "copy": "copy", "m42_book": "upload", "delete": "trash",
+              "reject": "trash", "ignore": "close"}
+
+
+def build_entry_menu(menu, parent, entry):
+    """Menü zu entry füllen: Icons, erster Eintrag fett (wie ein Doppelklick). {Aktion: Befehl}"""
     keys = {}
     known = False
+    color = menu.palette().color(menu.palette().ColorRole.Text).name()
     config = getattr(parent, "config", None)
     if isinstance(config, dict) and not entry.get("tv_id"):
         imported = getattr(parent, "imported", None)
@@ -406,13 +413,25 @@ def exec_entry_menu(parent, entry, global_pos):
         if item is None:
             menu.addSeparator()
         else:
-            action = menu.addAction(item[0])
+            action = menu.addAction(icons.icon(MENU_ICONS.get(item[1], "doc"), color), item[0])
+            if not keys:  # fett wie unter Windows: das tut auch ein Doppelklick
+                menu.setDefaultAction(action)
+                font = action.font()
+                font.setBold(True)
+                action.setFont(font)
             if len(item) > 2 and not item[2]:
                 action.setEnabled(False)
                 if item[1] == "m42_book":
                     action.setToolTip("Diese Tätigkeit ist schon in Matrix42 gebucht")
             keys[action] = item[1]
     menu.setToolTipsVisible(True)
+    return keys
+
+
+def exec_entry_menu(parent, entry, global_pos):
+    """Menü zu entry zeigen, gewählten Befehl zurückgeben (oder None)."""
+    menu = QMenu(parent)
+    keys = build_entry_menu(menu, parent, entry)
     return keys.get(menu.exec(global_pos))
 
 

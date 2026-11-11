@@ -16,6 +16,7 @@ Qt-eigenen Mitteln.
 | Tätigkeit nachtragen/ändern wie die Nachfrage-Karte: Zeitzeile, Beschriftung über dem Feld, Ticket-Chip, Strg+Enter | `tests/entry_dialog_gui_test.py` | Schritt „Tests (pytest)“ | blockiert |
 | Einstellungen: Bereiche, Abschnitte (≤ 6 Zeilen), Kacheln in beiden Designs, eindeutige Alt-Buchstaben je Seite, keine waagerechte Scrollleiste bei 960 × 540 | `tests/settings_pages_gui_test.py` | Schritt „Tests (pytest)“ | blockiert |
 | Kleinere Dialoge im Karten-Stil: Kopf mit Namen, Knöpfe in der Fußleiste (auch nach Stiländerung), genau eine Hauptaktion, Beschriftung über dem Feld, beide Designs | `tests/card_dialogs_gui_test.py` | Schritt „Tests (pytest)“ | blockiert |
+| Rechtsklick-Menü: Icons, erster Eintrag fett, Löschen/Verwerfen allein unten | `tests/entry_menu_gui_test.py` | Schritt „Tests (pytest)“ | blockiert |
 | TeamViewer-/RDM-Logs einlesen, Zeitformat streng | `tests/parser_test.py` | Schritt „Tests (pytest)“ | blockiert |
 | Klassifizierung ohne KI: Regeln, Vorrang, keine Überschneidung, Tempo | `tests/rules_test.py` | Schritt „Tests (pytest)“ | blockiert |
 | Fenster-Filter (Black-/Whitelist), Schreibfehler im Aktivitätsprotokoll | `tests/tracking_filter_test.py` | Schritt „Tests (pytest)“ | blockiert |

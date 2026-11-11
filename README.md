@@ -1,4 +1,4 @@
-Im Fenster **Einstellungen → Aufzeichnung** schaltest du jede Quelle in ihrer Kachel ein oder aus und siehst ihren Zustand. Schneller geht es über den Pfeil am Knopf **Einstellungen → Datenquellen …** (öffnet direkt diese Seite):
+Im Fenster **Einstellungen → Aufzeichnung** schaltest du jede Quelle in ihrer Kachel ein oder aus und siehst ihren Zustand. Schneller geht es über den Pfeil am Knopf **Einstellungen → Aufzeichnung …** (öffnet direkt diese Seite):
 
 | Gruppe | Quellen |
 |---|---|
@@ -94,7 +94,7 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
   - Die Tätigkeit kommt aus der **Zuordnung ohne KI** (Outlook und Thunderbird sind beide „E-Mail“, ein Remotedesktop-Fenster „DC01 – Remotedesktopverbindung“ ist „DC01 · Fernwartung“), sonst ist es das Programm.
   - **Kurze Sprünge** (Standard: unter 2 Minuten) zählen zur Haupttätigkeit, wenn es danach dort weitergeht oder der Kunde passt. Ein kurzer Blick in Teams mitten im Mail-Bearbeiten bleibt also im Block „E-Mail“. Blöcke unter 3 Minuten gehen im Nachbarblock auf, Pausen über 5 Minuten trennen Blöcke.
   - Fährst du über einen Block, siehst du die Anteile der Programme („Outlook 26 min (87 %), Teams 3 min (10 %)“), die Zahl der Fensterwechsel und den Fokus (Anteil der Haupttätigkeit). Rechtsklick: **Tätigkeit dazu eintragen …** mit Kunde und Kategorie des Blocks.
-  - Zwischen **Arbeitsblöcken** und **jedem Fenster einzeln** (schmales Band, eine Farbe pro Programm) schaltest du mit **Ansicht → PC-Aktivität als Arbeitsblöcke** um, ebenso per Rechtsklick auf die Legende links in der Timeline oder unter **Einstellungen → Darstellung → PC-Aktivität**. Dort stellst du auch ein, bis wann ein Wechsel als kurzer Sprung gilt.
+  - Zwischen **Arbeitsblöcken** und **jedem Fenster einzeln** (schmales Band, eine Farbe pro Programm) schaltest du mit **Ansicht → Zeilen der Timeline → PC-Aktivität als Arbeitsblöcke** um, ebenso per Rechtsklick auf die Legende links in der Timeline oder unter **Einstellungen → Darstellung → PC-Aktivität**. Dort stellst du auch ein, bis wann ein Wechsel als kurzer Sprung gilt.
   - Mit **Ansicht → PC-Verlauf in der Liste** stehen die Arbeitsblöcke auch in der Tagesliste.
   - Nach 5 Minuten ohne Maus und Tastatur oder bei gesperrtem PC wird nichts aufgezeichnet.
   - Fenster mit bestimmten Wörtern im Titel werden nur als „(ausgeblendet)“ gespeichert, zum Beispiel Passwortmanager.
@@ -120,6 +120,7 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
   - **Nachtragen** (Knopf in der Werkzeugleiste): Zeit, Kunde, Kategorie und ein Satz, was du gemacht hast. Ist in der Tagesliste eine Zeile markiert, sind Zeit und Kunde schon ausgefüllt.
     - Das Fenster sieht aus wie die Nachfrage-Karte: oben die Aufgabe („Tätigkeit nachtragen“ bzw. „Tätigkeit ändern“), darunter eine feste Zeile für **Datum und Uhrzeit** mit **Stift**. Ohne gezogenen Zeitraum ist sie gleich offen, weil du die Zeit meist noch anpasst. Kunde und Kategorie stehen nebeneinander, Ticket (**+ Ticket**), Kulanz, Reise, Kein Zuschlag und Text einfügen sind Chips. **Löschen** steht beim Ändern links unten, getrennt von Abbrechen und Speichern. **STRG + Enter** speichert.
   - Rechtsklick auf einen Eintrag: **Tätigkeit dazu eintragen …**. Rechtsklick auf eine freie Stelle der Timeline: **Tätigkeit ab hh:mm eintragen …**.
+  - Jeder Befehl im Rechtsklick-Menü hat ein Symbol. Der erste ist fett, das tut auch ein Doppelklick. Löschen und Verwerfen stehen allein ganz unten.
   - Timeline und Tagesliste haben dasselbe Rechtsklick-Menü. Es zeigt nur Befehle, die zum Eintrag passen.
   - **Offenes fällt auf:** Verbindungen und Telefonate ohne Dokumentation stehen gestrichelt mit „?“ in der Zeile „Doku“. Ein Klick darauf öffnet das Eintragen.
   - **Zeitzeuge fragt nach:** Endet eine TeamViewer-Sitzung, eine RDP-/SSH-/VPN-Verbindung oder ein Telefonat, erscheint unten rechts eine Karte: „Was hast du bei Beispiel AG gemacht?“. Zeit, Kunde und Kategorie sind schon ausgefüllt, du schreibst nur noch einen Satz. **Später** fragt in 15 Minuten wieder, **Nicht dokumentieren** fragt für diesen Eintrag nie mehr. Ab welcher Dauer gefragt wird, stellst du unter **Einstellungen → Nachfragen** je Art ein.
@@ -292,8 +293,9 @@ Alles, was nur die Anzeige ändert, nie die Daten:
 
 - **Tagesliste:** Die Ansichten (Alle, Einzeln, Arbeitsblöcke, Telefonate – nur 3CX- und Teams-Anrufe, jeder einzeln –, Dokumentation, Zuordnung ohne KI, KI-Vorschläge, Buchungsabgleich) wählst du über die Chips über der Liste. Fährst du über einen Chip, steht dort, was die Ansicht zeigt. Im Menü stehen **PC-Verlauf in der Liste** und **Was zeigen die Ansichten? …** (F1), das alle mit Beispielen erklärt.
 - **Zeilen der Timeline** (Untermenü, auch per Rechtsklick auf die Legende links): jede Zeile mit einem Kästchen in ihrer Farbe zum Ein- und Ausblenden, dazu **Alle Zeilen einblenden**. **Zeilen abwechselnd hinterlegen** zeigt graue Streifen statt feiner Linien zwischen den Zeilen. Leere Zeilen blendet Zeitzeuge von selbst aus.
-- **PC-Aktivität als Arbeitsblöcke:** an = Blöcke je Tätigkeit, aus = jedes Fenster einzeln.
-- **Übersichten:** Wochenabschluss, Offene Tätigkeiten.
+  Dort steht auch **PC-Aktivität als Arbeitsblöcke** (an = Blöcke je Tätigkeit, aus = jedes Fenster einzeln). Fährst du über das Untermenü, steht dort, wie man Zeilen verschiebt.
+- **Übersichten:** Wochenabschluss, Tagesabschluss, Offene Tätigkeiten.
+- **Design:** Wie Windows, Hell, Dunkel, **Eigene Farben …** (öffnet die Farben gleich im Einstellungsfenster).
 - **Darstellung anpassen …** öffnet die Seite **Darstellung** im Einstellungsfenster.
 
 Ganzer Tag und Arbeitszeit stehen in der Werkzeugleiste, das Design (Wie Windows, Hell, Dunkel, Eigene Farben) im Menü **Ansicht**. Die Knöpfe der Werkzeugleiste zeigen nur Symbole; fährst du darüber, nennt der Hinweis Namen, Tastenkürzel und was der Knopf tut.
@@ -319,7 +321,7 @@ Ein Klick auf **Einstellungen** (oder STRG + ,) öffnet ein eigenes Fenster. Es 
 - **Jede Zeile eine Karte:** Symbol in einer ruhigen Kachel, Titel, Beschreibung, rechts Schalter, Zahl oder Knopf in einer Spalte.
 - **Dialoge wie die Nachfrage-Karte:** Kundenliste, Textbausteine, Abrechnung, Regeln, KI-Vorschläge, Fenster-Filter, Orte und Fahrzeiten, Schutz sowie Tages- und Wochenabschluss haben oben Namen und einen kurzen Satz, Beschriftungen über den Feldern und unten eine Leiste mit genau einer Hauptaktion (Enter). Abbrechen oder Schließen steht links daneben, leise Aktionen ganz links.
 
-Der kleine Pfeil am Knopf **Einstellungen** zeigt Schnellzugriffe: Aufzeichnung an/aus, Datenquellen, Nachfragen, Kundenliste, Textbausteine, Über und Beenden.
+Der kleine Pfeil am Knopf **Einstellungen** zeigt Schnellzugriffe mit denselben Namen wie die Bereiche: Alle Einstellungen, Aktive Fenster aufzeichnen, Aufzeichnung, Nachfragen, unter „Zuordnung“ Kundenliste, Orte und Fahrzeiten, Textbausteine, dazu Über und Beenden.
 
 ### Einrichtungsassistent
 

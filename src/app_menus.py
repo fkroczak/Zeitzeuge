@@ -310,11 +310,11 @@ class MenusMixin:
         self.addAction(help_action)
         self._icon_actions.append((help_action, "help"))
 
-        # Zeilen der Timeline: eigenes Menü, auch per Rechtsklick auf die Legende links
+        # Zeilen der Timeline: eigenes Menü, auch per Rechtsklick auf die Legende links.
+        # „PC-Aktivität als Arbeitsblöcke“ steht nur dort (vorher doppelt in diesem Menü).
         self.rows_menu = self._build_rows_menu()
-        menu.addSeparator()
+        self._menu_header(menu, "Timeline")
         self._icon_actions.append((menu.addMenu(self.rows_menu), "rows"))
-        self._add_check(menu, self.pc_blocks_action, accent)
 
         self._menu_header(menu, "Übersichten")
         self._icon_actions.append((menu.addAction("Wochen&abschluss …", self.show_week), "gauge"))
@@ -336,12 +336,13 @@ class MenusMixin:
         self._menu_header(menu, "Design")
         self.theme_actions = {}
         for key, text in self.THEME_CHOICES:
-            action = menu.addAction(text)
-            action.triggered.connect(lambda _c=False, k=key: self.choose_theme(k))
+            if key == "custom":  # wählt eigene Farben und zeigt sie gleich zum Festlegen
+                action = menu.addAction(text + " …", self.edit_custom_colors)
+            else:
+                action = menu.addAction(text)
+                action.triggered.connect(lambda _c=False, k=key: self.choose_theme(k))
             self.theme_actions[key] = action
         menu.addSeparator()
-        self._icon_actions.append((menu.addAction("Eigene Farben &festlegen …", self.edit_custom_colors),
-                                   "edit"))
         self._icon_actions.append((menu.addAction("Darstellung an&passen …",
                                                   lambda: self.show_settings("view")), "eye"))
 
@@ -399,10 +400,8 @@ class MenusMixin:
             colors.addAction(f"{ROW_NAMES[key]} …", lambda k=key: self.choose_row_color(k))
         colors.addSeparator()
         colors.addAction("Alle &Standardfarben", lambda: self.set_row_color(None, None))
-        hint = menu.addAction("Leere Zeilen blendet Zeitzeuge von selbst aus")
-        hint.setEnabled(False)
-        hint = menu.addAction("Verschieben: Zeilenname links anfassen und ziehen")
-        hint.setEnabled(False)
+        menu.menuAction().setToolTip("Leere Zeilen blendet Zeitzeuge von selbst aus. "
+                                     "Verschieben: Zeilenname links anfassen und ziehen.")
         self.update_row_icons()
         return menu
 
@@ -565,11 +564,12 @@ class MenusMixin:
         self._ensure_dark_action()  # Design wählt man im Menü Ansicht (Hell, Dunkel, Wie Windows)
         # Datenquellen: im Einstellungsfenster (Kacheln mit Zustand); das Untermenü nutzt der Infobereich
         self.sources_menu = self._build_sources_menu()
-        self._icon_actions.append(
-            (menu.addAction("Daten&quellen …", lambda: self.show_settings("sources")), "plug"))
-        menu.addSeparator()
         self._icon_actions += [
-            (menu.addAction("&Nachfragen und Benachrichtigungen …", self.edit_prompt_settings), "bell"),
+            (menu.addAction("Auf&zeichnung …", lambda: self.show_settings("sources")), "plug"),
+            (menu.addAction("&Nachfragen …", self.edit_prompt_settings), "bell"),
+        ]
+        self._menu_header(menu, "Zuordnung")
+        self._icon_actions += [
             (menu.addAction("Kunden&liste …", self.edit_customers), "users"),
             (menu.addAction("&Orte und Fahrzeiten …", self.edit_travel_settings), "map_pin"),
             (menu.addAction("Text&bausteine …", self.edit_snippets), "edit"),
