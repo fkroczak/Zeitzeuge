@@ -32,6 +32,9 @@ STYLE_HINTS = {"window": "Alle Felder, übersichtlich (Standard)", "compact": "A
 # Anzeigedauer in Sekunden, 0 = dauerhaft; Vorgabe beim Wechsel der Darstellung
 TIMEOUTS = [(10, "10 Sekunden"), (30, "30 Sekunden"), (60, "1 Minute"), (300, "5 Minuten"), (0, "Dauerhaft")]
 DEFAULT_TIMEOUT = {"window": 0, "compact": 10, "strip": 10, "off": 0}
+# Wo Karte und Kompakt erscheinen (die Leiste bleibt immer unten rechts am Infobereich)
+POSITIONS = [("bottom_right", "Unten rechts"), ("top_right", "Oben rechts"),
+             ("bottom_left", "Unten links"), ("top_left", "Oben links")]
 SHADOW = 14  # Rand für den Schatten um Karte und Leiste (durchsichtig)
 
 
@@ -96,6 +99,11 @@ def prompt_style(config):
     if mode == "tray":
         return "strip"
     return mode if mode in dict(STYLES) else "window"
+
+
+def prompt_position(config):
+    value = (config or {}).get("prompt_position", "bottom_right")
+    return value if value in dict(POSITIONS) else "bottom_right"
 
 
 def prompt_timeout(config):
@@ -323,8 +331,11 @@ def _theme_colors(widget):
 
 
 class _Dock:
+    position = "bottom_right"
+
     def dock_bottom_right(self, margin=8):
-        """Unten rechts über der Taskleiste halten, mit Abstand – auch wenn das Fenster wächst."""
+        """In der gewählten Ecke halten (Standard unten rechts über der Taskleiste), mit Abstand –
+        auch wenn das Fenster wächst. Nie in der Taskleiste."""
         self._dock_margin = margin
         self._dock()
 
@@ -335,8 +346,9 @@ class _Dock:
             return
         area = screen.availableGeometry()  # Bildschirm ohne Taskleiste
         frame = self.frameGeometry()
-        x = max(area.x(), area.x() + area.width() - frame.width() - margin)
-        y = max(area.y(), area.y() + area.height() - frame.height() - margin)
+        left, top = self.position.endswith("left"), self.position.startswith("top")
+        x = area.x() + margin if left else max(area.x(), area.x() + area.width() - frame.width() - margin)
+        y = area.y() + margin if top else max(area.y(), area.y() + area.height() - frame.height() - margin)
         if (x, y) != (frame.x(), frame.y()):
             self.move(x, y)
 
@@ -558,11 +570,12 @@ class PromptWindow(_AutoHide, _Dock, CardParts, QDialog):
     def __init__(self, entry, customers, categories, tv_names=None, pending=0, parent=None,
                  customer=None, category=None, trace=None, rule_subject=None, style="window",
                  timeout=0, queue=None, dots_clickable=True, keep_while_active=True, draft="",
-                 **form_options):
+                 position="bottom_right", **form_options):
         super().__init__(parent, Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
         from journal_dialogs import _EntryForm  # hier: journal_dialogs lädt dieses Modul
         self.entry = entry
         self.style = "compact" if style == "compact" else "window"
+        self.position = position if position in dict(POSITIONS) else "bottom_right"
         compact = self.style == "compact"
         self.setWindowTitle("Zeitzeuge: Was hast du gemacht?")
         self.setObjectName("prompt_window")

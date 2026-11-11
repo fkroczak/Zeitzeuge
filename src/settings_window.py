@@ -47,13 +47,14 @@ def row_section(spec):
 
 def _prompt_summary(main):
     c = main.config
-    from prompt_card import STYLES, prompt_style, prompt_timeout
+    from prompt_card import POSITIONS, STYLES, prompt_position, prompt_style, prompt_timeout
     style = prompt_style(c)
     if style == "off":
         return "aus"
     seconds = prompt_timeout(c)
     shown = "dauerhaft" if not seconds else f"{seconds} s" if seconds < 60 else f"{seconds // 60} min"
-    return f"{dict(STYLES)[style]} · {shown} · später nach {c.get('prompt_snooze_minutes', 15)} min"
+    where = "" if style == "strip" else f" · {dict(POSITIONS)[prompt_position(c)].lower()}"
+    return f"{dict(STYLES)[style]}{where} · {shown} · später nach {c.get('prompt_snooze_minutes', 15)} min"
 
 
 def _billing_summary(main):
@@ -199,7 +200,8 @@ COLLAPSED = {"about/Fehlersuche": "Für tiefergehende Analysen, z. B. wenn nach 
 # Suchbegriffe für die Seite „Nachfragen“ (dort keine Zeilen, sondern eigene Bedienelemente)
 PROMPT_TOPICS = [
     ("Darstellung der Nachfrage", "Karte Kompakt Leiste Aus Fenster Infobereich"),
-    ("Ausblenden nach", "Sekunden Minuten dauerhaft Anzeigedauer tippen Maus Punkte ✕ Leiste"),
+    ("Ausblenden nach und Position", "Sekunden Minuten dauerhaft Anzeigedauer tippen Maus Punkte ✕ Leiste "
+     "Position Ecke oben unten links rechts"),
     ("Fragen bei", "Verbindungen Telefonate Arbeitsblöcke PC Besprechungen Mails Zugangsdaten Regeln "
      "Grenzwerte Minuten ab Abwesenheit"),
     ("„Später“ fragt wieder nach", "Minuten später zurückgestellt"),

@@ -72,8 +72,9 @@ class RecordingRow(QWidgetAction):
         self.row.setFocusPolicy(Qt.StrongFocus)
         self.row.setCursor(Qt.PointingHandCursor)
         box = QHBoxLayout(self.row)
-        box.setContentsMargins(SPACE_S + 4, 6, 12, 6)
+        box.setContentsMargins(1, 6, 12, 6)  # Icon und Text genau unter denen der anderen Einträge
         box.setSpacing(SPACE_S + 2)
+        self._text_gap = 5
         self.icon = QLabel()
         self.icon.setFixedSize(16, 16)
         self.label = QLabel()
@@ -82,8 +83,9 @@ class RecordingRow(QWidgetAction):
         self.pause = QLabel()
         self.state = QLabel()
         self.state.setObjectName("tray_record_state")
-        for w in (self.icon, self.label):
-            box.addWidget(w)
+        box.addWidget(self.icon)
+        box.addSpacing(self._text_gap)
+        box.addWidget(self.label)
         box.addStretch(1)
         box.addSpacing(16)
         for w in (self.dot, self.pause, self.state):

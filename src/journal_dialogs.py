@@ -749,10 +749,17 @@ class PromptSettings(QWidget):
         self.strip_close.setCurrentIndex(max(0, self.strip_close.findData(
             config.get("prompt_strip_close", "front"))))
         self.strip_close.setToolTip("✕ an der Leiste: nur die vorderste oder alle offenen Nachfragen schließen")
-        for col, (name, widget) in enumerate((("Ausblenden &nach", self.timeout),
-                                              ("✕ an der Le&iste", self.strip_close))):
-            grid.addWidget(label(name, widget), 0, col)
-            grid.addWidget(widget, 1, col)
+        self.position = QComboBox()
+        for key, text in POSITIONS:
+            self.position.addItem(text, key)
+        self.position.setCurrentIndex(max(0, self.position.findData(prompt_position(config))))
+        self.position.setToolTip("Wo Karte und Kompakt erscheinen. Die Leiste bleibt unten rechts.")
+        self.position.setAccessibleName("Position der Nachfrage")
+        for i, (name, widget) in enumerate((("Ausblenden &nach", self.timeout), ("Position", self.position),
+                                            ("✕ an der Le&iste", self.strip_close))):
+            grid.addWidget(label(name, widget), (i // 2) * 2, i % 2)
+            grid.addWidget(widget, (i // 2) * 2 + 1, i % 2)
+        for col in (0, 1):
             grid.setColumnStretch(col, 1)
         box.addLayout(grid)
         chips_host = QWidget()
@@ -857,7 +864,7 @@ class PromptSettings(QWidget):
             widget.toggled.connect(self.apply)
         for widget in (self.idle_spin, self.snooze, *self.thresholds.values()):
             widget.valueChanged.connect(self.apply)
-        for widget in (self.timeout, self.strip_close):
+        for widget in (self.timeout, self.position, self.strip_close):
             widget.activated.connect(self.apply)
 
     def retheme(self, tokens):
@@ -880,10 +887,12 @@ class PromptSettings(QWidget):
         for widget in (self.timeout, self.keep_active, self.dots):
             widget.setEnabled(key != "off")
         self.strip_close.setEnabled(key == "strip")
+        self.position.setEnabled(key in ("window", "compact"))
 
     def apply(self, *_):
         self.config["prompt_mode"] = self.current_style()
         self.config["prompt_timeout_seconds"] = self.timeout.currentData()
+        self.config["prompt_position"] = self.position.currentData()
         self.config["prompt_keep_while_active"] = self.keep_active.isChecked()
         self.config["prompt_dots_clickable"] = self.dots.isChecked()
         self.config["prompt_strip_close"] = self.strip_close.currentData()
@@ -898,5 +907,6 @@ class PromptSettings(QWidget):
 
 
 # Nachfrage als Karte/Leiste: eigenes Modul, braucht _EntryForm von hier (daher am Ende geladen)
-from prompt_card import (DEFAULT_TIMEOUT, STYLE_HINTS, STYLES, TIMEOUTS, PromptStrip,  # noqa: E402,F401
-                         PromptWindow, prompt_style, prompt_timeout, style_preview)
+from prompt_card import (DEFAULT_TIMEOUT, POSITIONS, STYLE_HINTS, STYLES, TIMEOUTS,  # noqa: E402,F401
+                         PromptStrip, PromptWindow, prompt_position, prompt_style, prompt_timeout,
+                         style_preview)

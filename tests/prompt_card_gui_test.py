@@ -171,7 +171,29 @@ def gui_test():
     assert window.config["prompt_dots_clickable"] is False
     pane.idle_spin.setValue(25)
     assert window.config["idle_prompt_minutes"] == 25 and window.idle_watch.minutes == 25
+    assert not pane.position.isEnabled(), "Leiste: Position fest unten rechts"
+    pane.style_buttons["window"].click()
+    assert pane.position.isEnabled()
+    pane.position.setCurrentIndex(pane.position.findData("top_left"))
+    pane.position.activated.emit(pane.position.currentIndex())
+    assert window.config["prompt_position"] == "top_left"
     settings.hide()
+
+    # 6. Position: Karte oben links, mit Abstand, nie außerhalb des Bildschirms
+    window._close_prompt_silently()
+    window._prompt_queue.clear()
+    window._prompt_asked.clear()
+    window._prompt_asked_spans.clear()
+    window.config["prompt_timeout_seconds"] = 0
+    window.check_prompts()
+    prompt = window._prompt_window
+    assert isinstance(prompt, PromptWindow) and prompt.position == "top_left"
+    settle(100)
+    area = app.primaryScreen().availableGeometry()
+    frame = prompt.frameGeometry()
+    assert frame.left() == area.left() + 8 and frame.top() == area.top() + 8, (frame, area)
+    window._close_prompt_silently()
+    window.config["prompt_position"] = "bottom_right"
     old = {"prompt_mode": "tray"}  # alter Name der Leiste
     assert PromptSettings(old).current_style() == "strip"
     window.quit_app()
