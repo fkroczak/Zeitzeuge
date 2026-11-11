@@ -244,6 +244,8 @@ SOURCE_TILES = [
      "edit_rdm_settings", ("log", "RDM")),
     ("rdmbetter_enabled", "rdmbetter", "RDM Better", "Starts aus launcher.log",
      "edit_rdmbetter_settings", ("log", "RDM Better")),
+    ("sessionmgmt_enabled", "sessionmgmt", "SessionMGMT", "Sitzungen mit Kunde aus sessions.log",
+     "edit_sessionmgmt_settings", ("log", "SessionMGMT")),
     ("mstsc_enabled", "mstsc", "Remotedesktop (mstsc)", "RDP-Fenster und Ereignisprotokoll",
      "edit_mstsc_settings", None),
     ("shell_enabled", "shell", "SSH und PowerShell", "ssh, PuTTY, WinSCP, PSSession",
@@ -274,7 +276,8 @@ SOURCE_TILES = [
 
 # Kacheln der Aufzeichnung in Abschnitten nach Art
 TILE_GROUPS = [
-    ("Fernwartung", ["teamviewer_enabled", "rdm_enabled", "rdmbetter_enabled", "mstsc_enabled", "shell_enabled"]),
+    ("Fernwartung", ["teamviewer_enabled", "rdm_enabled", "rdmbetter_enabled", "sessionmgmt_enabled",
+                     "mstsc_enabled", "shell_enabled"]),
     ("VPN", ["sophos_enabled", "forti_enabled", "vpn_enabled"]),
     ("Kommunikation", ["pbx_reader_enabled", "teams_calls_enabled", "teams_chats_enabled", "outlook_enabled",
                        "travel_enabled"]),
@@ -307,6 +310,11 @@ def tile_state(main, key, kind):
         if kind[1] == "RDM Better":
             try:
                 missing = ["RDM Better"] if main.timeline.rdmbetter_missing() else []
+            except Exception:
+                missing = []
+        if kind[1] == "SessionMGMT":
+            try:
+                missing = ["SessionMGMT"] if main.timeline.sessionmgmt_missing() else []
             except Exception:
                 missing = []
         if kind[1] in missing:

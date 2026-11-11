@@ -2,7 +2,7 @@ Im Fenster **Einstellungen → Aufzeichnung** schaltest du jede Quelle in ihrer 
 
 | Gruppe | Quellen |
 |---|---|
-| Fernwartung | TeamViewer, RDM, RDM Better, Remotedesktop (mstsc) |
+| Fernwartung | TeamViewer, RDM, RDM Better, SessionMGMT, Remotedesktop (mstsc) |
 | VPN | Sophos Connect, FortiClient, weitere VPN-Logs (OpenVPN …) |
 | Telefon und Zeiten | 3CX-Anrufe, Personalzeiten, Ticketsystem, Outlook, Teams-Anrufe |
 | Dieser PC | PC gesperrt / Ruhezustand, WLAN, zuletzt geöffnete Dateien, Browser-Verlauf, SSH und PowerShell |
@@ -27,6 +27,9 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
   - RDP-, SSH-, VPN-, FTP- und Website-Verbindungen mit Beginn und Ende.
   - Angezeigte Passwörter, Benutzernamen und Einmal-Passwörter (OTP).
 - **RDM Better:** liest die Starts aus `%LOCALAPPDATA%\RDM Better\launcher.log` (Ziel und Benutzer, Zeit in UTC, Zeitzeuge rechnet in Ortszeit um). RDM Better schreibt kein Ende; das kommt aus der mstsc-Aufzeichnung. Ohne passendes mstsc-Fenster steht ein Start 1 Minute in der Timeline.
+- **SessionMGMT:** liest `sessions.log` aus dem Datenordner von SessionMGMT (Standard `%LOCALAPPDATA%\SessionMGMT`, einen anderen Ordner aus `SessionMGMT.json` findet Zeitzeuge selbst). Jede Sitzung (RDP, SSH, VPN, Web) steht mit Eintrag, Ziel, Benutzer, Beginn und Ende in der Timeline, wie bei RDM (Zeit in UTC, Zeitzeuge rechnet in Ortszeit um).
+  - Der Tresor aus SessionMGMT ist der Kunde: Heißt ein Kunde in der Kundenliste genauso (Groß/Klein egal), ordnet Zeitzeuge die Sitzung ihm zu; sonst greifen die Stichwörter auch auf den Tresornamen. Eine gemerkte Spur (RDM-Eintrag) geht vor.
+  - Zeigen mstsc, PuTTY oder ein VPN-Log dieselbe Sitzung, steht sie nur einmal da: RDP und SSH aus SessionMGMT, VPN mit den Zeiten aus dem VPN-Log (es bekommt den Kunden aus SessionMGMT dazu). Fehlgeschlagene Verbindungen fallen weg; Web-Einträge und Sitzungen ohne Ende stehen 1 Minute da.
 - **Remotedesktop (mstsc):** Zeitzeuge prüft alle 30 Sekunden, welche Remotedesktopverbindungen (`mstsc.exe`) offen sind, und speichert Beginn, Ende und Ziel in der Datenbank. Das Ziel kommt aus der Befehlszeile (`/v:` oder `.rdp`-Datei), sonst aus dem Fenstertitel. Sie stehen in der Timeline wie die RDP-Verbindungen aus RDM.
 - **Spuren vom eigenen PC** (jede einzeln schaltbar, alles verschlüsselt in der Datenbank):
   - **PC gesperrt / Ruhezustand:** Zeitzeuge prüft alle 30 Sekunden, ob der Bildschirm gesperrt ist. Ruhezustand, ausgeschaltet und abgemeldet liest es aus dem Windows-Ereignisprotokoll „System“ (14 Tage zurück), auch für Zeiten, in denen Zeitzeuge nicht lief. Zeile „PC-Zustand“.
@@ -340,7 +343,7 @@ Unter **Einstellungen → Aufzeichnung** schaltest du jede Quelle mit einem Klic
 
 | Gruppe | Quellen |
 |---|---|
-| Fernwartung | TeamViewer, RDM, RDM Better, Remotedesktop (mstsc) |
+| Fernwartung | TeamViewer, RDM, RDM Better, SessionMGMT, Remotedesktop (mstsc) |
 | VPN | Sophos Connect, FortiClient, weitere VPN-Logs (OpenVPN …) |
 | Telefon und Zeiten | 3CX-Anrufe, Personalzeiten |
 

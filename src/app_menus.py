@@ -19,6 +19,7 @@ import titlebar
 from log_parsers import VpnParser
 from local_sources import DEFAULT_BROWSER_HISTORY, DEFAULT_RECENT_DIR
 from rdp_reader import DEFAULT_LAUNCHER_LOG
+from sessionmgmt_reader import DEFAULT_LOG as DEFAULT_SM_LOG
 from vpn_reader import DEFAULT_DIRS as VPN_DEFAULT_DIRS, FORTI_TRACE_PATHS, vpn_sources
 from settings_dialogs import ActivityTypeSettingsDialog, ConnectionSettingsDialog, WorkHoursDialog
 from theme import GERMAN, STYLESHEET, SPACE_XS, default_custom_colors, theme_for
@@ -620,7 +621,8 @@ class MenusMixin:
     # Datenquellen: Schlüssel in der Config, Text im Menü (Gruppen mit Trennlinie)
     SOURCES = [
         [("teamviewer_enabled", "&TeamViewer"), ("rdm_enabled", "&RDM (Remote Desktop Manager)"),
-         ("rdmbetter_enabled", "RDM &Better"), ("mstsc_enabled", "Remote&desktop (mstsc)"),
+         ("rdmbetter_enabled", "RDM &Better"), ("sessionmgmt_enabled", "SessionM&GMT")],
+        [("mstsc_enabled", "Remote&desktop (mstsc)"),
          ("shell_enabled", "SS&H und PowerShell")],
         [("sophos_enabled", "&Sophos Connect"), ("forti_enabled", "&FortiClient"),
          ("vpn_enabled", "&Weitere VPN-Logs (OpenVPN …)")],
@@ -634,7 +636,7 @@ class MenusMixin:
     ]
 
     SOURCE_BRANDS = {"teamviewer_enabled": "teamviewer", "rdm_enabled": "rdm",
-                     "rdmbetter_enabled": "rdmbetter", "mstsc_enabled": "mstsc", "shell_enabled": "shell",
+                     "rdmbetter_enabled": "rdmbetter", "sessionmgmt_enabled": "sessionmgmt", "mstsc_enabled": "mstsc", "shell_enabled": "shell",
                      "pcstate_enabled": "pcstate", "wlan_enabled": "wlan", "recent_files_enabled": "files",
                      "browser_enabled": "browser", "sophos_enabled": "sophos",
                      "forti_enabled": "forti", "vpn_enabled": "vpn", "pbx_reader_enabled": "pbx",
@@ -666,6 +668,7 @@ class MenusMixin:
         for entry in (("Team&Viewer-Logs …", self.edit_teamviewer_settings, "teamviewer"),
                       ("&RDM-Logs …", self.edit_rdm_settings, "rdm"),
                       ("RDM &Better …", self.edit_rdmbetter_settings, "rdmbetter"),
+                      ("SessionM&GMT …", self.edit_sessionmgmt_settings, "sessionmgmt"), None,
                       ("Remote&desktop (mstsc) …", self.edit_mstsc_settings, "mstsc"),
                       ("SS&H und PowerShell …", self.edit_shell_settings, "shell"), None,
                       ("&Sophos Connect …", self.edit_sophos_settings, "sophos"),
@@ -1008,6 +1011,20 @@ class MenusMixin:
                  "am Fenster der Remotedesktopverbindung (mstsc), das es dafür alle 30 Sekunden "
                  "prüft. Findet es keins, steht ein Start 1 Minute in der Timeline.",
             after=self.apply_mstsc_monitor,
+        )
+
+    def edit_sessionmgmt_settings(self):
+        self._edit_log_settings(
+            "sessionmgmt", DEFAULT_SM_LOG, "SessionMGMT",
+            enabled_text="Sitzungen aus SessionMGMT auslesen und anzeigen",
+            timezone=False,
+            hint="SessionMGMT schreibt jede Sitzung in sessions.log im Datenordner: RDP, SSH, VPN "
+                 "und Web mit Kunde (Tresor), Eintrag, Ziel, Benutzer, Beginn und Ende (Zeit in UTC, "
+                 "Zeitzeuge rechnet sie in Ortszeit um). Einen anderen Datenordner aus dem Installer "
+                 "(SessionMGMT.json) findet Zeitzeuge selbst.\n\n"
+                 "Zeigen mstsc, PuTTY oder das VPN-Log dieselbe Sitzung, steht sie nur einmal da: "
+                 "RDP und SSH mit dem Kunden aus SessionMGMT, VPN mit den Zeiten aus dem VPN-Log. "
+                 "Web-Einträge haben kein Ende und stehen 1 Minute in der Timeline.",
         )
 
     def edit_mstsc_settings(self):

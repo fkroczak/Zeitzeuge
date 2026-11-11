@@ -45,6 +45,14 @@ def _sophos_log(cfg, name):
     return ""
 
 
+def _sessionmgmt_log():
+    try:
+        from sessionmgmt_reader import configured_log
+        return configured_log()
+    except Exception:  # Suche darf den Assistenten nie aufhalten
+        return None
+
+
 def _found(path, what="Gefunden"):
     return f"{what}: {path}" if path else ""
 
@@ -75,6 +83,14 @@ GROUPS = [
              missing="launcher.log nicht gefunden. Liegt sie woanders, trag den Pfad unter "
                      "„Einrichten …“ ein.",
              setup="edit_rdmbetter_settings", button="Pfad einrichten …", file=True),
+        dict(id="sessionmgmt", key="sessionmgmt_enabled", title="SessionMGMT",
+             text="Liest aus sessions.log jede Sitzung aus SessionMGMT (RDP, SSH, VPN, Web) mit "
+                  "Kunde, Eintrag, Ziel, Beginn und Ende.",
+             detect=lambda c: _found(_exists((c.get("sessionmgmt_paths") or [])
+                                             + [_sessionmgmt_log() or ""])),
+             missing="sessions.log nicht gefunden. Liegt der Datenordner woanders, trag den Pfad "
+                     "unter „Einrichten …“ ein.",
+             setup="edit_sessionmgmt_settings", button="Pfad einrichten …", file=True),
         dict(id="mstsc", key="mstsc_enabled", title="Remotedesktop (mstsc)",
              text="Zeitzeuge prüft alle 30 Sekunden, welche Remotedesktopverbindungen offen sind, "
                   "und zeigt sie mit Ziel, Beginn und Ende wie die Verbindungen aus RDM.",
