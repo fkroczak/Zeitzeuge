@@ -9,14 +9,14 @@ Beide nehmen den Fokus nicht weg, blenden nach timeout Sekunden aus (0 = bleibt)
 solange die Maus darüber ist. Signal acted: Hauptaktion gewählt, closed: geschlossen/ausgeblendet.
 Farbe nur für den Zustand: Warnung (gelb) oder Info (blau) an der Kachel links.
 """
-from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPalette
-from PySide6.QtWidgets import (QApplication, QDialog, QFrame, QHBoxLayout, QLabel, QLayout, QPushButton, QToolButton,
+from PySide6.QtWidgets import (QApplication, QDialog, QHBoxLayout, QLabel, QPushButton, QToolButton,
                                QVBoxLayout, QWidget)
 
 import icons
 import theme
-from prompt_card import SHADOW, _AutoHide, _Dock, _ElidedLabel, _TimerBar, _icon_label, _shadow, _theme_colors
+from prompt_card import _AutoHide, _Dock, _ElidedLabel, _TimerBar, _floating, _icon_label, _theme_colors
 from theme import fit_text, SPACE_M, SPACE_S, SPACE_XS
 
 
@@ -59,10 +59,6 @@ class _Notice(_AutoHide, _Dock):
             return
         super().keyPressEvent(event)
 
-    def showEvent(self, event):
-        super().showEvent(event)
-        self._dock()
-        QTimer.singleShot(0, self, self._dock)  # an self gebunden: verfällt, wenn der Hinweis weg ist
 
 
 class NoticeCard(_Notice, QDialog):
@@ -72,18 +68,8 @@ class NoticeCard(_Notice, QDialog):
 
     def __init__(self, title, text, items=(), action="", kind="warn", timeout=15, parent=None):
         super().__init__(parent, Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
-        self.setObjectName("prompt_window")
-        self.setWindowTitle(f"Zeitzeuge: {title}")
-        self.setAttribute(Qt.WA_ShowWithoutActivating)
-        self.setAttribute(Qt.WA_TranslucentBackground)
+        outer, card = _floating(self, f"Zeitzeuge: {title}", "prompt_window", "prompt_card", self.WIDTH)
         _text, _accent, muted = _theme_colors(parent or self)
-        outer = QVBoxLayout(self)
-        outer.setContentsMargins(SHADOW, SHADOW, SHADOW, SHADOW)
-        outer.setSizeConstraint(QLayout.SetFixedSize)
-        card = QFrame()
-        card.setObjectName("prompt_card")
-        card.setFixedWidth(self.WIDTH)
-        _shadow(card)
         outer.addWidget(card)
         box = QVBoxLayout(card)
         box.setContentsMargins(0, 0, 0, 0)
@@ -178,18 +164,8 @@ class NoticeStrip(_Notice, QWidget):
 
     def __init__(self, title, text, action="", kind="warn", timeout=15, parent=None):
         super().__init__(parent, Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
-        self.setObjectName("prompt_strip_window")
-        self.setWindowTitle(f"Zeitzeuge: {title}")
-        self.setAttribute(Qt.WA_ShowWithoutActivating)
-        self.setAttribute(Qt.WA_TranslucentBackground)
+        outer, strip = _floating(self, f"Zeitzeuge: {title}", "prompt_strip_window", "prompt_strip", self.WIDTH)
         _text, _accent, muted = _theme_colors(parent or self)
-        outer = QVBoxLayout(self)
-        outer.setContentsMargins(SHADOW, SHADOW, SHADOW, SHADOW)
-        outer.setSizeConstraint(QLayout.SetFixedSize)
-        strip = QFrame()
-        strip.setObjectName("prompt_strip")
-        strip.setFixedWidth(self.WIDTH)
-        _shadow(strip)
         outer.addWidget(strip)
         col = QVBoxLayout(strip)
         col.setContentsMargins(0, 0, 0, 0)

@@ -245,3 +245,33 @@ def test_utc_umrechnung_je_tag_wie_einzeln():
             os.environ["TZ"] = old
         time.tzset()
         lp._offsets.clear()
+
+
+def test_ticket_vorschlaege_mit_vorauswahl_gleich():
+    # Fensterstücke außerhalb des Zeitraums werden am Text übersprungen: gleiches Ergebnis wie
+    # ohne Vorauswahl (Grenzen mit Bruchteilen von Sekunden: ohne Vorauswahl)
+    import random
+    from datetime import timedelta
+    import tickets
+    rng = random.Random(3)
+    base = datetime(2026, 11, 10, 7)
+    segs = []
+    for i in range(600):
+        s = base + timedelta(seconds=rng.randint(0, 36000))
+        e = s + timedelta(seconds=rng.randint(0, 900))
+        segs.append({"start": s.strftime("%Y-%m-%d %H:%M:%S"), "end": e.strftime("%Y-%m-%d %H:%M:%S"),
+                     "title": f"TCK{rng.randint(1, 30):010d} – Mail", "app": "Outlook"})
+    segs += [{"start": "2026-11-10 9:00:00", "end": "2026-11-10 09:30:00", "title": "TCK0000000099"},
+             {"start": "２026-11-10 09:00:00", "end": "2026-11-10 09:30:00", "title": "TCK0000000098"},
+             {"start": None, "end": "x", "title": "TCK0000000097"}]
+
+    def plain(start, end):  # Vorauswahl abgeschaltet: Grenzen mit Bruchteil, gleich danach zurück
+        return tickets.suggest(start - timedelta(microseconds=1), end, segs)
+
+    for start, minutes in ((datetime(2026, 11, 10, 9), 30), (datetime(2026, 11, 10, 12, 15), 5),
+                           (datetime(2026, 11, 10, 17, 59, 59), 60)):
+        end = start + timedelta(minutes=minutes)
+        fast = tickets.suggest(start, end, segs)
+        slow = plain(start, end)
+        assert [t["ticket"] for t in fast] == [t["ticket"] for t in slow]
+        assert all(abs(a["seconds"] - b["seconds"]) <= 1e-3 for a, b in zip(fast, slow))

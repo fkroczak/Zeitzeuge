@@ -49,6 +49,9 @@ def _t(text):
     return timefmt.parse(text[:19])  # wie strptime, aber schnell (Tagesabschluss: 92 000 Aufrufe)
 
 
+_PLAIN = re.compile(r"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d", re.ASCII)  # Zeit, die als Text richtig sortiert
+
+
 def _overlap(a_start, a_end, b_start, b_end):
     return max(0.0, (min(a_end, b_end) - max(a_start, b_start)).total_seconds())
 
@@ -76,7 +79,17 @@ def suggest(start, end, segments=(), bookings=(), patterns=None, margin_minutes=
         entry["seconds"] += seconds
         entry["sources"][source] = entry["sources"].get(source, 0.0) + seconds
 
+    # Fensterstücke ganz vor oder nach dem Zeitraum schon am Text erkennen (der ganze Tag hat
+    # Tausende): "JJJJ-MM-TT hh:mm:ss" sortiert als Text wie die Zeit. Nur bei Grenzen ohne
+    # Bruchteile einer Sekunde; alles andere (auch unlesbare Zeiten) prüft _overlap wie bisher.
+    whole = lo.microsecond == 0 and hi.microsecond == 0 and lo.tzinfo is None and lo.year >= 1000
+    lo_s, hi_s = (timefmt.fmt(lo), timefmt.fmt(hi)) if whole else ("", "")
     for seg in segments or ():
+        if whole:
+            s, e = seg.get("start"), seg.get("end")
+            if (isinstance(s, str) and isinstance(e, str) and _PLAIN.match(s) and _PLAIN.match(e)
+                    and (e[:19] <= lo_s or s[:19] >= hi_s)):
+                continue  # Überlappung höchstens 0 Sekunden: wie unten übersprungen
         try:
             secs = _overlap(_t(seg["start"]), _t(seg["end"]), lo, hi)
         except (KeyError, TypeError, ValueError):

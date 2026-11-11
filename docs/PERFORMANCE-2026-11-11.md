@@ -1,6 +1,7 @@
-# Leistung, vierte Runde: Audit nach #79–#83, Hin- und Herspringen, Dopplungen (11.11.2026)
+# Leistung, vierte Runde: Audit nach #79–#84, Hin- und Herspringen, Dopplungen (11.11.2026)
 
-Aufbauend auf `docs/PERFORMANCE-2026-11-10-start.md`. Auftrag: nach den vielen Änderungen
+Aufbauend auf `docs/PERFORMANCE-2026-11-10-start.md`, auf dem Stand von #84 (Dialoge und
+Einstellungen im Stil der Nachfrage-Karte). Auftrag: nach den vielen Änderungen
 prüfen, ob Zeitzeuge langsamer geworden ist, dann ohne Einschränkung der Funktion so weit wie
 möglich beschleunigen (Ziel 50 %) und doppelten Code zusammenfassen.
 
@@ -24,10 +25,31 @@ Alles im Rauschen (±10–20 %). Die neuen Teile wurden einzeln geprüft:
   400 ms gebündelt.
 - Fahrzeit zur Termin-Adresse (#81): fragt OpenStreetMap im Hintergrund und merkt das Ergebnis.
 
+### #84 (Dialoge, Einstellungen, Hinweise)
+
+Timeline, Start und Tageswechsel: unverändert (#84 ändert an der Timeline nur das
+Rechtsklick-Menü). In den umgebauten Fenstern (`tests`-fremde Messung, Median):
+
+| Messung | main (#83) | #84 | #84 + diese Runde |
+|---|---:|---:|---:|
+| Einstellungen erstmals öffnen | ~146 ms | 156–206 ms | 147–157 ms |
+| Einstellungen: alle Seiten durchklicken | 82–110 ms (10 Seiten) | 68–79 ms (8 Seiten) | 64–68 ms |
+| Tätigkeit nachtragen öffnen | 15 ms | 20–22 ms | 19–21 ms |
+| Design wechseln (zweimal, Einstellungen waren offen) | 320–340 ms | 360–420 ms | 350–390 ms |
+
+Etwas langsamer, aber nicht spürbar: Das Einstellungsfenster baut beim ersten Öffnen alle acht
+Seiten mit Karten-Zeilen und Kacheln; Qt muss mehr Elemente mit dem Stylesheet versehen
+(`addLayout`/`setWidget` sind dabei zwei Drittel der Zeit). Danach öffnet es in 2 ms. Seiten
+erst beim Anklicken zu bauen spart ~100 ms einmal je Sitzung, verlangt aber Umbauten an Suche,
+`rows`/`tiles` und den Tests – nicht gemacht. Der Nachtragen-Dialog hat mehr Teile (Zeitzeile,
+Chips); die Hälfte seiner Zeit sind aber die Ticket-Vorschläge aus allen Fenstern des Tages,
+die jetzt vorab nach Zeit aussortiert werden (siehe 3.11).
+
 ## 2. Ergebnis der Optimierung
 
 Median aus je zwei Läufen mit 5 Durchgängen, alter und neuer Stand abwechselnd auf derselben
-Maschine:
+Maschine. Spalte „vorher“: #83; auf #84 gemessen ergeben sich dieselben Verhältnisse (z. B. Tag
+zurück 126 → 49 ms, hin und her 64 → 40 ms, heute zeichnen 43 → 31 ms, Start 623 → 578 ms).
 
 | Messung | vorher (#83) | nachher | |
 |---|---:|---:|---:|
@@ -59,11 +81,14 @@ Alle Änderungen liefern dasselbe Ergebnis wie vorher. Geprüft mit Tests und Ge
 Zeitzonen-Umrechnung über zwei Jahre in sieben Zeitzonen, Bildschirmfoto alt gegen neu).
 
 1. **Vortag im Hintergrund vorbereiten** (`TimelineView._schedule_prefetch`, `_prefetch`).
-   400 ms nach dem Zeichnen rechnet ein Thread Fensterstücke und Arbeitsblöcke des Vortags in
+   1 s nach dem Zeichnen rechnet ein Thread Fensterstücke und Arbeitsblöcke des Vortags in
    die Zwischenspeicher, nur reine Python-Teile wie beim Start (`_warm_up`). Ein Klick auf
    „Tag zurück“ trifft dann die Zwischenspeicher. Wechselt man genau zu diesem Tag, während
    der Thread noch rechnet, wartet das Zeichnen auf ihn, statt alles doppelt zu rechnen. Nicht
-   bei übernommenen Daten eines anderen PCs und nicht ohne Arbeitsblöcke.
+   bei übernommenen Daten eines anderen PCs und nicht ohne Arbeitsblöcke. Der Thread teilt sich
+   Python mit der Oberfläche (GIL): Solange er rechnet (~0,1 s), ist das Fenster langsamer
+   (gemessen: Nachtragen öffnen 20 → 35 ms). Darum startet er erst nach 1 s statt 0,4 s und
+   wartet, solange ein Dialog oder Menü offen ist.
 2. **Zwischenspeicher für 8 Tage statt für einen.** Arbeitsblöcke (`pc_blocks_for`) wurden
    nur für einen Tag gemerkt: Zwischen heute und gestern wurde jedes Mal alles neu gerechnet.
    Jetzt für die letzten 8 Tage, die Fensterstücke ebenso (vorher 6 Einträge, also 2–3 Tage).
@@ -98,9 +123,14 @@ Zeitzonen-Umrechnung über zwei Jahre in sieben Zeitzonen, Bildschirmfoto alt ge
     mit Umstellung wird jede Zeit einzeln gerechnet. Über zwei Jahre in sieben Zeitzonen (auch
     Lord Howe mit 30-Minuten-Umstellung, Chatham, Indien) gleich wie die exakte Rechnung.
 
+11. **Ticket-Vorschläge** (`tickets.suggest`, beim Öffnen von Nachtragen und Nachfrage): Von
+    den Tausenden Fenstern des Tages zählen nur die rund um die Tätigkeit. Fenster ganz davor
+    oder danach werden am Text der Zeit erkannt („JJJJ-MM-TT hh:mm:ss“ sortiert wie die Zeit),
+    nur wenn die Zeit genau so aussieht und die Grenzen ganze Sekunden sind; sonst wie bisher.
+
 Neue Tests: `tests/draw_cache_test.py` (Arbeitsblöcke für mehrere Tage, Vortag vorbereiten =
 selbst gerechnet), `tests/perf_cache_test.py` (Regel-Vorfilter, Stichwortsuche gegen das alte
-Verfahren, Zeitzonen je Tag).
+Verfahren, Zeitzonen je Tag, Ticket-Vorschläge mit und ohne Vorauswahl).
 
 ## 4. Code-Dopplungen zusammengefasst
 
@@ -115,14 +145,14 @@ Vergleich von Zeilenblöcken. Zusammengefasst, ohne das Verhalten zu ändern:
 | `prune` in `RdpReader` und `VpnReader` | `retention.prune_archive` |
 | Ticketsuche und Trefferliste in `BookingDialog` und `TicketSearchDialog` | Basis `_TicketSearch` |
 | JavaScript für Anmeldung/Token/Köpfe in `API_JS` und `FETCH_JS` (Matrix42) | `_JS_HELPERS` |
+| Rahmen der schwebenden Fenster: Nachfrage-Karte, Nachfrage-Leiste, Hinweis-Karte, Hinweis-Leiste (#84) | `prompt_card._floating` |
+| `showEvent`/`resizeEvent` (in der Ecke halten) in `PromptWindow`, `PromptStrip`, `_Notice` | `prompt_card._Dock` |
 
 Die alten Namen bleiben als Verweise (Tests und andere Module nutzen sie). Dazu fünf
 ungenutzte Importe entfernt (`pyflakes`).
 
 Bewusst nicht zusammengefasst:
 
-- `prompt_card.py` (Karte und Leiste haben gleiche `showEvent`/`resizeEvent`): #84 baut dort
-  gerade um, das gäbe nur Konflikte.
 - PowerShell-Skript für Outlook (Gesendet und Teams-Chats lesen ähnlich): hier nicht testbar.
 - `m42_data.covered_seconds` und `Journal.covered_seconds`: ähnlicher Name, andere Rechnung.
 - Die vielen zweizeiligen `_t(text)` je Modul: rufen schon alle `timefmt.parse`.

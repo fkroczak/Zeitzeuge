@@ -300,6 +300,24 @@ def _shadow(widget):
     widget.setGraphicsEffect(effect)
 
 
+def _floating(window, title, name, frame_name, width):
+    """Schwebendes Fenster (Nachfrage, Hinweis; Karte oder Leiste): ohne Rahmen und ohne den
+    Fokus zu nehmen, durchsichtig mit Platz für den Schatten. -> (äußeres Layout, Fläche mit
+    Schatten in fester Breite); die Fläche hängt der Aufrufer ins Layout."""
+    window.setObjectName(name)
+    window.setWindowTitle(title)
+    window.setAttribute(Qt.WA_ShowWithoutActivating)
+    window.setAttribute(Qt.WA_TranslucentBackground)
+    outer = QVBoxLayout(window)
+    outer.setContentsMargins(SHADOW, SHADOW, SHADOW, SHADOW)
+    outer.setSizeConstraint(QLayout.SetFixedSize)
+    frame = QFrame()
+    frame.setObjectName(frame_name)
+    frame.setFixedWidth(width)
+    _shadow(frame)
+    return outer, frame
+
+
 def _detach(widget, layout):
     """Widget aus dem Layout (auch verschachtelt) nehmen, damit es woanders hinkann."""
     if layout is None:
@@ -331,7 +349,17 @@ def _theme_colors(widget):
 
 
 class _Dock:
+    """In einer Ecke des Bildschirms halten (Nachfrage und Hinweise, Karte und Leiste)."""
     position = "bottom_right"
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._dock()
+        QTimer.singleShot(0, self, self._dock)  # Größe steht erst nach dem Anzeigen sicher; an self gebunden
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._dock()
 
     def dock_bottom_right(self, margin=8):
         """In der gewählten Ecke halten (Standard unten rechts über der Taskleiste), mit Abstand –
@@ -577,21 +605,11 @@ class PromptWindow(_AutoHide, _Dock, CardParts, QDialog):
         self.style = "compact" if style == "compact" else "window"
         self.position = position if position in dict(POSITIONS) else "bottom_right"
         compact = self.style == "compact"
-        self.setWindowTitle("Zeitzeuge: Was hast du gemacht?")
-        self.setObjectName("prompt_window")
-        self.setAttribute(Qt.WA_ShowWithoutActivating)
-        self.setAttribute(Qt.WA_TranslucentBackground)
+        outer, self.card = _floating(self, "Zeitzeuge: Was hast du gemacht?", "prompt_window",
+                                     "prompt_card", 440 if compact else 580)
         self._done = False
         text_color, accent, muted = _theme_colors(parent or self)
-
-        outer = QVBoxLayout(self)
-        outer.setContentsMargins(SHADOW, SHADOW, SHADOW, SHADOW)
-        outer.setSizeConstraint(QLayout.SetFixedSize)
-        self.card = QFrame()
-        self.card.setObjectName("prompt_card")
         self.card.setProperty("compact", compact)
-        self.card.setFixedWidth(440 if compact else 580)
-        _shadow(self.card)
         outer.addWidget(self.card)
         box = QVBoxLayout(self.card)
         box.setContentsMargins(0, 0, 0, 0)
@@ -805,14 +823,6 @@ class PromptWindow(_AutoHide, _Dock, CardParts, QDialog):
             return True
         return super().eventFilter(obj, event)
 
-    def showEvent(self, event):
-        super().showEvent(event)
-        self._dock()
-        QTimer.singleShot(0, self._dock)  # Größe steht erst nach dem Anzeigen sicher
-
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        self._dock()
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_Escape:
@@ -874,23 +884,14 @@ class PromptStrip(_AutoHide, _Dock, QWidget):
     def __init__(self, entry, count=1, parent=None, timeout=0, keep_while_active=True, close_all=False):
         super().__init__(parent, Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
         self.entry = entry
-        self.setObjectName("prompt_strip_window")
-        self.setWindowTitle("Zeitzeuge: offene Nachfrage")
-        self.setAttribute(Qt.WA_ShowWithoutActivating)
-        self.setAttribute(Qt.WA_TranslucentBackground)
+        outer, self.strip = _floating(self, "Zeitzeuge: offene Nachfrage", "prompt_strip_window",
+                                      "prompt_strip", self.WIDTH)
         _text, accent, muted = _theme_colors(parent or self)
-        outer = QVBoxLayout(self)
-        outer.setContentsMargins(SHADOW, SHADOW, SHADOW, SHADOW)
         outer.setSpacing(0)
-        outer.setSizeConstraint(QLayout.SetFixedSize)
-        self.strip = QFrame()
-        self.strip.setObjectName("prompt_strip")
-        self.strip.setFixedWidth(self.WIDTH)
         self.strip.setCursor(Qt.PointingHandCursor)
         self.strip.setFocusPolicy(Qt.StrongFocus)
         self.strip.setAccessibleName("Nachfrage öffnen")
         self.strip.installEventFilter(self)
-        _shadow(self.strip)
         outer.addWidget(self.strip, 0, Qt.AlignHCenter)
         col = QVBoxLayout(self.strip)
         col.setContentsMargins(0, 0, 0, 0)
@@ -972,14 +973,6 @@ class PromptStrip(_AutoHide, _Dock, QWidget):
             return
         super().keyPressEvent(event)
 
-    def showEvent(self, event):
-        super().showEvent(event)
-        self._dock()
-        QTimer.singleShot(0, self._dock)
-
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        self._dock()
 
     def _timed_out(self):
         self.timed_out.emit()

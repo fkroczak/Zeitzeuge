@@ -8,7 +8,7 @@ from html import escape
 
 from PySide6.QtCore import QDate, QDateTime, QPoint, QPointF, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import QBrush, QColor, QContextMenuEvent, QFontMetrics, QPainter, QPainterPath, QPen
-from PySide6.QtWidgets import (QDialog, QDialogButtonBox, QFormLayout, QFrame, QGraphicsRectItem,
+from PySide6.QtWidgets import (QApplication, QDialog, QDialogButtonBox, QFormLayout, QFrame, QGraphicsRectItem,
                                QGraphicsScene, QGraphicsView, QLabel, QLineEdit, QMenu,
                                QPlainTextEdit, QScrollArea, QVBoxLayout)
 
@@ -1241,7 +1241,9 @@ class TimelineView(QGraphicsView):
 
     # ------------------------- Vortag vorbereiten -----------------------------
 
-    PREFETCH_MS = 400  # so lange nach dem Zeichnen warten (Bedienung geht vor)
+    # So lange nach dem Zeichnen warten: Der Thread teilt sich Python mit der Oberfläche (GIL)
+    # und bremst sie, solange er rechnet. Man sieht sich einen Tag meist länger an.
+    PREFETCH_MS = 1000
 
     def _schedule_prefetch(self, date: QDate):
         """Nach dem Zeichnen den Vortag im Hintergrund vorbereiten: Beim Nachtragen geht es
@@ -1253,9 +1255,14 @@ class TimelineView(QGraphicsView):
         self._prefetch_timer.start()
 
     def _start_prefetch(self):
-        date, self._prefetch_date = self._prefetch_date, None
+        date = self._prefetch_date
         if date is None or self._closing or self.loading:
             return
+        app = QApplication.instance()
+        if app is not None and (app.activeModalWidget() or app.activePopupWidget()):
+            self._prefetch_timer.start()  # Dialog oder Menü offen: Bedienung geht vor, später
+            return
+        self._prefetch_date = None
         running = getattr(self, "_prefetch_thread", None)
         if running is not None and running.is_alive():
             return

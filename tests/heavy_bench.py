@@ -227,14 +227,14 @@ def main():
     per = measure("Hin und her (3 Tage, 9 Wechsel)", back_and_forth, runs)
     print(f"{'  = je Wechsel':<36}{ms(per / len(hops))}")
 
-    # Tag für Tag zurück, jeden Tag kurz ansehen (0,7 s): gezählt wird nur der Wechsel.
+    # Tag für Tag zurück, jeden Tag kurz ansehen (1,5 s): gezählt wird nur der Wechsel.
     # Andere Tage als oben, damit nichts schon im Zwischenspeicher liegt.
     def step_back():
         took = []
         d = date.addDays(-30)
         w.date_edit.setDate(d)
         for _ in range(8):
-            end = time.perf_counter() + 0.7
+            end = time.perf_counter() + 1.5
             while time.perf_counter() < end:
                 app.processEvents()
                 time.sleep(0.005)
