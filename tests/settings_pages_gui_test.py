@@ -110,13 +110,22 @@ def gui_test():
 
     # Schmales Fenster (Full HD bei 200 %: 960 × 540): keine waagerechte Scrollleiste
     settings.resize(settings.minimumSize())
+    # Schriftmaß prüfen: Der Windows-Runner misst offscreen Texte etwa doppelt so breit wie echtes
+    # Windows oder Linux („Darstellung“ in 12 px: 132 statt ~68 px). Dann gilt die Grenze im
+    # gleichen Verhältnis, sonst misst die Prüfung die kaputte Schrift statt des Layouts.
+    from PySide6.QtGui import QFont, QFontMetrics
+    probe = QFont(app.font())
+    probe.setPixelSize(theme.FONT_BASE)
+    stretch = max(1.0, QFontMetrics(probe).horizontalAdvance("Darstellung") / 80)
+    print("Schriftmaß", round(stretch, 2), "DPI", app.primaryScreen().logicalDotsPerInch())
     for key, *_r in PAGES:
         settings.show_page(key)
         QTest.qWait(50)
         for area in settings.stack.currentWidget().findChildren(QScrollArea) + (
                 [settings.stack.currentWidget()] if isinstance(settings.stack.currentWidget(), QScrollArea) else []):
             bar = area.horizontalScrollBar()
-            if bar.isVisible() and bar.maximum() > 0:  # welches Element ist zu breit?
+            too_wide = area.widget().minimumSizeHint().width() > area.viewport().width() * stretch
+            if too_wide:  # welches Element ist zu breit?
                 inner = area.widget()
                 print(key, "Sicht", area.viewport().width(), "Inhalt", inner.minimumSizeHint().width())
                 for child in inner.findChildren(QWidget):
@@ -131,7 +140,9 @@ def gui_test():
                                       part.minimumSizeHint().width(), "fest", part.minimumWidth(),
                                       "hint", part.sizeHint().width(), "font", part.font().family(),
                                       part.font().pixelSize(), part.font().pointSize(), repr(text))
-            assert not (bar.isVisible() and bar.maximum() > 0), (key, bar.maximum())
+            assert not too_wide, (key, area.widget().minimumSizeHint().width(), area.viewport().width())
+            if stretch == 1.0:
+                assert not (bar.isVisible() and bar.maximum() > 0), (key, bar.maximum())
     assert settings.minimumWidth() <= 960 and settings.minimumHeight() <= 540
 
     settings.hide()
