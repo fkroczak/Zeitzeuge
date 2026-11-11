@@ -47,7 +47,8 @@ print(f"Tagesliste: {rows} Zeilen in {took:.2f} s")
 if rows < 150 or took > 2:
     print(f"::error title=Tagesliste::{rows} Zeilen brauchen {took:.1f} s (erlaubt: 2 s)")
     sys.stdout.flush()
-    os._exit(1)
+    import safe_io
+    safe_io.hard_exit(1)
 print("Tagesliste schnell genug")
 
 # Arbeitsblöcke: viel weniger Zeilen, ebenso schnell
@@ -61,6 +62,8 @@ print(f"Arbeitsblöcke: {blocks} Zeilen in {took:.2f} s")
 if not 0 < blocks < rows / 3 or took > 2:
     print(f"::error title=Tagesliste::Arbeitsblöcke: {blocks} Zeilen (vorher {rows}) in {took:.1f} s")
     sys.stdout.flush()
-    os._exit(1)
+    import safe_io
+    safe_io.hard_exit(1)
 sys.stdout.flush()
-os._exit(0)
+import safe_io  # Ende ohne Qt-Aufräumen (Absturz unter Windows)
+safe_io.hard_exit(0)

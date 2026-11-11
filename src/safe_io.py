@@ -209,3 +209,24 @@ def log_lines(path):
             text.readline()  # angeschnittene erste Zeile überspringen
         for line in text:
             yield line.replace("\x00", "") if "\x00" in line else line
+
+
+def hard_exit(code=0):
+    """Prozess sofort beenden, ohne dass Qt beim Entladen seiner DLLs aufräumt.
+
+    os._exit ruft unter Windows ExitProcess: Qt baut dabei globale Objekte ab, die auf schon
+    gelöschte Fenster zeigen, und stürzt sporadisch mit Zugriffsfehler ab (Exit 3221225477),
+    obwohl alles gespeichert ist. TerminateProcess überspringt dieses Aufräumen.
+    Vorher muss alles gespeichert und gestoppt sein (quit_app).
+    """
+    import sys
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream and stream.flush()
+        except (OSError, ValueError):
+            pass
+    if sys.platform == "win32":
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        kernel32.TerminateProcess(kernel32.GetCurrentProcess(), code & 0xFFFFFFFF)
+    os._exit(code)

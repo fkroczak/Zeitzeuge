@@ -116,4 +116,5 @@ panel.swatches[2][1].click()
 panel.reset_button.click()
 assert panel.colors["accent"] == SWATCHES["dark"]["accent"][0]
 print("ok")
-os._exit(0)
+import safe_io  # Ende ohne Qt-Aufräumen (Absturz unter Windows)
+safe_io.hard_exit(0)

@@ -155,7 +155,8 @@ def run_one(scale):
 
     print(json.dumps(found, ensure_ascii=False))
     sys.stdout.flush()
-    os._exit(0)  # wie in den Testskripten: Qt räumt unter Windows beim Beenden sporadisch falsch auf
+    import safe_io
+    safe_io.hard_exit(0)  # wie in den Testskripten: Qt räumt unter Windows beim Beenden sporadisch falsch auf
 
 
 if __name__ == "__main__":

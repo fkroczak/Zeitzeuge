@@ -49,4 +49,5 @@ types.search.setText("")
 assert types.get_types() == ["VPN-Sitzung", "RDP-Sitzung", "TeamViewer"]
 
 print("Dialoge OK")
-os._exit(0)
+import safe_io  # Ende ohne Qt-Aufräumen (Absturz unter Windows)
+safe_io.hard_exit(0)
