@@ -22,6 +22,7 @@ Anrufe von Kollegen zählen nie (colleagues.py).
 from datetime import datetime, timedelta
 
 import customers as cl
+import timefmt
 from day_close import same_customer
 
 TIME_FMT = "%Y-%m-%d %H:%M:%S"
@@ -47,11 +48,7 @@ WORD_STOP = {"systems", "system", "solutions", "service", "services", "gruppe", 
 OUTLOOK_TYPES = ("Termin", "Teams-Besprechung", "Mail gesendet", "Mail beantwortet")
 
 
-def _t(text):
-    try:
-        return datetime.strptime(str(text)[:19], TIME_FMT)
-    except (TypeError, ValueError):
-        return None
+_t = timefmt.parse_or_none
 
 
 def _votes(entries, bookings, colleague=None, slack=SLACK_MINUTES):

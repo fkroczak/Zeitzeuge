@@ -251,10 +251,11 @@ class Journal:
             })
         return result
 
-    def covered_seconds(self, date_str, start, end):
-        """Wie viele Sekunden von [start, end) schon dokumentiert sind."""
+    def covered_seconds(self, date_str, start, end, items=None):
+        """Wie viele Sekunden von [start, end) schon dokumentiert sind.
+        items: Tätigkeiten des Tages, falls schon gelesen (sonst self.items(date_str))."""
         spans = sorted((max(_t(i["start"]), start), min(_t(i["end"]), end))
-                       for i in self.items(date_str))
+                       for i in (self.items(date_str) if items is None else items))
         total, cur_end = 0.0, start
         for s, e in spans:
             s = max(s, cur_end)
@@ -272,6 +273,7 @@ class Journal:
         """
         now = now or datetime.now()
         result = []
+        items = None  # Tätigkeiten des Tages: einmal lesen, nicht für jeden Eintrag
         for e in entries:
             if e.get("doc") or e.get("ai") or e.get("open") or ("app" in e and not e.get("pc_block")):
                 continue
@@ -291,7 +293,9 @@ class Journal:
                 continue
             if self.is_ignored(e) or self.is_answered(e, date_str):
                 continue
-            if self.covered_seconds(date_str, start, end) >= seconds * min_share:
+            if items is None:
+                items = self.items(date_str)
+            if self.covered_seconds(date_str, start, end, items) >= seconds * min_share:
                 continue
             result.append(e)
         return result

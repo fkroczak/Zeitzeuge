@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (QCheckBox, QDialog, QDialogButtonBox, QFrame, QHB
 
 from card_dialog import modernize
 from flow_layout import FlowLayout
-from theme import theme_for, prose, SPACE_L, SPACE_M, SPACE_S, SPACE_XS
+from theme import theme_for, SPACE_L, SPACE_M, SPACE_S, SPACE_XS
 import customer_discovery as cdisc
 import customers as cl
 import icons

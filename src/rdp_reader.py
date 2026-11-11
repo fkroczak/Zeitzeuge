@@ -221,13 +221,7 @@ def read_rdp_events():
     return out.decode("utf-8", errors="replace")
 
 
-def _event_time(text):
-    """SystemTime (UTC) -> Ortszeit ohne Zeitzone."""
-    m = re.match(r"(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2})", text or "")
-    if not m:
-        return None
-    when = datetime.strptime(f"{m.group(1)} {m.group(2)}", TIME_FMT).replace(tzinfo=timezone.utc)
-    return when.astimezone().replace(tzinfo=None)
+_event_time = timefmt.event_time  # SystemTime (UTC) -> Ortszeit ohne Zeitzone
 
 
 def parse_rdp_events(xml_text):
@@ -331,21 +325,9 @@ class RdpReader:
 
     def prune(self, before):
         """Einträge, die vor before enden, aus dem Archiv löschen (Spuren-Verlauf begrenzen)."""
-        self._archive()
-        if self._data is None:  # gerade gesperrt: beim nächsten Lauf
-            return 0
-        removed = retention.prune_entries(self._data, before)
-        if removed:
-            self._save()
-        return removed
+        return retention.prune_archive(self, before)
 
-    @staticmethod
-    def _valid(s):
-        try:
-            _t(s["start"]), _t(s["end"])
-            return True
-        except (KeyError, TypeError, ValueError):
-            return False
+    _valid = staticmethod(timefmt.has_times)
 
     def _save(self):
         if not self.archive_file or self._data is None:
