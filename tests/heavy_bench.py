@@ -6,6 +6,7 @@ Wie perf_bench.py, aber mit allen großen Quellen in der Datenbank:
   - Anrufe (40 je Arbeitstag, ein Jahr), Outlook (Termine und Mails), Tätigkeiten
   - Spuren vom PC (Browser, Dateien, Netzwerk, Sperren) für 90 Tage
   - TeamViewer- und RDM-Logs für ein Jahr
+"Hin und her": zwischen heute und den zwei Vortagen wechseln (wie beim Nachtragen).
 Am Ende: vergangenen Tag lesen vor und nach dem Verdichten (compact_days).
 --profile schreibt je Messung die 25 teuersten Funktionen (cProfile, kumuliert).
 Kein Test (läuft nicht in pytest).
@@ -214,6 +215,36 @@ def main():
             app.processEvents()
     per = measure("Tag wechseln (20 Tage, gesamt)", switch, max(1, runs // 2))
     print(f"{'  = je Tag':<36}{ms(per / len(days))}")
+    w.date_edit.setDate(date)
+    app.processEvents()
+
+    hops = [date.addDays(-1), date.addDays(-2), date] * 3  # wie beim Nachtragen: heute, gestern, …
+
+    def back_and_forth():
+        for d in hops:
+            w.date_edit.setDate(d)
+            app.processEvents()
+    per = measure("Hin und her (3 Tage, 9 Wechsel)", back_and_forth, runs)
+    print(f"{'  = je Wechsel':<36}{ms(per / len(hops))}")
+
+    # Tag für Tag zurück, jeden Tag kurz ansehen (1,5 s): gezählt wird nur der Wechsel.
+    # Andere Tage als oben, damit nichts schon im Zwischenspeicher liegt.
+    def step_back():
+        took = []
+        d = date.addDays(-30)
+        w.date_edit.setDate(d)
+        for _ in range(8):
+            end = time.perf_counter() + 1.5
+            while time.perf_counter() < end:
+                app.processEvents()
+                time.sleep(0.005)
+            d = d.addDays(-1)
+            t0 = time.perf_counter()
+            w.date_edit.setDate(d)
+            app.processEvents()
+            took.append(time.perf_counter() - t0)
+        return statistics.median(took)
+    print(f"{'Tag zurück, je Tag (mit Ansehen)':<36}{ms(step_back())}")
     w.date_edit.setDate(date)
     app.processEvents()
     import activity_tracker as at

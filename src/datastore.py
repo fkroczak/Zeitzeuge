@@ -79,6 +79,17 @@ def _dumps(obj):
     return json.dumps(obj, ensure_ascii=False, separators=(",", ":"), sort_keys=False).encode("utf-8")
 
 
+_decode = json.JSONDecoder().decode
+
+
+def _loads(data):
+    """Wie json.loads(data) für Bytes aus _dumps (UTF-8), ohne die Erkennung der Kodierung
+    (Tausende Zeilen je Tag). Alles, was nicht so beginnt, geht wie bisher über json.loads."""
+    if data[:1] in (b"{", b"["):
+        return _decode(data.decode("utf-8", "surrogatepass"))
+    return json.loads(data)
+
+
 class Store:
     def __init__(self, path, data_dir=None):
         self.path = path
@@ -394,7 +405,7 @@ class Store:
         return self._cipher.encrypt(_dumps(obj), f"{table}|{name}|{day}".encode("utf-8"))
 
     def _dec(self, table, name, day, blob):
-        return json.loads(self._cipher.decrypt(blob, f"{table}|{name}|{day}".encode("utf-8")))
+        return _loads(self._cipher.decrypt(blob, f"{table}|{name}|{day}".encode("utf-8")))
 
     # ------------------------------------------------------------ Dokumente
 
@@ -483,7 +494,7 @@ class Store:
         result, bad = [], 0
         for (blob,) in blobs:
             try:
-                result.append(json.loads(decrypt(blob, aad)))
+                result.append(_loads(decrypt(blob, aad)))
             except (datakey.WrongKey, ValueError):
                 bad += 1
         if bad:
@@ -582,7 +593,7 @@ class Store:
                 return  # unerwartetes Dokument: nichts anfassen
             for row_id, blob in rows:
                 try:
-                    items.append(json.loads(self._cipher.decrypt(blob, aad)))
+                    items.append(_loads(self._cipher.decrypt(blob, aad)))
                     taken.append((row_id,))
                 except (datakey.WrongKey, ValueError):
                     pass

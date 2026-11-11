@@ -18,7 +18,7 @@ Gebucht wird mit Status „Neu“ (10), so wie im Dialog. Freigeben bleibt in Ma
 """
 import json
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 import billing
 

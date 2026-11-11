@@ -22,11 +22,12 @@ import glob
 import os
 import re
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime
 
 import datastore
 import retention
 import safe_io
+import timefmt
 
 TIME_FMT = "%Y-%m-%d %H:%M:%S"
 TYPE = "VPN-Verbindung"
@@ -423,13 +424,7 @@ class VpnReader:
 
     def prune(self, before):
         """Einträge, die vor before enden, aus dem Archiv löschen (Spuren-Verlauf begrenzen)."""
-        self._archive()
-        if self._data is None:  # gerade gesperrt: beim nächsten Lauf
-            return 0
-        removed = retention.prune_entries(self._data, before)
-        if removed:
-            self._save()
-        return removed
+        return retention.prune_archive(self, before)
 
     def _save(self):
         if not self.archive_file or self._data is None:
@@ -566,10 +561,4 @@ def _t(text):
     return datetime.strptime(text, TIME_FMT)
 
 
-def _valid(conn):
-    """Eintrag mit lesbarem Beginn und Ende (und den Feldern, die Zeitzeuge braucht)?"""
-    try:
-        _t(conn["start"]), _t(conn["end"])
-        return True
-    except (KeyError, TypeError, ValueError):
-        return False
+_valid = timefmt.has_times  # Eintrag mit lesbarem Beginn und Ende?

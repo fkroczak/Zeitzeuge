@@ -124,7 +124,10 @@ _UMLAUT = str.maketrans({"ä": "ae", "ö": "oe", "ü": "ue", "ß": "ss"})
 
 def fold(text):
     """Text zum Stichwort-Vergleich: klein, Umlaute ausgeschrieben, Leerzeichen einfach."""
-    return " ".join(str(text or "").casefold().translate(_UMLAUT).split())
+    text = str(text or "").casefold()
+    if not text.isascii():  # Umlaute gibt es nur außerhalb von ASCII (translate ist langsam)
+        text = text.translate(_UMLAUT)
+    return " ".join(text.split())
 
 
 def clean_value(kind, value):
@@ -387,7 +390,7 @@ class Index:
         self.paths = []
         for p, name in sorted(paths.items(), key=lambda x: -len(x[0])):
             last = p.rsplit("\\", 1)[-1]
-            self.paths.append((p, _word_rx(last) if len(last) >= 4 and last != p else None, name))
+            self.paths.append((p, last, _word_rx(last) if len(last) >= 4 and last != p else None, name))
         self.hosts = [(h, name) for h, name in sorted(hosts.items(), key=lambda x: (-len(x[0].strip("*?")), x[0]))]
         self.nets = sorted(nets, key=lambda x: -x[0].prefixlen)  # engster Bereich zuerst
         for tv_id, name in (tv_names or {}).items():  # z. B. von einem anderen PC übernommen
@@ -448,11 +451,14 @@ class Index:
                             else tok == pattern or tok.startswith(pattern + ".")):
                         return name, "host", pattern
         folded = fold(text)
-        for path, last_rx, name in self.paths:
-            if path in folded.replace("/", "\\") or (last_rx and last_rx.search(folded)):
+        slashed = folded.replace("/", "\\") if self.paths else folded
+        for path, last, last_rx, name in self.paths:
+            if path in slashed or (last_rx and last in folded and last_rx.search(folded)):
                 return name, "path", path
         for rx, name, word in self.words:
-            if rx.search(folded):
+            # Das Muster ist das Wort selbst (dazu höchstens „Wortanfang“): kommt es gar nicht
+            # vor, kann es nicht passen. „in“ ist viel schneller als eine Regex-Suche.
+            if word in folded and rx.search(folded):
                 return name, "word", word
         return None
 

@@ -168,3 +168,110 @@ def test_spuren_vom_pc_je_tag_gespeichert():
         assert again.prune("2026-11-02") == 1 and "2026-11-01" not in store.days("lokal_spuren")
     finally:
         datastore.unregister(tmp)
+
+
+def test_regeln_vorfilter_gleiches_ergebnis():
+    # Regeln, die bei Fenstern nie passen können (nur Typ/Kunde/Details), werden vorab
+    # weggelassen: für jedes Fenster dieselbe erste passende Regel wie ohne Vorfilter
+    import focus
+    import rules
+    compiled = rules._compile_rules(rules.default_rules() + [
+        {"name": "Typ PC", "field": "type", "match": "PC", "category": "Alles am PC", "enabled": False},
+        {"name": "und", "field": "app", "match": "excel", "category": "Tabellen", "enabled": True,
+         "and": [{"field": "details", "match": "re:^$"}]},
+        {"name": "nie", "field": "app", "match": "word", "category": "nie", "enabled": True,
+         "and": [{"field": "customer", "match": "x"}]}])
+    kept = rules.drop_impossible(compiled, focus.PC_CONSTANTS)
+    assert len(kept) < len(compiled)
+    assert all(c[1]["name"] != "nie" for c in kept), "Bedingung auf leeren Kunden passt nie"
+    windows = [("OUTLOOK.EXE", "Posteingang"), ("mstsc.exe", "srv01 - Remotedesktopverbindung"),
+               ("EXCEL.EXE", "Liste.xlsx"), ("WINWORD.EXE", "x"), ("ms-teams.exe", "Chat"),
+               ("msedge.exe", "portal.azure.com"), ("devolutions.exe", "Passwort"), ("a.exe", "")]
+    for app, title in windows:
+        entry = {"app": app, "customer_name": title, "type": "PC", "details": ""}
+        assert rules.match_entry(entry, kept, is_pc=True) == rules.match_entry(entry, compiled, is_pc=True)
+    every = rules._compile_rules([{"name": "PC", "field": "type", "match": "PC", "category": "PC",
+                                   "enabled": True}])
+    assert rules.drop_impossible(every, focus.PC_CONSTANTS) == every, "passt immer: bleibt"
+
+
+def test_stichwort_suche_gleiches_ergebnis():
+    # Vorprüfung mit „in“ und fold ohne translate bei ASCII: gleiches Ergebnis wie vorher
+    import customers
+
+    def old_fold(text):
+        return " ".join(str(text or "").casefold().translate(customers._UMLAUT).split())
+
+    def old_keyword(idx, text):
+        folded = old_fold(text)
+        for path, _last, last_rx, name in idx.paths:
+            if path in folded.replace("/", "\\") or (last_rx and last_rx.search(folded)):
+                return name
+        return next((name for rx, name, _w in idx.words if rx.search(folded)), "")
+
+    idx = customers.Index([
+        {"name": "Huber", "traces": [{"kind": "word", "value": "Huber"}]},
+        {"name": "Huber Bau", "traces": [{"kind": "word", "value": "Huber Bau"}]},
+        {"name": "Müller", "traces": [{"kind": "word", "value": "Müller"},
+                                      {"kind": "path", "value": r"D:\Kunden\Mueller"}]},
+        {"name": "Punkt", "traces": [{"kind": "word", "value": ".punkt"}]}])
+    cases = {"Angebot Huber Bau GmbH": "Huber Bau", "Schuber Bau": "", "Huber-Server": "Huber",
+             "Mail von MÜLLER": "Müller", "d:/kunden/mueller/x.docx": "Müller",
+             "Datei Mueller.txt": "Müller", "abc.punkt": "Punkt", "Straße  ÄÖÜ": "", "nichts": "", "": ""}
+    for text, want in cases.items():
+        assert customers.fold(text) == old_fold(text), text
+        assert idx.keyword(text) == old_keyword(idx, text) == want, text
+
+
+def test_utc_umrechnung_je_tag_wie_einzeln():
+    # Versatz je Tag gemerkt; an Tagen mit Umstellung einzeln gerechnet: immer wie exakt
+    import time
+    from datetime import timedelta
+    import log_parsers as lp
+    old = os.environ.get("TZ")
+    try:
+        for tz in ("Europe/Berlin", "America/New_York", "Australia/Lord_Howe"):
+            os.environ["TZ"] = tz
+            time.tzset()
+            lp._offsets.clear()
+            t = datetime(2026, 1, 1)
+            while t < datetime(2027, 1, 1):
+                assert lp.utc_to_local(t) == lp._utc_to_local_exact(t), (tz, t)
+                t += timedelta(minutes=37, seconds=11)
+    finally:
+        if old is None:
+            os.environ.pop("TZ", None)
+        else:
+            os.environ["TZ"] = old
+        time.tzset()
+        lp._offsets.clear()
+
+
+def test_ticket_vorschlaege_mit_vorauswahl_gleich():
+    # Fensterstücke außerhalb des Zeitraums werden am Text übersprungen: gleiches Ergebnis wie
+    # ohne Vorauswahl (Grenzen mit Bruchteilen von Sekunden: ohne Vorauswahl)
+    import random
+    from datetime import timedelta
+    import tickets
+    rng = random.Random(3)
+    base = datetime(2026, 11, 10, 7)
+    segs = []
+    for i in range(600):
+        s = base + timedelta(seconds=rng.randint(0, 36000))
+        e = s + timedelta(seconds=rng.randint(0, 900))
+        segs.append({"start": s.strftime("%Y-%m-%d %H:%M:%S"), "end": e.strftime("%Y-%m-%d %H:%M:%S"),
+                     "title": f"TCK{rng.randint(1, 30):010d} – Mail", "app": "Outlook"})
+    segs += [{"start": "2026-11-10 9:00:00", "end": "2026-11-10 09:30:00", "title": "TCK0000000099"},
+             {"start": "２026-11-10 09:00:00", "end": "2026-11-10 09:30:00", "title": "TCK0000000098"},
+             {"start": None, "end": "x", "title": "TCK0000000097"}]
+
+    def plain(start, end):  # Vorauswahl abgeschaltet: Grenzen mit Bruchteil, gleich danach zurück
+        return tickets.suggest(start - timedelta(microseconds=1), end, segs)
+
+    for start, minutes in ((datetime(2026, 11, 10, 9), 30), (datetime(2026, 11, 10, 12, 15), 5),
+                           (datetime(2026, 11, 10, 17, 59, 59), 60)):
+        end = start + timedelta(minutes=minutes)
+        fast = tickets.suggest(start, end, segs)
+        slow = plain(start, end)
+        assert [t["ticket"] for t in fast] == [t["ticket"] for t in slow]
+        assert all(abs(a["seconds"] - b["seconds"]) <= 1e-3 for a, b in zip(fast, slow))

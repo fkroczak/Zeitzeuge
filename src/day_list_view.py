@@ -162,12 +162,22 @@ class DayListView(QTableView):
         if not self.fit_columns:
             return
         metrics = self.fontMetrics()
+        # Textbreiten merken (Zeiten, Dauer und Typ wiederholen sich, beim Neuzeichnen alle):
+        # gilt nur für diese Schrift
+        font_key = self.font().key()
+        cache = getattr(self, "_text_widths", None)
+        if cache is None or cache[0] != font_key or len(cache[1]) > 5000:
+            cache = self._text_widths = (font_key, {})
+        known = cache[1]
         widest = {}
         fit_text = model.fit_text
         for row in range(min(len(model.entries), self.FIT_ROWS)):
             texts = fit_text(model.entries[row]) if fit_text else [c[0] for c in model.cells(row)]
             for col in self.fit_columns:
-                width = metrics.horizontalAdvance(texts[col])
+                text = texts[col]
+                width = known.get(text)
+                if width is None:
+                    width = known[text] = metrics.horizontalAdvance(text)
                 if width > widest.get(col, (-1, 0))[0]:
                     widest[col] = (width, row)
         option = QStyleOptionViewItem()

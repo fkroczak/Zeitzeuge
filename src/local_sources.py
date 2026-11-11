@@ -160,12 +160,7 @@ def parse_events(xml_text, since=None):
     return sorted(found)
 
 
-def _utc_to_local(text):
-    m = re.match(r"(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2})", text or "")
-    if not m:
-        return None
-    when = datetime.strptime(f"{m.group(1)} {m.group(2)}", TIME_FMT).replace(tzinfo=timezone.utc)
-    return when.astimezone().replace(tzinfo=None)
+_utc_to_local = timefmt.event_time  # SystemTime (UTC) -> Ortszeit
 
 
 def event_spans(events):
@@ -541,13 +536,7 @@ class LocalReader:
             self._save()
         return removed
 
-    @staticmethod
-    def _valid(v):
-        try:
-            _t(v["start"]), _t(v["end"])
-            return True
-        except (KeyError, TypeError, ValueError):
-            return False
+    _valid = staticmethod(timefmt.has_times)
 
     def _save(self):
         """Geänderte Tage schreiben (siehe _touch); Tage ohne Einträge werden gelöscht."""

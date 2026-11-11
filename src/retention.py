@@ -48,6 +48,18 @@ def prune_entries(data, before):
     return removed
 
 
+def prune_archive(reader, before):
+    """prune() der Aufzeichnungen mit einem Archiv-Dokument (mstsc, VPN): Archiv laden
+    (reader._archive), kürzen, bei Änderungen speichern (reader._save). Gesperrt: 0."""
+    reader._archive()
+    if reader._data is None:  # gerade gesperrt: beim nächsten Lauf
+        return 0
+    removed = prune_entries(reader._data, before)
+    if removed:
+        reader._save()
+    return removed
+
+
 def settings(config):
     """(an?, Tage) aus der Config, ungültige Tage werden auf den erlaubten Bereich gesetzt."""
     days = config.get("pc_history_days", DEFAULT_DAYS)

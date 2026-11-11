@@ -195,6 +195,17 @@ def _compile_rules(rules, only_enabled=True):
     return compiled
 
 
+def drop_impossible(compiled, constants):
+    """Regeln weglassen, die bei diesen festen Feldwerten nie passen können: Alle Felder einer
+    Bedingung stehen fest und keins passt. Beispiel: Fenster der PC-Aktivität haben immer den
+    Typ „PC“ und keinen Kunden, Regeln nur auf den Typ „Telefonat“ greifen dort nie.
+    Reihenfolge und Ergebnis von match_entry bleiben gleich, es wird nur weniger geprüft."""
+    def never(regex, fields):
+        return all(f in constants for f in fields) and not any(regex.search(constants[f]) for f in fields)
+    return [c for c in compiled
+            if not never(c[2], c[3]) and not any(never(rx, fs) for rx, fs in (c[4] if len(c) > 4 else ()))]
+
+
 def _fields(entry, is_pc):
     customer = entry.get("customer_name") or ""
     return {
@@ -231,8 +242,14 @@ def match_entry(entry, compiled, is_pc=False, keywords=None):
     der Kundenliste im Fenstertitel oder Namen („Tuxhorn“ im Titel -> Tuxhorn GmbH)."""
     values = _fields(entry, is_pc)
     for index, rule, regex, fields, *rest in compiled:
-        m = _first_match(values, regex, fields)
-        if not m or not all(_first_match(values, rx, fs) for rx, fs in (rest[0] if rest else ())):
+        # wie _first_match, aber ohne Funktionsaufruf je Regel (läuft je Fenster und Regel)
+        for f in fields:
+            m = regex.search(values[f])
+            if m:
+                break
+        else:
+            continue
+        if rest and rest[0] and not all(_first_match(values, rx, fs) for rx, fs in rest[0]):
             continue
         template = rule.get("customer") or ""
         if template:

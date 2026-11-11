@@ -45,6 +45,42 @@ assert view.pc_entries_for(D)[0]["customer_name"] == "x"
 view.tracker.segs.append(seg("09:10:30", "09:20:00"))
 assert [e["end"][11:] for e in view.pc_entries_for(D)] == ["09:20:00"], "geänderte Fenster werden gesehen"
 
+# Arbeitsblöcke für mehrere Tage gemerkt (Hin- und Herspringen), geänderte Stücke neu
+import focus  # noqa: E402
+computed = []
+real_focus = focus.focus_blocks
+focus.focus_blocks = lambda *a, **k: computed.append(1) or real_focus(*a, **k)
+D2 = D.addDays(-1)
+view.config.update(customers=[], teamviewer_names={})  # wie in der App (sonst neuer Kundenindex)
+orig_segments_for = Tracker.segments_for
+view.tracker.segments_for = lambda d: [dict(x, start=d + x["start"][10:], end=d + x["end"][10:])
+                                       for x in view.tracker.segs]
+for day in (D, D2, D, D2):
+    view.pc_blocks_for(day)
+assert len(computed) == 2, f"je Tag einmal gerechnet: {computed}"
+view.tracker.segs.append(seg("09:30:00", "09:45:00", "b.exe", "y"))
+view.pc_blocks_for(D)
+assert len(computed) == 3, "neue Fensterstücke: neu gerechnet"
+focus.focus_blocks = real_focus
+view.tracker.segments_for = lambda d: orig_segments_for(view.tracker, d)
+view.tracker.segs = [seg("09:00:00", "09:10:00"), seg("09:10:30", "09:20:00")]
+
+# Vortag im Hintergrund vorbereiten: danach trifft das Zeichnen die Zwischenspeicher,
+# Ergebnis gleich wie selbst gerechnet
+view._pc_cache.clear()
+view._block_cache = None
+view._prefetch(D2)
+assert ("2026-11-09", 5, 15) in view._pc_cache and ("2026-11-09", 30, 60) in view._pc_cache
+assert view._block_cache, "Arbeitsblöcke des Vortags gemerkt"
+prepared = view.pc_blocks_for(D2)
+view._pc_cache.clear()
+view._block_cache = None
+assert view.pc_blocks_for(D2) == prepared, "vorbereitet = selbst gerechnet"
+view.loading = False
+view._schedule_prefetch(D)
+assert view._prefetch_date == D2 and view._prefetch_timer.isActive()
+view._prefetch_timer.stop()
+
 # Außerhalb des Zeichnens wird jedes Mal neu gelesen
 calls = []
 real = view._activities_for

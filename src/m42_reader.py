@@ -180,14 +180,9 @@ READ_JS = r"""
 })(%s)
 """
 
-# Woche direkt über die Schnittstelle lesen (wie die Kalenderseite selbst, siehe
-# Mitschnitt): POST /m42Services/api/WidgetList/GetData/<Widget> mit Datumsfilter, Anmeldung
-# über das Token, das die Seite im localStorage hält. Gibt JSON zurück:
-# {state: "ok" | "login" | "notoken" | "error", status, widget, total, items: [...]}
-DEFAULT_WIDGET = "05d8b58d-5764-ef11-debc-0050569e2f05"  # Kalender-Widget laut Mitschnitt
-API_JS = r"""
-(async function (monday, widgetDefault) {
-  const sleep = ms => new Promise(r => setTimeout(r, ms));
+# Gemeinsame Helfer für API_JS und FETCH_JS (im Rumpf der async-Funktion): Anmeldung wie die
+# Seite selbst, Köpfe ihrer eigenen Abfragen, Erkennen der Anmeldeseite
+_JS_HELPERS = r"""  const sleep = ms => new Promise(r => setTimeout(r, ms));
   const isLogin = () => !!document.querySelector("input[type=password]") || /\/(wm\/)?login\b/i.test(location.pathname);
   // Anmeldung: wie die Seite selbst (gemerkte Köpfe), sonst das Token aus dem localStorage
   const token = () => {
@@ -206,7 +201,16 @@ API_JS = r"""
     return h;
   };
   const apiFetch = (url, opts) => (window.__zzFetch || fetch).call(window, url, opts);
-  // Auf die fertige Seite warten (Anmeldung im Firmennetz läuft oft von selbst). Nicht nur
+"""
+
+# Woche direkt über die Schnittstelle lesen (wie die Kalenderseite selbst, siehe
+# Mitschnitt): POST /m42Services/api/WidgetList/GetData/<Widget> mit Datumsfilter, Anmeldung
+# über das Token, das die Seite im localStorage hält. Gibt JSON zurück:
+# {state: "ok" | "login" | "notoken" | "error", status, widget, total, items: [...]}
+DEFAULT_WIDGET = "05d8b58d-5764-ef11-debc-0050569e2f05"  # Kalender-Widget laut Mitschnitt
+API_JS = r"""
+(async function (monday, widgetDefault) {
+""" + _JS_HELPERS + r"""  // Auf die fertige Seite warten (Anmeldung im Firmennetz läuft oft von selbst). Nicht nur
   // aufs Token: nach dem Start liegt oft noch ein abgelaufenes im Profil (Fehler 406), und die
   // Seite leitet gleich zur Anmeldung weiter. Ohne Kalender nach 30 s das Token nehmen, wenn da.
   for (let i = 0; i < 60; i++) {
@@ -273,26 +277,7 @@ API_JS = r"""
 # user: Kennung des eigenen Benutzers aus den Abfragen der Seite (AutoTimeTracking/Settings/<id>)
 FETCH_JS = r"""
 (async function (method, path, body, contentType, fresh) {
-  const sleep = ms => new Promise(r => setTimeout(r, ms));
-  // Anmeldung: wie die Seite selbst (gemerkte Köpfe), sonst das Token aus dem localStorage
-  const token = () => {
-    let t = null;
-    try { t = localStorage.getItem("mx.auth.session.token"); } catch (e) {}
-    if (t && t.charAt(0) === '"') { try { t = JSON.parse(t); } catch (e) {} }
-    return t || null;
-  };
-  const auth = () => (window.__zzHeaders || {}).authorization || (token() ? "Bearer " + token() : null);
-  const apiHeaders = extra => {
-    const h = {"accept": "application/json, text/plain, */*"};
-    const page = window.__zzHeaders || {};
-    Object.keys(page).forEach(k => { if (k !== "content-type" && k !== "content-length") h[k] = page[k]; });
-    h.authorization = auth();
-    Object.keys(extra || {}).forEach(k => { h[k.toLowerCase()] = extra[k]; });
-    return h;
-  };
-  const apiFetch = (url, opts) => (window.__zzFetch || fetch).call(window, url, opts);
-  const isLogin = () => !!document.querySelector("input[type=password]") || /\/(wm\/)?login\b/i.test(location.pathname);
-  // fresh: Seite eben neu geladen, auf ihre eigene angemeldete Abfrage warten (höchstens 30 s)
+""" + _JS_HELPERS + r"""  // fresh: Seite eben neu geladen, auf ihre eigene angemeldete Abfrage warten (höchstens 30 s)
   for (let i = 0; i < 60 && (!auth() || (fresh && !window.__zzHeaders)); i++) {
     if (isLogin() && (document.querySelector("input[type=password]") || i >= 40)) break;
     await sleep(500);

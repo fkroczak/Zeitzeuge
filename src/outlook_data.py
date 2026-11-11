@@ -25,6 +25,7 @@ from datetime import datetime, timedelta
 
 import datastore
 import safe_io
+import timefmt
 
 TIME_FMT = "%Y-%m-%d %H:%M:%S"
 STORE_NAME = "outlook"
@@ -301,11 +302,7 @@ def read_outlook(start, end, config, runner=None):
 
 # ------------------------------------------------------------------ Ausgabe prüfen
 
-def _time(text):
-    try:
-        return datetime.strptime(str(text)[:19], TIME_FMT)
-    except (TypeError, ValueError):
-        return None
+_time = timefmt.parse_or_none
 
 
 def _list(value):
