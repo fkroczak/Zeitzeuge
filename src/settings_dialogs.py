@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QButtonGroup, QCheckBox, QColo
                                QPushButton, QRadioButton, QScrollArea, QSpinBox, QTableWidget,
                                QTableWidgetItem, QTimeEdit, QToolButton, QVBoxLayout, QWidget)
 
+from card_dialog import modernize
 from theme import prose, SPACE_3XL, SPACE_M, SPACE_S, SPACE_XL
 def scrolling_body(dialog):
     """Inhalt eines hohen Dialogs in einen Scrollbereich, die Knöpfe bleiben unten stehen.
@@ -544,6 +545,9 @@ class AiSettingsDialog(QDialog):
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+        modernize(self, "KI-Vorschläge", "Claude ordnet einen Tag ein. Nur auf Wunsch (F6), wenige Cent pro Tag.",
+                  "spark", scroll=True)
+        self.resize(self.width(), 640)
 
     def apply(self):
         """Eingaben in die Config übernehmen und den Schlüssel lokal speichern."""
@@ -584,6 +588,7 @@ class TrackingFilterDialog(QDialog):
                       "Mit „re:“ davor ist der Eintrag ein regulärer Ausdruck.")
         hint.setObjectName("hint")
         hint.setWordWrap(True)
+        self.intro = hint
         layout.addWidget(hint)
 
         mode_box = QGroupBox("Was soll aufgezeichnet werden?")
@@ -667,6 +672,8 @@ class TrackingFilterDialog(QDialog):
         self.ok_button = buttons.button(QDialogButtonBox.Ok)
         self.white_radio.toggled.connect(self.validate)
         self.validate()
+        modernize(self, "Fenster-Filter", "Was Zeitzeuge am PC aufzeichnet. Ein Eintrag pro Zeile: Programm "
+                  "oder Teil des Fenstertitels.", "filter", intro=self.intro)
 
     def update_add_buttons(self, item=None, _old=None):
         for btn in self.add_buttons:
@@ -742,6 +749,7 @@ class RulesDialog(QDialog):
                       "Verbindungen und Telefonate gehen vor PC-Fenstern.")
         hint.setObjectName("hint")
         hint.setWordWrap(True)
+        self.intro = hint
         layout.addWidget(hint)
 
         self.table = QTableWidget(0, len(self.COLUMNS))
@@ -851,6 +859,8 @@ class RulesDialog(QDialog):
 
         self._loading = False
         self.fill_table(0)
+        modernize(self, "Regeln ohne KI", "Programm oder Verbindung → Kategorie und Kunde. Die erste passende "
+                  "Regel gilt, Wichtiges also nach oben.", "rules", intro=self.intro)
 
     # ----------------------------------------------------------- Tabelle
 

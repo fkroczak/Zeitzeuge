@@ -317,6 +317,7 @@ Ein Klick auf **Einstellungen** (oder STRG + ,) öffnet ein eigenes Fenster. Es 
 - **Eigene Farben:** Wählst du die Kachel **Eigene Farben**, klappt darunter eine Skizze von Zeitzeuge auf (als Skelett). Ein Klick auf einen Bereich (Kopfleiste, Hintergrund, Flächen, Schrift, Akzent, Jetzt-Linie oder einen Balken der Timeline) zeigt darunter die Farbvorschläge, **Andere Farbe …** und **Standardfarbe**. Jede Änderung gilt sofort, **Alle Farben zurücksetzen** holt das Standard-Design zurück. **Ansicht → Eigene Farben festlegen …** führt an diese Stelle.
 - **Quellen als Kacheln:** je Quelle ihr Zeichen in der Farbe des Herstellers, ein Schalter („An“/„Aus“ links, der Schalter rechts wie überall), der Zustand („läuft“, „Logdatei nicht gefunden“, „Anmeldung nötig“) und **Einrichten …**.
 - **Jede Zeile eine Karte:** Symbol in einer ruhigen Kachel, Titel, Beschreibung, rechts Schalter, Zahl oder Knopf in einer Spalte.
+- **Dialoge wie die Nachfrage-Karte:** Kundenliste, Textbausteine, Abrechnung, Regeln, KI-Vorschläge, Fenster-Filter, Orte und Fahrzeiten, Schutz sowie Tages- und Wochenabschluss haben oben Namen und einen kurzen Satz, Beschriftungen über den Feldern und unten eine Leiste mit genau einer Hauptaktion (Enter). Abbrechen oder Schließen steht links daneben, leise Aktionen ganz links.
 
 Der kleine Pfeil am Knopf **Einstellungen** zeigt Schnellzugriffe: Aufzeichnung an/aus, Datenquellen, Nachfragen, Kundenliste, Textbausteine, Über und Beenden.
 
@@ -726,6 +727,7 @@ Module in `src/`:
 | `app_menus.py` | Werkzeugleiste, Menü „Einstellungen“, Dialoge dazu |
 | `app_daylist.py` | Tagesliste, Statuszeile, Tageswechsel |
 | `settings_skeletons.py` | Skelett-Bilder für die Kacheln auf der Seite Darstellung der Einstellungen |
+| `card_dialog.py` | Dialoge im Stil der Nachfrage-Karte: Kopf, Beschriftung über dem Feld, Fußleiste mit einer Hauptaktion |
 | `focus.py` | PC-Aktivität zu Arbeitsblöcken zusammenfassen (kurze Sprünge, Splitter, Anteile) |
 | `app_docs.py` | Tätigkeiten dokumentieren, Nachfragen, KI-Vorschläge |
 | `day_close.py` | Tagesabschluss: Vorschläge je Kunde aus allen Spuren, Lücken, Ticket und Text (ohne Qt) |

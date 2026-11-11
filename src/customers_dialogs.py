@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (QCheckBox, QDialog, QDialogButtonBox, QFrame, QHB
                                QMessageBox, QPushButton, QScrollArea, QSpinBox, QToolButton,
                                QVBoxLayout, QWidget)
 
+from card_dialog import modernize
 from flow_layout import FlowLayout
 from theme import theme_for, prose, SPACE_L, SPACE_M, SPACE_S, SPACE_XS
 import customer_discovery as cdisc
@@ -353,6 +354,8 @@ class CustomersDialog(QDialog):
         self.route_button.clicked.connect(self.calculate_route)
         self.route_done.connect(self._on_route, Qt.QueuedConnection)
         self._fill(self.customers[0] if self.customers else None)
+        modernize(self, "Kundenliste", "Woran Zeitzeuge deine Kunden erkennt. Ein Treffer genügt.", "users",
+                  intro=False, head=[self.new_btn], hide=[title])
 
     def _address_row(self, theme):
         """Zeile „Adresse und Fahrzeit“: Fahrzeit von Hand oder über OpenStreetMap berechnen."""

@@ -386,6 +386,13 @@ QLabel#prompt_label { color: $muted; font-weight: bold; font-size: $fs_smpx; }
 QFrame#prompt_card QLabel#prompt_src { background-color: $sel; border-radius: 9px; }
 /* Tätigkeit nachtragen/ändern (journal_dialogs.EntryDialog): Fenster mit den Teilen der Karte */
 QDialog#entry_dialog { background-color: $surface; }
+/* Dialoge im Stil der Karte (card_dialog.modernize): gleiche Teile wie die Nachfrage */
+QDialog[card="true"] { background-color: $surface; }
+QDialog[card="true"] QWidget#prompt_body, QDialog[card="true"] QScrollArea#card_scroll,
+QDialog[card="true"] QScrollArea#card_scroll > QWidget > QWidget#prompt_body { background: transparent; }
+QDialog[card="true"] QWidget#prompt_body QLabel, QDialog[card="true"] QWidget#prompt_top QLabel,
+QDialog[card="true"] QWidget#prompt_body QCheckBox, QDialog[card="true"] QWidget#prompt_body QRadioButton { background: transparent; }
+QDialog[card="true"] QLabel#prompt_src { background-color: $sel; border-radius: 9px; }
 QDialog#entry_dialog QLabel, QDialog#entry_dialog QWidget#chips,
 QDialog#entry_dialog QWidget#prompt_body { background: transparent; }
 QDialog#entry_dialog QLabel#prompt_src { background-color: $sel; border-radius: 9px; }

@@ -17,6 +17,7 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (QDialog, QDialogButtonBox, QGridLayout, QLabel, QMessageBox,
                                QPushButton, QToolButton, QVBoxLayout)
 
+from card_dialog import modernize
 from theme import prose, SPACE_M
 import datakey
 import datastore
@@ -309,6 +310,8 @@ class ProtectMixin:
         buttons = QDialogButtonBox(QDialogButtonBox.Close)
         buttons.rejected.connect(dialog.reject)
         layout.addWidget(buttons)
+        modernize(dialog, "Schutz deiner Daten", "Verschlüsselt mit AES-256. Schlüssel gehören in RDM.", "lock",
+                  intro=intro)
         refresh()
         return dialog
 

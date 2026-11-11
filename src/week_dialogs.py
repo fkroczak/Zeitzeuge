@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QDialog, QDialogButtonBox, QFo
                                QPushButton, QSpinBox, QTableWidget, QTableWidgetItem, QToolButton,
                                QVBoxLayout)
 
+from card_dialog import modernize, nav_icons
 import booking_rate as br
 import day_checks
 import icons
@@ -274,6 +275,9 @@ class WeekDialog(QDialog):
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
         self.fill()
+        nav_icons(self, self.prev_button, self.next_button)
+        modernize(self, "Wochenabschluss", icon="gauge", intro=False, subtitle_label=self.title,
+                  head=[self.prev_button, self.next_button], right=[self.close_button], primary=self.book_button)
 
     # ---- Daten
 
