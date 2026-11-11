@@ -12,6 +12,7 @@ Die Knöpfe bleiben dieselben Objekte (Signale, Tastenkürzel, Tests greifen wei
 wandern nur in die Fußleiste. Aussehen: theme.py, QDialog[card="true"].
 """
 from PySide6.QtCore import QEvent, QObject, Qt, QTimer
+from PySide6.QtGui import QFont, QFontMetrics
 from PySide6.QtWidgets import (QAbstractScrollArea, QDialogButtonBox, QFormLayout, QHBoxLayout, QLabel, QPushButton,
                                QScrollArea, QVBoxLayout, QWidget)
 
@@ -78,6 +79,20 @@ def _set_default(dialog):
     for button in dialog.findChildren(QPushButton):
         button.setAutoDefault(False)
         button.setDefault(button is dialog.card_main)
+    if dialog.card_main is not None:
+        _fit_bold(dialog.card_main)
+
+
+def _fit_bold(button):
+    """Der Standardknopf ist fett (Stylesheet :default), Qt misst die Breite aber mit der
+    normalen Schrift: sonst wird sein Text abgeschnitten."""
+    button.ensurePolished()
+    text = button.text().replace("&&", "\0").replace("&", "").replace("\0", "&")
+    bold = QFont(button.font())
+    bold.setBold(True)
+    extra = QFontMetrics(bold).horizontalAdvance(text) - button.fontMetrics().horizontalAdvance(text)
+    if extra > 0:
+        button.setMinimumWidth(max(button.minimumWidth(), button.sizeHint().width() + extra + 4))
 
 
 class _DefaultGuard(QObject):

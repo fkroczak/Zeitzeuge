@@ -7,7 +7,7 @@ Hauptfenster) und gezeigt. Dazu gehört der kompakte Hinweis in der Statuszeile.
 from datetime import datetime, timedelta
 
 from PySide6.QtCore import QDate, Qt
-from PySide6.QtGui import QAction, QKeySequence
+from PySide6.QtGui import QAction, QColor, QFont, QKeySequence
 from PySide6.QtWidgets import (QAbstractItemView, QDialog, QDialogButtonBox, QFormLayout,
                                QHBoxLayout, QHeaderView, QLabel, QListWidget, QListWidgetItem,
                                QPushButton, QSpinBox, QTableWidget, QTableWidgetItem, QToolButton,
@@ -365,15 +365,15 @@ class WeekDialog(QDialog):
         for col, text in enumerate(cells):
             self.table.setItem(row, col, QTableWidgetItem(text))
         if lvl != "none" and not future and rate.personal_seconds > 0:
-            # Farbige Fläche aus THEMES (Stylesheet QLabel#rate_…); Text bleibt auch in der Zelle
-            label = QLabel(quote, self.table)
-            label.setTextFormat(Qt.PlainText)
-            label.setObjectName(f"rate_{lvl}")
-            self.table.setCellWidget(row, 3, label)
-            label.ensurePolished()  # fett aus dem Stylesheet, erst dann stimmt die Breite
-            header = self.table.horizontalHeader()  # passt sich sonst nur dem Zellentext an
-            header.setSectionResizeMode(3, QHeaderView.Interactive)
-            self.table.setColumnWidth(3, max(self.table.columnWidth(3), label.sizeHint().width() + 24))
+            # Farbe direkt an der Zelle (Token rate_… aus THEMES). Ein QLabel darüber ließ den
+            # Zelltext durchscheinen, beide Texte überlagerten sich. Die Fläche zeichnet das
+            # Stylesheet (QTableWidget::item) nicht, die Schriftfarbe schon.
+            item = self.table.item(row, 3)
+            item.setBackground(QColor(self.theme[f"rate_{lvl}"]))
+            item.setForeground(QColor(self.theme[f"rate_{lvl}_text"]))
+            font = QFont(self.table.font())
+            font.setBold(True)
+            item.setFont(font)
         if future:
             return
         # Hinweise des Tages
