@@ -229,10 +229,13 @@ def test_utc_umrechnung_je_tag_wie_einzeln():
     from datetime import timedelta
     import log_parsers as lp
     old = os.environ.get("TZ")
+    # Windows hat kein time.tzset: dort nur die Zeitzone des Rechners prüfen
+    zones = ("Europe/Berlin", "America/New_York", "Australia/Lord_Howe") if hasattr(time, "tzset") else (None,)
     try:
-        for tz in ("Europe/Berlin", "America/New_York", "Australia/Lord_Howe"):
-            os.environ["TZ"] = tz
-            time.tzset()
+        for tz in zones:
+            if tz:
+                os.environ["TZ"] = tz
+                time.tzset()
             lp._offsets.clear()
             t = datetime(2026, 1, 1)
             while t < datetime(2027, 1, 1):
@@ -243,7 +246,8 @@ def test_utc_umrechnung_je_tag_wie_einzeln():
             os.environ.pop("TZ", None)
         else:
             os.environ["TZ"] = old
-        time.tzset()
+        if hasattr(time, "tzset"):
+            time.tzset()
         lp._offsets.clear()
 
 
