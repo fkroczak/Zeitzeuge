@@ -61,11 +61,15 @@ def _known_for(rules, keywords):
     return _memo["known"]
 
 
+# Felder, die bei einem Fenster immer gleich sind (rules._fields mit is_pc=True)
+PC_CONSTANTS = {"type": "PC", "customer": "", "details": ""}
+
+
 def activity_of(segment, compiled, keywords=None):
     """(Tätigkeit, Kunde) eines Fensters: Regel aus der Zuordnung ohne KI, sonst das Programm.
     Der Kunde kommt aus der Regel, sonst aus einem Stichwort der Kundenliste im Titel."""
     entry = {"app": segment.get("app", ""), "customer_name": segment.get("title", ""),
-             "type": "PC", "details": ""}
+             "type": PC_CONSTANTS["type"], "details": PC_CONSTANTS["details"]}
     hit = rule_engine.match_entry(entry, compiled, is_pc=True, keywords=keywords) if compiled else None
     if hit:
         _index, rule, customer = hit
@@ -83,6 +87,8 @@ def focus_blocks(segments, rules=None, jump_seconds=JUMP_SECONDS, max_gap_second
                  min_block_seconds=MIN_BLOCK_SECONDS, keywords=None):
     """Fensterstücke [{start, end, app, title}] -> Arbeitsblöcke (Timeline-Format, nach Zeit)."""
     compiled = rule_engine._compile_rules(rules) if rules else []
+    # Typ, Kunde und Details sind bei Fenstern immer gleich (siehe activity_of)
+    compiled = rule_engine.drop_impossible(compiled, PC_CONSTANTS)
     pieces = []
     known = _known_for(rules, keywords)  # (Programm, Titel) -> Tätigkeit
     for s in sorted(segments or [], key=lambda s: s["start"]):

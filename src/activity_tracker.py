@@ -252,9 +252,11 @@ class ActivityTracker:
 
 
 def _valid_segment(seg):
-    return (isinstance(seg, dict)
-            and all(isinstance(seg.get(k), str) for k in ("start", "end", "app", "title"))
-            and len(seg["start"]) == 19 and len(seg["end"]) == 19)
+    if not isinstance(seg, dict):
+        return False
+    start, end = seg.get("start"), seg.get("end")
+    return (isinstance(start, str) and isinstance(end, str) and len(start) == 19 and len(end) == 19
+            and isinstance(seg.get("app"), str) and isinstance(seg.get("title"), str))
 
 
 SEGMENT_CACHE_DAYS = 8

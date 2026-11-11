@@ -28,21 +28,27 @@ def _utc_to_local_exact(when):
     return when.replace(tzinfo=timezone.utc).astimezone().replace(tzinfo=None)
 
 
-_offsets = {}  # (Viertelstunde in UTC, Zeitzone) -> Versatz zur Ortszeit
+_offsets = {}  # (Tag in UTC, Zeitzone) -> Versatz zur Ortszeit, None = Umstellung an dem Tag
+_DAY_END = timedelta(hours=23, minutes=59, seconds=59, microseconds=999999)
 
 
 def utc_to_local(when):
     """UTC → Ortszeit dieses Rechners, mit Sommer- oder Winterzeit des jeweiligen Datums.
 
-    Der Versatz wird je Viertelstunde gemerkt (Umstellungen liegen immer auf einer vollen
-    Viertelstunde): Bei einem Jahr TeamViewer-Log spart das die meisten Zeitzonen-Abfragen."""
-    bucket = when.replace(minute=when.minute - when.minute % 15, second=0, microsecond=0)
+    Der Versatz wird je Tag (UTC) gemerkt, wenn er am Anfang und am Ende des Tages gleich
+    ist (eine Umstellung hin und zurück am selben Tag gibt es nicht). An den Tagen mit
+    Umstellung wird jede Zeit einzeln gerechnet. Bei einem Jahr TeamViewer-Log spart das
+    fast alle Zeitzonen-Abfragen."""
+    bucket = when.replace(hour=0, minute=0, second=0, microsecond=0)
     key = (bucket, time.tzname, time.timezone)
-    offset = _offsets.get(key)
-    if offset is None:
+    offset = _offsets.get(key, False)
+    if offset is None:  # Tag mit Umstellung
+        return _utc_to_local_exact(when)
+    if offset is False:
         offset = _utc_to_local_exact(bucket) - bucket
-        last = bucket + timedelta(minutes=14, seconds=59, microseconds=999999)
-        if _utc_to_local_exact(last) - last != offset:  # Umstellung mittendrin: nicht merken
+        last = bucket + _DAY_END
+        if _utc_to_local_exact(last) - last != offset:  # Umstellung an diesem Tag: nicht merken
+            _offsets[key] = None
             return _utc_to_local_exact(when)
         if len(_offsets) > 100000:
             _offsets.clear()

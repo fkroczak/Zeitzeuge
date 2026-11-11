@@ -168,3 +168,80 @@ def test_spuren_vom_pc_je_tag_gespeichert():
         assert again.prune("2026-11-02") == 1 and "2026-11-01" not in store.days("lokal_spuren")
     finally:
         datastore.unregister(tmp)
+
+
+def test_regeln_vorfilter_gleiches_ergebnis():
+    # Regeln, die bei Fenstern nie passen können (nur Typ/Kunde/Details), werden vorab
+    # weggelassen: für jedes Fenster dieselbe erste passende Regel wie ohne Vorfilter
+    import focus
+    import rules
+    compiled = rules._compile_rules(rules.default_rules() + [
+        {"name": "Typ PC", "field": "type", "match": "PC", "category": "Alles am PC", "enabled": False},
+        {"name": "und", "field": "app", "match": "excel", "category": "Tabellen", "enabled": True,
+         "and": [{"field": "details", "match": "re:^$"}]},
+        {"name": "nie", "field": "app", "match": "word", "category": "nie", "enabled": True,
+         "and": [{"field": "customer", "match": "x"}]}])
+    kept = rules.drop_impossible(compiled, focus.PC_CONSTANTS)
+    assert len(kept) < len(compiled)
+    assert all(c[1]["name"] != "nie" for c in kept), "Bedingung auf leeren Kunden passt nie"
+    windows = [("OUTLOOK.EXE", "Posteingang"), ("mstsc.exe", "srv01 - Remotedesktopverbindung"),
+               ("EXCEL.EXE", "Liste.xlsx"), ("WINWORD.EXE", "x"), ("ms-teams.exe", "Chat"),
+               ("msedge.exe", "portal.azure.com"), ("devolutions.exe", "Passwort"), ("a.exe", "")]
+    for app, title in windows:
+        entry = {"app": app, "customer_name": title, "type": "PC", "details": ""}
+        assert rules.match_entry(entry, kept, is_pc=True) == rules.match_entry(entry, compiled, is_pc=True)
+    every = rules._compile_rules([{"name": "PC", "field": "type", "match": "PC", "category": "PC",
+                                   "enabled": True}])
+    assert rules.drop_impossible(every, focus.PC_CONSTANTS) == every, "passt immer: bleibt"
+
+
+def test_stichwort_suche_gleiches_ergebnis():
+    # Vorprüfung mit „in“ und fold ohne translate bei ASCII: gleiches Ergebnis wie vorher
+    import customers
+
+    def old_fold(text):
+        return " ".join(str(text or "").casefold().translate(customers._UMLAUT).split())
+
+    def old_keyword(idx, text):
+        folded = old_fold(text)
+        for path, _last, last_rx, name in idx.paths:
+            if path in folded.replace("/", "\\") or (last_rx and last_rx.search(folded)):
+                return name
+        return next((name for rx, name, _w in idx.words if rx.search(folded)), "")
+
+    idx = customers.Index([
+        {"name": "Huber", "traces": [{"kind": "word", "value": "Huber"}]},
+        {"name": "Huber Bau", "traces": [{"kind": "word", "value": "Huber Bau"}]},
+        {"name": "Müller", "traces": [{"kind": "word", "value": "Müller"},
+                                      {"kind": "path", "value": r"D:\Kunden\Mueller"}]},
+        {"name": "Punkt", "traces": [{"kind": "word", "value": ".punkt"}]}])
+    cases = {"Angebot Huber Bau GmbH": "Huber Bau", "Schuber Bau": "", "Huber-Server": "Huber",
+             "Mail von MÜLLER": "Müller", "d:/kunden/mueller/x.docx": "Müller",
+             "Datei Mueller.txt": "Müller", "abc.punkt": "Punkt", "Straße  ÄÖÜ": "", "nichts": "", "": ""}
+    for text, want in cases.items():
+        assert customers.fold(text) == old_fold(text), text
+        assert idx.keyword(text) == old_keyword(idx, text) == want, text
+
+
+def test_utc_umrechnung_je_tag_wie_einzeln():
+    # Versatz je Tag gemerkt; an Tagen mit Umstellung einzeln gerechnet: immer wie exakt
+    import time
+    from datetime import timedelta
+    import log_parsers as lp
+    old = os.environ.get("TZ")
+    try:
+        for tz in ("Europe/Berlin", "America/New_York", "Australia/Lord_Howe"):
+            os.environ["TZ"] = tz
+            time.tzset()
+            lp._offsets.clear()
+            t = datetime(2026, 1, 1)
+            while t < datetime(2027, 1, 1):
+                assert lp.utc_to_local(t) == lp._utc_to_local_exact(t), (tz, t)
+                t += timedelta(minutes=37, seconds=11)
+    finally:
+        if old is None:
+            os.environ.pop("TZ", None)
+        else:
+            os.environ["TZ"] = old
+        time.tzset()
+        lp._offsets.clear()

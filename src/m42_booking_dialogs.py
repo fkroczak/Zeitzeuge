@@ -19,7 +19,35 @@ def _hm(minutes):
     return f"{minutes // 60}:{minutes % 60:02d} h"
 
 
-class BookingDialog(QDialog):
+class _TicketSearch:
+    """Ticket in Matrix42 suchen: Suche und Trefferliste, gleich in Buchen- und Suchdialog.
+    Braucht search_edit, search_button, status, results und reader."""
+
+    def _search_list(self):
+        return None  # Ticketliste (Widget-ID) für die Suche, None = Standard
+
+    def search(self):
+        text = self.search_edit.text().strip()
+        if len(text) < 3:
+            self.status.setText("⚠ Bitte mindestens 3 Zeichen zum Suchen eingeben.")
+            return
+        if self.reader is None:
+            self.status.setText("⚠ Matrix42 ist nicht eingeschaltet (Einstellungen → Datenquellen).")
+            return
+        self.search_button.setEnabled(False)
+        self.status.setText(f"Suche „{text}“ in Matrix42 …")
+        self.reader.search_tickets(text, self._search_list())
+
+    def _fill_results(self, rows):
+        self.results.clear()
+        for row in rows:
+            item = QListWidgetItem(mb.ticket_label(row))
+            item.setToolTip(mb.ticket_label(row))
+            item.setData(Qt.UserRole, row)
+            self.results.addItem(item)
+
+
+class BookingDialog(_TicketSearch, QDialog):
     """Buchung prüfen und absenden. Nach Erfolg: self.result_entry = "TE…"."""
 
     def __init__(self, plan, reader=None, overlaps=(), activity_types=None,
@@ -218,17 +246,8 @@ class BookingDialog(QDialog):
 
     # ---- Ticket suchen
 
-    def search(self):
-        text = self.search_edit.text().strip()
-        if len(text) < 3:
-            self.status.setText("⚠ Bitte mindestens 3 Zeichen zum Suchen eingeben.")
-            return
-        if self.reader is None:
-            self.status.setText("⚠ Matrix42 ist nicht eingeschaltet (Einstellungen → Datenquellen).")
-            return
-        self.search_button.setEnabled(False)
-        self.status.setText(f"Suche „{text}“ in Matrix42 …")
-        self.reader.search_tickets(text, self.ids.get("ticket_list"))
+    def _search_list(self):
+        return self.ids.get("ticket_list")
 
     def on_tickets(self, result):
         if result.get("text") != self.search_edit.text().strip():
@@ -237,12 +256,7 @@ class BookingDialog(QDialog):
         self.show_tickets(result.get("rows") or [], result.get("error", ""))
 
     def show_tickets(self, rows, error=""):
-        self.results.clear()
-        for row in rows:
-            item = QListWidgetItem(mb.ticket_label(row))
-            item.setToolTip(mb.ticket_label(row))
-            item.setData(Qt.UserRole, row)
-            self.results.addItem(item)
+        self._fill_results(rows)
         self.results.setVisible(bool(rows))
         if rows:
             self.status.setText(f"{len(rows)} Ticket{'s' if len(rows) != 1 else ''} gefunden. "
@@ -295,7 +309,7 @@ class BookingDialog(QDialog):
         self.status.setText(f"⚠ Nicht gebucht: {result.get('error') or 'unbekannter Fehler'}")
 
 
-class TicketSearchDialog(QDialog):
+class TicketSearchDialog(_TicketSearch, QDialog):
     """Ticket in Matrix42 suchen, bevor die Tätigkeit dokumentiert oder gebucht wird.
     Nach Auswahl: self.row = {"ticket", "customer", "subject", …}."""
 
@@ -345,29 +359,15 @@ class TicketSearchDialog(QDialog):
         if reader is not None and len(text.strip()) >= 3:
             self.search()
 
-    def search(self):
-        text = self.search_edit.text().strip()
-        if len(text) < 3:
-            self.status.setText("⚠ Bitte mindestens 3 Zeichen zum Suchen eingeben.")
-            return
-        if self.reader is None:
-            self.status.setText("⚠ Matrix42 ist nicht eingeschaltet (Einstellungen → Datenquellen).")
-            return
-        self.search_button.setEnabled(False)
-        self.status.setText(f"Suche „{text}“ in Matrix42 …")
-        self.reader.search_tickets(text, self.ticket_list)
+    def _search_list(self):
+        return self.ticket_list
 
     def on_tickets(self, result):
         if result.get("text") != self.search_edit.text().strip():
             return  # ältere Suche
         self.search_button.setEnabled(True)
         rows, error = result.get("rows") or [], result.get("error", "")
-        self.results.clear()
-        for row in rows:
-            item = QListWidgetItem(mb.ticket_label(row))
-            item.setToolTip(mb.ticket_label(row))
-            item.setData(Qt.UserRole, row)
-            self.results.addItem(item)
+        self._fill_results(rows)
         if rows:
             self.results.setCurrentRow(0)
             self.status.setText(f"{len(rows)} Ticket{'s' if len(rows) != 1 else ''} gefunden. "

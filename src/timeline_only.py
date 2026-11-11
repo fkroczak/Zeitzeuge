@@ -3,6 +3,7 @@ import sys
 import threading
 import time
 from datetime import datetime
+from functools import lru_cache
 from html import escape
 
 from PySide6.QtCore import QDate, QDateTime, QPoint, QPointF, QRectF, Qt, QTimer, Signal
@@ -28,11 +29,20 @@ from vpn_reader import VpnReader, drop_unnamed_twins, vpn_sources
 TIME_FMT = "%Y-%m-%d %H:%M:%S"
 
 
-def parse_time(text):
-    """'JJJJ-MM-TT hh:mm:ss' -> datetime. Streng wie strptime, aber viel schneller."""
+def _parse_time(text):
     if len(text) != 19 or text[10] != " ":
         raise ValueError(f"Ungültige Zeit: {text!r}")
     return datetime.fromisoformat(text)
+
+
+_parse_time_cached = lru_cache(maxsize=65536)(_parse_time)
+
+
+def parse_time(text):
+    """'JJJJ-MM-TT hh:mm:ss' -> datetime. Streng wie strptime, aber viel schneller.
+    Texte werden gemerkt: Beim Zeichnen, im Hinweis und in der Tagesliste kommen dieselben
+    Zeiten oft (anderes als Text wie bisher ungemerkt, z. B. aus kaputten Daten)."""
+    return _parse_time_cached(text) if type(text) is str else _parse_time(text)
 
 
 class _RoundRect(QGraphicsRectItem):
@@ -630,6 +640,14 @@ class TimelineView(QGraphicsView):
         # damit nichts veraltet.
         self._draw_memo = None
         self._pc_cache = {}  # (Tag, Mindestdauer, Lücke) -> (Fensterstücke, Einträge), siehe _pc_entries_for
+        self._block_cache = {}  # siehe pc_blocks_for
+        # Beide Zwischenspeicher füllt auch der Thread, der den Vortag vorbereitet (_prefetch)
+        self._cache_lock = threading.Lock()
+        self._prefetch_date = None
+        self._prefetch_timer = QTimer(self)
+        self._prefetch_timer.setSingleShot(True)
+        self._prefetch_timer.setInterval(self.PREFETCH_MS)
+        self._prefetch_timer.timeout.connect(self._start_prefetch)
         self.logs_loaded.connect(self._on_logs_loaded)
 
         self.zoom_level = 1.0
@@ -1127,7 +1145,8 @@ class TimelineView(QGraphicsView):
         key = (date_str, min_seconds, max_gap)
         sig = tuple((s["start"], s["end"], s["app"], s["title"]) for s in segments)
         cache = self._pc_cache
-        hit = cache.get(key)
+        with self._cache_lock:
+            hit = cache.pop(key, None)
         if hit is None or hit[0] != sig:
             result = []
             for seg in merge_segments(segments, min_seconds=min_seconds, max_gap=max_gap):
@@ -1138,9 +1157,11 @@ class TimelineView(QGraphicsView):
                     "details": seg["app"], "app": seg["app"],
                     "is_suggestion": True,
                 })
-            if len(cache) >= 6:  # nur die zuletzt gezeigten Tage
-                cache.pop(next(iter(cache)))
-            hit = cache[key] = (sig, result)
+            hit = (sig, result)
+        with self._cache_lock:
+            cache[key] = hit  # zuletzt benutzt ans Ende
+            while len(cache) > 3 * self.BLOCK_CACHE_DAYS:  # nur die zuletzt gezeigten Tage (je bis zu 3 Varianten)
+                del cache[next(iter(cache))]
         return hit[1]  # pc_entries_for gibt Kopien heraus
 
     def missing_sources(self):
@@ -1164,25 +1185,85 @@ class TimelineView(QGraphicsView):
             self.BLOCK_COLORS[sum(map(ord, category.lower())) % len(self.BLOCK_COLORS)]
         return QColor(color)
 
+    BLOCK_CACHE_DAYS = 8
+
     def pc_blocks_for(self, date: QDate):
         """PC-Aktivität für die Timeline: Arbeitsblöcke (focus.py) oder, abgeschaltet, jedes Fenster."""
         raw = self.pc_entries_for(date, min_seconds=5, max_gap=15)
         if not raw or not self.config.get("pc_blocks", True):
             return raw
+        return self._blocks_for(date, raw)
+
+    def _blocks_for(self, date: QDate, raw):
+        """Arbeitsblöcke aus den Fensterstücken raw (pc_entries_for mit 5 s / 15 s); ändert raw nicht."""
         rule_list = self.config.get("rules") or []
         index = customers.index(self.config)  # Stichwörter der Kundenliste (gleicher Index = gleiche Liste)
-        key = (date.toString("yyyy-MM-dd"), len(raw), raw[-1]["end"], id(rule_list), len(rule_list),
+        # Gemerkt für die zuletzt gezeigten Tage (Hin- und Herspringen zwischen heute und
+        # gestern rechnet sonst jedes Mal alles neu). Regeln über ihren Inhalt; der Index wird
+        # mit gemerkt, damit seine id nicht an einen neuen Index vergeben werden kann.
+        key = (date.toString("yyyy-MM-dd"), len(raw), raw[-1]["end"], repr(rule_list),
                self.config.get("pc_jump_seconds", focus.JUMP_SECONDS), id(index))
-        cached = getattr(self, "_block_cache", None)
-        if cached and cached[0] == key:
-            return cached[1]
-        segments = [{"start": e["start"], "end": e["end"], "app": e["app"], "title": e["customer_name"]}
-                    for e in raw]
-        blocks = focus.focus_blocks(segments, rule_list,
-                                    jump_seconds=self.config.get("pc_jump_seconds", focus.JUMP_SECONDS),
-                                    keywords=index)
-        self._block_cache = (key, blocks)
-        return blocks
+        with self._cache_lock:
+            cache = self._block_cache
+            if not isinstance(cache, dict):  # None: verworfen (z. B. Vorschau in den Einstellungen)
+                cache = self._block_cache = {}
+            hit = cache.pop(key, None)
+        if hit is None or hit[1] is not index:
+            segments = [{"start": e["start"], "end": e["end"], "app": e["app"], "title": e["customer_name"]}
+                        for e in raw]
+            hit = (focus.focus_blocks(segments, rule_list,
+                                      jump_seconds=self.config.get("pc_jump_seconds", focus.JUMP_SECONDS),
+                                      keywords=index), index)
+        with self._cache_lock:
+            cache[key] = hit  # zuletzt benutzt ans Ende
+            while len(cache) > self.BLOCK_CACHE_DAYS:
+                del cache[next(iter(cache))]
+        return hit[0]
+
+    # ------------------------- Vortag vorbereiten -----------------------------
+
+    PREFETCH_MS = 400  # so lange nach dem Zeichnen warten (Bedienung geht vor)
+
+    def _schedule_prefetch(self, date: QDate):
+        """Nach dem Zeichnen den Vortag im Hintergrund vorbereiten: Beim Nachtragen geht es
+        meist Tag für Tag zurück, dann trifft das Zeichnen die Zwischenspeicher."""
+        if (self._closing or self.loading or self.imported
+                or not (self.tracker or self.activity_dir) or not self.config.get("pc_blocks", True)):
+            return
+        self._prefetch_date = date.addDays(-1)
+        self._prefetch_timer.start()
+
+    def _start_prefetch(self):
+        date, self._prefetch_date = self._prefetch_date, None
+        if date is None or self._closing or self.loading:
+            return
+        running = getattr(self, "_prefetch_thread", None)
+        if running is not None and running.is_alive():
+            return
+        thread = threading.Thread(target=self._prefetch, args=(date,), daemon=True, name="Vortag vorbereiten")
+        self._prefetch_thread, self._prefetch_day = thread, date.toString("yyyy-MM-dd")
+        self._threads = [t for t in self._threads if t.is_alive()] + [thread]
+        thread.start()
+
+    def _wait_for_prefetch(self, date: QDate):
+        """Bereitet der Thread gerade genau diesen Tag vor: kurz auf ihn warten, statt
+        dasselbe gleichzeitig noch einmal zu rechnen."""
+        thread = getattr(self, "_prefetch_thread", None)
+        if (thread is not None and thread.is_alive()
+                and getattr(self, "_prefetch_day", None) == date.toString("yyyy-MM-dd")):
+            thread.join(1.0)
+
+    def _prefetch(self, date: QDate):
+        """Im Thread: Fensterstücke (beide Varianten) und Arbeitsblöcke des Tages in die
+        Zwischenspeicher. Nur Teile ohne Qt, die selbst threadsicher sind (wie _warm_up)."""
+        try:
+            raw = self._pc_entries_for(date, 5, 15)
+            if raw and not self._closing:
+                self._blocks_for(date, raw)
+            if not self._closing:
+                self._pc_entries_for(date, 30, 60)
+        except Exception as e:  # nur Vorarbeit: das Zeichnen rechnet es sonst selbst
+            print(f"Vortag nicht vorbereitet: {e}")
 
     # ----------------------------- Zeichnen ----------------------------------
 
@@ -1285,6 +1366,7 @@ class TimelineView(QGraphicsView):
     def draw_timeline(self, date: QDate):
         """Daten des Tages neu lesen und zeichnen (nach Änderungen an den Daten)."""
         self.draw_stale = False
+        self._wait_for_prefetch(date)
         outer, self._draw_memo = self._draw_memo, {}  # je Zeichnen frisch, auch verschachtelt
         try:
             self._day_data = self._collect(date)
@@ -1292,6 +1374,7 @@ class TimelineView(QGraphicsView):
             self.day_loaded.emit(self._day_data["activities"], self.pc_entries_for(date))
         finally:
             self._draw_memo = outer
+        self._schedule_prefetch(date)
 
     def relayout(self):
         """Nur neu anordnen (Zoom, Fenstergröße, Design): Daten vom letzten Zeichnen,
@@ -1373,15 +1456,16 @@ class TimelineView(QGraphicsView):
         top = band_y + (pc_h + 10 if show_band else 2)
         # Zeilenhöhe so wählen, dass alle Zeilen ohne senkrechte Scrollleiste ins Fenster passen;
         # Platz für die horizontale Scrollleiste lassen
-        free_h = self.maximumViewportSize().height() - self.horizontalScrollBar().sizeHint().height()
         n_rows = (sum(max(1, n) for _k, _p, n in band_layout)
                   + sum(max(1, n) for _k, _p, n in fixed_layout) + n_lanes)
+        # Erst die Grenzen setzen: Im Hauptfenster stellt der Splitter die Höhe dann sofort ein,
+        # und es wird gleich mit der neuen Höhe gezeichnet (sonst ein zweites Mal über
+        # _apply_resize). Ändert sich die Größe erst später, zeichnet _apply_resize wie bisher.
+        self._fit_height_to_rows(top + (4 if bands else 0) + 6 + 8, n_rows)
+        self._rendered_h = self.maximumViewportSize().height()
+        free_h = self._rendered_h - self.horizontalScrollBar().sizeHint().height()
         fit = (free_h - top - (4 if bands else 0) - 6 - 8) / max(1, n_rows)
         lane_h, gap = type(self).LANE_H, type(self).LANE_GAP
-        # Erst merken, dann Grenzen setzen: Die können die Größe sofort ändern, dann zeichnet
-        # _apply_resize mit der neuen Höhe noch einmal
-        self._rendered_h = self.maximumViewportSize().height()
-        self._fit_height_to_rows(top + (4 if bands else 0) + 6 + 8, n_rows)
         if fit < lane_h + gap:
             gap = 4
             lane_h = max(self.MIN_LANE_H, int(fit - gap))

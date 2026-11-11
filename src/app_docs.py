@@ -12,8 +12,7 @@ from PySide6.QtWidgets import QApplication, QDialog, QMessageBox, QSystemTrayIco
 
 from ai_classifier import to_entries
 from billing import Billing
-from journal import (describe, entry_key as journal_key, open_entry, suggest_category,
-                     suggest_customer, sub_entries, ticket_line)
+from journal import describe, entry_key as journal_key, open_entry, sub_entries, ticket_line
 from journal_dialogs import (DocPromptDialog, prompt_thresholds, EntryDialog, PromptStrip, PromptWindow,
                              default_span, PROMPT_SOURCES, prompt_style, prompt_timeout)
 from prompt_card import entry_label, prompt_position

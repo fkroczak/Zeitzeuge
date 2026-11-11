@@ -7,7 +7,7 @@ Ticketnummern und Ticket-Format (reine Logik, ohne Qt).
   ("- " Haupttätigkeit, "-- " Untertätigkeiten).
 """
 import re
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import timefmt
 

@@ -95,10 +95,13 @@ class DayListMixin:
             minutes = round((end - start).total_seconds() / 60)
             return start, end, f"{minutes // 60}:{minutes % 60:02d} h"
 
+        def hm(when):  # wie f"{when:%H:%M}", aber ohne strftime (je Zeile beim Messen)
+            return f"{when.hour:02d}:{when.minute:02d}"
+
         def fit_text(a):
             """Texte von Von, Bis, Dauer und Typ wie in make_row (nur zum Messen der Breite)."""
             start, end, duration = times(a)
-            return [f"{start:%H:%M}", f"{end:%H:%M}", duration, type_label(a)]
+            return [hm(start), hm(end), duration, type_label(a)]
 
         def make_row(a):
             """Zellen einer Zeile; die Liste ruft das erst, wenn die Zeile gebraucht wird."""
@@ -122,8 +125,8 @@ class DayListMixin:
             note = (billing.note((end - start).total_seconds(), a.get("customer_name", ""))
                     if billing and a.get("doc") else "")
             return [
-                Cell(f"{start:%H:%M}"),
-                Cell(f"{end:%H:%M}"),
+                Cell(hm(start)),
+                Cell(hm(end)),
                 Cell(duration, duration + note.replace(" →", ",", 1) if note else None,
                      align=Qt.AlignRight | Qt.AlignVCenter),
                 Cell(type_text, icon=dots[key]),
