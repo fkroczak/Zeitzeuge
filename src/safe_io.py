@@ -227,6 +227,10 @@ def hard_exit(code=0):
             pass
     if sys.platform == "win32":
         import ctypes
+        from ctypes import wintypes
         kernel32 = ctypes.windll.kernel32
+        # Typen angeben: ohne sie kürzt ctypes den 64-Bit-Handle auf int, und der Aufruf schlägt fehl
+        kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+        kernel32.TerminateProcess.argtypes = (wintypes.HANDLE, wintypes.UINT)
         kernel32.TerminateProcess(kernel32.GetCurrentProcess(), code & 0xFFFFFFFF)
     os._exit(code)
