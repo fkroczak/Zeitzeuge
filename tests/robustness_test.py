@@ -24,7 +24,8 @@ def check(ok, what):
     if not ok:
         print(f"::error title=Robustheit::{what}")
         sys.stdout.flush()
-        os._exit(1)
+        import safe_io
+        safe_io.hard_exit(1)
     print("ok:", what)
 
 
@@ -322,4 +323,5 @@ print("Robustheit ok")
 # Direkt beenden: die Qt-Bindung räumt beim Interpreter-Ende sporadisch in falscher Reihenfolge auf
 # (Zugriffsfehler unter Windows). Alle Prüfungen sind hier gelaufen.
 sys.stdout.flush()
-os._exit(0)
+import safe_io  # Ende ohne Qt-Aufräumen (Absturz unter Windows)
+safe_io.hard_exit(0)

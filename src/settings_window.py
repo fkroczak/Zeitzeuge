@@ -907,13 +907,14 @@ class SettingsWindow(QDialog):
             state.addWidget(mark)
             state.addWidget(text, 1)
             texts.addLayout(state)
-            line.addLayout(texts, 1)
+            # Knopf unter dem Zustand statt daneben: Titel und Knopf teilen sich die Breite nicht,
+            # so passt die Übersicht auch unter Windows (breitere Schrift) in 960 × 540
             button = QPushButton(f"{name} …")
             button.setAutoDefault(False)
             button.setAccessibleName(f"{name} öffnen")
-            fit_text(button)  # nur so breit wie der Text: die Übersicht passt auch in schmale Fenster
             button.clicked.connect(lambda _c=False, k=key: self.show_page(k))
-            line.addWidget(button)
+            texts.addWidget(button, 0, Qt.AlignLeft)
+            line.addLayout(texts, 1)
             layout.addWidget(row)
             self.status[key] = (mark, text)
 

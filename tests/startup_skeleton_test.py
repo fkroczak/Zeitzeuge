@@ -90,4 +90,5 @@ assert skeleton.pulse().watching() == 0, "Zeitgeber der Umrisse läuft noch"
 print("OK")
 window.quit_app()
 sys.stdout.flush()
-os._exit(0)
+import safe_io  # Ende ohne Qt-Aufräumen (Absturz unter Windows)
+safe_io.hard_exit(0)

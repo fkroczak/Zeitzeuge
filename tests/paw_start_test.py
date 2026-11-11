@@ -33,4 +33,5 @@ for mod in ("pbx_reader", "itm_reader", "m42_reader"):  # Edge-Steuerung und Pro
 window.quit_app()
 print("PAW-Start ok")
 sys.stdout.flush()
-os._exit(0)
+import safe_io  # Ende ohne Qt-Aufräumen (Absturz unter Windows)
+safe_io.hard_exit(0)
