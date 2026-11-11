@@ -76,7 +76,7 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
   - Ist im Ticketsystem zu der Zeit schon etwas gebucht, steht ein Hinweis im Fenster. Gebuchte Tätigkeiten merken sich die Nummer der Zeiterfassung (z. B. TE0000012345) und lassen sich nicht doppelt buchen.
   - Im Wochenabschluss bucht **Tag im Ticketsystem buchen …** alle noch offenen Tätigkeiten des markierten Tags nacheinander, jede mit eigenem Fenster.
   - Das Ticketsystem muss eingeschaltet und angemeldet sein (nur im Firmennetz). Zeitzeuge bucht über das unsichtbare Edge, wie die Seite des Ticketsystems selbst.
-- **Tagesabschluss** (Menü **Ansicht → Tagesabschluss …**, im Wochenabschluss oder per Klick auf die Meldung bei Feierabend): Zeitzeuge stellt den Tag aus allen Spuren zu Blöcken je Kunde zusammen, mit Ticket und kurzem Tickettext. Du prüfst die Liste und bestätigst einmal für alles. Ziel: mit wenig Aufwand rund 90 % der Personalzeit erfasst.
+- **Tagesabschluss** (Menü **Ansicht → Tagesabschluss …**, im Wochenabschluss oder über „Tagesabschluss öffnen“ in der Karte bei Feierabend): Zeitzeuge stellt den Tag aus allen Spuren zu Blöcken je Kunde zusammen, mit Ticket und kurzem Tickettext. Du prüfst die Liste und bestätigst einmal für alles. Ziel: mit wenig Aufwand rund 90 % der Personalzeit erfasst.
   - **Woher die Blöcke kommen:** deine eingetragenen Tätigkeiten, Verbindungen und Telefonate, KI-Vorschläge, die Zuordnung ohne KI und die Arbeitsblöcke am PC, in dieser Reihenfolge. Was im Ticketsystem schon gebucht ist, bleibt außen vor. Gleicher Kunde hintereinander wird ein Block, kurze Lücken (bis 10 Minuten) gehören zum Block davor. PC-Aktivität zählt nur in der Personalzeit.
   - **Ticket:** aus den Fenstertiteln im Block. Kennt Zeitzeuge zum Ticket keinen Kunden, schlägt es ihn in deinem Verlauf oder direkt im Ticketsystem nach. Ohne Ticket im Fenstertitel nimmt es das Ticket, das du zuletzt (14 Tage) für den Kunden benutzt hast, als **vermutet**. **Text:** der Satz aus dem KI-Vorschlag, sonst aus der Regel, sonst kurz aus den Spuren, z. B. „Fernwartung: RDP DC01, Telefonat“.
   - Oben steht, wie viel der Personalzeit schon gebucht ist und wie viel es mit den angehakten Zeilen wird, z. B. „mit den angehakten Zeilen 7:20 h (92 %)“.
@@ -120,6 +120,7 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
   - **Nachtragen** (Knopf in der Werkzeugleiste): Zeit, Kunde, Kategorie und ein Satz, was du gemacht hast. Ist in der Tagesliste eine Zeile markiert, sind Zeit und Kunde schon ausgefüllt.
     - Das Fenster sieht aus wie die Nachfrage-Karte: oben die Aufgabe („Tätigkeit nachtragen“ bzw. „Tätigkeit ändern“), darunter eine feste Zeile für **Datum und Uhrzeit** mit **Stift**. Ohne gezogenen Zeitraum ist sie gleich offen, weil du die Zeit meist noch anpasst. Kunde und Kategorie stehen nebeneinander, Ticket (**+ Ticket**), Kulanz, Reise, Kein Zuschlag und Text einfügen sind Chips. **Löschen** steht beim Ändern links unten, getrennt von Abbrechen und Speichern. **STRG + Enter** speichert.
   - Rechtsklick auf einen Eintrag: **Tätigkeit dazu eintragen …**. Rechtsklick auf eine freie Stelle der Timeline: **Tätigkeit ab hh:mm eintragen …**.
+  - **Hinweise** erscheinen wie die Nachfrage in derselben Ecke: bei Feierabend als Karte mit kurzer Liste und einem Knopf (Tagesabschluss öffnen, Nachtragen oder Wochenabschluss), sonst als Leiste mit Aktion daneben (Anmelden, ITM öffnen, Aufzeichnung …, fehler.log öffnen). Gelb heißt bitte prüfen, blau ist eine Info. Sie blenden nach 15 s aus (läuft weiter: 6 s), solange die Maus darauf ist nicht. Wer lieber Windows-Sprechblasen hat: Einstellungen → Nachfragen → Erinnern → **Als Windows-Benachrichtigung**. Kurze Bestätigungen wie „Tätigkeit gespeichert“ stehen weiter unten in der Statuszeile.
   - Jeder Befehl im Rechtsklick-Menü hat ein Symbol. Der erste ist fett, das tut auch ein Doppelklick. Löschen und Verwerfen stehen allein ganz unten.
   - Timeline und Tagesliste haben dasselbe Rechtsklick-Menü. Es zeigt nur Befehle, die zum Eintrag passen.
   - **Offenes fällt auf:** Verbindungen und Telefonate ohne Dokumentation stehen gestrichelt mit „?“ in der Zeile „Doku“. Ein Klick darauf öffnet das Eintragen.
@@ -380,7 +381,7 @@ Zeitzeuge öffnet den 3CX-Webclient unsichtbar mit dem installierten Microsoft E
 2. 3CX-Adresse prüfen und **Bei 3CX anmelden …** klicken.
 3. Im Edge-Fenster ganz normal bei 3CX anmelden. Sobald die Anrufliste erscheint, schließt Zeitzeuge das Fenster selbst und liest danach unsichtbar im Hintergrund weiter. Das Fenster muss also nicht offen bleiben.
 
-Die Anmeldung bleibt gespeichert (`%LOCALAPPDATA%\Zeitzeuge\3cx_profil`). Läuft sie ab, meldet sich Zeitzeuge im Infobereich. Ein Klick auf die Meldung öffnet die Anmeldung. Ton, Mikrofon und Benachrichtigungen sind gesperrt, dort klingelt also nichts. Für 3CX zählt Zeitzeuge aber als zusätzlich angemeldeter Webclient.
+Die Anmeldung bleibt gespeichert (`%LOCALAPPDATA%\Zeitzeuge\3cx_profil`). Läuft sie ab, meldet sich Zeitzeuge mit einer Leiste unten rechts. „Anmelden“ öffnet die Anmeldung. Ton, Mikrofon und Benachrichtigungen sind gesperrt, dort klingelt also nichts. Für 3CX zählt Zeitzeuge aber als zusätzlich angemeldeter Webclient.
 
 Zeitzeuge scrollt die Anrufliste so viele Tage zurück, wie unter **Anrufe zurück lesen** im Dialog eingestellt ist (Standard 14, Schlüssel `calls_days_back`). Erhöhst du die Zahl, liest es die fehlenden Tage nach. Bis zu welchem Tag die Anrufe vollständig sind, merkt es sich in der Datenbank. Zeigst du einen älteren Tag an, scrollt Zeitzeuge im Hintergrund bis dorthin weiter. Das geht nur so weit zurück, wie 3CX die Anrufe selbst noch anzeigt.
 
@@ -498,7 +499,8 @@ Unter **Einstellungen → Nachfragen** legst du fest, wann Zeitzeuge nachfragt. 
 | `idle_prompt_minutes` | `15` | Nach so vielen Minuten ohne Maus und Tastatur bei der ersten Eingabe fragen, was in der Zeit war. 0 = aus |
 | `prompt_end_of_day` | `true` | Nach Feierabend einmal an Offenes erinnern |
 | `prompt_on_quit` | `true` | Beim Beenden an Offenes erinnern |
-| `tray_hint_on_close` | `true` | Meldung „Zeitzeuge läuft weiter“ beim Schließen des Fensters. Abschaltbar unter *Einstellungen → Nachfragen* |
+| `tray_hint_on_close` | `true` | Hinweis „Zeitzeuge läuft weiter“ beim Schließen des Fensters. Abschaltbar unter *Einstellungen → Nachfragen* |
+| `notify_windows` | `false` | Hinweise (Feierabend, Anmeldung nötig, Störungen) als Windows-Sprechblase statt als Karte oder Leiste. Einstellbar unter *Einstellungen → Nachfragen → Erinnern* |
 | `m42_url` | vorbelegt (anpassen) | Adresse der Kalenderseite des Ticketsystems |
 | `m42_reader_enabled` | `false` | Gebuchte Zeiten aus dem Ticketsystem lesen |
 | `m42_weeks_back` | `4` | So viele Wochen zurück einmal pro Sitzung lesen |
@@ -729,6 +731,7 @@ Module in `src/`:
 | `app_menus.py` | Werkzeugleiste, Menü „Einstellungen“, Dialoge dazu |
 | `app_daylist.py` | Tagesliste, Statuszeile, Tageswechsel |
 | `settings_skeletons.py` | Skelett-Bilder für die Kacheln auf der Seite Darstellung der Einstellungen |
+| `notices.py` | Hinweise als Karte oder Leiste im Stil der Nachfrage statt Windows-Sprechblasen |
 | `card_dialog.py` | Dialoge im Stil der Nachfrage-Karte: Kopf, Beschriftung über dem Feld, Fußleiste mit einer Hauptaktion |
 | `focus.py` | PC-Aktivität zu Arbeitsblöcken zusammenfassen (kurze Sprünge, Splitter, Anteile) |
 | `app_docs.py` | Tätigkeiten dokumentieren, Nachfragen, KI-Vorschläge |

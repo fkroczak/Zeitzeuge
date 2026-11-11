@@ -8,7 +8,7 @@ import os
 from datetime import datetime, timedelta
 
 from PySide6.QtCore import QDate, QTimer
-from PySide6.QtWidgets import QApplication, QDialog, QMessageBox, QSystemTrayIcon
+from PySide6.QtWidgets import QApplication, QDialog, QMessageBox
 
 from ai_classifier import to_entries
 from billing import Billing
@@ -970,26 +970,32 @@ class DocsMixin(CustomersMixin):
         lines = [f"- {f.text}" for f in findings[:4]]
         if len(findings) > 4:
             lines.append(f"- und {len(findings) - 4} weitere (Knopf „Wochenabschluss“)")
+        items = [f.text for f in findings]
         if close_text:  # Klick öffnet den Tagesabschluss; er enthält auch das Offene
-            self._tray_close_hint = True
             title = ("Feierabend: noch nicht alles dokumentiert" if open_items else
                      "Feierabend: bitte prüfen" if findings else "Feierabend: Tagesabschluss bereit")
             text = f"Heute sind noch {len(open_items)} Tätigkeiten offen.\n" if open_items else ""
-            text += f"{close_text} Klick hier zum Prüfen und Buchen."
+            balloon = text + f"{close_text} Klick hier zum Prüfen und Buchen."
             if lines:
-                text += "\nAußerdem:\n" + "\n".join(lines)
-            self.tray.showMessage(title, text, QSystemTrayIcon.Warning, 15000)
+                balloon += "\nAußerdem:\n" + "\n".join(lines)
+            self.notify(title, (text + close_text).strip(), items=items, card=True,
+                        action="Tagesabschluss öffnen", balloon=balloon, flag="_tray_close_hint",
+                        on_action=lambda: (self.show_from_tray(),
+                                           self.show_day_close(datetime.now().strftime("%Y-%m-%d"))))
         elif open_items:
-            self._tray_doc_hint = True
-            text = f"Heute sind noch {len(open_items)} Tätigkeiten offen. Klick hier zum Nachtragen."
+            text = f"Heute sind noch {len(open_items)} Tätigkeiten offen."
+            balloon = text + " Klick hier zum Nachtragen."
             if lines:
-                text += "\nAußerdem:\n" + "\n".join(lines)
-            self.tray.showMessage("Feierabend: noch nicht alles dokumentiert", text,
-                                  QSystemTrayIcon.Warning, 15000)
+                balloon += "\nAußerdem:\n" + "\n".join(lines)
+            self.notify("Feierabend: noch nicht alles dokumentiert", text, items=items, card=True,
+                        action="Nachtragen", balloon=balloon, flag="_tray_doc_hint",
+                        on_action=self.show_open_docs)
         else:
-            self._tray_week_hint = True
-            self.tray.showMessage("Feierabend: bitte prüfen", "\n".join(lines) +
-                                  "\nDetails im Wochenabschluss (Knopf in der Werkzeugleiste).", QSystemTrayIcon.Warning, 15000)
+            self.notify("Feierabend: bitte prüfen", "Details im Wochenabschluss.", items=items, card=True,
+                        action="Wochenabschluss",
+                        balloon="\n".join(lines) + "\nDetails im Wochenabschluss (Knopf in der Werkzeugleiste).",
+                        flag="_tray_week_hint",
+                        on_action=lambda: (self.show_from_tray(), self.show_week()))
 
     # ---------------------- In Matrix42 buchen (m42_booking.py) -----------------
 

@@ -278,6 +278,52 @@ class TrayMixin:
         )
         self.tray.show()
 
+    # ---------------------- Hinweise (notices.py) -------------------------------
+
+    def notify(self, title, text, kind="warn", action="", on_action=None, items=(), card=False,
+               timeout=15, balloon=None, flag=None):
+        """Hinweis als Karte (card=True) oder Leiste im Stil der Nachfrage, in derselben Ecke und
+        über einer offenen Nachfrage. on_action: was die Aktion tut.
+        Mit „Als Windows-Benachrichtigung“ (config notify_windows) wie bisher eine Sprechblase:
+        balloon = Text dafür, flag = Merker für den Klick darauf (on_tray_message_clicked)."""
+        if self.config.get("notify_windows") or not self.tray:
+            if not self.tray:
+                return None
+            if flag:
+                setattr(self, flag, True)
+            icon = QSystemTrayIcon.Information if kind == "info" else QSystemTrayIcon.Warning
+            self.tray.showMessage(title, balloon if balloon is not None else text, icon, timeout * 1000)
+            return None
+        from notices import NoticeCard, NoticeStrip
+        from prompt_card import prompt_position
+        for old in list(getattr(self, "_notices", [])):  # gleicher Hinweis nicht doppelt
+            if old.windowTitle() == f"Zeitzeuge: {title}":
+                old._finish(old.closed)
+        if card:
+            notice = NoticeCard(title, text, items, action, kind, timeout, self)
+        else:
+            notice = NoticeStrip(title, text, action, kind, timeout, self)
+        if on_action is not None:
+            notice.acted.connect(on_action)
+        self._notices = [n for n in getattr(self, "_notices", []) if n.isVisible()] + [notice]
+        notice.destroyed.connect(lambda _o=None, n=notice: self._notices.remove(n)
+                                 if n in getattr(self, "_notices", []) else None)
+        notice.position = prompt_position(self.config)
+        notice.adjustSize()
+        notice.dock_bottom_right(self._notice_margin(notice))
+        notice.show()
+        return notice
+
+    def _notice_margin(self, notice):
+        """Abstand zum Bildschirmrand: über (bzw. unter) einer offenen Nachfrage und älteren Hinweisen."""
+        margin = 8
+        prompt = getattr(self, "_prompt_window", None)
+        others = [prompt] if prompt is not None and prompt.isVisible() else []
+        others += [n for n in getattr(self, "_notices", []) if n is not notice and n.isVisible()]
+        for other in others:
+            margin += other.frameGeometry().height()
+        return margin
+
     def on_tray_message_clicked(self):
         """Klick auf "Anmeldung nötig" öffnet die passende Anmeldung."""
         if getattr(self, "_tray_close_hint", False):  # Feierabend: Tagesabschluss bereit
@@ -310,6 +356,9 @@ class TrayMixin:
             self._prompt_window.blockSignals(True)
             self._prompt_window._done = True
             self._prompt_window.close()
+        for notice in list(getattr(self, "_notices", [])):  # offene Hinweise mit beenden
+            notice.blockSignals(True)
+            notice.close()
         self.timeline.shutdown()
         if self.tracker:
             self.tracker.stop()
@@ -338,12 +387,11 @@ class TrayMixin:
             self.hide()
             if self.config.get("tray_hint_on_close", True) and not getattr(self, "_tray_hint_shown", False):
                 self._tray_hint_shown = True
-                self.tray.showMessage(
-                    "Zeitzeuge läuft weiter",
-                    "Zeitzeuge zeichnet im Hintergrund weiter auf. "
-                    "Beenden über das Symbol im Infobereich.",
-                    QSystemTrayIcon.Information, 4000,
-                )
+                self.notify("Zeitzeuge läuft weiter",
+                            "Zeichnet im Hintergrund auf. Beenden über das Symbol im Infobereich.",
+                            kind="info", timeout=6,
+                            balloon="Zeitzeuge zeichnet im Hintergrund weiter auf. "
+                                    "Beenden über das Symbol im Infobereich.")
             return
         self.quit_app()
         super().closeEvent(event)

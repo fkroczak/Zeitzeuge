@@ -433,6 +433,13 @@ QPushButton#link_button:hover { text-decoration: underline; }
 QPushButton#link_button:focus { border: 1px solid $accent; padding: 0 2px; }
 QPushButton#quiet_button { background: transparent; border-color: transparent; color: $muted; min-width: 0; }
 QPushButton#quiet_button:hover { background-color: $rate_low; color: $rate_low_text; }
+/* Hinweise (notices.py): Kachel in der Farbe des Zustands, Aktion in der Leiste */
+QFrame#prompt_card QLabel#notice_warn, QFrame#prompt_strip QLabel#notice_warn {
+    background-color: $rate_mid; border-radius: 9px; }
+QFrame#prompt_card QLabel#notice_info, QFrame#prompt_strip QLabel#notice_info {
+    background-color: $sel; border-radius: 9px; }
+QFrame#prompt_strip QLabel#notice_warn, QFrame#prompt_strip QLabel#notice_info { border-radius: 15px; }
+QPushButton#strip_action { padding: 4px 12px; min-width: 0; }
 QFrame#prompt_strip { background-color: $surface; border: 1px solid $border; border-radius: 25px; }
 QFrame#prompt_strip:focus { border: 2px solid $accent; }
 QLabel#prompt_strip_title { font-weight: bold; }

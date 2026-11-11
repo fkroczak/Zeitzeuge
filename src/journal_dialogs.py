@@ -853,14 +853,18 @@ class PromptSettings(QWidget):
         self.close_hint.setToolTip("Windows-Meldung, wenn du das Fenster schließt und Zeitzeuge "
                                    "im Infobereich weiter aufzeichnet (einmal je Start)")
         self.close_hint.setChecked(config.get("tray_hint_on_close", True))
-        for widget in (self.end_of_day, self.on_quit, self.close_hint):
+        self.windows_notes = QCheckBox("Als Windows-Benac&hrichtigung")
+        self.windows_notes.setToolTip("Hinweise (Feierabend, Anmeldung nötig, Störungen) als Sprechblase von "
+                                      "Windows statt als Karte oder Leiste wie die Nachfrage")
+        self.windows_notes.setChecked(config.get("notify_windows", False))
+        for widget in (self.end_of_day, self.on_quit, self.close_hint, self.windows_notes):
             widget.setObjectName("chip_check")
             chips.addWidget(widget)
         box.addWidget(chips_host)
 
         self._sync_style(current)
         for widget in (self.keep_active, self.dots, self.idle_box, self.end_of_day, self.on_quit,
-                       self.close_hint, *self.sources.values()):
+                       self.close_hint, self.windows_notes, *self.sources.values()):
             widget.toggled.connect(self.apply)
         for widget in (self.idle_spin, self.snooze, *self.thresholds.values()):
             widget.valueChanged.connect(self.apply)
@@ -903,6 +907,7 @@ class PromptSettings(QWidget):
         self.config["prompt_end_of_day"] = self.end_of_day.isChecked()
         self.config["prompt_on_quit"] = self.on_quit.isChecked()
         self.config["tray_hint_on_close"] = self.close_hint.isChecked()
+        self.config["notify_windows"] = self.windows_notes.isChecked()
         self.changed.emit()
 
 

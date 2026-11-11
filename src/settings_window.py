@@ -205,7 +205,7 @@ PROMPT_TOPICS = [
     ("Fragen bei", "Verbindungen Telefonate Arbeitsblöcke PC Besprechungen Mails Zugangsdaten Regeln "
      "Grenzwerte Minuten ab Abwesenheit"),
     ("„Später“ fragt wieder nach", "Minuten später zurückgestellt"),
-    ("Erinnern", "Feierabend Beenden Offenes Benachrichtigungen Hinweis läuft weiter"),
+    ("Erinnern", "Feierabend Beenden Offenes Benachrichtigungen Hinweis läuft weiter Windows Sprechblase"),
 ]
 
 # Beschriftung des Knopfs je Zeile (sonst „Öffnen …“). „…“ nur, wenn noch ein Fenster kommt.
