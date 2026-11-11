@@ -33,11 +33,11 @@ version_info = VSVersionInfo(
     ffi=FixedFileInfo(filevers=nums, prodvers=nums),
     kids=[
         StringFileInfo([StringTable("040704B0", [
-            StringStruct("CompanyName", "Zeitzeuge"),
+            StringStruct("CompanyName", "Filip Kroczak"),
             StringStruct("FileDescription", "Zeitzeuge – Tages-Timeline der Arbeitsspuren"),
             StringStruct("FileVersion", ".".join(map(str, nums))),
             StringStruct("InternalName", "ZeitZeuge"),
-            StringStruct("LegalCopyright", "siehe LICENSE"),
+            StringStruct("LegalCopyright", "Copyright (c) 2026 Filip Kroczak"),
             StringStruct("OriginalFilename", "ZeitZeuge.exe"),
             StringStruct("ProductName", "Zeitzeuge"),
             StringStruct("ProductVersion", VERSION),
