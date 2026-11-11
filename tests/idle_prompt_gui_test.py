@@ -77,6 +77,7 @@ def gui_test():
     window.idle_sample(now + timedelta(minutes=30), 0)
     window.idle_sample(now + timedelta(minutes=60), 0)
     assert not window._idle_open
+    window.quit_app()  # Leser-Threads sauber beenden, sonst Absturz beim Prozessende unter Windows
     print("Abwesenheit am PC: OK")
 
 
