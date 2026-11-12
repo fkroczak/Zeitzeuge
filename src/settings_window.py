@@ -792,11 +792,23 @@ class SettingsWindow(QDialog):
 
     # ---- Aufbau
 
+    # Höchstbreite einer Seite (mit Rand): In breiten Fenstern stehen Text und Knopf/Zahlenfeld sonst
+    # weit auseinander. Die Seite bleibt links an der Navigation, rechts davon ist frei.
+    PAGE_MAX_WIDTH = 960
+
     def _scroll(self, widget):
+        widget.setMaximumWidth(self.PAGE_MAX_WIDTH)
+        holder = QWidget()
+        holder.setObjectName("settings_page_holder")
+        line = QHBoxLayout(holder)
+        line.setContentsMargins(0, 0, 0, 0)
+        line.setSpacing(0)
+        line.addWidget(widget, 1)
+        line.addStretch(0)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.NoFrame)
-        scroll.setWidget(widget)
+        scroll.setWidget(holder)
         return scroll
 
     def _section(self, layout, text, key=None):
@@ -1083,7 +1095,7 @@ class SettingsWindow(QDialog):
             spacing = self.tile_grids[0][0].spacing()
             need = max(t.minimumSizeHint().width() for t in self.tiles) + spacing
             # Platz rechts der Navigation abzüglich Seitenrand (2 × 28) und Scrollbalken
-            free = self.width() - self.nav.width() - 56 - 12 + spacing
+            free = min(self.width() - self.nav.width() - 12, self.PAGE_MAX_WIDTH) - 56 + spacing
             self._place_tiles(max(1, min(3, free // need)))
 
     def _results_page(self):
