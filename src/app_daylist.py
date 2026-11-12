@@ -172,7 +172,19 @@ class DayListMixin:
             self.day_summary.customers.value.set_active(self.customer_filter)
         if hasattr(self, "view_chips"):
             self.view_chips.show_filter(self.customer_filter)
+        self.highlight_customer_in_timeline()
         self.update_day_list(getattr(self, "day_activities", []), getattr(self, "pc_activities", []))
+
+    def highlight_customer_in_timeline(self):
+        """Kundenfilter auch in der Timeline: Balken anderer Kunden blass."""
+        name = getattr(self, "customer_filter", "")
+        if not hasattr(self, "timeline"):
+            return
+        if not name:
+            self.timeline.set_highlight(None)
+            return
+        index = self.customer_index()
+        self.timeline.set_highlight(lambda e: customer_matches(e, name, index))
 
     def change_view(self, key):
         self.config["list_view"] = key
@@ -389,6 +401,7 @@ class DayListMixin:
             self.customer_filter = ""
             self.day_summary.customers.value.set_active("")
             self.view_chips.show_filter("")
+            self.timeline.highlight = None  # zeichnet gleich mit dem neuen Tag
         self.current_date = date
         self.timeline.current_date = date
         self.show_preferred_range()  # zeichnet neu: Arbeitszeit des Tages oder ganzer Tag
