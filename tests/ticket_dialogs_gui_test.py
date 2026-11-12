@@ -22,7 +22,7 @@ def gui_test():
 
     import m42_tickets as mt
     from my_tickets_dialogs import MyTicketsDialog
-    from ticket_dialogs import CloseTicketDialog, NewTicketDialog
+    from ticket_dialogs import CloseTicketDialog, EditTicketDialog, NewTicketDialog
 
     app = QApplication(sys.argv)
     ROW = {"ticket": "TCK0000000002", "id": "t2", "subject": "Drucker", "customer": "Müller", "state": "Neu",
@@ -50,6 +50,10 @@ def gui_test():
                     "create": {"ticket": "TCK0000050866", "id": "x", "type": "SPSActivityTypeIncident",
                                "taken_over": True, "warning": ""},
                     "close": {"ticket": ROW["ticket"]},
+                    "load": {"id": "t2", "ticket": ROW["ticket"], "type": ROW["type"], "subject": "Drucker",
+                             "description": "Druckt nicht", "stamp": "s1"},
+                    "edit": {"ticket": ROW["ticket"], "id": "t2", "type": ROW["type"],
+                             "subject": "Drucker Empfang"},
                     "user_details": {"OrgUnit": "WiRoPa GmbH", "Phone": "02542 1", "Email": "info@example.com"}}[kind]
             result = {"kind": kind, "args": args, "ok": kind not in self.fail, "data": data}
             if kind in self.fail:
@@ -101,6 +105,31 @@ def gui_test():
     reader.load_my_tickets()  # Liste neu gelesen: Meldung bleibt stehen
     app.processEvents()
     assert "TCK0000050866 angelegt" in mine.status.text(), mine.status.text()
+
+    # ---- Bearbeiten: erst nach dem Laden änderbar, Speichern nur mit Änderung
+    edit = EditTicketDialog(reader, ROW)
+    assert not edit.subject_edit.isEnabled() and not edit.ok_button.isEnabled()
+    QTest.qWait(20)
+    assert edit.current_edit.toPlainText() == "Druckt nicht" and edit.subject_edit.isEnabled()
+    assert not edit.ok_button.isEnabled()  # nichts geändert
+    edit.addition_edit.setPlainText("Toner getauscht")
+    assert edit.ok_button.isEnabled()
+    edit.reject()
+
+    def fill_edit():
+        dlg = next(w for w in app.topLevelWidgets() if isinstance(w, EditTicketDialog) and w.isVisible())
+        QTest.qWait(20)
+        dlg.subject_edit.setText("Drucker Empfang")
+        dlg.ok_button.click()
+    QTimer.singleShot(0, fill_edit)
+    mine.table.select_first()
+    assert mine.edit_button.isEnabled()
+    mine.edit_button.click()
+    kind, args = reader.tasks[-1]
+    assert kind == "edit" and args["request"] == {"id": "t2", "ticket": "TCK0000000002", "stamp": "s1",
+                                                  "subject": "Drucker Empfang", "addition": ""}, args
+    assert "TCK0000000002 gespeichert" in mine.status.text(), mine.status.text()
+    assert mine.visible_rows()[0]["subject"] == "Drucker Empfang"
 
     # ---- Schließen: Fehler „unklar“ sperrt den Knopf, beim zweiten Fenster klappt es
     reader.fail.add("close")

@@ -92,7 +92,8 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
   - **Mich als Bearbeiter eintragen** (Standard an) übernimmt das Ticket gleich. Die neue Ticketnummer steht in der Zwischenablage.
   - Legt das Ticketsystem eine andere Art an als gewählt, sagt Zeitzeuge es.
 - **Ticket schließen:** In **Meine Tickets** ein Ticket markieren, **Schließen …**, Lösungstext eintragen und **Ticket schließen**. Ist **Melder per E-Mail informieren** an (Standard), bekommt der Melder die Lösung per E-Mail.
-- Bricht die Verbindung beim Anlegen oder Schließen ab, ist unklar, ob es geklappt hat. Zeitzeuge sperrt dann den Knopf und bittet, im Ticketsystem nachzusehen, statt es doppelt zu versuchen.
+- **Ticket bearbeiten:** In **Meine Tickets** ein Ticket markieren, **Bearbeiten …**. Zeitzeuge lädt das Ticket aus dem Ticketsystem. Du kannst den Betreff ändern und unter **Beschreibung ergänzen** Text dazuschreiben, der unten an die Beschreibung angehängt wird. Die bisherige Beschreibung wird nicht verändert. Hat jemand das Ticket geändert, während dein Fenster offen war, speichert Zeitzeuge nicht und bittet, das Fenster neu zu öffnen. Die Art (Störung/Serviceanfrage) lässt sich hier noch nicht ändern.
+- Bricht die Verbindung beim Anlegen, Bearbeiten oder Schließen ab, ist unklar, ob es geklappt hat. Zeitzeuge sperrt dann den Knopf und bittet, im Ticketsystem nachzusehen, statt es doppelt zu versuchen.
   - Ohne Ticketsystem bleibt die Kachel aus.
 - **Tagesabschluss** (Menü **Ansicht → Tagesabschluss …**, im Wochenabschluss oder über „Tagesabschluss öffnen“ in der Karte bei Feierabend): Zeitzeuge stellt den Tag aus allen Spuren zu Blöcken je Kunde zusammen, mit Ticket und kurzem Tickettext. Du prüfst die Liste und bestätigst einmal für alles. Ziel: mit wenig Aufwand rund 90 % der Personalzeit erfasst.
   - **Woher die Blöcke kommen:** deine eingetragenen Tätigkeiten, Verbindungen und Telefonate, KI-Vorschläge, die Zuordnung ohne KI und die Arbeitsblöcke am PC, in dieser Reihenfolge. Was im Ticketsystem schon gebucht ist, bleibt außen vor. Gleicher Kunde hintereinander wird ein Block, kurze Lücken (bis 10 Minuten) gehören zum Block davor. PC-Aktivität zählt nur in der Personalzeit.
@@ -803,8 +804,8 @@ Module in `src/`:
 | `m42_reader.py` | Ticketsystem: Kalender im unsichtbaren Edge lesen (Wochenansicht, Blättern, Anmeldung) |
 | `m42_data.py` | Ticketsystem: Einträge umwandeln, Abgleich gebucht / nicht gebucht (ohne Qt) |
 | `my_tickets_dialogs.py` | Fenster „Meine Tickets“: offene Tickets, bei denen du Bearbeiter bist |
-| `m42_tickets.py` | Ticketsystem: Ticket anlegen und schließen, Felder wie im Ticket-Mitschnitt (ohne Qt) |
-| `ticket_dialogs.py` | Fenster „Neues Ticket“ und „Ticket schließen“ (Aufbau wie „Tätigkeit nachtragen“) |
+| `m42_tickets.py` | Ticketsystem: Ticket anlegen, bearbeiten und schließen, Felder wie im Ticket-Mitschnitt (ohne Qt) |
+| `ticket_dialogs.py` | Fenster „Neues Ticket“, „Ticket bearbeiten“ und „Ticket schließen“ (Aufbau wie „Tätigkeit nachtragen“) |
 | `ticket_table.py` | Tickettabelle für „Meine Tickets“ und „Ticket suchen“: sortierbar, filterbar |
 | `busy_bar.py` | Ladeanzeige: drehender Kreis mit Text in der Werkzeugleiste, Streifen über die ganze Breite |
 | `transfer.py` | Export/Import zwischen zwei PCs (Arbeits-PC → PAW), übernommene Daten (ohne Qt) |

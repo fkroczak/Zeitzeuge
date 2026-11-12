@@ -194,3 +194,85 @@ def test_meine_tickets_mit_kennung(tmp_path):
     rows = loaded[-1]["rows"]
     assert [r["ticket"] for r in rows] == ["TCK0000000001"] and rows[0]["type"] == "SPSActivityTypeIncident"
     assert reader.user_name == "Kroczak, Filip" and reader.user_id == ME
+
+
+# ---------------------------------------------------------------- Bearbeiten (Mitschnitt 16:27:10)
+
+EDIT_DIALOG = mt.DEFAULT_IDS["ticket_edit_dialog"]
+LOADED = {"Sys-Entity": "SPSActivityTypeServiceRequest", "ID": "ticket-1", "Sys-IsNew": False,
+          "Sys-TimeStamp": "00000000DC09AE2F", "Sys-Name": "TCK0000050866",
+          "SPSActivityClassBase": {"Sys-TimeStamp": "00000000DC09AEE9", "ID": "base-1", "Subject": "Rückmeldung",
+                                   "DescriptionHTML": "<p>- Anpassungen an ZRO&nbsp;Ordnern</p><table><tr><td>x</td>"
+                                                      "</tr></table>", "Category": CAT, "Initiator": MELDER,
+                                   "AttachedUsers": [{"Id": "u"}]},
+          "SPSActivityClassIncident": {"Callback": "02542 1", "ChildMergedIncidents": []},
+          "SPSCommonClassBase": {"State": 200, "Memorandums": []},
+          "InitialData": {"Configuration": {"TicketType": 6}}}
+
+
+def test_ticket_bearbeiten_felder():
+    view = mt.ticket_view(mt.loaded_entity({"Entity": LOADED}))
+    assert view == {"id": "ticket-1", "ticket": "TCK0000050866", "type": "SPSActivityTypeServiceRequest",
+                    "subject": "Rückmeldung", "description": "- Anpassungen an ZRO Ordnern\nx",
+                    "stamp": "00000000DC09AE2F/00000000DC09AEE9"}
+    assert mt.loaded_entity(LOADED) is LOADED  # auch ohne Hülle
+    with pytest.raises(BookingError):
+        mt.loaded_entity({"Entity": {"ID": "x"}})
+
+    e = mt.edited_entity(LOADED, " Rückmeldung ZRO ", "Neu: <Ordner>\nZeile 2")
+    base = e["SPSActivityClassBase"]
+    # alte Beschreibung bleibt Zeichen für Zeichen, Ergänzung hinten dran
+    assert base["DescriptionHTML"] == LOADED["SPSActivityClassBase"]["DescriptionHTML"] + \
+        "<p>Neu: &lt;Ordner&gt;</p><p>Zeile 2</p>"
+    assert base["Subject"] == "Rückmeldung ZRO" and base["Category"] == CAT and base["Initiator"] == MELDER
+    assert base["AttachedUsers"] == mt.EMPTY and base["Sys-TimeStamp"] == "00000000DC09AEE9"
+    assert e["SPSActivityClassIncident"] == {"Callback": "02542 1", "ChildMergedIncidents": mt.EMPTY}
+    assert e["SPSCommonClassBase"]["State"] == 200 and e["SPSCommonClassBase"]["Memorandums"] == mt.EMPTY
+    assert (e["Sys-EntityState"], e["_id"], e["_type"], e["IsNew"]) == \
+        (202, "ticket-1", "SPSActivityTypeServiceRequest", False)
+    assert (e["Sys-Entity"], e["Sys-TimeStamp"], e["InitialData"]) == \
+        ("SPSActivityTypeServiceRequest", "00000000DC09AE2F", LOADED["InitialData"])
+    assert LOADED["SPSActivityClassBase"]["Subject"] == "Rückmeldung"  # Vorlage unverändert
+
+    # nur Betreff: Beschreibung unverändert
+    assert mt.edited_entity(LOADED, "Anders", "  ")["SPSActivityClassBase"]["DescriptionHTML"] == \
+        LOADED["SPSActivityClassBase"]["DescriptionHTML"]
+    with pytest.raises(BookingError, match="Nichts"):
+        mt.edited_entity(LOADED, "Rückmeldung", "")
+    with pytest.raises(BookingError, match="Betreff"):
+        mt.edited_entity(LOADED, " ", "mehr")
+    assert mt.saved_ticket({"Entity": {"ID": "ticket-1", "Sys-Name": "TCK1"}}, "ticket-1")["ticket"] == "TCK1"
+    with pytest.raises(BookingError):
+        mt.saved_ticket({"Entity": {"ID": "anderes"}}, "ticket-1")
+
+
+def test_leser_ticket_bearbeiten(tmp_path):
+    answers = {"WidgetCommon/GetData": {"Entity": LOADED},
+               "UpdateData": {"Entity": {"ID": "ticket-1", "Sys-Name": "TCK0000050866",
+                                         "Sys-Entity": "SPSActivityTypeServiceRequest"}}}
+    reader, calls, got = _reader(tmp_path, answers)
+    reader._ticket_task("load", {"id": "ticket-1"})
+    assert got[-1]["ok"] and got[-1]["data"]["description"].startswith("- Anpassungen")
+    assert calls[-1][:2] == ("GET", f"/m42Services/api/WidgetCommon/GetData/{EDIT_DIALOG}/ticket-1")
+
+    req = {"id": "ticket-1", "ticket": "TCK0000050866", "stamp": got[-1]["data"]["stamp"],
+           "subject": "Rückmeldung", "addition": "Ordner angelegt"}
+    calls.clear()
+    reader._ticket_task("edit", {"request": req})
+    assert got[-1]["ok"], got[-1]
+    assert got[-1]["data"]["subject"] == "Rückmeldung"
+    assert [(m, p.split("/api/")[1]) for m, p, _b in calls] == [
+        ("GET", f"WidgetCommon/GetData/{EDIT_DIALOG}/ticket-1"), ("POST", f"WidgetDialog/UpdateData/{EDIT_DIALOG}")]
+    saved = json.loads(calls[1][2][1:-1])
+    assert saved["SPSActivityClassBase"]["DescriptionHTML"].endswith("<p>Ordner angelegt</p>")
+
+    # inzwischen von jemand anderem gespeichert: nichts schicken
+    reader, calls, got = _reader(tmp_path, answers)
+    reader._ticket_task("edit", {"request": dict(req, stamp="alt/alt")})
+    assert not got[-1]["ok"] and not got[-1].get("unclear") and "inzwischen" in got[-1]["error"]
+    assert not any("UpdateData" in p for _m, p, _b in calls)
+
+    # Speichern läuft in Zeitüberschreitung: unklar
+    reader, calls, got = _reader(tmp_path, answers, fail="UpdateData")
+    reader._ticket_task("edit", {"request": req})
+    assert not got[-1]["ok"] and got[-1]["unclear"]

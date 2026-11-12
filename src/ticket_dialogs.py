@@ -1,10 +1,10 @@
-"""Fenster „Neues Ticket“ und „Ticket schließen“ (Matrix42), im Stil von „Tätigkeit nachtragen“.
+"""Fenster „Neues Ticket“, „Ticket bearbeiten“ und „Ticket schließen“ (Matrix42), im Stil von „Tätigkeit nachtragen“.
 
 Aufbau wie EntryDialog (journal_dialogs.py): Kopf mit Kachel und Titel, Inhalt mit Beschriftung
 über dem Feld, Chips, grauer Infokasten, Fußleiste mit Abbrechen und genau einer Hauptaktion.
 
-Zeitzeuge legt nie von selbst an und schließt nie von selbst: Du füllst das Fenster aus und
-klickst „Ticket anlegen“ bzw. „Ticket schließen“. Die Abfragen schickt M42Reader.ticket_task
+Zeitzeuge legt nie von selbst an, ändert nie von selbst und schließt nie von selbst: Du füllst
+das Fenster aus und klickst „Ticket anlegen“, „Speichern“ bzw. „Ticket schließen“. Die Abfragen schickt M42Reader.ticket_task
 aus dem angemeldeten Edge (m42_tickets.py).
 """
 from PySide6.QtCore import Qt, QTimer
@@ -129,6 +129,22 @@ class _CardDialog(QDialog):
             value.setWordWrap(True)
             value.setTextInteractionFlags(Qt.TextSelectableByMouse)
             rows.addRow(key, value)
+
+    def _ticket_line(self, row):
+        """Zeile unter dem Titel wie die Zeitzeile: Nummer · Kunde · Status."""
+        line = QFrame()
+        line.setObjectName("prompt_time")
+        line_box = QHBoxLayout(line)
+        line_box.setContentsMargins(SPACE_M, SPACE_S, SPACE_M, SPACE_S)
+        line_box.setSpacing(SPACE_S)
+        for icon, text in (("tag", row["ticket"]), ("users", row.get("customer", "")),
+                           ("clock", row.get("state", ""))):
+            if text:
+                line_box.addWidget(_icon_label(icon, self.muted, 16))
+                line_box.addWidget(QLabel(text))
+                line_box.addSpacing(SPACE_M)
+        line_box.addStretch(1)
+        self.head_box.addWidget(line)
 
     def _on_task(self, result):
         handler = getattr(self, f"_on_{result.get('kind')}", None)
@@ -396,20 +412,7 @@ class CloseTicketDialog(_CardDialog):
         self.closed = False
         self._frame(reader, "Ticket schließen", row.get("subject") or row["ticket"], "check",
                     "Ticket &schließen")
-        # Zeile unter dem Titel wie die Zeitzeile: Nummer · Kunde · Status
-        line = QFrame()
-        line.setObjectName("prompt_time")
-        line_box = QHBoxLayout(line)
-        line_box.setContentsMargins(SPACE_M, SPACE_S, SPACE_M, SPACE_S)
-        line_box.setSpacing(SPACE_S)
-        for icon, text in (("tag", row["ticket"]), ("users", row.get("customer", "")),
-                           ("clock", row.get("state", ""))):
-            if text:
-                line_box.addWidget(_icon_label(icon, self.muted, 16))
-                line_box.addWidget(QLabel(text))
-                line_box.addSpacing(SPACE_M)
-        line_box.addStretch(1)
-        self.head_box.addWidget(line)
+        self._ticket_line(row)
 
         self.solution_edit = QPlainTextEdit(solution)
         spellcheck.attach(self.solution_edit)
@@ -457,4 +460,90 @@ class CloseTicketDialog(_CardDialog):
             self._failed(result, "Schließen")
             return
         self.closed = True
+        self.accept()
+
+
+class EditTicketDialog(_CardDialog):
+    """Bestehendes Ticket: Betreff ändern, Beschreibung ergänzen. Lädt das Ticket erst frisch aus
+    Matrix42; bis dahin ist nichts änderbar. Nach dem Speichern: self.saved = {"ticket", "subject", …}."""
+
+    def __init__(self, reader, row, parent=None):
+        super().__init__(parent)
+        self.row = row
+        self.saved = None
+        self.loaded = None
+        self._frame(reader, "Ticket bearbeiten", row.get("subject") or row["ticket"], "doc", "&Speichern")
+        self._ticket_line(row)
+        box = self.body_box
+
+        self.subject_edit = QLineEdit(row.get("subject", ""))
+        self.subject_edit.setAccessibleName("Betreff")
+        self.subject_edit.textChanged.connect(self.validate)
+        box.addWidget(_label("&Betreff", self.subject_edit))
+        box.addWidget(self.subject_edit)
+        self.current_edit = QPlainTextEdit()
+        self.current_edit.setReadOnly(True)
+        self.current_edit.setAccessibleName("Bisherige Beschreibung")
+        self.current_edit.setPlaceholderText("Beschreibung wird geladen …")
+        self.current_edit.setTabChangesFocus(True)
+        self.current_edit.setFixedHeight(96)
+        box.addWidget(_label("Bisherige Beschreibun&g (bleibt, wie sie ist)", self.current_edit))
+        box.addWidget(self.current_edit)
+        self.addition_edit = QPlainTextEdit()
+        self.addition_edit.setAccessibleName("Ergänzung der Beschreibung")
+        self.addition_edit.setPlaceholderText("Was kommt dazu? Wird unten an die Beschreibung angehängt.")
+        self.addition_edit.setTabChangesFocus(True)
+        self.addition_edit.setFixedHeight(96)
+        self.addition_edit.textChanged.connect(self.validate)
+        spellcheck.attach(self.addition_edit)
+        box.addWidget(_label("Beschreibung &ergänzen", self.addition_edit))
+        box.addWidget(self.addition_edit)
+
+        self.ok_button.clicked.connect(self.save)
+        for widget in (self.subject_edit, self.addition_edit):
+            widget.setEnabled(False)
+        self.validate()
+        self.status.setText(f"Lade {row['ticket']} aus Matrix42 …")
+        if not self._run("load", id=row["id"]):
+            self.status.setText("⚠ Matrix42-Anmeldefenster ist offen. Bitte erst anmelden.")
+
+    def _on_load(self, result):
+        if not result.get("ok"):
+            self.current_edit.setPlaceholderText("")
+            self.status.setText(f"⚠ Laden fehlgeschlagen: {result.get('error', '')}")
+            return
+        self.loaded = result["data"]
+        self.subject_edit.setText(self.loaded["subject"] or self.row.get("subject", ""))
+        self.current_edit.setPlainText(self.loaded["description"])
+        self.current_edit.setPlaceholderText("(keine Beschreibung)")
+        for widget in (self.subject_edit, self.addition_edit):
+            widget.setEnabled(True)
+        self.status.clear()
+        self.validate()
+        self.addition_edit.setFocus()
+
+    def changed(self):
+        if not self.loaded:
+            return False
+        return (self.subject_edit.text().strip() != self.loaded["subject"]
+                or bool(self.addition_edit.toPlainText().strip()))
+
+    def validate(self, *_):
+        ok = bool(self.loaded and self.subject_edit.text().strip() and self.changed()) and not self._busy
+        self.ok_button.setEnabled(ok)
+        return ok
+
+    def request(self):
+        return {"id": self.row["id"], "ticket": self.row["ticket"], "stamp": self.loaded["stamp"],
+                "subject": self.subject_edit.text().strip(), "addition": self.addition_edit.toPlainText()}
+
+    def save(self):
+        if self.validate():
+            self._start("edit", f"Speichere {self.row['ticket']} in Matrix42 …", request=self.request())
+
+    def _on_edit(self, result):
+        if not result.get("ok"):
+            self._failed(result, "Speichern")
+            return
+        self.saved = result["data"]
         self.accept()
