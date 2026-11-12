@@ -1,4 +1,4 @@
-"""Tickets in Matrix42 anlegen und schließen: rein funktional, ohne Qt und ohne Edge.
+"""Tickets in Matrix42 anlegen, bearbeiten und schließen: rein funktional, ohne Qt und ohne Edge.
 
 Die Abfragen schickt M42Reader.ticket_task (m42_reader.py) aus dem angemeldeten Edge. Ablauf wie
 im Ticket-Mitschnitt vom 12.11.2026:
@@ -15,6 +15,14 @@ Anlegen (Dialog „Ticket“, Widget DEFAULT_IDS["ticket_dialog"]):
    SPSActivityTypeIncident bzw. SPSActivityTypeServiceRequest. Antwort: Sys-Name (TCK…).
 6. Übernehmen (Bearbeiter = ich): POST /activity/TakeOver.
 
+Bearbeiten (Dialog des bestehenden Tickets, DEFAULT_IDS["ticket_edit_dialog"]):
+1. Laden: GET /WidgetCommon/GetData/<Dialog>/<Ticket-Id>?archived=false -> ganzes Ticket mit Sys-TimeStamp.
+2. Speichern: POST /WidgetDialog/UpdateData/<Dialog> mit dem geladenen Ticket, Sys-EntityState 202,
+   Beziehungen leer (AddedRelations/RemovedRelations), geändert nur Betreff und Beschreibung.
+   Die Beschreibung wird ergänzt (neue Absätze hinten dran), nie ersetzt: so bleiben Bilder,
+   Tabellen und Formatierungen aus Matrix42 erhalten.
+Art ändern (Serviceanfrage -> Störung) und Journaleinträge fehlen noch im Mitschnitt.
+
 Schließen: POST /ticket/CloseWizardInitialData/?ticketType=<Typ> [Id] -> Kategorie, dann
 POST /ticket/Close mit Lösungstext (Comments, HTML).
 
@@ -22,12 +30,14 @@ Melder suchen: POST /entity/fragments/forControl (Personenauswahl im Ticketdialo
 Kategorien: POST /entity/tree (ganzer Kategoriebaum).
 """
 import html
+import re
 from urllib.parse import urlencode
 
 from m42_booking import API, BookingError, EMPTY_RELATIONS, wrap
 
 # Kennungen aus dem Mitschnitt (in der Config unter m42_ticket_ids änderbar)
-DEFAULT_IDS = {"ticket_dialog": "be4ceef2-aadf-ca41-a130-08d46543427a"}
+DEFAULT_IDS = {"ticket_dialog": "be4ceef2-aadf-ca41-a130-08d46543427a",       # Neues Ticket
+               "ticket_edit_dialog": "89427fc1-3c2b-c21a-f6dc-08d46550b705"}  # bestehendes Ticket
 
 INCIDENT, SERVICE_REQUEST = 0, 6  # SPSTicketPickupType: 0 Störung, 6 Serviceanfrage (5 Ticket)
 TYPES = [(INCIDENT, "Störung (Incident)"), (SERVICE_REQUEST, "Serviceanfrage (Service Request)")]
@@ -171,6 +181,81 @@ def created_ticket(data):
 
 def take_over_body(ticket_id, entity_type):
     return {"Objects": [{"ObjectIds": [ticket_id], "TypeName": entity_type}]}
+
+
+# ------------------------------------------------------------ Bearbeiten
+
+ENTITY_STATE_CHANGED = 202  # Sys-EntityState beim Speichern eines geänderten Tickets (Mitschnitt)
+
+
+def edit_data_path(dialog, ticket_id):
+    return f"{API}/WidgetCommon/GetData/{dialog}/{ticket_id}?archived=false"
+
+
+def loaded_entity(data):
+    """Antwort von WidgetCommon/GetData -> Ticket (mit oder ohne Hülle "Entity")."""
+    entity = data.get("Entity") if isinstance(data, dict) and isinstance(data.get("Entity"), dict) else data
+    if not isinstance(entity, dict) or not entity.get("ID") or not isinstance(entity.get("SPSActivityClassBase"), dict):
+        raise BookingError("Matrix42 liefert das Ticket nicht. Bitte die Liste aktualisieren.")
+    return entity
+
+
+def html_text(value):
+    """HTML der Beschreibung -> lesbarer Klartext (nur zum Anzeigen)."""
+    text = re.sub(r"(?i)<br\s*/?>", "\n", value or "")
+    text = re.sub(r"(?i)</(p|div|li|tr|h[1-6])\s*>", "\n", text)
+    text = html.unescape(re.sub(r"<[^>]+>", "", text)).replace("\xa0", " ")
+    return "\n".join(line.rstrip() for line in text.strip().splitlines())
+
+
+def stamp(entity):
+    """Versionsmarke des Tickets: ändert sich, sobald jemand speichert."""
+    base = entity.get("SPSActivityClassBase") or {}
+    return f"{entity.get('Sys-TimeStamp', '')}/{base.get('Sys-TimeStamp', '')}"
+
+
+def ticket_view(entity):
+    """Geladenes Ticket -> was das Fenster zeigt."""
+    base = entity["SPSActivityClassBase"]
+    return {"id": entity["ID"], "ticket": entity.get("Sys-Name", ""), "type": entity.get("Sys-Entity", ""),
+            "subject": (base.get("Subject") or "").strip(), "description": html_text(base.get("DescriptionHTML")),
+            "stamp": stamp(entity)}
+
+
+def edited_entity(entity, subject, addition):
+    """Ticket zum Speichern: Betreff neu, Beschreibung um addition ergänzt, sonst wie geladen."""
+    base = dict(entity["SPSActivityClassBase"])
+    subject = (subject or "").strip()
+    if not subject:
+        raise BookingError("Bitte einen Betreff eingeben.")
+    extra = description_html(addition)
+    if subject == (base.get("Subject") or "").strip() and not extra:
+        raise BookingError("Nichts geändert.")
+    base["Subject"] = subject
+    if extra:
+        base["DescriptionHTML"] = (base.get("DescriptionHTML") or "") + extra
+    for name in TICKET_RELATIONS:
+        base[name] = dict(EMPTY)
+    base.update({"NewJournalEntryAdded": False, "isReadonly": False})
+    incident = dict(entity.get("SPSActivityClassIncident") or {})
+    incident["ChildMergedIncidents"] = dict(EMPTY)
+    common = dict(entity.get("SPSCommonClassBase") or {})
+    for name in EMPTY_RELATIONS:
+        common[name] = dict(EMPTY)
+    out = dict(entity)
+    out.update({"SPSActivityClassBase": base, "SPSActivityClassIncident": incident, "SPSCommonClassBase": common,
+                "ITMTimeEntryClassTarget": {"ITMTimeEntryTarget": dict(EMPTY)},
+                "Sys-EntityState": ENTITY_STATE_CHANGED, "_type": entity.get("Sys-Entity", "SPSActivityTypeTicket"),
+                "_id": entity["ID"], "IsNew": False})
+    return out
+
+
+def saved_ticket(data, ticket_id):
+    """Antwort von UpdateData beim Bearbeiten: muss dasselbe Ticket zurückgeben."""
+    entity = (data or {}).get("Entity") if isinstance(data, dict) else None
+    if not isinstance(entity, dict) or entity.get("ID") != ticket_id:
+        raise BookingError("Matrix42 hat das Speichern nicht bestätigt. Bitte in Matrix42 nachsehen.")
+    return {"ticket": entity.get("Sys-Name", ""), "id": ticket_id, "type": entity.get("Sys-Entity", "")}
 
 
 # ------------------------------------------------------------ Schließen

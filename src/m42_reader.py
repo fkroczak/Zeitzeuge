@@ -663,7 +663,7 @@ class M42Reader(BrowserReader):
 
     def ticket_task(self, kind, **args):
         """Im Hintergrund: "users" (text), "user_details" (user), "categories", "create" (request),
-        "close" (request).
+        "load" (id), "edit" (request), "close" (request).
         Ergebnis über ticket_task_done. False, wenn gerade ein Anmeldefenster offen ist."""
         if self._login_open:
             return False
@@ -691,6 +691,11 @@ class M42Reader(BrowserReader):
                     result["data"] = mt.categories_from_tree(data)
                 elif kind == "create":
                     result["data"] = self._create_ticket(args["request"], ids, state)
+                elif kind == "load":
+                    data = self._fetch("GET", mt.edit_data_path(ids["ticket_edit_dialog"], args["id"]))
+                    result["data"] = mt.ticket_view(mt.loaded_entity(data))
+                elif kind == "edit":
+                    result["data"] = self._edit_ticket(args["request"], ids, state)
                 elif kind == "close":
                     result["data"] = self._close_ticket(args["request"], state)
                 else:
@@ -702,7 +707,7 @@ class M42Reader(BrowserReader):
                 result["unclear"] = True
                 result["error"] = f"unklar, ob es geklappt hat ({e}). Bitte in Matrix42 nachsehen."
             safe_io.log(f"Matrix42: Ticket {kind} fehlgeschlagen ({e!r})")
-        if result["ok"] and kind in ("create", "close"):
+        if result["ok"] and kind in ("create", "edit", "close"):
             self._tickets_read = 0  # Meine Tickets beim nächsten Durchlauf neu lesen
             threading.Thread(target=self.load_my_tickets, daemon=True).start()
         self.ticket_task_done.emit(result)
@@ -744,6 +749,25 @@ class M42Reader(BrowserReader):
                     f"Übernehmen ging nicht ({e}). Bitte in Matrix42 übernehmen."
         self._set_status(f"Matrix42: Ticket {created['ticket']} angelegt")
         return created
+
+    def _edit_ticket(self, request, ids, state):
+        """Betreff ändern und Beschreibung ergänzen. Nur mit gehaltenem _browser_lock.
+        Lädt das Ticket frisch; hat es inzwischen jemand gespeichert (andere Versionsmarke als beim
+        Öffnen), wird nichts geschickt."""
+        import m42_tickets as mt
+        dialog, ticket_id = ids["ticket_edit_dialog"], request["id"]
+        name = request.get("ticket") or "Ticket"
+        self._set_status(f"Matrix42: speichere {name} …")
+        entity = mt.loaded_entity(self._fetch("GET", mt.edit_data_path(dialog, ticket_id)))
+        if request.get("stamp") and mt.stamp(entity) != request["stamp"]:
+            raise mt.BookingError(f"{name} wurde inzwischen in Matrix42 geändert. "
+                                  "Bitte das Fenster schließen und neu öffnen.")
+        body = mt.edited_entity(entity, request.get("subject", ""), request.get("addition", ""))
+        state["sent"] = True
+        saved = mt.saved_ticket(self._fetch("POST", f"/m42Services/api/WidgetDialog/UpdateData/{dialog}",
+                                            mt.wrap(body)), ticket_id)
+        self._set_status(f"Matrix42: {saved['ticket'] or name} gespeichert")
+        return dict(saved, subject=body["SPSActivityClassBase"]["Subject"])
 
     def _close_ticket(self, request, state):
         """Ticket mit Lösungstext schließen. Nur mit gehaltenem _browser_lock."""

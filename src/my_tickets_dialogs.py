@@ -3,7 +3,7 @@
 Tabelle (Ticket, Betreff, Kunde, Melder, Status, Angelegt), nach jeder Spalte sortierbar, mit
 Filterfeld darüber (jedes Wort muss irgendwo vorkommen, wie bei der Ticketsuche).
 Die Liste liest M42Reader alle 10 Minuten (my_tickets_loaded), „Aktualisieren“ liest sofort.
-„Neues Ticket …“ und „Schließen …“ öffnen die Fenster aus ticket_dialogs.py.
+„Neues Ticket …“, „Bearbeiten …“ und „Schließen …“ öffnen die Fenster aus ticket_dialogs.py.
 """
 from PySide6.QtCore import QEvent, Qt
 from PySide6.QtWidgets import QApplication, QDialog, QDialogButtonBox, QLabel, QLineEdit, QPushButton, QVBoxLayout
@@ -49,10 +49,14 @@ class MyTicketsDialog(QDialog):
         self.refresh_button.clicked.connect(self.refresh)
         self.new_button = QPushButton("&Neues Ticket …", self)
         self.new_button.clicked.connect(self.new_ticket)
+        self.edit_button = QPushButton("&Bearbeiten …", self)
+        self.edit_button.setToolTip("Betreff des markierten Tickets ändern oder die Beschreibung ergänzen")
+        self.edit_button.clicked.connect(self.edit_ticket)
         self.close_button = QPushButton("&Schließen …", self)
         self.close_button.setToolTip("Markiertes Ticket mit Lösungstext schließen")
         self.close_button.clicked.connect(self.close_ticket)
-        for button in (self.new_button, self.close_button, self.copy_button, self.refresh_button):
+        for button in (self.new_button, self.edit_button, self.close_button, self.copy_button,
+                       self.refresh_button):
             button.setAutoDefault(False)
             buttons.addButton(button, QDialogButtonBox.ActionRole)
         buttons.rejected.connect(self.reject)
@@ -125,6 +129,7 @@ class MyTicketsDialog(QDialog):
     def _selected(self):
         on = self.current_row() is not None
         self.copy_button.setEnabled(on)
+        self.edit_button.setEnabled(on)
         self.close_button.setEnabled(on)
 
     # ---- Aktionen
@@ -138,6 +143,18 @@ class MyTicketsDialog(QDialog):
                 ", Nummer kopiert."
             self._note = text + (f"\n⚠ {c['warning']}" if c.get("warning") else "")
             self._update_status()
+        dialog.deleteLater()
+
+    def edit_ticket(self):
+        from ticket_dialogs import EditTicketDialog
+        row = self.current_row()
+        if not row:
+            return
+        dialog = EditTicketDialog(self.reader, row, self)
+        if dialog.exec() == QDialog.Accepted and dialog.saved:
+            self._note = f"{row['ticket']} gespeichert."
+            subject = dialog.saved.get("subject") or row.get("subject", "")
+            self._fill([dict(r, subject=subject) if r.get("id") == row.get("id") else r for r in self._rows])
         dialog.deleteLater()
 
     def close_ticket(self):
