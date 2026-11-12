@@ -3,6 +3,7 @@
 Teil von TimelineApp (main_timeline.py), nur über main_timeline laden.
 """
 import re
+from datetime import datetime
 
 from PySide6.QtCore import Qt, QDate, QTimer
 from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
@@ -16,6 +17,7 @@ from journal import describe, ticket_line
 from grouping import format_tv_id, work_blocks
 from timeline_only import (ActivityViewDialog, ai_copy_text, entry_color, exec_entry_menu,
                            format_duration, parse_time, type_label)
+import booking_rate as br
 import customers
 import day_summary
 import icons
@@ -248,10 +250,13 @@ class DayListMixin:
         if not hasattr(self, "day_summary"):
             return
         date_str = self.current_date.toString("yyyy-MM-dd")
-        # Erfasst „von“: gestempelte Personalzeit (ITM), ohne ITM die eingestellte Arbeitszeit.
-        # Nicht das Soll: Mehr als gestempelt lässt sich nicht eintragen.
-        if itm_day and itm_day.get("gewertet"):
-            target, basis = itm_day["gewertet"], "gestempelt"
+        # Erfasst „von“: Personalzeit (ITM), ohne ITM die eingestellte Arbeitszeit.
+        # Nicht das Soll: Mehr als gestempelt lässt sich nicht eintragen. Noch eingestempelt:
+        # live bis jetzt (ITM wertet erst nach dem Ausstempeln), sonst ITMs gewertete Zeit.
+        spans, running = br.itm_spans(itm_day, datetime.now())
+        live = br.personal_seconds(spans, itm_day, running) / 60 if itm_day else 0
+        if live > 0:
+            target, basis = live, "bis jetzt" if running else "gestempelt"
         else:
             target = sum(max(0, e - s) for s, e in self.timeline._work_spans(self.current_date))
             basis = "Arbeitszeit"
@@ -261,6 +266,15 @@ class DayListMixin:
         self.day_summary.show_numbers(data)
         self.view_chips.show_state(self.config.get("list_view", "grouped"),
                                    {"doc": data["open"], "ai": data["suggestions"]})
+
+    def tick_live_summary(self):
+        """Jede Minute: Kachel „Erfasst“ nachziehen, solange heute eingestempelt (läuft live)."""
+        date_str = self.current_date.toString("yyyy-MM-dd")
+        if date_str != datetime.now().strftime("%Y-%m-%d"):
+            return
+        _spans, running = br.itm_spans(self.personal_day_for(date_str), datetime.now())
+        if running:
+            self.update_status_text()
 
     def update_busy_bar(self):
         """Ladeanzeige oben: alles, was gerade im Hintergrund lädt."""

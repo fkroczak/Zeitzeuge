@@ -292,10 +292,11 @@ class DaySummary(QWidget):
             kpi.loaded()
         booked, target = data["booked_s"], data["target_s"]
         self.booked.value.setText(hm(booked))
-        basis = data.get("target_basis", "")  # „gestempelt“ (ITM-Personalzeit) oder „Arbeitszeit“
+        basis = data.get("target_basis", "")  # „gestempelt“/„bis jetzt“ (ITM-Personalzeit) oder „Arbeitszeit“
         self.booked.extra.setText(f"von {hm(target)} {basis}".strip() if target else "")
         self.booked.bar.setValue(int(min(100, 100 * booked / target)) if target else 0)
         tips = {"gestempelt": " im Verhältnis zur gestempelten Personalzeit (ITM)",
+                "bis jetzt": " im Verhältnis zur Personalzeit bis jetzt (noch eingestempelt, läuft live)",
                 "Arbeitszeit": " im Verhältnis zur eingestellten Arbeitszeit"}
         self.booked.setToolTip("Eingetragene Tätigkeiten des Tages" + (tips.get(basis, "") if target else ""))
         n = data["open"]

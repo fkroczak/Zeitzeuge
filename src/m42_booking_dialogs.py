@@ -6,7 +6,8 @@ Die Abfragen schickt M42Reader.book aus dem angemeldeten Edge.
 """
 from datetime import datetime
 
-from PySide6.QtCore import QObject, Qt, QTime, QTimer, Signal
+from PySide6.QtCore import QEvent, QObject, Qt, QTime, QTimer, Signal
+from PySide6.QtGui import QPalette
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFormLayout, QHBoxLayout,
                                QLabel, QLineEdit, QListWidget, QListWidgetItem, QPlainTextEdit,
                                QPushButton, QTimeEdit, QVBoxLayout)
@@ -39,11 +40,17 @@ class _TicketSearch:
         self.reader.search_tickets(text, self._search_list())
 
     def _fill_results(self, rows):
+        """Treffer zeigen: offene zuerst, erledigte grau; lange Zeilen gekürzt (ganz im Hinweis)."""
         self.results.clear()
+        self.results.setTextElideMode(Qt.ElideRight)
+        self.results.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        grey = self.results.palette().color(QPalette.Disabled, QPalette.Text)
         for row in rows:
-            item = QListWidgetItem(mb.ticket_label(row))
-            item.setToolTip(mb.ticket_label(row))
+            item = QListWidgetItem(mb.ticket_list_label(row))
+            item.setToolTip(mb.ticket_tooltip(row))
             item.setData(Qt.UserRole, row)
+            if mb.is_closed(row):
+                item.setForeground(grey)
             self.results.addItem(item)
 
 
@@ -356,21 +363,61 @@ class TicketSearchDialog(_TicketSearch, QDialog):
         if reader is not None:
             reader.tickets_found.connect(self.on_tickets, Qt.QueuedConnection)
         self.search_edit.setFocus()
+        # Beim Tippen: Treffer sofort auf den neuen Text eingrenzen, nach einer kurzen Pause
+        # in Matrix42 neu suchen (Enter oder „Suchen“ sucht gleich)
+        self._rows = []
+        self._auto = QTimer(self, singleShot=True, interval=700)
+        self._auto.timeout.connect(self._auto_search)
+        self.search_edit.textChanged.connect(self._typed)
+        self.search_edit.returnPressed.connect(self._auto.stop)
+        self.search_button.clicked.connect(self._auto.stop)
+        self.search_edit.installEventFilter(self)  # Pfeil runter: in die Treffer
         if reader is not None and len(text.strip()) >= 3:
             self.search()
 
+    def eventFilter(self, obj, event):
+        if obj is self.search_edit and event.type() == QEvent.KeyPress and event.key() == Qt.Key_Down \
+                and self.results.count():
+            self.results.setFocus()
+            return True
+        return super().eventFilter(obj, event)
+
     def _search_list(self):
         return self.ticket_list
+
+    def _typed(self, text):
+        rows = mb.merge_tickets_rows(self._rows, text.strip())
+        if rows:
+            self._show(rows, "")
+        else:  # nichts mehr in den alten Treffern: auf die neue Suche warten
+            self.results.clear()
+            self.status.setText("Enter sucht in Matrix42." if len(text.strip()) >= 3
+                                else "Bitte mindestens 3 Zeichen eingeben.")
+        if self.reader is not None and len(text.strip()) >= 3:
+            self._auto.start()
+
+    def _auto_search(self):
+        if self.search_edit.text().strip() != getattr(self, "_searched", None):
+            self.search()
+
+    def search(self):
+        self._searched = self.search_edit.text().strip()
+        super().search()
 
     def on_tickets(self, result):
         if result.get("text") != self.search_edit.text().strip():
             return  # ältere Suche
         self.search_button.setEnabled(True)
-        rows, error = result.get("rows") or [], result.get("error", "")
+        self._rows = result.get("rows") or []
+        self._show(self._rows, result.get("error", ""))
+
+    def _show(self, rows, error):
         self._fill_results(rows)
         if rows:
             self.results.setCurrentRow(0)
-            self.status.setText(f"{len(rows)} Ticket{'s' if len(rows) != 1 else ''} gefunden. "
+            open_n = sum(not mb.is_closed(r) for r in rows)
+            self.status.setText(f"{len(rows)} Ticket{'s' if len(rows) != 1 else ''} gefunden, "
+                                f"{open_n} offen (stehen oben). "
                                 "Doppelklick oder „Übernehmen“ übernimmt das Ticket.")
         else:
             self.status.setText(f"⚠ Kein Ticket gefunden{': ' + error if error else '.'}")

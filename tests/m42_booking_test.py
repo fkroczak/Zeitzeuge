@@ -112,3 +112,24 @@ def test_ticketsuche_zusammenfuehren():
     assert [r["ticket"] for r in rows] == ["TCK0000000002", "TCK0000000001"]  # neueste zuerst, je einmal
     assert rows[1]["customer"] == "Müller" and rows[0]["recipient"] == "Kroczak, Filip"
     assert mb.ticket_label(rows[1]) == "TCK0000000001 · Alt · Müller"
+
+
+def test_search_plan_and_matches():
+    assert mb.search_plan("wiro drucker") == ("drucker", ("Subject", "Customer", "Initiator", "Recipient"))
+    assert mb.search_plan("TCK0000050699") == ("TCK0000050699", ("TicketNumber",))
+    assert mb.search_plan("50699")[1] == mb.SEARCH_FIELDS
+    row = {"ticket": "TCK0000050428", "subject": "Drucker Austausch", "customer": "wiro GmbH"}
+    assert mb.matches(row, "WIRO drucker") and not mb.matches(row, "wiro login")
+
+
+def test_merge_tickets_open_first_and_filtered():
+    items = [{"TicketNumber": "TCK0000000003", "Id": "3", "Subject": "Login", "Customer": "WiRoPa",
+              "State": "Gelöst", "CreatedDate": "2026-11-10T08:00:00Z"},
+             {"TicketNumber": "TCK0000000002", "Id": "2", "Subject": "Login", "Customer": "WiRoPa",
+              "State": "In Bearbeitung", "CreatedDate": "2026-11-01T08:00:00Z"},
+             {"TicketNumber": "TCK0000000001", "Id": "1", "Subject": "Drucker", "Customer": "WiRoPa",
+              "State": "Neu", "CreatedDate": "2026-11-11T08:00:00Z"}]
+    rows = mb.merge_tickets(items, text="wiro login")
+    assert [r["ticket"] for r in rows] == ["TCK0000000002", "TCK0000000003"]
+    assert mb.ticket_list_label(rows[0]).endswith("· 01.11.26")
+    assert [r["ticket"] for r in mb.merge_tickets_rows(rows, "bearbeitung")] == ["TCK0000000002"]
