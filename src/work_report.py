@@ -16,6 +16,19 @@ from datetime import datetime, timedelta
 
 import booking_rate as br
 
+# Gemeinsame Farben von Bericht und Timeline (Standard der type_colors in main_timeline.py):
+# kräftig genug für 3 : 1 auf hellem und dunklem Grund. Das PDF füllt die Balken heller und
+# nimmt diese Farbe als Rand (report_pdf.STYLES), die Timeline füllt mit ihr.
+STATUS_COLORS = {
+    "personal": "#808080",     # Personalzeit / Arbeitszeit: grau
+    "booking": "#3D6E9E",      # in Matrix42 gebucht: blau
+    "gap": "#C0392B",          # Personalzeit ohne Buchung: rot
+    "doc_booked": "#2F7A4A",   # Tätigkeit dokumentiert (und gebucht): grün
+    "doc_missing": "#AE5F10",  # offen / nicht gebucht: orange
+}
+TYPE_STATUS = {"Personalzeit": "personal", "Arbeitszeit": "personal", "Matrix42-Buchung": "booking",
+               "Nicht gebucht": "gap", "Dokumentiert": "doc_booked", "Undokumentiert": "doc_missing"}
+
 CHART_PREFIX = "zeitgraph-"  # Bildname im HTML; report_pdf.py zeichnet das Bild dazu
 
 TIME_FMT = "%Y-%m-%d %H:%M:%S"

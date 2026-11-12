@@ -123,3 +123,13 @@ def test_week_chart_one_row_per_day_same_hours():
     assert html.count(wr.CHART_PREFIX) == 3 and "Selbstauskunft" in html
     assert set(wr.charts_for([other, build()], week=True)) == {
         wr.CHART_PREFIX + "2026-11-10", wr.CHART_PREFIX + D, wr.CHART_PREFIX + "woche"}
+
+
+def test_status_colors_readable_on_light_and_dark():
+    """Dieselben Farben in Timeline und Bericht: Balken heben sich in beiden Designs ab (3 : 1)."""
+    from theme import contrast, readable_on
+    for kind, key in wr.TYPE_STATUS.items():
+        color = wr.STATUS_COLORS[key]
+        assert contrast(readable_on(color).name(), color) >= 4.5, (kind, color)  # Schrift im Balken
+        for ground in ("#FFFFFF", "#1A1A1A"):
+            assert contrast(color, ground) >= 3.0, (kind, color, ground)
