@@ -26,6 +26,7 @@ class _Signals(QObject):
     checked = Signal(object, object, bool)   # info, Fehlertext, von Hand
     progress = Signal(int, int)              # geladen, gesamt (Bytes)
     loaded = Signal(object, object)          # Pfad des Setups, Fehlertext
+    step = Signal(str)                       # nächster Schritt (Text fürs Update-Fenster)
 
 
 def _notes_text(notes, limit=8):
@@ -50,6 +51,13 @@ class UpdateMixin:
         self._update_signals.checked.connect(self._update_checked)
         self._update_signals.progress.connect(self._update_progress)
         self._update_signals.loaded.connect(self._update_loaded)
+        self._update_signals.step.connect(self._update_step)
+        self._update_window = None
+        self._update_cancel = False
+        # Merker vom letzten Update jetzt lesen, gemeldet wird kurz nach dem Start
+        self._finished_update = self.config.pop("update_pending", None)
+        if self._finished_update:
+            QTimer.singleShot(3000, self._report_finished_update)
         if not self.updates_possible():
             return
         updater.cleanup(update_folder())  # Setup vom letzten Update
@@ -158,34 +166,56 @@ class UpdateMixin:
         if not info or self._update_busy:
             return
         self._update_busy = True
-        self.statusBar().showMessage(f"Update {info['version']} wird geladen …")
+        self._update_cancel = False
+        from update_dialog import UpdateProgress
+        self._update_window = UpdateProgress(info["version"], self._update_parent())
+        self._update_window.cancelled.connect(self._cancel_update)
+        self._update_window.show()
+        self._update_window.raise_()
         token = updater.settings()[1]
         folder = update_folder()
+        signals = self._update_signals
 
         def work():
             try:
                 path = updater.download(info, token, folder,
-                                        progress=lambda done, total: self._update_signals.progress.emit(
-                                            done, total),
-                                        cancelled=lambda: self._quitting)
+                                        progress=lambda done, total: signals.progress.emit(done, total),
+                                        cancelled=lambda: self._quitting or self._update_cancel)
+                signals.step.emit("Setup wird geprüft …")
                 if not updater.signature_ok(path):
                     os.remove(path)
                     raise updater.UpdateError("Das Setup ist nicht von Filip Kroczak signiert. "
                                               "Update abgebrochen.")
-                self._update_signals.loaded.emit(path, None)
+                signals.loaded.emit(path, None)
             except (updater.UpdateError, OSError) as e:
-                self._update_signals.loaded.emit(None, str(e))
+                signals.loaded.emit(None, str(e))
 
         threading.Thread(target=work, daemon=True, name="Update-Download").start()
 
+    def _cancel_update(self):
+        self._update_cancel = True
+
     def _update_progress(self, done, total):
-        if total:
-            self.statusBar().showMessage(f"Update wird geladen … {done * 100 // total} %")
+        if self._update_window is not None:
+            self._update_window.set_progress(done, total)
+
+    def _update_step(self, text):
+        if self._update_window is not None:
+            self._update_window.set_step(text)
+
+    def _close_update_window(self):
+        if self._update_window is not None:
+            self._update_window.hide()
+            self._update_window.deleteLater()
+            self._update_window = None
 
     def _update_loaded(self, path, error):
         self._update_busy = False
         if error:
-            self.statusBar().clearMessage()
+            self._close_update_window()
+            if self._update_cancel:
+                self.statusBar().showMessage("Update abgebrochen.", 5000)
+                return
             self.update_message = error
             safe_io.log(f"Update fehlgeschlagen: {error}")
             QMessageBox.warning(self._update_parent(), "Update", error)
@@ -193,12 +223,43 @@ class UpdateMixin:
         if self._quitting:
             return
         minimized = not self.isVisible() or self.isMinimized()
+        info = self.update_info
         try:
             updater.start_setup(path, minimized=minimized)
         except OSError as e:
+            self._close_update_window()
             safe_io.log(f"Setup nicht gestartet: {e}")
             QMessageBox.warning(self._update_parent(), "Update", f"Setup ließ sich nicht starten:\n{e}")
             return
-        safe_io.log(f"Update auf {self.update_info['version']} gestartet (von {version.version_details()})")
-        self.quit_app()  # das Setup wartet, bis Zeitzeuge beendet ist
+        safe_io.log(f"Update auf {info['version']} gestartet (von {version.version_details()})")
+        # Nach dem Neustart bestätigen (oder melden, dass es nicht geklappt hat)
+        import main_timeline as mt
+        self.config["update_pending"] = {"from": version.full_version(), "to": info["version"],
+                                         "notes": list(info.get("changes") or [])[:20]}
+        mt.save_config(self.config)
+        if self._update_window is not None:
+            self._update_window.set_step("Zeitzeuge wird beendet, danach wird installiert …")
+        # Erst zeichnen lassen, dann beenden (das Beenden hält die Oberfläche kurz an)
+        QTimer.singleShot(400, self.quit_app)  # das Setup wartet, bis Zeitzeuge beendet ist
+
+    def _report_finished_update(self):
+        """Erster Start nach einem Update: kurz bestätigen, was neu ist (oder dass es nicht klappte)."""
+        pending, self._finished_update = self._finished_update, None
+        if not pending or self._quitting:
+            return
+        import main_timeline as mt
+        mt.save_config(self.config)  # Merker ist schon aus der Config genommen
+        current = version.full_version()
+        if current == pending.get("to") or updater.is_newer(current, pending.get("from", "")):
+            notes = pending.get("notes") or []
+            self.notify(f"Aktualisiert auf {current}",
+                        "Neu darin:" if notes else "Deine Daten und Einstellungen sind unverändert.",
+                        kind="info", items=notes, card=bool(notes), timeout=20,
+                        balloon=f"Zeitzeuge wurde auf {current} aktualisiert.")
+        else:
+            safe_io.log(f"Update auf {pending.get('to')} nicht installiert (läuft weiter {current})")
+            self.notify("Update nicht installiert",
+                        f"Zeitzeuge läuft weiter mit {current}. Bitte noch einmal über "
+                        "Einstellungen → Info → Nach Updates suchen versuchen.",
+                        kind="warn", timeout=30)
 
