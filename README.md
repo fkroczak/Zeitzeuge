@@ -79,6 +79,10 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
   - Ist im Ticketsystem zu der Zeit schon etwas gebucht, steht ein Hinweis im Fenster. Gebuchte Tätigkeiten merken sich die Nummer der Zeiterfassung (z. B. TE0000012345) und lassen sich nicht doppelt buchen.
   - Im Wochenabschluss bucht **Tag im Ticketsystem buchen …** alle noch offenen Tätigkeiten des markierten Tags nacheinander, jede mit eigenem Fenster.
   - Das Ticketsystem muss eingeschaltet und angemeldet sein (nur im Firmennetz). Zeitzeuge bucht über das unsichtbare Edge, wie die Seite des Ticketsystems selbst.
+- **Meine Tickets:** Die Kachel **Meine Tickets** über der Timeline zeigt, wie viele Tickets im Ticketsystem offen sind, bei denen du Bearbeiter bist. Der Hinweis listet die ersten zehn. **Anzeigen** öffnet die Liste mit Nummer, Titel, Kunde, Status und Datum, die neuesten oben. Enter oder **Nummer kopieren** legt die Ticketnummer in die Zwischenablage, **Aktualisieren** liest sofort neu.
+  - Zeitzeuge liest die Liste alle 10 Minuten, zusammen mit den Buchungen. Offen heißt: nicht gelöst, geschlossen, abgeschlossen oder storniert.
+  - Deinen Namen nimmt Zeitzeuge aus deinen eigenen Buchungen. Steht er im Ticketsystem anders, trägst du ihn in der `zeitzeuge_config.json` unter `m42_own_name` ein (z. B. `"Müller, Anna"`).
+  - Ohne Ticketsystem bleibt die Kachel aus.
 - **Tagesabschluss** (Menü **Ansicht → Tagesabschluss …**, im Wochenabschluss oder über „Tagesabschluss öffnen“ in der Karte bei Feierabend): Zeitzeuge stellt den Tag aus allen Spuren zu Blöcken je Kunde zusammen, mit Ticket und kurzem Tickettext. Du prüfst die Liste und bestätigst einmal für alles. Ziel: mit wenig Aufwand rund 90 % der Personalzeit erfasst.
   - **Woher die Blöcke kommen:** deine eingetragenen Tätigkeiten, Verbindungen und Telefonate, KI-Vorschläge, die Zuordnung ohne KI und die Arbeitsblöcke am PC, in dieser Reihenfolge. Was im Ticketsystem schon gebucht ist, bleibt außen vor. Gleicher Kunde hintereinander wird ein Block, kurze Lücken (bis 10 Minuten) gehören zum Block davor. PC-Aktivität zählt nur in der Personalzeit.
   - **Ticket:** aus den Fenstertiteln im Block. Kennt Zeitzeuge zum Ticket keinen Kunden, schlägt es ihn in deinem Verlauf oder direkt im Ticketsystem nach. Ohne Ticket im Fenstertitel nimmt es das Ticket, das du zuletzt (14 Tage) für den Kunden benutzt hast, als **vermutet**. **Text:** der Satz aus dem KI-Vorschlag, sonst aus der Regel, sonst kurz aus den Spuren, z. B. „Fernwartung: RDP DC01, Telefonat“.
@@ -472,6 +476,8 @@ Im Alltag brauchst du das nicht. Die Knöpfe stehen deshalb nicht in den Einrich
 
 **Buchung mitschneiden (Ticketsystem):** Für „Im Ticketsystem buchen“ muss Zeitzeuge wissen, wie das Ticketsystem eine Zeiterfassung speichert. Unter **Einstellungen → Info → Fehlersuche** öffnest du **Ticketsystem: Buchung mitschneiden**, legst im Edge-Fenster eine Zeiterfassung an, öffnest sie noch einmal, änderst etwas und speicherst. Dann das Fenster schließen. Zeitzeuge speichert `mitschnitt_m42_buchung_….json`. Darin stehen Abfragen, die etwas speichern, vollständig. Passwörter und Token bleiben geschwärzt.
 
+**Ticket anlegen und schließen mitschneiden (Ticketsystem):** Vorbereitung für „Ticket anlegen“ (Incident oder Service Request mit Melder, Kategorie, Betreff und Beschreibung) und „Ticket schließen“ mit Lösungstext. Unter **Einstellungen → Info → Fehlersuche** öffnest du **Matrix42: Ticket anlegen und schließen mitschneiden**. Im Edge-Fenster legst du einen Incident und einen Service Request als Test-Tickets an und schließt beide mit Lösungstext. Dann das Fenster schließen. Zeitzeuge speichert `mitschnitt_m42_ticket_….json`, speichernde Abfragen vollständig, Passwörter und Token geschwärzt.
+
 Aufgezeichnet werden nur Datenabfragen, keine Bilder oder Skripte. Passwörter, Token und Cookie-Werte sind geschwärzt. Von Token und Cookies bleiben Name, Länge und Ablaufzeit, damit man sieht, wie lange eine Anmeldung hält. Antworten sind gekürzt (die ersten drei Einträge einer Liste). Darin können trotzdem Namen und Telefonnummern stehen, schau die Datei also vor dem Weitergeben durch.
 
 ### KI-Vorschläge
@@ -520,6 +526,7 @@ Unter **Einstellungen → Nachfragen** legst du fest, wann Zeitzeuge nachfragt. 
 | `m42_reader_enabled` | `false` | Gebuchte Zeiten aus dem Ticketsystem lesen |
 | `m42_weeks_back` | `4` | So viele Wochen zurück einmal pro Sitzung lesen |
 | `m42_gap_minutes` | `5` | Kürzere Lücken ohne Buchung zählen nicht |
+| `m42_own_name` | `""` | Dein Name als Bearbeiter im Ticketsystem, für „Meine Tickets“ (leer: aus deinen Buchungen) |
 | `pc_blocks` | `true` | PC-Aktivität als Arbeitsblöcke je Tätigkeit statt jedes Fenster einzeln |
 | `pc_jump_seconds` | `120` | Kürzere Fensterwechsel zählen zur Haupttätigkeit (0 = aus) |
 | `day_close_end_of_day` | `true` | Meldung bei Feierabend nennt den Tagesabschluss, ein Klick öffnet ihn (`false`: Meldung wie früher) |
@@ -782,6 +789,7 @@ Module in `src/`:
 | `journal_dialogs.py` | Dialoge zum Nachtragen, Nachfrage-Fenster, Einstellungen dazu |
 | `m42_reader.py` | Ticketsystem: Kalender im unsichtbaren Edge lesen (Wochenansicht, Blättern, Anmeldung) |
 | `m42_data.py` | Ticketsystem: Einträge umwandeln, Abgleich gebucht / nicht gebucht (ohne Qt) |
+| `my_tickets_dialogs.py` | Fenster „Meine Tickets“: offene Tickets, bei denen du Bearbeiter bist |
 | `busy_bar.py` | Ladeanzeige: drehender Kreis mit Text in der Werkzeugleiste, Streifen über die ganze Breite |
 | `transfer.py` | Export/Import zwischen zwei PCs (Arbeits-PC → PAW), übernommene Daten (ohne Qt) |
 | `app_transfer.py` | Hauptfenster: Export- und Import-Dialog, PAW-Modus |

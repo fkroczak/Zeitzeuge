@@ -241,7 +241,7 @@ API_JS = r"""
         {Property: "Start", Operator: 12, Value: ["", a]}, {Property: "End", Operator: 12, Value: [b, ""]}]}]},
     {Groups: [], Conditions: [], LogicalOperator: 1}]};
   const keep = ["Sys-Entity", "ObjectId", "Customer", "Activity", "TicketInfo", "State", "ActivityType",
-                "Start", "End", "WorktimeRounded", "WorktimeNominal", "Anwender_Value"];
+                "Start", "End", "WorktimeRounded", "WorktimeNominal", "Anwender", "Anwender_Value"];
   let last = {state: "error", status: 0, url: location.href};
   for (const widget of widgets) {
     let r;
@@ -325,6 +325,7 @@ class M42Reader(BrowserReader):
     booking_done = Signal(object)  # Ergebnis von book(): {ok, entry | error, request}
     activity_types_loaded = Signal(object)  # [(Wert, Name)] der Tätigkeitsarten
     tickets_found = Signal(object)  # Ergebnis von search_tickets(): {text, rows, error}
+    my_tickets_loaded = Signal(object)  # Meine Tickets: {rows (None = unbekannt), error, at}
 
     NAME = "Matrix42"
     READ_INTERVAL = 10 * 60   # aktuelle Woche so oft neu lesen
@@ -334,7 +335,7 @@ class M42Reader(BrowserReader):
     NAVIGATION_RETRIES = 3
 
     def __init__(self, url, data_file, profile_dir, parent=None, weeks_back=4, use_api=True,
-                 widget_id=""):
+                 widget_id="", own_name=""):
         url = (url or "").strip()
         super().__init__(url, profile_dir, parent)
         self.page_url = url  # die Kalenderseite selbst (base_url ist ohne / am Ende)
@@ -353,6 +354,12 @@ class M42Reader(BrowserReader):
         self.source = ""       # "Schnittstelle" oder "Seite": womit zuletzt gelesen wurde
         self.user_id = ""      # eigener Matrix42-Benutzer (aus gelesenen Buchungen), zum Buchen
         self.activity_types = []  # [(Wert, Name)], beim ersten Buchen geholt
+        # Meine Tickets (Bearbeiter = ich): Name aus der Einstellung, sonst aus den eigenen Buchungen
+        self.own_name = (own_name or "").strip()
+        self.user_name = ""
+        self.my_tickets = None  # letzte Antwort von my_tickets_loaded
+        self.ticket_list = ""   # Ticketliste (Widget-ID), leer = m42_booking.DEFAULT_IDS
+        self._tickets_read = 0
         self._booking = False
 
     def start_url(self):
@@ -456,6 +463,8 @@ class M42Reader(BrowserReader):
                 with self._lock:
                     self._wanted.update(m for m in todo[i:] if m != this_week)
                 return
+        if time.time() - self._tickets_read > self.READ_INTERVAL - 10 and not self._stop.is_set():
+            self._read_my_tickets()  # Lese-Thread hält _browser_lock schon
         self._set_status(f"Matrix42 gelesen {datetime.now():%H:%M}")
 
     def _read_week(self, monday):
@@ -528,6 +537,9 @@ class M42Reader(BrowserReader):
             users = {i.get("Anwender_Value") for i in items if isinstance(i, dict) and i.get("Anwender_Value")}
             if len(users) == 1:  # eigene Buchungen: das ist dein Benutzer (zum Buchen)
                 self.user_id = users.pop()
+                names = {i.get("Anwender") for i in items if isinstance(i, dict) and i.get("Anwender")}
+                if len(names) == 1:  # und dein Name (für „Meine Tickets“)
+                    self.user_name = names.pop()
             self._save(api_bookings_by_day(monday, items))
             self._checked.add(monday)
             if monday == week_start(date.today().isoformat()):
@@ -586,6 +598,45 @@ class M42Reader(BrowserReader):
         except Exception as e:
             rows, error = [], str(e)
         self.tickets_found.emit({"text": text, "rows": rows, "error": error})
+
+    def load_my_tickets(self):
+        """Meine Tickets sofort neu lesen (im Hintergrund), Ergebnis über my_tickets_loaded."""
+        def run():
+            with self._browser_lock:
+                self._read_my_tickets()
+        threading.Thread(target=run, daemon=True, name="Matrix42 meine Tickets").start()
+
+    def _read_my_tickets(self):
+        """Offene Tickets lesen, bei denen ich Bearbeiter bin. Nur mit gehaltenem _browser_lock."""
+        import m42_booking as mb
+        name = self.own_name or self.user_name
+        result = {"rows": None, "error": "", "at": datetime.now().strftime("%H:%M"), "name": name}
+        word = mb.my_tickets_word(name)
+        if not word:
+            result["error"] = ("Eigener Name noch unbekannt. Er kommt aus deinen Buchungen in Matrix42 "
+                               "oder aus der Einstellung „m42_own_name“.")
+        else:
+            items = []
+            try:
+                for page in range(mb.MY_TICKETS_PAGES):
+                    data = self._fetch("POST", f"{mb.API}/WidgetList/GetData/"
+                                       f"{self.ticket_list or mb.DEFAULT_IDS['ticket_list']}"
+                                       f"?orderBy=CreatedDate+desc&pageSize={mb.MY_TICKETS_PAGE_SIZE}&page={page}",
+                                       mb.search_query("Recipient", word))
+                    data = data if isinstance(data, list) else []
+                    items.extend(data)
+                    if len(data) < mb.MY_TICKETS_PAGE_SIZE:
+                        break
+                result["rows"] = mb.my_open_tickets(items, name)
+                self._tickets_read = time.time()
+            except Exception as e:
+                result["error"] = str(e)
+                safe_io.log(f"Matrix42: meine Tickets nicht gelesen ({e})")
+        if result["rows"] is not None or self.my_tickets is None:
+            self.my_tickets = result
+        else:  # Fehler: alte Liste behalten, Fehler dazuschreiben
+            self.my_tickets = dict(self.my_tickets, error=result["error"])
+        self.my_tickets_loaded.emit(self.my_tickets)
 
     def load_activity_types(self):
         """Tätigkeitsarten aus Matrix42 holen (im Hintergrund), Ergebnis über activity_types_loaded."""

@@ -201,6 +201,9 @@ def default_config():
         # Matrix42 sie ändert, die Kennungen aus dem Buchungs-Mitschnitt (m42_booking.DEFAULT_IDS)
         "m42_activity_type": 10,
         "m42_booking_ids": {},
+        # Meine Tickets: dein Name, wie er in Matrix42 als Bearbeiter steht (z. B. "Müller, Anna").
+        # Leer: Zeitzeuge nimmt ihn aus deinen eigenen Buchungen.
+        "m42_own_name": "",
         # Zwei PCs (z. B. Arbeits-PC und PAW): "paw" = nur RDM sammeln, kein Edge, keine Nachfragen
         "pc_role": "",
         "export_days": 31,            # Zeitraum beim Export für den anderen PC

@@ -133,3 +133,54 @@ def test_merge_tickets_open_first_and_filtered():
     assert [r["ticket"] for r in rows] == ["TCK0000000002", "TCK0000000003"]
     assert mb.ticket_list_label(rows[0]).endswith("· 01.11.26")
     assert [r["ticket"] for r in mb.merge_tickets_rows(rows, "bearbeitung")] == ["TCK0000000002"]
+
+
+def test_meine_tickets_filter():
+    assert mb.own_name("Kroczak, Filip - Systems (3)") == "Kroczak, Filip"
+    assert mb.my_tickets_word("Kroczak, Filip") == "kroczak"
+    assert mb.my_tickets_word("") == ""
+    items = [
+        {"TicketNumber": "TCK0000000001", "Id": "1", "State": "In Bearbeitung",
+         "Recipient": "Kroczak, Filip - Systems", "CreatedDate": "2026-10-01T08:00:00Z"},
+        {"TicketNumber": "TCK0000000002", "Id": "2", "State": "Neu",
+         "Recipient": "Filip Kroczak", "CreatedDate": "2026-10-05T08:00:00Z"},
+        {"TicketNumber": "TCK0000000003", "Id": "3", "State": "Geschlossen",
+         "Recipient": "Kroczak, Filip - Systems", "CreatedDate": "2026-10-06T08:00:00Z"},
+        {"TicketNumber": "TCK0000000004", "Id": "4", "State": "Neu",  # anderer Kroczak
+         "Recipient": "Kroczak, Anna", "CreatedDate": "2026-10-07T08:00:00Z"},
+        {"TicketNumber": "TCK0000000001", "Id": "1", "State": "In Bearbeitung",  # doppelt
+         "Recipient": "Kroczak, Filip - Systems", "CreatedDate": "2026-10-01T08:00:00Z"},
+    ]
+    rows = mb.my_open_tickets(items, "Kroczak, Filip")
+    assert [r["ticket"] for r in rows] == ["TCK0000000002", "TCK0000000001"]
+    assert mb.my_open_tickets(items, "") == []
+
+
+def test_meine_tickets_lesen(tmp_path):
+    from m42_reader import M42Reader
+    reader = M42Reader("https://m42.example/wm/", str(tmp_path / "m42.json"), str(tmp_path / "p"))
+    calls, got = [], []
+    page = [{"TicketNumber": f"TCK{n:010d}", "Id": str(n), "State": "Neu", "Recipient": "Kroczak, Filip",
+             "CreatedDate": f"2026-10-{n % 28 + 1:02d}T08:00:00Z"} for n in range(mb.MY_TICKETS_PAGE_SIZE)]
+
+    def fetch(method, path, body=None, content_type=None):
+        calls.append((path, body))
+        return page if "page=0" in path else page[:3]
+    reader._fetch = fetch
+    reader.my_tickets_loaded.connect(got.append)
+
+    reader._read_my_tickets()  # Name unbekannt: nichts abfragen, Hinweis
+    assert not calls and got[-1]["rows"] is None and "Name" in got[-1]["error"]
+
+    reader.user_name = "Kroczak, Filip"
+    reader._read_my_tickets()
+    assert len(calls) == 2 and "page=1" in calls[1][0]  # volle erste Seite: zweite nachlesen
+    assert calls[0][1]["Groups"][0]["Conditions"][0] == {"Property": "Recipient", "Operator": 7,
+                                                        "Value": ["kroczak"]}
+    assert len(got[-1]["rows"]) == mb.MY_TICKETS_PAGE_SIZE and not got[-1]["error"]
+
+    def broken(*_a, **_k):
+        raise mb.BookingError("Matrix42 antwortet mit Fehler 500")
+    reader._fetch = broken
+    reader._read_my_tickets()  # Fehler: alte Liste bleibt, Fehler steht dabei
+    assert len(got[-1]["rows"]) == mb.MY_TICKETS_PAGE_SIZE and "500" in got[-1]["error"]

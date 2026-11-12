@@ -31,7 +31,9 @@ def gui_test():
         booking_done = Signal(object)
         activity_types_loaded = Signal(object)
         tickets_found = Signal(object)
+        my_tickets_loaded = Signal(object)
         NAME = "Matrix42"
+        my_tickets = None
         needs_login = False
         status = "Matrix42 gelesen"
         activity_types = []
@@ -61,6 +63,12 @@ def gui_test():
             rows = [{"ticket": "TCK0000049374", "id": "t1", "subject": "Praktikanten",
                      "customer": "Systems", "state": "Neu", "initiator": "", "recipient": "", "created": ""}]
             self.tickets_found.emit({"text": text, "rows": rows, "error": ""})
+
+        def load_my_tickets(self):
+            self.my_tickets = {"at": "10:42", "error": "", "rows": [
+                {"ticket": "TCK0000000002", "id": "2", "subject": "Drucker", "customer": "Müller",
+                 "state": "Neu", "initiator": "Huber, Max", "recipient": "Kroczak, Filip", "created": ""}]}
+            self.my_tickets_loaded.emit(self.my_tickets)
 
         def book(self, request):
             self.requests.append(request)
@@ -216,6 +224,26 @@ def gui_test():
     assert window.entry_form_options(start, end)["ticket_search"] is None
     assert window.entry_form_options(start, end)["ticket_lookup"] is None
     window.m42_reader = reader
+
+    # Meine Tickets: Kachel über der Timeline, Klick öffnet die Liste
+    tile = window.day_summary.tickets
+    assert not tile.isVisibleTo(window)
+    reader.my_tickets_loaded.connect(window.day_summary.show_my_tickets)
+    window.show_my_tickets()  # liest beim ersten Öffnen
+    app.processEvents()
+    from my_tickets_dialogs import MyTicketsDialog
+    mine = window._my_tickets_dialog
+    assert isinstance(mine, MyTicketsDialog) and mine.results.count() == 1
+    assert mine.results.item(0).text().startswith("TCK0000000002 · Drucker · Müller"), mine.results.item(0).text()
+    assert "1 offenes Ticket" in mine.status.text(), mine.status.text()
+    assert tile.isVisibleTo(window) and tile.value.text() == "1" and "TCK0000000002" in tile.toolTip()
+    mine.copy_button.click()
+    assert app.clipboard().text() == "TCK0000000002"
+    window.show_my_tickets()  # nur ein Fenster
+    assert window._my_tickets_dialog is mine
+    mine.close()
+    window.day_summary.show_my_tickets(None)
+    assert not tile.isVisibleTo(window)
     assert QDialog  # (Import für den Typ oben)
     window.quit_app()
 
