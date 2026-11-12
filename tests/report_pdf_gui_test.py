@@ -44,6 +44,11 @@ def gui_test():
     path = report_pdf.save_report(window, day, week=True, path=os.path.join(out, "woche.pdf"),
                                   open_after=False)
     assert open(path, "rb").read().startswith(b"%PDF")
+    # Zeitgraph: Bild in der angefragten Breite, auch mit leerem Tag
+    import work_report
+    image = report_pdf.draw_chart(work_report.chart(found), 2000)
+    assert image.width() == 2000 and image.height() > 300
+    assert b"/Subtype /Image" in data, "Zeitgraph als Bild im PDF"
 
     dialog = week_dialogs.WeekDialog(window, day)
     assert dialog.report_button.isEnabled() and dialog.report_button.isVisibleTo(dialog)

@@ -1,11 +1,12 @@
-"""Tages- und Wochenbericht als eigener Beleg (PDF, zum Ausdrucken).
+"""Tages- und Wochenbericht als Selbstauskunft (PDF, zum Ausdrucken).
 
 Fehlt eine Buchung in Matrix42 (z. B. „Mittwoch Vormittag Jahresgespräch mit Vor- und
 Nachbereitung, knapp 4 Stunden“), zeigt der Bericht, was zu der Zeit gemacht wurde:
 - die eigenen Tätigkeiten mit Uhrzeit, Kunde, Text und ob sie in Matrix42 gebucht sind,
 - die Personalzeit ohne Matrix42-Buchung, je Lücke mit dem, was sie belegt,
 - die Buchungen aus Matrix42 zum Vergleich,
-- die automatisch aufgezeichneten Spuren (Termine, Telefonate, Verbindungen, PC-Arbeit).
+- die automatisch aufgezeichneten Spuren (Termine, Telefonate, Verbindungen, PC-Arbeit),
+- oben der Zeitgraph des Tages (chart), in der Woche eine Zeile je Tag (week_chart).
 
 Rein funktional, ohne Qt: build_day sammelt die Daten eines Tages, html baut daraus das
 Dokument. Das PDF schreibt report_pdf.py.
@@ -14,6 +15,8 @@ import html as _html
 from datetime import datetime, timedelta
 
 import booking_rate as br
+
+CHART_PREFIX = "zeitgraph-"  # Bildname im HTML; report_pdf.py zeichnet das Bild dazu
 
 TIME_FMT = "%Y-%m-%d %H:%M:%S"
 DAY_NAMES = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]
@@ -89,13 +92,13 @@ def merge_traces(traces):
                 last["_names"].append(name)
             continue
         result.append({"type": kind, "_start": a, "_end": max(a, e), "_names": [name] if name else [],
-                       "details": t.get("details") or ""})
+                       "details": t.get("details") or "", "row": chart_row(t)})
     out = []
     for r in result:
         names = r["_names"]
         what = ", ".join(names[:4]) + (f" (+{len(names) - 4} weitere)" if len(names) > 4 else "")
         details = r["details"] if len(names) <= 1 else ""
-        out.append({"start": r["_start"], "end": r["_end"], "type": r["type"],
+        out.append({"start": r["_start"], "end": r["_end"], "type": r["type"], "row": r["row"],
                     "what": _short(what), "details": _short(details)})
     return out
 
@@ -146,6 +149,7 @@ def build_day(date_str, spans, docs, bookings, traces, from_itm=False, now=None,
         flags = [n for k, n in (("goodwill", "Kulanz"), ("travel", "Reise")) if i.get(k)]
         items.append({"start": a, "end": e, "seconds": (e - a).total_seconds(),
                       "customer": (i.get("customer") or "").strip(), "what": what,
+                      "label": (i.get("text") or "").strip() or i.get("category") or "",
                       "ticket": (i.get("ticket") or "").strip(), "flags": flags,
                       "state": state, "level": level, "from_pc": i.get("von_pc") or ""})
     trace_rows = merge_traces(traces)
@@ -179,6 +183,113 @@ def build_day(date_str, spans, docs, bookings, traces, from_itm=False, now=None,
 
 def has_content(day):
     return bool(day["personal_seconds"] > 0 or day["items"] or day["bookings"] or day["traces"])
+
+
+# ------------------------------------------------------------------ Zeitgraph
+
+CALL_TYPES = ("Telefonat", "Teams-Anruf")
+MEETING_TYPES = ("Termin", "Teams-Besprechung", "Mail gesendet", "Mail beantwortet", "Teams-Chat",
+                 "Fahrt (vermutet)")
+LOCAL_TYPES = ("PC gesperrt", "Ruhezustand", "PC aus", "Abgemeldet", "WLAN", "Netzwerk",
+               "Datei geöffnet", "Browser")
+# Zeilen des Zeitgraphs von oben nach unten (Personalzeit, Matrix42, Tätigkeiten stehen immer da)
+ROWS = ("Personalzeit", "Matrix42", "Tätigkeiten", "Termine & Mail", "Telefon", "Verbindungen",
+        "PC-Arbeit", "PC & Dateien")
+MIN_BAR = timedelta(minutes=2)  # Punkte (Mail, Datei) bekommen eine sichtbare Breite
+
+
+def chart_row(trace):
+    """Zeile im Zeitgraph für eine Spur (Timeline-Format)."""
+    kind = trace.get("type") or ""
+    if kind in CALL_TYPES or "Anruf" in kind:
+        return "Telefon"
+    if kind in MEETING_TYPES:
+        return "Termine & Mail"
+    if kind.startswith("PC: "):
+        return "PC-Arbeit"
+    if kind in LOCAL_TYPES or trace.get("local"):
+        return "PC & Dateien"
+    return "Verbindungen"
+
+
+def _bar(a, e, text, style):
+    return {"start": a, "end": max(e, a + MIN_BAR), "text": text, "style": style}
+
+
+def chart_range(day, pad=timedelta(minutes=30)):
+    """Gezeigter Zeitraum: Personalzeit, Tätigkeiten und Buchungen (± 30 min) auf volle Stunden,
+    ohne diese die Spuren; nichts da: 7–17 Uhr."""
+    base = day["day"]
+    core = [(a, e) for a, e in day["spans"]]
+    core += [(i["start"], i["end"]) for i in day["items"]] + [(b["start"], b["end"]) for b in day["bookings"]]
+    if not core:
+        core = [(t["start"], t["end"]) for t in day["traces"]]
+    if not core:
+        return base + timedelta(hours=7), base + timedelta(hours=17)
+    first = max(base, min(a for a, _e in core) - pad)
+    last = min(base + timedelta(days=1), max(e for _a, e in core) + pad)
+    first = first.replace(minute=0, second=0, microsecond=0)
+    if last.minute or last.second:
+        last = last.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
+    if last - first < timedelta(hours=4):  # mindestens 4 Stunden, sonst wird es unleserlich breit
+        last = min(base + timedelta(days=1), first + timedelta(hours=4))
+    return first, last
+
+
+def chart(day):
+    """Zeitgraph eines Tages: {start, end, rows: [(Name, [Balken])]}.
+
+    Balken: {start, end, text, style}; style: personal, booking, gap, doc_booked, doc_missing,
+    doc_unknown, trace. Leere Spur-Zeilen fallen weg."""
+    start, end = chart_range(day)
+    rows = {name: [] for name in ROWS}
+    rows["Personalzeit"] = [_bar(a, e, "", "personal") for a, e in day["spans"]]
+    rows["Matrix42"] = [_bar(b["start"], b["end"], b["customer"] or b["ticket"], "booking")
+                        for b in day["bookings"]]
+    rows["Matrix42"] += [_bar(g["start"], g["end"], "ohne Buchung", "gap") for g in day["gaps"]]
+    styles = {"booked": "doc_booked", "missing": "doc_missing", "partly": "doc_missing"}
+    rows["Tätigkeiten"] = [_bar(i["start"], i["end"], i["label"] or i["customer"],
+                                styles.get(i["level"], "doc_unknown")) for i in day["items"]]
+    for t in day["traces"]:
+        if t["end"] > start and t["start"] < end:
+            rows[t["row"]].append(_bar(t["start"], t["end"], t["what"] or _label(t["type"]), "trace"))
+    keep = ROWS[:3]
+    return {"start": start, "end": end,
+            "rows": [(name, rows[name]) for name in ROWS if name in keep or rows[name]]}
+
+
+def week_chart(days):
+    """Woche: eine Zeile je Tag mit Personalzeit, Buchungen (oben) und Tätigkeiten (unten),
+    gemeinsamer Zeitraum aller Tage auf volle Stunden."""
+    starts, ends = [], []
+    for d in days:
+        if d["spans"] or d["items"] or d["bookings"]:
+            a, e = chart_range(d, pad=timedelta(0))
+            starts.append(a - d["day"])
+            ends.append(e - d["day"])
+    first = min(starts) if starts else timedelta(hours=7)
+    last = max(ends) if ends else timedelta(hours=17)
+    rows = []
+    styles = {"booked": "doc_booked", "missing": "doc_missing", "partly": "doc_missing"}
+    for d in days:
+        bars = [dict(_bar(a, e, "", "personal"), lane="full") for a, e in d["spans"]]
+        bars += [dict(_bar(b["start"], b["end"], "", "booking"), lane="top") for b in d["bookings"]]
+        bars += [dict(_bar(g["start"], g["end"], "", "gap"), lane="top") for g in d["gaps"]]
+        bars += [dict(_bar(i["start"], i["end"], "", styles.get(i["level"], "doc_unknown")), lane="bottom")
+                 for i in d["items"]]
+        # gleicher Uhrzeit-Bereich für jeden Tag: Balken auf einen Bezugstag verschieben
+        shift = days[0]["day"] - d["day"]
+        for b in bars:
+            b["start"] += shift
+            b["end"] += shift
+        rows.append((f"{d['name'][:2]} {d['day']:%d.%m.}", bars))
+    base = days[0]["day"]
+    return {"start": base + first, "end": base + last, "rows": rows, "week": True}
+
+
+def chart_img(name):
+    """Platzhalter für das Bild; report_pdf.py setzt die Breite in Pixeln ein."""
+    return f'<p><img src="{CHART_PREFIX}{name}" width="__CHART_WIDTH__"/></p>'
 
 
 # ------------------------------------------------------------------ HTML
@@ -225,9 +336,10 @@ def _table(headers, rows, widths=None):
     return "".join(out)
 
 
-def day_html(day, person="", with_traces=True):
-    """Ein Tag als HTML-Abschnitt (ohne <html>)."""
-    parts = [f"<h1>Tagesbericht {day['name']}, {day['day']:%d.%m.%Y}</h1>"]
+def day_html(day, person="", with_traces=True, charts=False):
+    """Ein Tag als HTML-Abschnitt (ohne <html>). charts: Platz für den Zeitgraph (report_pdf.py)."""
+    parts = [f"<h1>Tagesbericht {day['name']}, {day['day']:%d.%m.%Y}</h1>",
+             '<p class="sub">Selbstauskunft aus eigenen Einträgen und aufgezeichneten Spuren</p>']
     if person:
         parts.append(f'<p class="sub">{_e(person)}</p>')
     kind = "Personalzeit (Zeiterfassung)" if day["from_itm"] else "Arbeitszeit lt. Einstellungen"
@@ -242,6 +354,8 @@ def day_html(day, person="", with_traces=True):
     else:
         facts.append("<b>Matrix42:</b> für diesen Tag nicht gelesen")
     parts.append("<p>" + " &nbsp;·&nbsp; ".join(facts) + "</p>")
+    if charts:
+        parts.append("<h2>Zeitgraph</h2>" + chart_img(day["date"]))
 
     parts.append("<h2>Tätigkeiten (selbst dokumentiert)</h2>")
     if day["items"]:
@@ -272,7 +386,7 @@ def day_html(day, person="", with_traces=True):
             rows = [([f"{g['start']:%H:%M}", f"{g['end']:%H:%M}", hm(g["seconds"]),
                       "<br/>".join(_e(t) for t in g["evidence"]) or "keine Spuren aufgezeichnet"], "")
                     for g in day["gaps"]]
-            parts.append(_table(["Von", "Bis", "Dauer", "Was zu der Zeit gemacht wurde (Beleg)"], rows,
+            parts.append(_table(["Von", "Bis", "Dauer", "Was zu der Zeit gemacht wurde (laut Aufzeichnung)"], rows,
                                 [6, 6, 7, 81]))
         else:
             parts.append("<p>Keine – die Personalzeit ist vollständig gebucht.</p>")
@@ -304,10 +418,11 @@ def day_html(day, person="", with_traces=True):
     return "".join(parts)
 
 
-def week_html(days, person=""):
+def week_html(days, person="", charts=False):
     """Übersicht einer Woche als HTML-Abschnitt."""
     first, last = days[0]["day"], days[-1]["day"]
-    parts = [f"<h1>Wochenbericht KW {first.isocalendar()[1]} · {first:%d.%m.} – {last:%d.%m.%Y}</h1>"]
+    parts = [f"<h1>Wochenbericht KW {first.isocalendar()[1]} · {first:%d.%m.} – {last:%d.%m.%Y}</h1>",
+             '<p class="sub">Selbstauskunft aus eigenen Einträgen und aufgezeichneten Spuren</p>']
     if person:
         parts.append(f'<p class="sub">{_e(person)}</p>')
     rows = []
@@ -327,10 +442,12 @@ def week_html(days, person=""):
     parts.append(_table(["Tag", "Personalzeit", "Stunden", "Dokumentiert", "In Matrix42",
                          "Ohne Buchung", "Tätigkeiten ungebucht"], rows,
                         [10, 24, 10, 13, 13, 13, 17]))
+    if charts:
+        parts.append("<h2>Zeitgraph der Woche</h2>" + chart_img("woche"))
     gaps = [(d, g) for d in days for g in d["gaps"]]
     if gaps:
         parts.append("<h2>Zeit ohne Matrix42-Buchung</h2>")
-        parts.append(_table(["Tag", "Von–Bis", "Dauer", "Was zu der Zeit gemacht wurde (Beleg)"],
+        parts.append(_table(["Tag", "Von–Bis", "Dauer", "Was zu der Zeit gemacht wurde (laut Aufzeichnung)"],
                             [([f"{d['name'][:2]} {d['day']:%d.%m.}",
                                f"{g['start']:%H:%M}–{g['end']:%H:%M}", hm(g["seconds"]),
                                "<br/>".join(_e(t) for t in g["evidence"][:3]) or "–"], "")
@@ -340,26 +457,36 @@ def week_html(days, person=""):
 
 
 def signature_html(created):
-    return (f'<p class="note" style="margin-top:14px">Erstellt am {created:%d.%m.%Y um %H:%M} mit Zeitzeuge '
-            "aus den eigenen Einträgen und den auf diesem PC aufgezeichneten Spuren.</p>"
+    return (f'<p class="note" style="margin-top:14px">Selbstauskunft, erstellt am {created:%d.%m.%Y um %H:%M} '
+            "mit Zeitzeuge aus den eigenen Einträgen und den auf diesem PC aufgezeichneten Spuren.</p>"
             '<table width="100%" style="margin-top:28px"><tr>'
             '<td width="45%" style="border-top:1px solid #000">Ort, Datum</td><td width="10%"></td>'
             '<td width="45%" style="border-top:1px solid #000">Unterschrift</td></tr></table>')
 
 
-def document(days, week=False, person="", with_traces=True, created=None):
-    """Ganzes HTML-Dokument: Tagesbericht (ein Tag) oder Wochenbericht (Übersicht + je Tag)."""
+def document(days, week=False, person="", with_traces=True, created=None, charts=False):
+    """Ganzes HTML-Dokument: Tagesbericht (ein Tag) oder Wochenbericht (Übersicht + je Tag).
+
+    charts: Zeitgraphen als Bilder einbinden (Namen siehe charts_for, zeichnet report_pdf.py)."""
     created = created or datetime.now()
     body = []
     if week:
-        body.append(week_html(days, person))
+        body.append(week_html(days, person, charts))
         body.append(signature_html(created))
     for k, d in enumerate(days):
         brk = ' style="page-break-before: always"' if (week or k) else ""
-        body.append(f"<div{brk}>{day_html(d, person, with_traces)}"
+        body.append(f"<div{brk}>{day_html(d, person, with_traces, charts)}"
                     f"{'' if week else signature_html(created)}</div>")
     return (f"<html><head><meta charset='utf-8'><style>{CSS}</style></head>"
             f"<body>{''.join(body)}</body></html>")
+
+
+def charts_for(days, week=False):
+    """{Bildname: Zeitgraph} passend zu document(..., charts=True)."""
+    found = {CHART_PREFIX + d["date"]: chart(d) for d in days}
+    if week:
+        found[CHART_PREFIX + "woche"] = week_chart(days)
+    return found
 
 
 def file_name(days, week=False):

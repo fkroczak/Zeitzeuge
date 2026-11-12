@@ -24,7 +24,7 @@ Qt-eigenen Mitteln.
 | Robustheit: kaputte Dateien, große/UTF-16-Logs, offline, Leser-Absturz, Anmelde-Timeout, Fehler in Slots, eine Instanz | `tests/robustness_test.py` | Schritt „Tests (pytest)“ | blockiert |
 | Datenbank: nichts im Klartext, Schlüsselfächer, falscher Schlüssel, Migration mit Abbruch und doppeltem Start, gesperrte Dateien, Threads | `tests/datastore_test.py`, `tests/protect_start_test.py` | Schritt „Tests (pytest)“ | blockiert |
 | Export für die PAW verschlüsselt, alter Export weiter lesbar | `tests/transfer_logic_test.py` | Schritt „Tests (pytest)“ | blockiert |
-| Tages-/Wochenbericht: Lücken ohne Matrix42-Buchung mit Belegen, Matrix42-Stand je Tätigkeit, PDF aus dem Hauptfenster | `tests/work_report_test.py`, `tests/report_pdf_gui_test.py` | Schritt „Tests (pytest)“ | blockiert |
+| Tages-/Wochenbericht: Lücken ohne Matrix42-Buchung mit Belegen, Matrix42-Stand je Tätigkeit, Zeitgraph (Zeilen, Zeitraum, Woche), PDF aus dem Hauptfenster | `tests/work_report_test.py`, `tests/report_pdf_gui_test.py` | Schritt „Tests (pytest)“ | blockiert |
 | Startzeit (Fenster sichtbar, Daten gezeichnet) | `tests/start_bench.py` | nein, von Hand | Messwert |
 | Zeichnen und Tageswechsel mit einem Jahr Logs und 1000 Fensterwechseln | `tests/perf_bench.py` | nein, von Hand | Messwert |
 | Zeichnen, Tagesliste, Tageswechsel mit allen Quellen voll (196.000 Fensterwechsel, Anrufe, Outlook, Spuren) | `tests/heavy_bench.py` | nein, von Hand | Messwert (siehe docs/PERFORMANCE-2026-11-10.md) |

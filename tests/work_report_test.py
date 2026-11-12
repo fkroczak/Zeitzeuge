@@ -90,3 +90,36 @@ def test_html_day_and_week():
     assert wr.file_name([other, day], week=True) == "Wochenbericht_KW46_2026.pdf"
     assert wr.file_name([day]) == "Tagesbericht_2026-11-11.pdf"
     assert not wr.has_content(wr.build_day("2026-11-15", [], [], None, [], now=NOW))
+
+
+def test_chart_rows_and_range():
+    data = wr.chart(build())
+    names = [name for name, _bars in data["rows"]]
+    assert names == ["Personalzeit", "Matrix42", "Tätigkeiten", "Termine & Mail", "Telefon", "PC & Dateien"]
+    assert (data["start"], data["end"]) == (dt("07:00"), dt("17:00"))
+    rows = dict(data["rows"])
+    assert [b["style"] for b in rows["Matrix42"]] == ["booking", "booking", "gap", "gap"]
+    assert [b["style"] for b in rows["Tätigkeiten"]] == ["doc_missing"] * 3 + ["doc_booked"]
+    assert rows["Tätigkeiten"][1]["text"] == "Jahresgespräch"
+    # Punkte (Datei, Mail) bekommen eine sichtbare Breite
+    assert rows["PC & Dateien"][0]["end"] - rows["PC & Dateien"][0]["start"] >= wr.MIN_BAR
+    assert wr.chart_row({"type": "PC: Word"}) == "PC-Arbeit"
+    assert wr.chart_row({"type": "TeamViewer"}) == "Verbindungen"
+    assert wr.chart_row({"type": "Teams-Anruf"}) == "Telefon"
+    # ohne irgendetwas: 7–17 Uhr, nur die drei festen Zeilen
+    empty = wr.chart(wr.build_day("2026-11-15", [], [], None, [], now=NOW))
+    assert empty["start"].hour == 7 and len(empty["rows"]) == 3
+
+
+def test_week_chart_one_row_per_day_same_hours():
+    other = wr.build_day("2026-11-10", [(dt("06:30", "2026-11-10"), dt("15:00", "2026-11-10"))],
+                         [], [], [], from_itm=True, now=NOW)
+    data = wr.week_chart([other, build()])
+    assert [name for name, _b in data["rows"]] == ["Di 10.11.", "Mi 11.11."]
+    assert data["start"].hour == 6 and data["end"].hour == 17
+    # alle Balken auf den ersten Tag verschoben, damit die Uhrzeiten untereinander stehen
+    assert all(b["start"].date() == other["day"].date() for _n, bars in data["rows"] for b in bars)
+    html = wr.document([other, build()], week=True, charts=True)
+    assert html.count(wr.CHART_PREFIX) == 3 and "Selbstauskunft" in html
+    assert set(wr.charts_for([other, build()], week=True)) == {
+        wr.CHART_PREFIX + "2026-11-10", wr.CHART_PREFIX + D, wr.CHART_PREFIX + "woche"}
