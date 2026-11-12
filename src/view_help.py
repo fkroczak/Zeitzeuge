@@ -108,3 +108,6 @@ class ViewHelpDialog(QDialog):
         buttons.rejected.connect(self.reject)
         buttons.button(QDialogButtonBox.Close).setText("Schließen")
         layout.addWidget(buttons)
+        from card_dialog import modernize  # Rahmen wie „Tätigkeit nachtragen“
+        modernize(self, "Ansichten der Tagesliste", "Dieselben Daten unterschiedlich gezeigt. Umschalten mit "
+                  "den Chips über der Liste.", "list", intro=intro)

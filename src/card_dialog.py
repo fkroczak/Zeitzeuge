@@ -121,7 +121,7 @@ def _first_intro(items):
 
 
 def modernize(dialog, title, subtitle="", icon="doc", intro=None, scroll=False, primary=None,
-              right=(), left=(), head=(), hide=(), subtitle_label=None):
+              right=(), left=(), head=(), hide=(), subtitle_label=None, below_head=()):
     """Dialog neu anordnen (siehe Modul).
 
     intro:    einleitendes QLabel, das der Untertitel ersetzt (None = automatisch suchen,
@@ -131,7 +131,8 @@ def modernize(dialog, title, subtitle="", icon="doc", intro=None, scroll=False, 
     left:     Knöpfe aus dem Inhalt, die als leise Aktionen links in die Fußleiste wandern.
     head:     Widgets rechts in den Kopf (z. B. „+ Neuer Kunde“, ◀ ▶).
     hide:     Widgets, die der neue Kopf ersetzt (alte Überschrift).
-    subtitle_label: vorhandenes QLabel als Untertitel; der Dialog setzt seinen Text weiter selbst."""
+    subtitle_label: vorhandenes QLabel als Untertitel; der Dialog setzt seinen Text weiter selbst.
+    below_head: Widgets im Kopf unter dem Titel (z. B. die graue Zeitzeile mit Stift)."""
     layout = dialog.layout()
     dialog.setProperty("card", True)
     pal = dialog.palette()
@@ -154,9 +155,12 @@ def modernize(dialog, title, subtitle="", icon="doc", intro=None, scroll=False, 
     top = QWidget()
     top.setObjectName("prompt_top")
     top.setAttribute(Qt.WA_StyledBackground)
-    row_head = QHBoxLayout(top)
-    row_head.setContentsMargins(16, 14, 16, SPACE_M)
+    head_box = QVBoxLayout(top)
+    head_box.setContentsMargins(16, 14, 16, SPACE_M)
+    head_box.setSpacing(SPACE_S + 2)
+    row_head = QHBoxLayout()
     row_head.setSpacing(SPACE_M)
+    head_box.addLayout(row_head)
     row_head.addWidget(source_tile(icon, accent), 0, Qt.AlignVCenter)
     texts = QVBoxLayout()
     texts.setSpacing(2)
@@ -174,6 +178,9 @@ def modernize(dialog, title, subtitle="", icon="doc", intro=None, scroll=False, 
     row_head.addLayout(texts, 1)
     for widget in head:
         row_head.addWidget(widget, 0, Qt.AlignVCenter)
+    for widget in below_head:
+        _detach(widget, layout)
+        head_box.addWidget(widget)
     dialog.card_head = row_head
 
     # ---- Inhalt: alles außer Einleitung und Knopfleiste
@@ -260,6 +267,11 @@ def modernize(dialog, title, subtitle="", icon="doc", intro=None, scroll=False, 
     else:
         layout.addWidget(body, 1)
     layout.addWidget(foot)
+    # card="true" kam erst jetzt dazu: Regeln wie „QDialog[card] QLabel#prompt_src“ (Kachel hinter dem
+    # Symbol) gelten erst, wenn Qt die Kinder neu gestaltet
+    for widget in [dialog, *dialog.findChildren(QWidget)]:
+        widget.style().unpolish(widget)
+        widget.style().polish(widget)
     return dialog
 
 

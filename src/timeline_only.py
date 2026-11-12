@@ -546,6 +546,8 @@ class ActivityViewDialog(QDialog):
         buttons = QDialogButtonBox(QDialogButtonBox.Close)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+        from card_dialog import modernize  # Rahmen wie „Tätigkeit nachtragen“
+        modernize(self, type_label(activity) or "Aktivitätsdetails", zeit, "details", intro=False)
 
 
 class TimelineView(QGraphicsView):

@@ -5,14 +5,16 @@ vorbelegt aus der Tätigkeit (m42_booking.plan), du prüfst und klickst „In Ma
 Die Abfragen schickt M42Reader.book aus dem angemeldeten Edge.
 """
 from datetime import datetime
+from types import SimpleNamespace
 
-from PySide6.QtCore import QEvent, QObject, Qt, QTime, QTimer, Signal
+from PySide6.QtCore import QDate, QEvent, QLocale, QObject, Qt, QTime, QTimer, Signal
 from PySide6.QtGui import QPalette
-from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFormLayout, QHBoxLayout,
+from PySide6.QtWidgets import (QCheckBox, QComboBox, QDateEdit, QDialog, QDialogButtonBox, QFormLayout, QHBoxLayout,
                                QLabel, QLineEdit, QListWidget, QListWidgetItem, QPlainTextEdit,
                                QPushButton, QTimeEdit, QVBoxLayout)
 
 from theme import fit_bold, prose
+from prompt_card import CardParts, _theme_colors
 import m42_booking as mb
 
 
@@ -54,7 +56,7 @@ class _TicketSearch:
             self.results.addItem(item)
 
 
-class BookingDialog(_TicketSearch, QDialog):
+class BookingDialog(_TicketSearch, CardParts, QDialog):
     """Buchung prüfen und absenden. Nach Erfolg: self.result_entry = "TE…"."""
 
     def __init__(self, plan, reader=None, overlaps=(), activity_types=None,
@@ -106,26 +108,22 @@ class BookingDialog(_TicketSearch, QDialog):
         self.results.itemClicked.connect(self.take_ticket)
         self.results.hide()
         form.addRow("", self.results)
-        form.addRow("Datum:", QLabel(f"{plan['start']:%d.%m.%Y}"))
-
-        times = QHBoxLayout()
+        # Datum und Uhrzeit: graue Zeile mit Stift im Kopf wie bei „Tätigkeit nachtragen“
+        self.date_edit = QDateEdit(QDate(self.day.year, self.day.month, self.day.day))
+        self.date_edit.setLocale(QLocale(QLocale.German, QLocale.Germany))
+        self.date_edit.setDisplayFormat("ddd dd.MM.yyyy")
+        self.date_edit.setAccessibleName("Datum")
         self.start_edit = QTimeEdit(QTime(plan["start"].hour, plan["start"].minute))
         self.end_edit = QTimeEdit(QTime(plan["end"].hour, plan["end"].minute))
         for edit, name in ((self.start_edit, "Von"), (self.end_edit, "Bis")):
             edit.setDisplayFormat("HH:mm")
             edit.setAccessibleName(name)
             edit.timeChanged.connect(self.validate)
-        bis = QLabel("&bis")
-        bis.setBuddy(self.end_edit)
+        self.date_edit.dateChanged.connect(self.validate)
         self.duration = QLabel()
-        self.duration.setObjectName("hint")
-        times.addWidget(self.start_edit)
-        times.addWidget(bis)
-        times.addWidget(self.end_edit)
-        times.addWidget(self.duration, 1)
-        von = QLabel("&Von:")
-        von.setBuddy(self.start_edit)
-        form.addRow(von, times)
+        self.form = SimpleNamespace(date_edit=self.date_edit, start_edit=self.start_edit,
+                                    end_edit=self.end_edit, duration=self.duration)
+        self._build_time_row(self.form, None, _theme_colors(self)[2])
 
         self.type_edit = QComboBox()
         self.type_edit.setAccessibleName("Tätigkeitsart")
@@ -143,9 +141,11 @@ class BookingDialog(_TicketSearch, QDialog):
         self.surcharge_box = QCheckBox("&Zuschlag ignorieren")
         self.surcharge_box.setChecked(bool(plan.get("no_surcharge")))
         self.surcharge_box.setToolTip("Zuschläge (z. B. außerhalb der Servicezeit) nicht berechnen.")
-        flags.addWidget(self.goodwill_box)
-        flags.addWidget(self.travel_box)
-        flags.addWidget(self.surcharge_box)
+        flags.setSpacing(6)
+        for box in (self.goodwill_box, self.travel_box, self.surcharge_box):
+            box.setObjectName("chip_check")  # Chips wie beim Eintragen
+            flags.addWidget(box)
+        self.surcharge_box.setText("Kein &Zuschlag")
         flags.addStretch(1)
         form.addRow("", flags)
         self.goodwill_minutes = int(plan.get("goodwill_minutes") or 0)  # beim Eintragen angegeben
@@ -199,6 +199,11 @@ class BookingDialog(_TicketSearch, QDialog):
             reader.tickets_found.connect(self.on_tickets, Qt.QueuedConnection)
             # Methoden (keine Lambdas): Qt trennt sie, sobald das Fenster gelöscht ist
             reader.activity_types_loaded.connect(self.on_activity_types, Qt.QueuedConnection)
+        # Rahmen wie „Tätigkeit nachtragen“: Kopf, Formular mit Beschriftung oben, Fußleiste
+        from card_dialog import modernize
+        modernize(self, "In Matrix42 buchen", "Zeiterfassung mit Status „Neu“ am Ticket anlegen. "
+                  "Freigeben kannst du sie danach wie gewohnt in Matrix42.", "clock", intro=intro,
+                  primary=self.book_button, scroll=True, below_head=[self.time_row])
         self.validate()
         self.text_edit.setFocus()
         if reader is not None and self.search_edit.text().strip():
@@ -239,8 +244,9 @@ class BookingDialog(_TicketSearch, QDialog):
         self.warning.setVisible(True)
 
     def times(self):
-        start = datetime.combine(self.day, self.start_edit.time().toPython().replace(second=0))
-        end = datetime.combine(self.day, self.end_edit.time().toPython().replace(second=0))
+        day = self.date_edit.date().toPython()
+        start = datetime.combine(day, self.start_edit.time().toPython().replace(second=0))
+        end = datetime.combine(day, self.end_edit.time().toPython().replace(second=0))
         return start, end
 
     def validate(self, *_):

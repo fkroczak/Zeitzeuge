@@ -318,6 +318,20 @@ def check_mark_file(color):
     return path.replace(os.sep, "/")
 
 
+def chevron_file(color):
+    """Winkel nach unten als PNG für QComboBox::down-arrow (Dropdowns wie Windows 11)."""
+    import os
+    import tempfile
+    c = QColor(color).name()
+    path = os.path.join(tempfile.gettempdir(), f"zeitzeuge_chevron_{c[1:]}.png")
+    if not os.path.exists(path):
+        svg = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">'
+               f'<path d="m6 9 6 6 6-6" stroke="{c}" stroke-width="2.2" fill="none" '
+               'stroke-linecap="round" stroke-linejoin="round"/></svg>')
+        _render(svg, (48,)).pixmap(48, 48).save(path, "PNG")
+    return path.replace(os.sep, "/")
+
+
 def switch_file(track, knob, border, on):
     """Schalter (Spur mit rundem Knopf) als PNG für QCheckBox#switch::indicator.
 
@@ -346,9 +360,11 @@ def switch_file(track, knob, border, on):
 
 
 def switch_tokens(theme):
-    """Bildpfade für die Schalter im Stylesheet: $switch_on, $switch_off und deaktiviert."""
+    """Bildpfade fürs Stylesheet: Schalter ($switch_on, $switch_off, deaktiviert) und der Winkel
+    der Dropdowns ($chevron)."""
     accent, surface, muted, border = (theme[k] for k in ("accent", "surface", "muted", "border"))
-    return {"switch_on": switch_file(accent, theme["onaccent"], accent, True),
+    return {"chevron": chevron_file(muted),
+            "switch_on": switch_file(accent, theme["onaccent"], accent, True),
             "switch_off": switch_file(surface, muted, muted, False),
             "switch_on_disabled": switch_file(border, surface, border, True),
             "switch_off_disabled": switch_file(surface, border, border, False)}

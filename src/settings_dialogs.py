@@ -66,6 +66,8 @@ class ConnectionSettingsDialog(QDialog):
         self.setWindowTitle(title)
         self.setMinimumWidth(580)  # lange Pfade lesbar
         self.init_ui()
+        from card_dialog import modernize  # Rahmen wie „Tätigkeit nachtragen“
+        modernize(self, title, "Ob und woher Zeitzeuge diese Quelle liest.", "plug", intro=False, scroll=True)
     
     def init_ui(self):
         layout = QVBoxLayout()
@@ -203,6 +205,9 @@ class ActivityTypeSettingsDialog(QDialog):
         self.setWindowTitle("Aktivitätstypen verwalten")
         self.setMinimumWidth(400)
         self.init_ui()
+        from card_dialog import modernize
+        modernize(self, "Aktivitätstypen", "Typen und ihre Farben in Timeline und Tagesliste.", "type",
+                  intro=False)
     
     def init_ui(self):
         layout = QVBoxLayout()
@@ -401,6 +406,9 @@ class WorkHoursDialog(QDialog):
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
         self.ok_button = buttons.button(QDialogButtonBox.Ok)
+        from card_dialog import modernize
+        modernize(self, "Arbeitszeiten", "In der Timeline hervorgehoben, Pause und freie Tage abgedunkelt. "
+                  "Gilt nur ohne ITM-Personalzeit.", "work_time", intro=hint)
         self.update_totals()
 
     def copy_monday(self):

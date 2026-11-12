@@ -211,7 +211,7 @@ def gui_test():
     sophos = next(d for d in seen if d.windowTitle() == "Sophos Connect")
     assert "sophos_connect_dirs" in sophos.values() and "sophos_enabled" in sophos.values()
     teams = next(d for d in seen if d.windowTitle() == "Teams-Anrufe")
-    assert teams.outlook.parent() is None and teams.teams.parent() is teams  # nur Teams im Fenster
+    assert teams.outlook.parent() is None and teams.isAncestorOf(teams.teams)  # nur Teams im Fenster
     for d in seen:
         d.deleteLater()
 

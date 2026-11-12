@@ -358,7 +358,18 @@ QSpinBox, QTimeEdit { padding-right: 6px; }
 QAbstractSpinBox::up-button, QAbstractSpinBox::down-button { width: 0; border: none;
     subcontrol-origin: content; subcontrol-position: center left; } /* sonst Text ohne Rand links (Qt 6.12) */
 QDateEdit { min-width: 102px; } /* + 18 px Kalenderpfeil (Qt 6) = 120 px wie bisher */
-QComboBox QAbstractItemView { padding: 4px; outline: none; }
+QComboBox { padding-right: 28px; }
+/* Dropdown wie Windows 11: kein abgesetzter Pfeil-Kasten, nur ein Winkel rechts im Feld */
+QComboBox::drop-down, QDateEdit::drop-down { subcontrol-origin: padding; subcontrol-position: center right;
+    width: 28px; border: none; background: transparent; }
+QComboBox::down-arrow, QDateEdit::down-arrow { image: url($chevron); width: 12px; height: 12px; }
+QComboBox::down-arrow:disabled, QDateEdit::down-arrow:disabled { image: none; }
+QComboBox:hover, QDateEdit:hover { border-color: $muted; }
+QComboBox QAbstractItemView { padding: 4px; outline: none; border: 1px solid $border;
+    border-radius: $radiuspx; background-color: $surface; }
+QComboBox QAbstractItemView::item { min-height: 26px; padding: 2px 8px; border-radius: $radius_smpx; }
+QComboBox QAbstractItemView::item:hover { background-color: $hover; }
+QComboBox QAbstractItemView::item:selected { background-color: $sel; color: $seltext; }
 QPushButton { background-color: $surface; color: $text; border: 1px solid $control;
               border-radius: $radiuspx; padding: 6px 14px; min-width: 80px; }
 QPushButton:hover { background-color: $hover; }
@@ -394,7 +405,8 @@ QDialog[card="true"] QWidget#prompt_body, QDialog[card="true"] QScrollArea#card_
 QDialog[card="true"] QScrollArea#card_scroll > QWidget > QWidget#prompt_body { background: transparent; }
 QDialog[card="true"] QWidget#prompt_body QLabel, QDialog[card="true"] QWidget#prompt_top QLabel,
 QDialog[card="true"] QWidget#prompt_body QCheckBox, QDialog[card="true"] QWidget#prompt_body QRadioButton { background: transparent; }
-QDialog[card="true"] QLabel#prompt_src { background-color: $sel; border-radius: 9px; }
+QDialog[card="true"] QLabel#prompt_src, QDialog[card="true"] QWidget#prompt_top QLabel#prompt_src {
+    background-color: $sel; border-radius: 9px; }  /* sonst gewinnt „prompt_top QLabel: transparent“ */
 QDialog#entry_dialog QLabel, QDialog#entry_dialog QWidget#chips, QDialog#entry_dialog QWidget#flag_details,
 QDialog#entry_dialog QWidget#prompt_body { background: transparent; }
 QDialog#entry_dialog QLabel#prompt_src { background-color: $sel; border-radius: 9px; }
