@@ -155,6 +155,10 @@ ROWS = [
     ("view/Tagesliste", "spin", "layers", "Zusammenfassen bis Pause",
      "Ansicht „Zusammengefasst“: gleiche Verbindungen mit kürzerer Pause werden eine Zeile.",
      "merge_gap_minutes", (0, 120, "min", "nie", "redraw")),
+    ("view/Texte", "check", "edit", "Rechtschreibprüfung",
+     "Falsche Wörter in Tätigkeit, Buchung und Ticket rot unterkringeln, Vorschläge per Rechtsklick. "
+     "Nutzt die Prüfung von Windows (deutsches Sprachpaket). Gilt für neu geöffnete Fenster.",
+     "spellcheck", True),
     ("view/Tagesliste", "check", "details", "Aktivitätsdetails als Textfelder",
      "Werte im Fenster „Aktivitätsdetails“ in Textfeldern zeigen: hineinklicken, Strg+A, Strg+C.",
      "detail_text_fields", False),
