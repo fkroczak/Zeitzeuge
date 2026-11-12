@@ -562,14 +562,15 @@ HOVER_STYLES = {
 }
 HOVER_CHOICES = [("off", "Aus"), ("glow", "Nur Leuchten"), ("cone", "Lichtkegel"), ("strong", "Kräftig"),
                  ("custom", "Eigene")]
-HOVER_DEFAULT = "cone"
+HOVER_DEFAULT = "glow"  # ohne Nebel, nur Leuchten
+HOVER_CUSTOM_BASE = "cone"  # Startwerte der Regler bei „Eigene“
 
 
 def hover_style(config):
     """Werte der gewählten Hervorhebung; None: keine. „Eigene“ ergänzt fehlende Werte aus dem Lichtkegel."""
     key = (config or {}).get("hover_focus", HOVER_DEFAULT)
     if key == "custom":
-        return {**HOVER_STYLES[HOVER_DEFAULT], **((config or {}).get("hover_custom") or {})}
+        return {**HOVER_STYLES[HOVER_CUSTOM_BASE], **((config or {}).get("hover_custom") or {})}
     return HOVER_STYLES.get(key, HOVER_STYLES[HOVER_DEFAULT])
 
 

@@ -201,7 +201,7 @@ def _list_view(value, tokens):
 
 def _hover(value, tokens):
     """Drei Zeilen Balken, der mittlere unter der Maus: so stark Nebel, Lichtkegel und Leuchten."""
-    from timeline_only import HOVER_STYLES, HOVER_DEFAULT
+    from timeline_only import HOVER_STYLES, HOVER_CUSTOM_BASE
     s = _Sketch(tokens)
     s.frame()
     t = s.t
@@ -210,7 +210,7 @@ def _hover(value, tokens):
             (66, 26, 18, 2), (14, 40, 26, 2), (46, 40, 16, 0), (66, 40, 20, 1)]
     for x, y, w, c in bars:
         s.bar(x, y, w, 8, _color(colors[c]), 2)
-    style = HOVER_STYLES.get(value if value != "custom" else HOVER_DEFAULT)
+    style = HOVER_STYLES.get(value if value != "custom" else HOVER_CUSTOM_BASE)
     focus = QRectF(40, 26, 22, 8)
     if style:
         alpha = round(style["fog"] * 2.55)
