@@ -5,14 +5,17 @@ vorbelegt aus der Tätigkeit (m42_booking.plan), du prüfst und klickst „In Ma
 Die Abfragen schickt M42Reader.book aus dem angemeldeten Edge.
 """
 from datetime import datetime
+from types import SimpleNamespace
 
-from PySide6.QtCore import QEvent, QObject, Qt, QTime, QTimer, Signal
+from PySide6.QtCore import QDate, QEvent, QLocale, QObject, Qt, QTime, QTimer, Signal
 from PySide6.QtGui import QPalette
-from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFormLayout, QHBoxLayout,
+from PySide6.QtWidgets import (QCheckBox, QComboBox, QDateEdit, QDialog, QDialogButtonBox, QFormLayout, QHBoxLayout,
                                QLabel, QLineEdit, QListWidget, QListWidgetItem, QPlainTextEdit,
-                               QPushButton, QTimeEdit, QVBoxLayout)
+                               QPushButton, QTimeEdit, QToolButton, QVBoxLayout)
 
+import spellcheck
 from theme import fit_bold, prose
+from prompt_card import CardParts, _theme_colors
 import m42_booking as mb
 
 
@@ -54,7 +57,7 @@ class _TicketSearch:
             self.results.addItem(item)
 
 
-class BookingDialog(_TicketSearch, QDialog):
+class BookingDialog(_TicketSearch, CardParts, QDialog):
     """Buchung prüfen und absenden. Nach Erfolg: self.result_entry = "TE…"."""
 
     def __init__(self, plan, reader=None, overlaps=(), activity_types=None,
@@ -76,29 +79,30 @@ class BookingDialog(_TicketSearch, QDialog):
         layout.addWidget(intro)
 
         form = QFormLayout()
-        self.ticket_edit = QLineEdit(plan.get("ticket", ""))
-        self.ticket_edit.setPlaceholderText("Ticketnummer, z. B. TCK0000049374")
-        form.addRow("T&icket:", self.ticket_edit)
+        # Ein Feld für beides: Ticketnummer eintragen oder Kunde, Benutzer, Titel tippen und suchen.
+        # Ohne Ticket steht der Kunde drin und die Suche läuft gleich los.
+        self.ticket_edit = QLineEdit(plan.get("ticket", "") or plan.get("customer", ""))
+        self.ticket_edit.setPlaceholderText("Ticketnummer oder Kunde, Benutzer, Titel suchen")
+        self.ticket_edit.setClearButtonEnabled(True)
+        self.ticket_edit.setAccessibleName("Ticket oder Suchtext")
+        for clear in self.ticket_edit.findChildren(QToolButton):  # ✕ zum Leeren, für Screenreader
+            clear.setAccessibleName("Ticketfeld leeren")
+        self.ticket_edit.returnPressed.connect(self._ticket_entered)
+        self.search_edit = self.ticket_edit  # _TicketSearch sucht nach dem Text in diesem Feld
+        self.search_button = QPushButton("&Suchen")
+        self.search_button.setAutoDefault(False)
+        self.search_button.setAccessibleName("Tickets in Matrix42 suchen")
+        self.search_button.clicked.connect(self.search)
+        search = QHBoxLayout()
+        search.addWidget(self.ticket_edit, 1)
+        search.addWidget(self.search_button)
+        ticket_label = QLabel("T&icket:")
+        ticket_label.setBuddy(self.ticket_edit)
+        form.addRow(ticket_label, search)
         self.ticket_hint = QLabel(plan.get("customer", ""))
         self.ticket_hint.setObjectName("hint")
         self.ticket_hint.setWordWrap(True)
         form.addRow("Kunde:", self.ticket_hint)
-
-        # Ticket suchen: Kunde, Benutzer (Melder, Bearbeiter), Ticketnummer oder Titel
-        search = QHBoxLayout()
-        self.search_edit = QLineEdit(plan.get("customer", "") if not plan.get("ticket") else "")
-        self.search_edit.setPlaceholderText("Kunde, Benutzer, Ticketnummer oder Titel")
-        self.search_edit.setClearButtonEnabled(True)
-        self.search_edit.returnPressed.connect(self.search)
-        self.search_button = QPushButton("Suchen")
-        self.search_button.setAutoDefault(False)
-        self.search_button.setAccessibleName("Tickets in Matrix42 suchen")
-        self.search_button.clicked.connect(self.search)
-        search.addWidget(self.search_edit, 1)
-        search.addWidget(self.search_button)
-        search_label = QLabel("Ticket &suchen:")
-        search_label.setBuddy(self.search_edit)
-        form.addRow(search_label, search)
         self.results = QListWidget()
         self.results.setAccessibleName("Gefundene Tickets")
         self.results.setMaximumHeight(130)
@@ -106,26 +110,22 @@ class BookingDialog(_TicketSearch, QDialog):
         self.results.itemClicked.connect(self.take_ticket)
         self.results.hide()
         form.addRow("", self.results)
-        form.addRow("Datum:", QLabel(f"{plan['start']:%d.%m.%Y}"))
-
-        times = QHBoxLayout()
+        # Datum und Uhrzeit: graue Zeile mit Stift im Kopf wie bei „Tätigkeit nachtragen“
+        self.date_edit = QDateEdit(QDate(self.day.year, self.day.month, self.day.day))
+        self.date_edit.setLocale(QLocale(QLocale.German, QLocale.Germany))
+        self.date_edit.setDisplayFormat("ddd dd.MM.yyyy")
+        self.date_edit.setAccessibleName("Datum")
         self.start_edit = QTimeEdit(QTime(plan["start"].hour, plan["start"].minute))
         self.end_edit = QTimeEdit(QTime(plan["end"].hour, plan["end"].minute))
         for edit, name in ((self.start_edit, "Von"), (self.end_edit, "Bis")):
             edit.setDisplayFormat("HH:mm")
             edit.setAccessibleName(name)
             edit.timeChanged.connect(self.validate)
-        bis = QLabel("&bis")
-        bis.setBuddy(self.end_edit)
+        self.date_edit.dateChanged.connect(self.validate)
         self.duration = QLabel()
-        self.duration.setObjectName("hint")
-        times.addWidget(self.start_edit)
-        times.addWidget(bis)
-        times.addWidget(self.end_edit)
-        times.addWidget(self.duration, 1)
-        von = QLabel("&Von:")
-        von.setBuddy(self.start_edit)
-        form.addRow(von, times)
+        self.form = SimpleNamespace(date_edit=self.date_edit, start_edit=self.start_edit,
+                                    end_edit=self.end_edit, duration=self.duration)
+        self._build_time_row(self.form, None, _theme_colors(self)[2])
 
         self.type_edit = QComboBox()
         self.type_edit.setAccessibleName("Tätigkeitsart")
@@ -143,12 +143,18 @@ class BookingDialog(_TicketSearch, QDialog):
         self.surcharge_box = QCheckBox("&Zuschlag ignorieren")
         self.surcharge_box.setChecked(bool(plan.get("no_surcharge")))
         self.surcharge_box.setToolTip("Zuschläge (z. B. außerhalb der Servicezeit) nicht berechnen.")
-        flags.addWidget(self.goodwill_box)
-        flags.addWidget(self.travel_box)
-        flags.addWidget(self.surcharge_box)
+        flags.setSpacing(6)
+        for box in (self.goodwill_box, self.travel_box, self.surcharge_box):
+            box.setObjectName("chip_check")  # Chips wie beim Eintragen
+            flags.addWidget(box)
+        self.surcharge_box.setText("Kein &Zuschlag")
         flags.addStretch(1)
         form.addRow("", flags)
-        self.goodwill_reason = QLineEdit("Kulanz" if plan.get("goodwill") else "")
+        self.goodwill_minutes = int(plan.get("goodwill_minutes") or 0)  # beim Eintragen angegeben
+        self.travel_km = (int(plan.get("travel_km_there") or 0), int(plan.get("travel_km_back") or 0))
+        if any(self.travel_km):  # beim Eintragen angegeben: im Haken zeigen, geht mit nach Matrix42
+            self.travel_box.setText(f"&Reise (An {self.travel_km[0]} km, Ab {self.travel_km[1]} km)")
+        self.goodwill_reason = QLineEdit((plan.get("goodwill_reason") or "Kulanz") if plan.get("goodwill") else "")
         self.goodwill_reason.setPlaceholderText("Grund für die Kulanz")
         self.goodwill_reason.setAccessibleName("Kulanzgrund")
         self.goodwill_label = QLabel("Kulanz&grund:")
@@ -166,6 +172,7 @@ class BookingDialog(_TicketSearch, QDialog):
         self._surcharge_toggled(self.surcharge_box.isChecked())
 
         self.text_edit = QPlainTextEdit(plan.get("text", ""))
+        spellcheck.attach(self.text_edit)
         self.text_edit.setTabChangesFocus(True)
         self.text_edit.setFixedHeight(90)
         form.addRow("&Beschreibung:", self.text_edit)
@@ -195,9 +202,14 @@ class BookingDialog(_TicketSearch, QDialog):
             reader.tickets_found.connect(self.on_tickets, Qt.QueuedConnection)
             # Methoden (keine Lambdas): Qt trennt sie, sobald das Fenster gelöscht ist
             reader.activity_types_loaded.connect(self.on_activity_types, Qt.QueuedConnection)
+        # Rahmen wie „Tätigkeit nachtragen“: Kopf, Formular mit Beschriftung oben, Fußleiste
+        from card_dialog import modernize
+        modernize(self, "In Matrix42 buchen", "Zeiterfassung mit Status „Neu“ am Ticket anlegen. "
+                  "Freigeben kannst du sie danach wie gewohnt in Matrix42.", "clock", intro=intro,
+                  primary=self.book_button, scroll=True, below_head=[self.time_row])
         self.validate()
         self.text_edit.setFocus()
-        if reader is not None and self.search_edit.text().strip():
+        if reader is not None and self.ticket_edit.text().strip() and not plan.get("ticket"):
             self.search()  # ohne Ticket: gleich nach dem Kunden suchen
 
     # ---- Anzeige
@@ -235,8 +247,9 @@ class BookingDialog(_TicketSearch, QDialog):
         self.warning.setVisible(True)
 
     def times(self):
-        start = datetime.combine(self.day, self.start_edit.time().toPython().replace(second=0))
-        end = datetime.combine(self.day, self.end_edit.time().toPython().replace(second=0))
+        day = self.date_edit.date().toPython()
+        start = datetime.combine(day, self.start_edit.time().toPython().replace(second=0))
+        end = datetime.combine(day, self.end_edit.time().toPython().replace(second=0))
         return start, end
 
     def validate(self, *_):
@@ -271,6 +284,11 @@ class BookingDialog(_TicketSearch, QDialog):
         else:
             self.status.setText(f"⚠ Kein Ticket gefunden{': ' + error if error else '.'}")
 
+    def _ticket_entered(self):
+        """Enter im Ticketfeld: Ticketnummer bleibt stehen, anderer Text sucht in Matrix42."""
+        if not mb.normalize_ticket(self.ticket_edit.text()):
+            self.search()
+
     def take_ticket(self, item):
         row = item.data(Qt.UserRole) or {}
         self.ticket_edit.setText(row.get("ticket", ""))
@@ -287,6 +305,8 @@ class BookingDialog(_TicketSearch, QDialog):
                 "activity_type": self.type_edit.currentData(), "ids": self.ids,
                 "goodwill": self.goodwill_box.isChecked(), "travel": self.travel_box.isChecked(),
                 "goodwill_reason": self.goodwill_reason.text().strip(),
+                "goodwill_minutes": self.goodwill_minutes,
+                "travel_km_there": self.travel_km[0], "travel_km_back": self.travel_km[1],
                 "no_surcharge": self.surcharge_box.isChecked(),
                 "surcharge_reason": self.surcharge_reason.text().strip()}
 
@@ -362,9 +382,16 @@ class TicketSearchDialog(_TicketSearch, QDialog):
         self.results.itemSelectionChanged.connect(
             lambda: self.take_button.setEnabled(self.results.current_row() is not None))
         # Rahmen wie „Tätigkeit nachtragen“: Kopf, Inhalt, Fuß mit „Übernehmen“ als Hauptaktion
+        # Nichts Passendes gefunden: gleich ein Ticket anlegen und übernehmen
+        self.new_button = QPushButton("&Neues Ticket …")
+        self.new_button.setAutoDefault(False)
+        self.new_button.setToolTip("Kein passendes Ticket? Störung oder Serviceanfrage in Matrix42 anlegen. "
+                                   "Das neue Ticket wird danach übernommen.")
+        self.new_button.clicked.connect(self.new_ticket)
+        self.new_button.setEnabled(reader is not None)
         from card_dialog import modernize
         modernize(self, "Ticket suchen", "In Matrix42 nach Kunde, Melder, Ticketnummer oder Titel", "search",
-                  intro=False, primary=self.take_button)
+                  intro=False, primary=self.take_button, left=[self.new_button])
         if reader is not None:
             reader.tickets_found.connect(self.on_tickets, Qt.QueuedConnection)
         self.search_edit.setFocus()
@@ -427,13 +454,35 @@ class TicketSearchDialog(_TicketSearch, QDialog):
                                 f"{open_n} offen (stehen oben, Klick auf eine Spalte sortiert). "
                                 "Doppelklick oder „Übernehmen“ übernimmt das Ticket.")
         else:
-            self.status.setText(f"⚠ Kein Ticket gefunden{': ' + error if error else '.'}")
+            self.status.setText(f"⚠ Kein Ticket gefunden{': ' + error if error else '.'} "
+                                "„Neues Ticket …“ legt eins an.")
+
+    def new_ticket(self):
+        """Ticket anlegen (Fenster wie unter „Meine Tickets“) und gleich übernehmen."""
+        from ticket_dialogs import NewTicketDialog
+        dialog = NewTicketDialog(self.reader, self)
+        if self.windowFlags() & Qt.WindowStaysOnTopHint:
+            dialog.setWindowFlag(Qt.WindowStaysOnTopHint, True)  # sonst landet es hinter der Suche
+        created = dialog.created if dialog.exec() == QDialog.Accepted else None
+        if created:
+            self._take_row(new_ticket_row(created, dialog.request(), dialog.initiator))
+        dialog.deleteLater()
 
     def _take_row(self, row):
         if not row:
             return
         self.row = row
         self.accept()
+
+
+def new_ticket_row(created, request, initiator=None):
+    """Gerade angelegtes Ticket als Zeile wie aus der Suche (ticket, id, subject, customer, …).
+    Den Kunden nimmt es aus dem Melder („Name - Firma“)."""
+    name = (initiator or {}).get("name") or ""
+    return {"ticket": created.get("ticket", ""), "id": created.get("id", ""),
+            "subject": (request or {}).get("subject", ""),
+            "customer": name.split(" - ", 1)[1].strip() if " - " in name else "",
+            "initiator": name.split(" - ")[0].strip(), "state": "Neu", "type": created.get("type", "")}
 
 
 class TicketLookup(QObject):

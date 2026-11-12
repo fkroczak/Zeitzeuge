@@ -65,8 +65,11 @@ Type: filesandordirs; Name: "{app}\_internal"
 Source: "..\dist\ZeitZeuge-Ordner\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{autoprograms}\Zeitzeuge"; Filename: "{app}\ZeitZeuge.exe"
-Name: "{autodesktop}\Zeitzeuge"; Filename: "{app}\ZeitZeuge.exe"; Tasks: desktopicon
+; AppUserModelID wie in src/icons.py (set_windows_app_id): Sonst gehören Verknüpfung und laufendes
+; Fenster für Windows zu verschiedenen Apps, die angeheftete Taskleisten-Schaltfläche zeigt dann kein Logo.
+Name: "{autoprograms}\Zeitzeuge"; Filename: "{app}\ZeitZeuge.exe"; AppUserModelID: "Zeitzeuge.Zeitzeuge"
+Name: "{autodesktop}\Zeitzeuge"; Filename: "{app}\ZeitZeuge.exe"; Tasks: desktopicon; \
+  AppUserModelID: "Zeitzeuge.Zeitzeuge"
 
 [Registry]
 ; Gleicher Eintrag wie Einstellungen → Allgemein → Mit Windows starten (src/autostart.py)

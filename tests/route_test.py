@@ -15,7 +15,7 @@ def fake(urls, duration=1260, known=("Büro", "Kunde")):
         if "nominatim" in url:
             hit = next((k for k in known if k in __import__("urllib.parse").parse.unquote_plus(url)), None)
             return [{"lat": "48.7", "lon": "9.1" if hit == "Büro" else "9.2"}] if hit else []
-        return {"routes": [{"duration": duration}]}
+        return {"routes": [{"duration": duration, "distance": 17600}]}
     return fetch
 
 
@@ -29,6 +29,7 @@ def test_fahrzeit_aufgerundet(monkeypatch):
     urls.clear()
     assert route.drive_minutes("Büro, Stuttgart", "Kunde, Esslingen", fake(urls, 60)) == 5
     assert len(urls) == 1 and "osrm" in urls[0]
+    assert route.drive("Büro, Stuttgart", "Kunde, Esslingen", fake(urls)) == (25, 18)  # 17,6 km
     # keine Kennung des Nutzers in den Abfragen
     assert all("@" not in u for u in urls)
 

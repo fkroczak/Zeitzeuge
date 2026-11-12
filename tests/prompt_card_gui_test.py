@@ -164,16 +164,19 @@ def gui_test():
     pane = settings.prompt_settings
     pane.style_buttons["window"].click()
     assert pane.timeout.currentData() == 0, "Karte: dauerhaft vorgeschlagen"
-    pane.style_buttons["strip"].click()
-    assert pane.timeout.currentData() == 10 and pane.strip_close.isEnabled()
+    assert not pane.strip_close.isVisibleTo(pane), "✕ an der Leiste nur bei der Leiste"
+    assert not pane.keep_active.isVisibleTo(pane), "Dauerhaft: nichts stehen zu lassen"
     pane.dots.click()
-    assert window.config["prompt_mode"] == "strip" and window.config["prompt_timeout_seconds"] == 10
     assert window.config["prompt_dots_clickable"] is False
+    pane.style_buttons["strip"].click()
+    assert pane.timeout.currentData() == 10 and pane.strip_close.isVisibleTo(pane)
+    assert pane.keep_active.isVisibleTo(pane) and not pane.dots.isVisibleTo(pane)
+    assert window.config["prompt_mode"] == "strip" and window.config["prompt_timeout_seconds"] == 10
     pane.idle_spin.setValue(25)
     assert window.config["idle_prompt_minutes"] == 25 and window.idle_watch.minutes == 25
-    assert not pane.position.isEnabled(), "Leiste: Position fest unten rechts"
+    assert not pane.position.isVisibleTo(pane), "Leiste: Position fest unten rechts"
     pane.style_buttons["window"].click()
-    assert pane.position.isEnabled()
+    assert pane.position.isVisibleTo(pane) and not pane.strip_close.isVisibleTo(pane)
     pane.position.setCurrentIndex(pane.position.findData("top_left"))
     pane.position.activated.emit(pane.position.currentIndex())
     assert window.config["prompt_position"] == "top_left"

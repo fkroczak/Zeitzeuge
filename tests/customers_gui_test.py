@@ -162,7 +162,7 @@ def gui_test():
     assert "Startadresse" in dialog.route_status.text()
     window.config["travel_home_address"] = "Büroweg 1, Esslingen"
     asked = []
-    route.drive_minutes = lambda a, b: asked.append((a, b)) or 25
+    route.drive = lambda a, b: asked.append((a, b)) or (25, 18)
     dialog.calculate_route()
     # Ergebnis kommt aus einem Thread; abwarten statt fest zu schlafen (CI unter Windows
     # ist langsamer, und das erste Zeichnen des Hauptfensters kann gerade dazwischenkommen)

@@ -54,6 +54,9 @@ class RetentionDialog(QDialog):
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+        from card_dialog import modernize  # Rahmen wie „Tätigkeit nachtragen“
+        modernize(self, "PC-Verlauf automatisch löschen", "Aufgezeichnete Fenster nach einigen Tagen löschen.",
+                  "trash", intro=False)
 
     def values(self):
         return self.enabled.isChecked(), self.days.value()

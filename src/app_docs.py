@@ -559,7 +559,7 @@ class DocsMixin(CustomersMixin):
                              item.get("text", ""), title="Tätigkeit ändern",
                              can_delete=True, parent=self,
                              goodwill=item.get("goodwill", False), travel=item.get("travel", False),
-                             no_surcharge=item.get("no_surcharge", False),
+                             no_surcharge=item.get("no_surcharge", False), flag_details=item,
                              **self.entry_form_options(start, end, item.get("ticket", "")))
         dialog.form.set_billing(self.billing())
         if dialog.exec() != QDialog.Accepted:
@@ -632,7 +632,16 @@ class DocsMixin(CustomersMixin):
         return {"snippets": snippets.from_config(self.config), "recent_texts": recent,
                 "ticket": ticket, "ticket_suggestions": self.ticket_suggestions(start, end),
                 "ticket_search": self.search_m42_ticket if getattr(self, "m42_reader", None) else None,
-                "ticket_lookup": self.m42_ticket_lookup if getattr(self, "m42_reader", None) else None}
+                "ticket_lookup": self.m42_ticket_lookup if getattr(self, "m42_reader", None) else None,
+                "travel_guess": self.travel_guess}
+
+    def travel_guess(self, start, end):
+        """Reise vorbelegen: vermutete Fahrt (travel.py) in oder kurz vor start–end.
+        -> {location, departure "HH:MM", km, label} oder None."""
+        import travel
+        date = QDate(start.year, start.month, start.day)
+        trips = [e for e in self.timeline.activities_for(date) if e.get("type") == travel.TYPE]
+        return travel.guess_for(trips, start, end, self.config, customer_list.customer_list(self.config))
 
     def m42_ticket_lookup(self, parent):
         """Suche beim Tippen im Feld „Ticket“ (m42_booking_dialogs.TicketLookup) oder None."""

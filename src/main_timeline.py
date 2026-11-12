@@ -457,6 +457,8 @@ class TimelineApp(MenusMixin, DayListMixin, DayCloseMixin, DocsMixin, ReadersMix
         self.data_store = open_store()  # im Start (unten) schon mit Dialog geöffnet, in Tests hier
         first_start = not os.path.exists(CONFIG_FILE)
         self.config = load_config_with_defaults()
+        import spellcheck
+        spellcheck.use_config(self.config)  # Schalter „Rechtschreibprüfung“ für alle Textfelder
         # Einrichtungsassistent nur beim allerersten Start (bestehende Installationen nicht)
         self._wizard_open = False
         self._wizard_pending = (first_start and not self.config.get("setup_done")
@@ -567,6 +569,7 @@ class TimelineApp(MenusMixin, DayListMixin, DayCloseMixin, DocsMixin, ReadersMix
         list_layout.setSpacing(0)
         self.view_chips = ViewChips(list_box)
         self.view_chips.view_chosen.connect(self.change_view)
+        self.view_chips.filter_cleared.connect(lambda: self.toggle_customer_filter(""))
         self.view_chips.show_state(self.config.get("list_view", "grouped"))  # schon vor den Daten
         if hasattr(self, "view_actions"):
             self.update_view_button()  # Hinweise an die Chips
@@ -600,6 +603,7 @@ class TimelineApp(MenusMixin, DayListMixin, DayCloseMixin, DocsMixin, ReadersMix
         self.day_summary.open_clicked.connect(self.document_next_open)
         self.day_summary.suggestions_clicked.connect(lambda: self.change_view("ai"))
         self.day_summary.tickets_clicked.connect(self.show_my_tickets)
+        self.day_summary.customer_clicked.connect(self.toggle_customer_filter)
         central_layout.addWidget(self.day_summary)
         central_layout.addWidget(splitter, 1)
         self.setCentralWidget(central)

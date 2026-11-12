@@ -26,7 +26,6 @@ from theme import GERMAN, STYLESHEET, SPACE_XS, default_custom_colors, theme_for
 from timeline_only import (COLOR_ROWS, DEFAULT_CALL_COLORS, LEGEND_BANDS, LEGEND_FIXED, ROW_NAMES,
                            TIMELINE_ROWS, entry_color)
 from view_help import VIEW_HELP, ViewHelpDialog, help_text
-from version import build_details, full_version
 import main_timeline as mt  # Pfade und save_config zur Laufzeit von dort (Tests ersetzen sie dort)
 
 
@@ -767,20 +766,8 @@ class MenusMixin:
         self.timeline.refresh()  # neu einlesen und zeichnen
 
     def show_about(self):
-        icon_path = mt.resource_path("zeitzeuge.png")
-        msg = QMessageBox(self)
-        msg.setWindowTitle("Über Zeitzeuge")
-        msg.setTextFormat(Qt.RichText)
-        msg.setText(
-            f"<b>Zeitzeuge</b><br>Version {full_version()}<br>"
-            f"{' · '.join(build_details())}<br><br>"
-            "<a href='https://github.com/fkroczak/Zeitzeuge/blob/main/CHANGELOG.md'>Was ist neu?</a>"
-            "<br><a href='https://github.com/fkroczak/Zeitzeuge'>github.com/fkroczak/Zeitzeuge</a>"
-        )
-        msg.setStandardButtons(QMessageBox.Ok)
-        if os.path.exists(icon_path):
-            msg.setIconPixmap(QIcon(icon_path).pixmap(64, 64))
-        msg.exec()
+        """Über Zeitzeuge: Version, Build und Links stehen oben auf der Info-Seite der Einstellungen."""
+        return self.show_settings("about")
 
     # ---------------------- Zoom / Dark-Mode ----------------------------------
 
@@ -929,7 +916,7 @@ class MenusMixin:
     def apply_style(self):
         theme = theme_for(self.config)
         sheet = STYLESHEET
-        tokens = {**theme, "checkmark": icons.check_mark_file(theme["onaccent"])}
+        tokens = {**theme, "checkmark": icons.check_mark_file(theme["onaccent"]), **icons.switch_tokens(theme)}
         for key in sorted(tokens, key=len, reverse=True):  # $bandtext vor $band ersetzen
             sheet = sheet.replace(f"${key}", tokens[key])
         # Palette passend setzen, sonst nutzen Tabellen/Scrollbars die Systemfarben
@@ -941,6 +928,7 @@ class MenusMixin:
                           (QPalette.HighlightedText, "seltext"),
                           (QPalette.ToolTipBase, "surface"), (QPalette.ToolTipText, "text"),
                           (QPalette.PlaceholderText, "muted"),
+                          (QPalette.Link, "accent"), (QPalette.LinkVisited, "accent"),
                           (QPalette.Accent, "accent")]:  # Qt 6 nutzt Accent statt Highlight
             pal.setColor(role, QColor(theme[key]))
         self.setStyleSheet("")  # alte Farben vollständig entfernen

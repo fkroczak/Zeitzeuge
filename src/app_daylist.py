@@ -49,6 +49,24 @@ def new_details(details, type_text, customer_text):
             kept.append(part.strip())
     return " · ".join(p for p in kept if p)
 
+def _customer_key(name):
+    """„Jugendhilfe Olsberg - Jörg Spiekermann“ und „Jugendhilfe Olsberg“ sind derselbe Kunde."""
+    return (name or "").split(" - ")[0].strip().casefold()
+
+
+def customer_matches(entry, name, index=None):
+    """Gehört der Eintrag zum Kunden name (Chip „Nach Kunde“)? „ohne Kunde“: Einträge ohne Kunde.
+    Spuren ohne eigenen Kundennamen (z. B. RDP auf srv01) zählen über die Kundenliste mit."""
+    own = (entry.get("customer_name") or "").strip()
+    if name == "ohne Kunde":
+        return not own
+    key = _customer_key(name)
+    if own and (_customer_key(own) == key or own.casefold() == name.casefold()):
+        return True
+    found = index.customer_for(entry) if index is not None else ""
+    return bool(found) and _customer_key(found) == key
+
+
 def is_call(entry):
     """Telefonat aus 3CX (eingehend, ausgehend, verpasst) oder Teams-Anruf?"""
     kind = entry.get("type") or ""
@@ -84,6 +102,9 @@ class DayListMixin:
             # Arbeitsblöcke wie in der Timeline (abgeschaltet: jedes Fenster ab 30 s)
             entries += (self.timeline.pc_blocks_for(self.current_date) if self.config.get("pc_blocks", True)
                         else self.pc_activities)
+        if getattr(self, "customer_filter", ""):  # Chip „Nach Kunde“ angeklickt
+            found = self.customer_index()
+            entries = [e for e in entries if customer_matches(e, self.customer_filter, found)]
         entries.sort(key=lambda a: a["start"])
         self.list_entries = entries
 
@@ -143,6 +164,15 @@ class DayListMixin:
     VIEWS = [("grouped", "Zusammengefasst"), ("single", "Einzeln"), ("blocks", "Arbeitsblöcke"),
              ("calls", "Telefonate"), ("doc", "Dokumentation"), ("rules", "Zuordnung ohne KI"), ("ai", "KI-Vorschläge"),
              ("m42", "Matrix42-Abgleich")]
+
+    def toggle_customer_filter(self, name):
+        """Tagesliste nur für diesen Kunden (Chip „Nach Kunde“); gleicher Kunde oder leer: alle."""
+        self.customer_filter = "" if not name or name == getattr(self, "customer_filter", "") else name
+        if hasattr(self, "day_summary"):
+            self.day_summary.customers.value.set_active(self.customer_filter)
+        if hasattr(self, "view_chips"):
+            self.view_chips.show_filter(self.customer_filter)
+        self.update_day_list(getattr(self, "day_activities", []), getattr(self, "pc_activities", []))
 
     def change_view(self, key):
         self.config["list_view"] = key
@@ -355,6 +385,10 @@ class DayListMixin:
     # ---------------------- Datum / Navigation --------------------------------
 
     def date_changed(self, date: QDate):
+        if getattr(self, "customer_filter", ""):  # Kundenfilter gilt nur für den Tag
+            self.customer_filter = ""
+            self.day_summary.customers.value.set_active("")
+            self.view_chips.show_filter("")
         self.current_date = date
         self.timeline.current_date = date
         self.show_preferred_range()  # zeichnet neu: Arbeitszeit des Tages oder ganzer Tag

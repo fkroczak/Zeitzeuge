@@ -129,6 +129,19 @@ def gui_test():
     start, end = datetime(2026, 10, 19, 11, 0), datetime(2026, 10, 19, 11, 30)
     doc = EntryDialog(start, end, ["Systems"], ["Fernwartung"], customer="Systems",
                       **window.entry_form_options(start, end))
+    # Kulanz und Reise: Angaben erscheinen erst mit dem Haken, Reise wird vorbelegt
+    form = doc.form
+    assert not form.goodwill_panel.isVisibleTo(doc) and not form.travel_panel.isVisibleTo(doc)
+    form.goodwill_box.setChecked(True)
+    assert form.goodwill_panel.isVisibleTo(doc) and form.goodwill_minutes.value() == form._minutes()
+    form.travel_guess = lambda a, b: {"there_km": 42, "back_km": 40, "label": "Hinfahrt 09:25–10:00"}
+    form.travel_box.setChecked(True)
+    details = form.flag_details()
+    assert details["travel_km_there"] == 42 and details["travel_km_back"] == 40, details
+    assert details["goodwill_reason"] == "Kulanz", details
+    form.goodwill_box.setChecked(False)
+    form.travel_box.setChecked(False)
+    assert form.flag_details() == {}
     # Ticketfeld liegt hinter „+ Ticket“ (wie in der Nachfrage-Karte)
     assert doc.form.ticket_search_button is not None and not doc.ticket_row.isVisibleTo(doc)
     doc.ticket_add.click()
@@ -140,6 +153,7 @@ def gui_test():
         app.processEvents()
         seen["doc_search"] = search.search_edit.text()
         seen["doc_rows"] = search.results.rowCount()
+        seen["new_button"] = search.new_button.isVisible() and search.new_button.isEnabled()
         search.take_button.click()
 
     reader.searches.clear()
@@ -147,6 +161,11 @@ def gui_test():
     doc.form.ticket_search_button.click()
     assert seen["doc_search"] == "Systems" and seen["doc_rows"] == 1, seen
     assert reader.searches == ["Systems"], reader.searches
+    assert seen["new_button"], "Ticket suchen bietet „Neues Ticket …“ an"
+    # Neu angelegtes Ticket wird wie ein Treffer übernommen, Kunde aus dem Melder
+    row = m42_booking_dialogs.new_ticket_row({"ticket": "TCK0000050000", "id": "n1"},
+                                             {"subject": "Drucker"}, {"name": "Huber, Max - Systems"})
+    assert row["ticket"] == "TCK0000050000" and row["customer"] == "Systems" and row["subject"] == "Drucker"
     assert doc.item()["ticket"] == "TCK0000049374", doc.item()
     doc.deleteLater()
 

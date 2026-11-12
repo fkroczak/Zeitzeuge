@@ -13,10 +13,11 @@ import re
 from PySide6.QtCore import QDate, QEvent, QLocale, QModelIndex, QSize, Qt, QTime, QTimer, Signal
 from PySide6.QtGui import QIcon, QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (QButtonGroup, QCheckBox, QComboBox, QCompleter, QDateEdit, QDialog,
-                               QFormLayout, QFrame, QGridLayout, QHBoxLayout, QLabel, QMenu, QPlainTextEdit,
+                               QFormLayout, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QMenu, QPlainTextEdit,
                                QPushButton, QSpinBox, QTimeEdit, QToolButton, QVBoxLayout,
                                QWidget)
 
+import spellcheck
 from theme import theme_for, SPACE_M, SPACE_S, SPACE_XS
 from flow_layout import FlowLayout
 import icons
@@ -38,8 +39,12 @@ class _EntryForm(QWidget):
                  tv_id=None, parent=None, show_date=True, snippets=(), recent_texts=None,
                  ticket="", ticket_suggestions=(), show_ticket=True, trace=None, rule_subject=None,
                  goodwill=False, travel=False, no_surcharge=False, ticket_search=None,
-                 ticket_lookup=None):
+                 ticket_lookup=None, flag_details=None, travel_guess=None):
         super().__init__(parent)
+        # flag_details: gespeicherte Angaben zu Kulanz/Reise (goodwill_minutes, goodwill_reason,
+        # travel_km_there, travel_km_back). travel_guess(start, end) -> dict mit there_km/back_km
+        # aus der vermuteten Fahrt oder None (füllt beim Anhaken vor).
+        self.travel_guess = travel_guess
         # ticket_search: Funktion (Suchtext, Fenster) -> Ticket-dict oder None (Matrix42-Suche)
         # ticket_lookup: Funktion (Elternobjekt) -> TicketLookup, Suche beim Tippen im Feld Ticket
         self.ticket_search = ticket_search
@@ -151,8 +156,10 @@ class _EntryForm(QWidget):
         flags.addStretch(1)
         self._flags_row = flags  # rechts daneben „Text einfügen“ (_add_text_helpers)
         form.addRow("", flags)
+        self._build_flag_details(form, flag_details or {})
 
         self.text_edit = QPlainTextEdit(text)
+        spellcheck.attach(self.text_edit)  # falsche Wörter rot unterkringelt (Windows-Prüfung)
         self.text_edit.setPlaceholderText("Was hast du gemacht? z. B. „Drucker neu eingerichtet, "
                                           "Treiber aktualisiert“")
         self.text_edit.setTabChangesFocus(True)
@@ -172,6 +179,121 @@ class _EntryForm(QWidget):
         self.billing = None  # billing.Billing: "abgerechnet …" neben der Dauer (set_billing)
         self.customer_edit.currentTextChanged.connect(lambda _t: self.validate())
         self.validate()
+
+    # ---- Angaben zu Kulanz und Reise (erscheinen erst, wenn angehakt)
+
+    def _build_flag_details(self, form, details):
+        def field(grid, col, name, widget):
+            label = QLabel(name)
+            label.setObjectName("prompt_label")
+            label.setBuddy(widget)
+            grid.addWidget(label, 0, col)
+            grid.addWidget(widget, 1, col)
+
+        def panel():
+            host = QWidget()
+            host.setObjectName("flag_details")
+            grid = QGridLayout(host)
+            grid.setContentsMargins(0, 0, 0, 0)
+            grid.setHorizontalSpacing(SPACE_M)
+            grid.setVerticalSpacing(SPACE_XS)
+            return host, grid
+
+        # Kulanz: wie viel der Zeit nicht berechnet wird und warum (Matrix42 will einen Grund)
+        self.goodwill_panel, grid = panel()
+        self.goodwill_minutes = QSpinBox()
+        self.goodwill_minutes.setRange(1, 24 * 60)
+        self.goodwill_minutes.setSuffix(" min")
+        self.goodwill_minutes.setAccessibleName("Kulanzzeit in Minuten")
+        self.goodwill_minutes.setToolTip("So viel der Zeit wird nicht berechnet (Standard: alles)")
+        self._goodwill_minutes_set = bool(details.get("goodwill_minutes"))
+        self.goodwill_minutes.setValue(int(details.get("goodwill_minutes") or 0) or self._minutes())
+        self.goodwill_minutes.valueChanged.connect(lambda _v: setattr(self, "_goodwill_minutes_set", True))
+        self.goodwill_reason = QLineEdit(str(details.get("goodwill_reason") or ""))
+        self.goodwill_reason.setPlaceholderText("z. B. Nacharbeit, eigener Fehler, Kundenbindung")
+        self.goodwill_reason.setAccessibleName("Grund für die Kulanz")
+        field(grid, 0, "Kulanz&zeit", self.goodwill_minutes)
+        field(grid, 1, "Kulanz&grund", self.goodwill_reason)
+        grid.setColumnStretch(1, 1)
+        form.addRow("", self.goodwill_panel)
+
+        # Reise: Kilometer für An- und Abfahrt (aus der vermuteten Fahrt vorbelegt)
+        self.travel_panel, grid = panel()
+
+        def km_box(name, value):
+            box = QSpinBox()
+            box.setRange(0, 2000)
+            box.setSuffix(" km")
+            box.setSpecialValueText("– km")
+            box.setAccessibleName(name)
+            box.setValue(int(value or 0))
+            return box
+
+        self.travel_there = km_box("Anfahrt in Kilometern", details.get("travel_km_there"))
+        self.travel_back = km_box("Abfahrt in Kilometern", details.get("travel_km_back"))
+        self.travel_note = QLabel()
+        self.travel_note.setObjectName("hint")
+        self.travel_note.setWordWrap(True)
+        self.travel_note.hide()
+        field(grid, 0, "An&fahrt", self.travel_there)
+        field(grid, 1, "A&bfahrt", self.travel_back)
+        grid.addWidget(self.travel_note, 1, 2)
+        grid.setColumnStretch(2, 1)
+        form.addRow("", self.travel_panel)
+
+        self.goodwill_box.toggled.connect(self._goodwill_toggled)
+        self.travel_box.toggled.connect(self._travel_toggled)
+        self.goodwill_panel.setVisible(self.goodwill_box.isChecked())
+        self.travel_panel.setVisible(self.travel_box.isChecked())
+
+    def _minutes(self):
+        start, end = self.times()
+        return max(1, int((end - start).total_seconds() // 60))
+
+    def _goodwill_toggled(self, on):
+        self.goodwill_panel.setVisible(on)
+        if on:
+            if not self._goodwill_minutes_set:  # noch nicht verändert: die ganze Zeit
+                self.goodwill_minutes.blockSignals(True)
+                self.goodwill_minutes.setValue(self._minutes())
+                self.goodwill_minutes.blockSignals(False)
+            if not self.goodwill_reason.text().strip():
+                self.goodwill_reason.setFocus()
+
+    def _travel_toggled(self, on):
+        self.travel_panel.setVisible(on)
+        if on and not self.travel_there.value() and not self.travel_back.value():
+            self.prefill_travel()
+
+    def prefill_travel(self):
+        """Kilometer für An- und Abfahrt aus der vermuteten Fahrt (travel.py), wenn es eine gibt."""
+        guess = None
+        if self.travel_guess is not None:
+            try:
+                guess = self.travel_guess(*self.times())
+            except Exception as e:  # Vorbelegen darf das Eintragen nie stören
+                print(f"Reise vorbelegen ging nicht: {e}")
+        if not guess:
+            self.travel_note.setText("Keine vermutete Fahrt in dieser Zeit.")
+        else:
+            self.travel_there.setValue(int(guess.get("there_km") or 0))
+            self.travel_back.setValue(int(guess.get("back_km") or 0))
+            known = guess.get("there_km") or guess.get("back_km")
+            self.travel_note.setText(f"Aus der vermuteten Fahrt ({guess['label']})" if known else
+                                     f"{guess['label']}: Kilometer unbekannt (Adresse fehlt)")
+        self.travel_note.show()
+
+    def flag_details(self):
+        """Angaben zu Kulanz und Reise, nur für angehakte Merker."""
+        result = {}
+        if self.goodwill_box.isChecked():
+            result["goodwill_minutes"] = min(self.goodwill_minutes.value(), self._minutes())
+            result["goodwill_reason"] = self.goodwill_reason.text().strip() or "Kulanz"
+        if self.travel_box.isChecked():
+            for key, box in (("travel_km_there", self.travel_there), ("travel_km_back", self.travel_back)):
+                if box.value():
+                    result[key] = box.value()
+        return result
 
     def set_billing(self, billing):
         self.billing = billing
@@ -485,6 +607,7 @@ class _EntryForm(QWidget):
             "goodwill": self.goodwill_box.isChecked(),
             "travel": self.travel_box.isChecked(),
             "no_surcharge": self.surcharge_box.isChecked(),
+            **self.flag_details(),
         }
 
 
@@ -807,10 +930,14 @@ class PromptSettings(QWidget):
         self.position.setCurrentIndex(max(0, self.position.findData(prompt_position(config))))
         self.position.setToolTip("Wo Karte und Kompakt erscheinen. Die Leiste bleibt unten rechts.")
         self.position.setAccessibleName("Position der Nachfrage")
-        for i, (name, widget) in enumerate((("Ausblenden &nach", self.timeout), ("Position", self.position),
-                                            ("✕ an der Le&iste", self.strip_close))):
-            grid.addWidget(label(name, widget), (i // 2) * 2, i % 2)
-            grid.addWidget(widget, (i // 2) * 2 + 1, i % 2)
+        # Position (Karte, Kompakt) und ✕ an der Leiste (nur Leiste) teilen sich die rechte Spalte:
+        # Sichtbar ist immer nur, was zur gewählten Darstellung passt (_sync_style).
+        self.option_labels = {}
+        for col, name, widget in ((0, "Ausblenden &nach", self.timeout), (1, "Position", self.position),
+                                  (1, "✕ an der Le&iste", self.strip_close)):
+            self.option_labels[widget] = label(name, widget)
+            grid.addWidget(self.option_labels[widget], 0, col)
+            grid.addWidget(widget, 1, col)
         for col in (0, 1):
             grid.setColumnStretch(col, 1)
         for combo in (self.timeout, self.position, self.strip_close):  # schmal werden dürfen (200 %)
@@ -925,6 +1052,7 @@ class PromptSettings(QWidget):
             widget.valueChanged.connect(self.apply)
         for widget in (self.timeout, self.position, self.strip_close):
             widget.activated.connect(self.apply)
+        self.timeout.activated.connect(lambda *_: self._sync_style(self.current_style()))
 
     def retheme(self, tokens):
         for key, button in self.style_buttons.items():
@@ -942,11 +1070,17 @@ class PromptSettings(QWidget):
         self.apply()
 
     def _sync_style(self, key):
+        """Nur zeigen, was bei dieser Darstellung wirkt: Position bei Karte und Kompakt, ✕ und
+        Leiste nur bei der Leiste, Punkte nur in der Karte, „Stehen lassen“ nur mit Ausblenden."""
         self.style_hint.setText(STYLE_HINTS[key])
-        for widget in (self.timeout, self.keep_active, self.dots):
-            widget.setEnabled(key != "off")
-        self.strip_close.setEnabled(key == "strip")
-        self.position.setEnabled(key in ("window", "compact"))
+        on = key != "off"
+        shown = {self.timeout: on, self.position: key in ("window", "compact"),
+                 self.strip_close: key == "strip", self.dots: key in ("window", "compact"),
+                 self.keep_active: on and self.timeout.currentData() != 0}
+        for widget, visible in shown.items():
+            widget.setVisible(visible)
+            if widget in self.option_labels:
+                self.option_labels[widget].setVisible(visible)
 
     def apply(self, *_):
         self.config["prompt_mode"] = self.current_style()

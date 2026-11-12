@@ -546,6 +546,8 @@ class ActivityViewDialog(QDialog):
         buttons = QDialogButtonBox(QDialogButtonBox.Close)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+        from card_dialog import modernize  # Rahmen wie „Tätigkeit nachtragen“
+        modernize(self, type_label(activity) or "Aktivitätsdetails", zeit, "details", intro=False)
 
 
 class TimelineView(QGraphicsView):
@@ -611,6 +613,8 @@ class TimelineView(QGraphicsView):
         self._first_draw = True
         self._ppm = None  # Pixel pro Minute beim letzten Zeichnen
         self.activity_rects = {}
+        self._fog = None  # Nebel beim Überfahren eines Balkens (_focus_block)
+        self._focused = None
         self.remote_suggestions = []
         self.current_date = QDate.currentDate()
         self.calls_file = None  # wird vom Hauptfenster gesetzt (anrufe.json)
@@ -1112,7 +1116,7 @@ class TimelineView(QGraphicsView):
         place = " ".join(travel._location(appointment).split())
         if not route.looks_like_address(place):
             return None
-        key = f"{home} → {place}".casefold()
+        key = travel.address_key(home, place)
         known = self.config.get("travel_address_minutes")
         if isinstance(known, dict) and key in known:
             return known[key]
@@ -1121,28 +1125,33 @@ class TimelineView(QGraphicsView):
 
             def work():
                 try:
-                    minutes = route.drive_minutes(home, place)
+                    minutes, km = route.drive(home, place)
                 except Exception as e:  # Adresse unbekannt, offline …: Schätzung über Lücken
                     print(f"Fahrzeit zu „{place}“ nicht berechnet: {e}")
-                    minutes = None
+                    minutes = km = None
                 if not self._closing:
-                    self._route_done.emit(key, minutes)
+                    self._route_done.emit(key, (minutes, km))
 
             thread = threading.Thread(target=work, daemon=True, name="Fahrzeit Termin")
             self._threads = [t for t in self._threads if t.is_alive()] + [thread]
             thread.start()
         return None
 
-    def _on_route_done(self, key, minutes):
+    def _on_route_done(self, key, result):
+        minutes, km = result if isinstance(result, tuple) else (result, None)
         if minutes is None or self._closing:
             return
-        known = self.config.get("travel_address_minutes")
-        if not isinstance(known, dict):
-            known = self.config["travel_address_minutes"] = {}
-        known[key] = int(minutes)
-        if len(known) > 300:  # nur die neuesten Adressen behalten
-            for old in list(known)[:-300]:
-                known.pop(old, None)
+        # Fahrzeit für die vermutete Fahrt, Kilometer zum Vorbelegen von „Reise“ beim Eintragen
+        for name, value in (("travel_address_minutes", minutes), ("travel_address_km", km)):
+            if value is None:
+                continue
+            known = self.config.get(name)
+            if not isinstance(known, dict):
+                known = self.config[name] = {}
+            known[key] = int(value)
+            if len(known) > 300:  # nur die neuesten Adressen behalten
+                for old in list(known)[:-300]:
+                    known.pop(old, None)
         self.config_changed.emit()
         self._source_timer.start()  # neu zeichnen, die Fahrt hat jetzt die echte Länge
 
@@ -1484,6 +1493,8 @@ class TimelineView(QGraphicsView):
         self.scene.clear()
         self._hover_line = self._hover_label = None  # mit der Szene gelöscht
         self._now_items = None
+        self._fog = None
+        self._focused = None  # (Balken, [(Element, alter Z-Wert)], alter Rahmen) unter der Maus
         self.activity_rects.clear()
         self.tooltip.hide()
         self.scene.setBackgroundBrush(self.background_color)
@@ -2041,6 +2052,56 @@ class TimelineView(QGraphicsView):
         else:
             super().wheelEvent(event)
 
+    def _rect_at(self, pos):
+        for item in self.scene.items(self.mapToScene(pos)):
+            if isinstance(item, QGraphicsRectItem) and item in self.activity_rects:
+                return item
+        return None
+
+    FOG_Z, FOCUS_Z = 50, 60
+
+    def _focus_block(self, rect):
+        """Balken unter der Maus leicht hervorheben, den Rest in leichten Nebel tauchen: ein
+        halbdurchsichtiger Schleier in der Hintergrundfarbe über allem, der Balken (mit seiner
+        Beschriftung) liegt darüber und bekommt einen feinen Rahmen. None: Nebel weg."""
+        if self._focused and self._focused[0] is rect:
+            return
+        if self._focused:  # vorigen Balken zurück unter den Nebel
+            old, raised, pen = self._focused
+            for item, z in raised:
+                item.setZValue(z)
+            old.setPen(pen)
+            self._focused = None
+        if rect is None or rect.scene() is not self.scene:
+            if self._fog is not None:
+                self._fog.hide()
+            return
+        if self._fog is None:
+            self._fog = self.scene.addRect(0, 0, 0, 0, QPen(Qt.NoPen))
+            self._fog.setAcceptedMouseButtons(Qt.NoButton)
+            self._fog.setAcceptHoverEvents(False)
+        fog = QColor(self.background_color)
+        fog.setAlpha(150)
+        self._fog.setBrush(QBrush(fog))
+        area = self.sceneRect()
+        self._fog.setRect(area.x(), self.AXIS_H, area.width(), area.height() - self.AXIS_H)
+        self._fog.setZValue(self.FOG_Z)
+        self._fog.show()
+        # Balken und alles, was in ihm liegt (Beschriftung), über den Nebel heben
+        box = rect.sceneBoundingRect()
+        raised = [(rect, rect.zValue())]
+        for item in self.scene.items(box, Qt.ContainsItemBoundingRect):
+            if item is not rect and item is not self._fog and item.zValue() < self.FOG_Z \
+                    and item not in self.activity_rects:
+                raised.append((item, item.zValue()))
+        for item, _z in raised:
+            item.setZValue(self.FOCUS_Z)
+        pen = rect.pen()
+        outline = QColor(self.text_color)
+        outline.setAlpha(170)
+        rect.setPen(QPen(outline, 1.5))
+        self._focused = (rect, raised, pen)
+
     def _activity_at(self, pos):
         for item in self.scene.items(self.mapToScene(pos)):
             if isinstance(item, QGraphicsRectItem) and item in self.activity_rects:
@@ -2091,6 +2152,7 @@ class TimelineView(QGraphicsView):
         # Klicken und ziehen: Bereich markieren (links: Tätigkeit, rechts: Zoom)
         if self._drag_start is not None and abs(pos.x() - self._drag_start.x()) > 5:
             self._hide_hover()
+            self._focus_block(None)
             x1 = self.mapToScene(self._drag_start).x()
             x2 = self.mapToScene(pos).x()
             rect = self.sceneRect()
@@ -2112,6 +2174,7 @@ class TimelineView(QGraphicsView):
             return
 
         minute = self._minute_at(pos.x()) if self._ppm else -1
+        self._focus_block(None if in_legend else self._rect_at(pos))
         if 0 <= minute < 24 * 60:
             self._show_hover_line(minute)
             self.tooltip.setText(self._hover_text(minute, self._activity_at(pos)))
@@ -2296,6 +2359,7 @@ class TimelineView(QGraphicsView):
 
     def leaveEvent(self, event):
         self._hide_hover()
+        self._focus_block(None)
         if self._legend_cursor and self._row_drag is None:
             self.viewport().unsetCursor()
             self._legend_cursor = False
