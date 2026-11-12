@@ -140,6 +140,24 @@ assert all(r.zValue() < tl._fog.zValue() for r in others)
 tl._focus_block(None)
 assert not tl._fog.isVisible() and bar.zValue() == z_before and tl._focused is None
 assert bar.graphicsEffect() is None
+# Hervorhebung wählbar: Aus = kein Nebel, Nur Leuchten = kein Nebel aber Leuchten, Eigene = Regler
+tl.config["hover_focus"] = "off"
+tl._focus_block(bar)
+assert not tl._fog.isVisible() and bar.graphicsEffect() is None and bar.zValue() == z_before
+tl._focus_block(None)
+tl.config["hover_focus"] = "glow"
+tl._focus_block(bar)
+assert not tl._fog.isVisible() and bar.graphicsEffect() is not None
+tl._focus_block(None)
+tl.config["hover_focus"] = "custom"
+tl.config["hover_custom"] = {"fog": 80, "cone": 0, "glow": 0, "outline": False}
+pen_before = bar.pen()
+tl._focus_block(bar)
+assert tl._fog.isVisible() and tl._fog.brush().color().alpha() == 204 and bar.graphicsEffect() is None
+assert bar.pen() == pen_before
+tl._focus_block(None)
+tl.config.pop("hover_focus")
+tl.config.pop("hover_custom")
 # Timeline-Tooltip: lange Zeilen werden umbrochen, der Hinweis bleibt im sichtbaren Bereich
 tl.tooltip.setText("Beschreibung " * 80)
 tl._move_tooltip(QPoint(tl.width() - 5, 5))

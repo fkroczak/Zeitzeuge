@@ -24,7 +24,7 @@ from vpn_reader import DEFAULT_DIRS as VPN_DEFAULT_DIRS, FORTI_TRACE_PATHS, vpn_
 from settings_dialogs import ActivityTypeSettingsDialog, ConnectionSettingsDialog, WorkHoursDialog
 from theme import GERMAN, STYLESHEET, SPACE_XS, default_custom_colors, theme_for
 from timeline_only import (COLOR_ROWS, DEFAULT_CALL_COLORS, LEGEND_BANDS, LEGEND_FIXED, ROW_NAMES,
-                           TIMELINE_ROWS, entry_color)
+                           HOVER_CHOICES, HOVER_DEFAULT, TIMELINE_ROWS, entry_color)
 from view_help import VIEW_HELP, ViewHelpDialog, help_text
 import main_timeline as mt  # Pfade und save_config zur Laufzeit von dort (Tests ersetzen sie dort)
 
@@ -350,6 +350,18 @@ class MenusMixin:
                 action = menu.addAction(text)
                 action.triggered.connect(lambda _c=False, k=key: self.choose_theme(k))
             self.theme_actions[key] = action
+        # Hervorhebung unter der Maus (timeline_only.HOVER_CHOICES), „Eigene“ mit Reglern im Einstellungsfenster
+        menu.addSeparator()
+        hover = menu.addMenu("&Hervorhebung unter der Maus")
+        group = QActionGroup(hover)
+        self.hover_actions = {}
+        for key, text in HOVER_CHOICES:
+            action = hover.addAction(text + (" …" if key == "custom" else ""))
+            action.setCheckable(True)
+            group.addAction(action)
+            action.triggered.connect(lambda _c=False, k=key: self.choose_hover(k))
+            self.hover_actions[key] = action
+        hover.aboutToShow.connect(self._check_hover)
         menu.addSeparator()
         self._icon_actions.append((menu.addAction("Darstellung an&passen …",
                                                   lambda: self.show_settings("view")), "eye"))
@@ -362,6 +374,20 @@ class MenusMixin:
         self.view_button.setPopupMode(QToolButton.InstantPopup)
         self.update_view_button()
         return self.view_button
+
+    def _check_hover(self):
+        key = self.config.get("hover_focus", HOVER_DEFAULT)
+        self.hover_actions.get(key, self.hover_actions[HOVER_DEFAULT]).setChecked(True)
+
+    def choose_hover(self, key):
+        """Hervorhebung unter der Maus wählen; „Eigene“ zeigt die Regler in den Einstellungen."""
+        self.config["hover_focus"] = key
+        mt.save_config(self.config)
+        window = getattr(self, "_settings_window", None)
+        if window is not None:
+            window.refresh()
+        if key == "custom":
+            self.show_settings("view")
 
     def _build_rows_menu(self):
         """Menü „Zeilen der Timeline“: jede Zeile ein- und ausblenden."""

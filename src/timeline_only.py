@@ -552,6 +552,27 @@ class ActivityViewDialog(QDialog):
         modernize(self, type_label(activity) or "Aktivitätsdetails", zeit, "details", intro=False)
 
 
+# Hervorhebung unter der Maus (Einstellungen → Darstellung, Menü Ansicht): Nebel in % (0 = keiner),
+# Lichtkegel in px (0 = gleichmäßiger Nebel), Leuchten in px (0 = keins), feiner Rahmen
+HOVER_STYLES = {
+    "off": None,
+    "glow": {"fog": 0, "cone": 0, "glow": 22, "outline": True},
+    "cone": {"fog": 45, "cone": 220, "glow": 22, "outline": True},
+    "strong": {"fog": 70, "cone": 140, "glow": 30, "outline": True},
+}
+HOVER_CHOICES = [("off", "Aus"), ("glow", "Nur Leuchten"), ("cone", "Lichtkegel"), ("strong", "Kräftig"),
+                 ("custom", "Eigene")]
+HOVER_DEFAULT = "cone"
+
+
+def hover_style(config):
+    """Werte der gewählten Hervorhebung; None: keine. „Eigene“ ergänzt fehlende Werte aus dem Lichtkegel."""
+    key = (config or {}).get("hover_focus", HOVER_DEFAULT)
+    if key == "custom":
+        return {**HOVER_STYLES[HOVER_DEFAULT], **((config or {}).get("hover_custom") or {})}
+    return HOVER_STYLES.get(key, HOVER_STYLES[HOVER_DEFAULT])
+
+
 class TimelineView(QGraphicsView):
     # Nach jedem Zeichnen: Einträge des Tages und PC-Aktivität (für die Tagesliste)
     day_loaded = Signal(list, list)
@@ -2066,7 +2087,8 @@ class TimelineView(QGraphicsView):
         """Balken unter der Maus leicht hervorheben, den Rest in leichten Nebel tauchen: ein
         halbdurchsichtiger Schleier in der Hintergrundfarbe über allem, der Balken (mit seiner
         Beschriftung) liegt darüber. Der Nebel wird zum Balken hin weich durchsichtiger
-        (Lichtkegel), der Balken leuchtet sanft in seiner Farbe. None: Nebel weg."""
+        (Lichtkegel), der Balken leuchtet sanft in seiner Farbe. Wie stark: hover_style (Einstellungen
+        → Darstellung → Hervorhebung unter der Maus). None: Nebel weg."""
         if self._focused and self._focused[0] is rect:
             return
         if self._focused:  # vorigen Balken zurück unter den Nebel
@@ -2076,7 +2098,8 @@ class TimelineView(QGraphicsView):
             old.setPen(pen)
             old.setGraphicsEffect(None)
             self._focused = None
-        if rect is None or rect.scene() is not self.scene:
+        style = hover_style(self.config)
+        if rect is None or style is None or rect.scene() is not self.scene:
             if self._fog is not None:
                 self._fog.hide()
             return
@@ -2084,19 +2107,24 @@ class TimelineView(QGraphicsView):
             self._fog = self.scene.addRect(0, 0, 0, 0, QPen(Qt.NoPen))
             self._fog.setAcceptedMouseButtons(Qt.NoButton)
             self._fog.setAcceptHoverEvents(False)
-        # Lichtkegel: am Balken klar, nach außen weich in den (leichten) Nebel übergehend
         box = rect.sceneBoundingRect()
-        radius = max(box.width() / 2, 40) + 220
-        light = QRadialGradient(box.center(), radius)
-        for at, alpha in ((0.0, 0), (max(box.width() / 2, 20) / radius, 25), (1.0, 115)):
-            fog = QColor(self.background_color)
-            fog.setAlpha(alpha)
-            light.setColorAt(at, fog)
-        self._fog.setBrush(QBrush(light))
+        alpha = round(max(0, min(100, style["fog"])) * 2.55)
+        if alpha and style["cone"] > 0:
+            # Lichtkegel: am Balken klar, nach außen weich in den Nebel übergehend
+            radius = max(box.width() / 2, 40) + style["cone"]
+            brush = QRadialGradient(box.center(), radius)
+            for at, a in ((0.0, 0), (max(box.width() / 2, 20) / radius, alpha * 0.22), (1.0, alpha)):
+                fog = QColor(self.background_color)
+                fog.setAlpha(round(a))
+                brush.setColorAt(at, fog)
+        else:
+            brush = QColor(self.background_color)
+            brush.setAlpha(alpha)
+        self._fog.setBrush(QBrush(brush))
         area = self.sceneRect()
         self._fog.setRect(area.x(), self.AXIS_H, area.width(), area.height() - self.AXIS_H)
         self._fog.setZValue(self.FOG_Z)
-        self._fog.show()
+        self._fog.setVisible(alpha > 0)
         # Balken und alles, was in ihm liegt (Beschriftung), über den Nebel heben
         raised = [(rect, rect.zValue())]
         for item in self.scene.items(box, Qt.ContainsItemBoundingRect):
@@ -2106,16 +2134,18 @@ class TimelineView(QGraphicsView):
         for item, _z in raised:
             item.setZValue(self.FOCUS_Z)
         pen = rect.pen()
-        outline = QColor(self.text_color)
-        outline.setAlpha(110)
-        rect.setPen(QPen(outline, 1))
-        glow = QGraphicsDropShadowEffect()
-        glow.setOffset(0, 0)
-        glow.setBlurRadius(22)
-        shine = QColor(rect.brush().color() if rect.brush().style() != Qt.NoBrush else rect.pen().color())
-        shine.setAlpha(230)
-        glow.setColor(shine)
-        rect.setGraphicsEffect(glow)
+        if style.get("outline", True):
+            outline = QColor(self.text_color)
+            outline.setAlpha(110)
+            rect.setPen(QPen(outline, 1))
+        if style["glow"] > 0:
+            glow = QGraphicsDropShadowEffect()
+            glow.setOffset(0, 0)
+            glow.setBlurRadius(style["glow"])
+            shine = QColor(rect.brush().color() if rect.brush().style() != Qt.NoBrush else rect.pen().color())
+            shine.setAlpha(230)
+            glow.setColor(shine)
+            rect.setGraphicsEffect(glow)
         self._focused = (rect, raised, pen)
 
     def _activity_at(self, pos):
