@@ -18,6 +18,7 @@ import safe_io
 import storage
 import updater
 import version
+from theme import fit_bold
 
 
 class _Signals(QObject):
@@ -135,6 +136,7 @@ class UpdateMixin:
                 box.setDetailedText("\n".join(f"• {n}" for n in notes))
             yes = box.addButton("Jetzt &aktualisieren", QMessageBox.AcceptRole)
             box.addButton("&Später", QMessageBox.RejectRole)
+            fit_bold(yes)
             box.setDefaultButton(yes)
             box.exec()
             if box.clickedButton() is yes:

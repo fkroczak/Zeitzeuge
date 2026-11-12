@@ -35,7 +35,7 @@ import prompt_topics
 import range_context
 from timeline_only import (OUTLOOK_TYPES, ROW_NAMES, ActivityViewDialog, ai_copy_text, format_duration, parse_time,
                            row_kind, type_label)
-from theme import GERMAN
+from theme import GERMAN, fit_bold
 import main_timeline as mt  # Pfade und save_config zur Laufzeit von dort (Tests ersetzen sie dort)
 
 
@@ -1073,6 +1073,7 @@ class DocsMixin(CustomersMixin):
                           "Jetzt nachtragen?", parent=self)
         later = box.addButton("&Nachtragen", QMessageBox.AcceptRole)
         box.addButton("Trotzdem &beenden", QMessageBox.DestructiveRole)
+        fit_bold(later)
         box.setDefaultButton(later)
         box.exec()
         return box.clickedButton() is later

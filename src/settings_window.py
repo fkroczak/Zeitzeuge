@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (QButtonGroup, QCheckBox, QComboBox, QDialog, QFra
 
 import icons
 from flow_layout import FlowLayout
-from theme import theme_for, fit_text, prose, SPACE_2XL, SPACE_L, SPACE_M, SPACE_S, SPACE_XL, SPACE_XS
+from theme import theme_for, fit_bold, fit_text, prose, SPACE_2XL, SPACE_L, SPACE_M, SPACE_S, SPACE_XL, SPACE_XS
 import main_timeline as mt  # Pfade und save_config zur Laufzeit von dort (Tests ersetzen sie dort)
 
 # Bereiche: Schlüssel, Name, Symbol, Satz darunter. Reihenfolge wie der Arbeitstag:
@@ -235,6 +235,7 @@ def _confirm_quit(main):
                       parent=main._settings_window if getattr(main, "_settings_window", None) else main)
     quit_button = box.addButton("&Beenden", QMessageBox.AcceptRole)
     box.addButton("Abbre&chen", QMessageBox.RejectRole)
+    fit_bold(quit_button)
     box.setDefaultButton(quit_button)
     box.exec()
     if box.clickedButton() is quit_button:
