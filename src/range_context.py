@@ -23,12 +23,38 @@ geschrieben hast (aus dem Journal gelernt).
 """
 import re
 from datetime import datetime
+from urllib.parse import unquote
 
 import rules as rule_engine
 
 TIME_FMT = "%Y-%m-%d %H:%M:%S"
 CALENDAR_TYPES = {"Termin", "Teams-Besprechung"}
 SKIP_TYPES = {"Mail gesendet", "Mail beantwortet"}
+FILE_TYPES = {"Datei geöffnet"}
+WEB_TYPES = {"Browser"}
+NET_TYPES = {"WLAN", "Netzwerk"}
+LABEL_MAX = 40  # längere Namen (Pfade, Fenstertitel) sprengen sonst die Karte
+
+
+def _short(text, limit=LABEL_MAX):
+    """Text auf limit Zeichen kürzen, mit „…“ statt mitten im Wort abgeschnitten."""
+    text = " ".join(str(text or "").split())
+    if len(text) <= limit:
+        return text
+    cut = text[:limit - 1]
+    space = cut.rfind(" ")
+    if space > limit // 2:
+        cut = cut[:space]
+    return cut.rstrip(" -–·,") + "…"
+
+
+def _file_name(path):
+    """Nur der Dateiname, auch aus Links wie ms-screensketch:edit?filePath=C%3A%5C…"""
+    text = unquote(str(path or ""))
+    if "filePath=" in text:
+        text = text.split("filePath=", 1)[1].split("&", 1)[0]
+    name = re.split(r"[\\/]", text.rstrip("\\/"))[-1]
+    return _short(name or text)
 
 
 def _t(text):
@@ -53,6 +79,12 @@ def _source(entry):
     kind = entry.get("type") or ""
     if "app" in entry or kind.startswith("PC:"):
         return "Rechner"
+    if kind in FILE_TYPES:
+        return "Dateien"
+    if kind in WEB_TYPES:
+        return "Web"
+    if kind in NET_TYPES:
+        return "Netzwerk"
     if kind in CALENDAR_TYPES:
         return "Kalender"
     if entry.get("direction") or "Telefonat" in kind or "Anruf" in kind:
@@ -76,16 +108,21 @@ def context(start, end, activities, pc_entries, limit=3):
             label = (e.get("type") or "PC: ?")[4:].strip() or e.get("app", "")
         elif src == "Kalender":
             label = f"{e.get('customer_name') or 'Termin'} ({e['start'][11:16]}–{e['end'][11:16]})"
+        elif src == "Dateien":
+            label = _file_name(e.get("customer_name"))
         else:
             label = (f"{e.get('type', '')} " if src == "Verbindungen" else "") + (e.get("customer_name") or "")
+        label = _short(label)
         bucket = groups.setdefault(src, {})
         bucket[label.strip()] = bucket.get(label.strip(), 0) + sec
     result = []
-    for src in ("Rechner", "Kalender", "Anrufe", "Verbindungen"):
+    for src in ("Rechner", "Kalender", "Anrufe", "Verbindungen", "Dateien", "Web", "Netzwerk"):
         items = sorted(groups.get(src, {}).items(), key=lambda x: -x[1])
         if not items:
             continue
-        parts = [label if src == "Kalender" else f"{label} {_min(sec)}" for label, sec in items[:limit]]
+        # Dateien: Dauer ist nur ein fester Platzhalter, also nur die Namen
+        parts = [label if src in ("Kalender", "Dateien") else f"{label} {_min(sec)}"
+                 for label, sec in items[:limit]]
         if len(items) > limit:
             parts.append(f"+{len(items) - limit} weitere")
         result.append((src, " · ".join(parts)))
@@ -228,7 +265,7 @@ def _category_scores(found, categories, rule_list):
         name = (e.get("customer_name") or e.get("type") or "").strip()
         hit = next(((rx.search(text), cat) for rx, cat in words if rx.search(text)), None)
         if hit:
-            add(hit[1], sec * WORD_WEIGHT, f"„{hit[0].group(0)}“ in {name[:40]}")
+            add(hit[1], sec * WORD_WEIGHT, f"„{hit[0].group(0)}“ in {_short(name)}")
         match = rule_engine.match_entry(e, compiled, is_pc=is_pc)
         if not match:
             continue
