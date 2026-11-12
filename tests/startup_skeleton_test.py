@@ -128,6 +128,16 @@ from app_daylist import customer_matches
 assert customer_matches({"customer_name": "Jugendhilfe Olsberg"}, "Jugendhilfe Olsberg - Jörg Spiekermann")
 assert customer_matches({"customer_name": ""}, "ohne Kunde")
 assert not customer_matches({"customer_name": "ITM"}, "WiRoPa GmbH")
+# Timeline: Balken unter der Maus über dem Nebel, beim Verlassen ist alles wieder normal
+tl = window.timeline
+bar = next(iter(tl.activity_rects))
+z_before = bar.zValue()
+tl._focus_block(bar)
+assert tl._fog.isVisible() and bar.zValue() > tl._fog.zValue() > z_before
+others = [r for r in tl.activity_rects if r is not bar]
+assert all(r.zValue() < tl._fog.zValue() for r in others)
+tl._focus_block(None)
+assert not tl._fog.isVisible() and bar.zValue() == z_before and tl._focused is None
 chips.set_customers([], "leer")
 assert chips.empty_label.isVisible() and not chips.parts()
 print("OK")

@@ -41,8 +41,8 @@ class _EntryForm(QWidget):
                  ticket_lookup=None, flag_details=None, travel_guess=None):
         super().__init__(parent)
         # flag_details: gespeicherte Angaben zu Kulanz/Reise (goodwill_minutes, goodwill_reason,
-        # travel_location, travel_departure, travel_km). travel_guess(start, end) -> dict mit
-        # location/departure/km aus der vermuteten Fahrt oder None (füllt beim Anhaken vor).
+        # travel_km_there, travel_km_back). travel_guess(start, end) -> dict mit there_km/back_km
+        # aus der vermuteten Fahrt oder None (füllt beim Anhaken vor).
         self.travel_guess = travel_guess
         # ticket_search: Funktion (Suchtext, Fenster) -> Ticket-dict oder None (Matrix42-Suche)
         # ticket_lookup: Funktion (Elternobjekt) -> TicketLookup, Suche beim Tippen im Feld Ticket
@@ -215,30 +215,28 @@ class _EntryForm(QWidget):
         grid.setColumnStretch(1, 1)
         form.addRow("", self.goodwill_panel)
 
-        # Reise: wohin, wann los, wie weit (aus der vermuteten Fahrt vorbelegt)
+        # Reise: Kilometer für An- und Abfahrt (aus der vermuteten Fahrt vorbelegt)
         self.travel_panel, grid = panel()
-        self.travel_location = QLineEdit(str(details.get("travel_location") or ""))
-        self.travel_location.setPlaceholderText("Ort oder Adresse beim Kunden")
-        self.travel_location.setAccessibleName("Reiseziel")
-        self.travel_departure = QTimeEdit()
-        self.travel_departure.setDisplayFormat("HH:mm")
-        self.travel_departure.setAccessibleName("Abfahrt")
-        departure = QTime.fromString(str(details.get("travel_departure") or ""), "HH:mm")
-        self.travel_departure.setTime(departure if departure.isValid() else self.start_edit.time())
-        self.travel_km = QSpinBox()
-        self.travel_km.setRange(0, 2000)
-        self.travel_km.setSuffix(" km")
-        self.travel_km.setSpecialValueText("– km")
-        self.travel_km.setAccessibleName("Anfahrt in Kilometern")
-        self.travel_km.setValue(int(details.get("travel_km") or 0))
+
+        def km_box(name, value):
+            box = QSpinBox()
+            box.setRange(0, 2000)
+            box.setSuffix(" km")
+            box.setSpecialValueText("– km")
+            box.setAccessibleName(name)
+            box.setValue(int(value or 0))
+            return box
+
+        self.travel_there = km_box("Anfahrt in Kilometern", details.get("travel_km_there"))
+        self.travel_back = km_box("Abfahrt in Kilometern", details.get("travel_km_back"))
         self.travel_note = QLabel()
         self.travel_note.setObjectName("hint")
+        self.travel_note.setWordWrap(True)
         self.travel_note.hide()
-        field(grid, 0, "Reise&ziel", self.travel_location)
-        field(grid, 1, "&Abfahrt", self.travel_departure)
-        field(grid, 2, "Anfahrt", self.travel_km)
-        grid.addWidget(self.travel_note, 2, 0, 1, 3)
-        grid.setColumnStretch(0, 1)
+        field(grid, 0, "An&fahrt", self.travel_there)
+        field(grid, 1, "A&bfahrt", self.travel_back)
+        grid.addWidget(self.travel_note, 1, 2)
+        grid.setColumnStretch(2, 1)
         form.addRow("", self.travel_panel)
 
         self.goodwill_box.toggled.connect(self._goodwill_toggled)
@@ -262,11 +260,11 @@ class _EntryForm(QWidget):
 
     def _travel_toggled(self, on):
         self.travel_panel.setVisible(on)
-        if on and not self.travel_location.text().strip() and not self.travel_km.value():
+        if on and not self.travel_there.value() and not self.travel_back.value():
             self.prefill_travel()
 
     def prefill_travel(self):
-        """Ziel, Abfahrt und Kilometer aus der vermuteten Fahrt (travel.py), wenn es eine gibt."""
+        """Kilometer für An- und Abfahrt aus der vermuteten Fahrt (travel.py), wenn es eine gibt."""
         guess = None
         if self.travel_guess is not None:
             try:
@@ -274,17 +272,13 @@ class _EntryForm(QWidget):
             except Exception as e:  # Vorbelegen darf das Eintragen nie stören
                 print(f"Reise vorbelegen ging nicht: {e}")
         if not guess:
-            self.travel_note.setText("Keine vermutete Fahrt in dieser Zeit. Bitte selbst eintragen.")
-            self.travel_note.show()
-            return
-        if guess.get("location"):
-            self.travel_location.setText(guess["location"])
-        departure = QTime.fromString(guess.get("departure") or "", "HH:mm")
-        if departure.isValid():
-            self.travel_departure.setTime(departure)
-        if guess.get("km"):
-            self.travel_km.setValue(int(guess["km"]))
-        self.travel_note.setText(f"Vorbelegt aus der vermuteten Fahrt ({guess.get('label') or 'Fahrt'}).")
+            self.travel_note.setText("Keine vermutete Fahrt in dieser Zeit.")
+        else:
+            self.travel_there.setValue(int(guess.get("there_km") or 0))
+            self.travel_back.setValue(int(guess.get("back_km") or 0))
+            known = guess.get("there_km") or guess.get("back_km")
+            self.travel_note.setText(f"Aus der vermuteten Fahrt ({guess['label']})" if known else
+                                     f"{guess['label']}: Kilometer unbekannt (Adresse fehlt)")
         self.travel_note.show()
 
     def flag_details(self):
@@ -294,10 +288,9 @@ class _EntryForm(QWidget):
             result["goodwill_minutes"] = min(self.goodwill_minutes.value(), self._minutes())
             result["goodwill_reason"] = self.goodwill_reason.text().strip() or "Kulanz"
         if self.travel_box.isChecked():
-            result["travel_location"] = self.travel_location.text().strip()
-            result["travel_departure"] = self.travel_departure.time().toString("HH:mm")
-            if self.travel_km.value():
-                result["travel_km"] = self.travel_km.value()
+            for key, box in (("travel_km_there", self.travel_there), ("travel_km_back", self.travel_back)):
+                if box.value():
+                    result[key] = box.value()
         return result
 
     def set_billing(self, billing):

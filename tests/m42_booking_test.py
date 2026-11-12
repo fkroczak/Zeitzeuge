@@ -205,3 +205,16 @@ def test_kulanz_mit_zeit_und_grund():
     assert base["GoodwillAmount"] == 60
     assert mb.plan({"start": item["start"], "end": item["end"], "goodwill_minutes": 20}, Billing())[
         "goodwill_minutes"] == 0, "ohne Kulanz keine Kulanzzeit"
+
+
+def test_reise_mit_kilometern():
+    item = {"start": "2026-11-02 10:00:00", "end": "2026-11-02 11:00:00", "travel": True,
+            "travel_km_there": 42, "travel_km_back": 40}
+    p = mb.plan(item, Billing())
+    assert (p["travel_km_there"], p["travel_km_back"]) == (42, 40)
+    start, end = datetime(2026, 11, 2, 10, 0), datetime(2026, 11, 2, 11, 0)
+    base = mb.time_entry(TEMPLATE, "t", "s", "u", start, end, 60, "x", travel=True,
+                         km_there=42, km_back=40)["ITMTimeEntryClassBase"]
+    assert base["IsTravel"] and base["Approach"] == 42 and base["Departure"] == 40
+    base = mb.time_entry(TEMPLATE, "t", "s", "u", start, end, 60, "x", travel=True)["ITMTimeEntryClassBase"]
+    assert base["Approach"] is None and base["Departure"] is None, "ohne Kilometer wie bisher"

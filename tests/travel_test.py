@@ -165,16 +165,16 @@ def test_reise_vorbelegen_aus_vermuteter_fahrt():
              location="Hauptstr. 5, 59939 Olsberg")
     config = {"travel_home_address": "Büroweg 1, Gescher",
               "travel_address_km": {travel.address_key("Büroweg 1,  Gescher", "Hauptstr. 5, 59939 Olsberg"): 42}}
-    # Tätigkeit beim Kunden: Hinfahrt endet direkt davor
+    # Tätigkeit beim Kunden: Hinfahrt direkt davor, Rückfahrt direkt danach
     g = travel.guess_for([there, back], datetime(2026, 11, 3, 10, 5), datetime(2026, 11, 3, 12, 0), config)
-    assert g == {"location": "Hauptstr. 5, 59939 Olsberg", "departure": "09:25", "km": 42,
-                 "label": "Hinfahrt 09:25–10:00"}, g
-    # die Fahrt selbst eingetragen: die überlappende Fahrt zählt
+    assert (g["there_km"], g["back_km"]) == (42, 42), g
+    assert g["label"] == "Hinfahrt 09:25–10:00, Rückfahrt 12:00–12:35", g
+    # nur die Rückfahrt eingetragen: nur Abfahrt
     g = travel.guess_for([there, back], datetime(2026, 11, 3, 12, 0), datetime(2026, 11, 3, 12, 35), config)
-    assert g["departure"] == "12:00" and g["km"] == 42
-    # Fahrt zu einem Kundennetz: Ziel aus „zu …“, Kilometer aus der Kundenliste
+    assert (g["there_km"], g["back_km"]) == (0, 42), g
+    # Fahrt zu einem Kundennetz: Kilometer aus der Kundenliste
     net = e("13:00", "13:30", travel.TYPE, "zu Müller GmbH", travel="Fahrt")
     g = travel.guess_for([net], datetime(2026, 11, 3, 13, 0), datetime(2026, 11, 3, 13, 30), {},
                          [{"name": "Müller GmbH", "travel_km": 17}])
-    assert g["location"] == "Müller GmbH" and g["km"] == 17
+    assert g["there_km"] == 17 and g["back_km"] == 0
     assert travel.guess_for([there], datetime(2026, 11, 3, 15, 0), datetime(2026, 11, 3, 16, 0), config) is None

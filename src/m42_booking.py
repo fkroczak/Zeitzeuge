@@ -84,6 +84,8 @@ def plan(item, bill=None, ticket_format=""):
         # beim Eintragen angegeben (Kulanzzeit 0 = die ganze Zeit)
         "goodwill_minutes": int(item.get("goodwill_minutes") or 0) if item.get("goodwill") else 0,
         "goodwill_reason": (item.get("goodwill_reason") or "") if item.get("goodwill") else "",
+        "travel_km_there": int(item.get("travel_km_there") or 0) if item.get("travel") else 0,
+        "travel_km_back": int(item.get("travel_km_back") or 0) if item.get("travel") else 0,
     }
 
 
@@ -317,11 +319,12 @@ SURCHARGE_REASON = "Zuschlag ignoriert"  # Grund, wenn keiner angegeben ist
 def time_entry(template, target, sla, user, start, end, minutes, text,
                activity_type=DEFAULT_ACTIVITY_TYPE, time_zone="Europe/Berlin",
                goodwill=False, travel=False, goodwill_reason="",
-               no_surcharge=False, surcharge_reason="", goodwill_minutes=0):
+               no_surcharge=False, surcharge_reason="", goodwill_minutes=0, km_there=0, km_back=0):
     """Zeiterfassung zum Speichern, Felder wie im Mitschnitt. template: Entity aus GetNewData.
 
     goodwill: Kulanz, nicht berechnet werden goodwill_minutes (0: die ganze Zeit; IsGoodwill,
-    GoodwillAmount in Minuten, Grund Pflicht wie im Dialog). travel: Reise (IsTravel). no_surcharge: Zuschlag ignorieren
+    GoodwillAmount in Minuten, Grund Pflicht wie im Dialog). travel: Reise (IsTravel), dazu
+    km_there/km_back als Kilometer für Anfahrt (Approach) und Abfahrt (Departure). no_surcharge: Zuschlag ignorieren
     (IgnoreSurcharge, mit Grund)."""
     if not isinstance(template, dict) or not template.get("ID"):
         raise BookingError("Matrix42 liefert keine Vorlage für eine neue Zeiterfassung.")
@@ -347,6 +350,8 @@ def time_entry(template, target, sla, user, start, end, minutes, text,
         base.update({"IsGoodwill": True, "GoodwillAmount": amount,
                      "GoodwillAmountRounded": amount,
                      "GoodwillReason": (goodwill_reason or "").strip() or "Kulanz"})
+    if travel and (km_there or km_back):
+        base.update({"Approach": int(km_there or 0), "Departure": int(km_back or 0)})
     if no_surcharge:
         base.update({"IgnoreSurcharge": True,
                      "IgnoreSurchargeReason": (surcharge_reason or "").strip() or SURCHARGE_REASON})

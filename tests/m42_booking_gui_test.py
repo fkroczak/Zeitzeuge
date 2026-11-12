@@ -134,11 +134,11 @@ def gui_test():
     assert not form.goodwill_panel.isVisibleTo(doc) and not form.travel_panel.isVisibleTo(doc)
     form.goodwill_box.setChecked(True)
     assert form.goodwill_panel.isVisibleTo(doc) and form.goodwill_minutes.value() == form._minutes()
-    form.travel_guess = lambda a, b: {"location": "Hauptstr. 5", "departure": "09:25", "km": 42, "label": "Hinfahrt"}
+    form.travel_guess = lambda a, b: {"there_km": 42, "back_km": 40, "label": "Hinfahrt 09:25–10:00"}
     form.travel_box.setChecked(True)
     details = form.flag_details()
-    assert details["travel_location"] == "Hauptstr. 5" and details["travel_km"] == 42, details
-    assert details["travel_departure"] == "09:25" and details["goodwill_reason"] == "Kulanz", details
+    assert details["travel_km_there"] == 42 and details["travel_km_back"] == 40, details
+    assert details["goodwill_reason"] == "Kulanz", details
     form.goodwill_box.setChecked(False)
     form.travel_box.setChecked(False)
     assert form.flag_details() == {}

@@ -122,43 +122,50 @@ def address_key(home, place):
 
 
 def guess_for(trips, start, end, config, customers=()):
-    """Reise für eine Tätigkeit von start bis end vorbelegen: die vermutete Fahrt, die am meisten
-    in die Zeit fällt, sonst die Hinfahrt, die bis zu 30 Min. vor Beginn endet.
-    -> {location, departure "HH:MM", km (0 = unbekannt), label} oder None."""
-    best, best_overlap = None, timedelta(0)
+    """Reise für eine Tätigkeit von start bis end vorbelegen: Kilometer für An- und Abfahrt.
+    Anfahrt: Hinfahrt, die in die Zeit fällt oder bis zu 30 Min. vor Beginn endet. Abfahrt:
+    Rückfahrt in der Zeit oder bis zu 30 Min. nach dem Ende. Kilometer aus der gemerkten Route
+    (Termin-Adresse oder Kunde). -> {there_km, back_km, label} oder None ohne passende Fahrt."""
+    near = timedelta(minutes=30)
+
+    def span(t):
+        return _t(t["start"]), _t(t["end"])
+
+    there = back = None
     for trip in trips:
         try:
-            t_start, t_end = _t(trip["start"]), _t(trip["end"])
+            t_start, t_end = span(trip)
         except (KeyError, TypeError, ValueError):
             continue
-        overlap = min(end, t_end) - max(start, t_start)
-        if overlap > best_overlap:
-            best, best_overlap = trip, overlap
-    if best is None:
-        before = [t for t in trips if t.get("travel") in ("Hinfahrt", "Fahrt")
-                  and timedelta(0) <= start - _t(t["end"]) <= timedelta(minutes=30)]
-        best = max(before, key=lambda t: t["end"]) if before else None
-    if best is None:
+        overlaps = t_start < end and start < t_end
+        kind = trip.get("travel")
+        if kind in ("Hinfahrt", "Fahrt") and (overlaps or timedelta(0) <= start - t_end <= near):
+            there = there or trip
+        elif kind == "Rückfahrt" and (overlaps or timedelta(0) <= t_start - end <= near):
+            back = back or trip
+    if there is None and back is None:
         return None
-    label = best.get("customer_name") or ""
-    location = best.get("location") or ""
-    if not location:  # Fahrt zu einem Kundennetz: „zu Müller GmbH“ / „von Müller GmbH“
-        location = label[3:] if label.startswith("zu ") else label[4:] if label.startswith("von ") else label
-    km = 0
-    home = config.get("travel_home_address") or ""
-    known = config.get("travel_address_km")
-    if home and best.get("location") and isinstance(known, dict):
-        km = known.get(address_key(home, best["location"])) or 0
-    if not km:
-        name = location.casefold()
-        for c in customers or ():
-            if isinstance(c, dict) and str(c.get("name", "")).casefold() == name and c.get("travel_km"):
-                km = c["travel_km"]
-                break
-    return {"location": location, "departure": _t(best["start"]).strftime("%H:%M"),
-            "km": int(km or 0), "label": f"{best.get('travel', 'Fahrt')} {_t(best['start']):%H:%M}–"
-                                         f"{_t(best['end']):%H:%M}"}
 
+    def km_for(trip):
+        if trip is None:
+            return 0
+        home = config.get("travel_home_address") or ""
+        known = config.get("travel_address_km")
+        if home and trip.get("location") and isinstance(known, dict):
+            km = known.get(address_key(home, trip["location"]))
+            if km:
+                return int(km)
+        label = trip.get("customer_name") or ""
+        name = (label[3:] if label.startswith("zu ") else label[4:] if label.startswith("von ") else label)
+        for c in customers or ():
+            if isinstance(c, dict) and str(c.get("name", "")).casefold() == name.casefold() and c.get("travel_km"):
+                return int(c["travel_km"])
+        return 0
+
+    found = [t for t in (there, back) if t is not None]
+    label = ", ".join(f"{t.get('travel', 'Fahrt')} {span(t)[0]:%H:%M}–{span(t)[1]:%H:%M}" for t in found)
+    return {"there_km": km_for(there), "back_km": km_for(back), "there": there is not None,
+            "back": back is not None, "label": label}
 
 def _free(spans, start, end):
     return not any(a < end and start < b for a, b in spans)

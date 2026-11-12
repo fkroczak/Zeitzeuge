@@ -149,6 +149,9 @@ class BookingDialog(_TicketSearch, QDialog):
         flags.addStretch(1)
         form.addRow("", flags)
         self.goodwill_minutes = int(plan.get("goodwill_minutes") or 0)  # beim Eintragen angegeben
+        self.travel_km = (int(plan.get("travel_km_there") or 0), int(plan.get("travel_km_back") or 0))
+        if any(self.travel_km):  # beim Eintragen angegeben: im Haken zeigen, geht mit nach Matrix42
+            self.travel_box.setText(f"&Reise (An {self.travel_km[0]} km, Ab {self.travel_km[1]} km)")
         self.goodwill_reason = QLineEdit((plan.get("goodwill_reason") or "Kulanz") if plan.get("goodwill") else "")
         self.goodwill_reason.setPlaceholderText("Grund für die Kulanz")
         self.goodwill_reason.setAccessibleName("Kulanzgrund")
@@ -289,6 +292,7 @@ class BookingDialog(_TicketSearch, QDialog):
                 "goodwill": self.goodwill_box.isChecked(), "travel": self.travel_box.isChecked(),
                 "goodwill_reason": self.goodwill_reason.text().strip(),
                 "goodwill_minutes": self.goodwill_minutes,
+                "travel_km_there": self.travel_km[0], "travel_km_back": self.travel_km[1],
                 "no_surcharge": self.surcharge_box.isChecked(),
                 "surcharge_reason": self.surcharge_reason.text().strip()}
 
