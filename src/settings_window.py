@@ -12,11 +12,12 @@ from PySide6.QtCore import QSize, Qt, QTimer, QUrl
 from PySide6.QtGui import QCursor, QDesktopServices, QIcon, QPainter
 from PySide6.QtWidgets import (QButtonGroup, QCheckBox, QComboBox, QDialog, QFrame, QGridLayout, QHBoxLayout, QLabel,
                                QLineEdit, QListWidget, QListWidgetItem, QMessageBox, QPushButton, QScrollArea,
-                               QSpinBox, QStackedWidget, QToolButton, QVBoxLayout, QWidget)
+                               QSlider, QSpinBox, QStackedWidget, QToolButton, QVBoxLayout, QWidget)
 
 import icons
 from flow_layout import FlowLayout
 from theme import theme_for, fit_bold, fit_text, prose, SPACE_2XL, SPACE_L, SPACE_M, SPACE_S, SPACE_XL, SPACE_XS
+from timeline_only import HOVER_CHOICES, HOVER_DEFAULT, HOVER_STYLES
 import main_timeline as mt  # Pfade und save_config zur Laufzeit von dort (Tests ersetzen sie dort)
 
 # Bereiche: Schlüssel, Name, Symbol, Satz darunter. Reihenfolge wie der Arbeitstag:
@@ -129,6 +130,10 @@ ROWS = [
      "theme", [("system", "Wie &Windows"), ("light", "&Hell"), ("dark", "&Dunkel"), ("custom", "&Eigene Farben")]),
     ("view/Aussehen", "button", "palette", "Aktivitätstypen und Farben", "Farbe je Art in der Timeline.",
      "edit_activity_types", None),
+    ("view/Aussehen", "tiles", "eye", "Hervorhebung unter der Maus",
+     "Wie der Balken unter der Maus hervortritt: Nebel über dem Rest, Lichtkegel und Leuchten. "
+     "„Eigene“ zeigt Regler dafür.",
+     "hover_focus", HOVER_CHOICES),
     ("view/Timeline", "tiles", "clock", "Timeline beim Start",
      "Zeitraum beim Start und beim Blättern zum nächsten Tag.",
      "timeline_range", [("work", "Arbeitszeit"), ("day", "Ganzer Tag")]),
@@ -536,6 +541,9 @@ class _Row(QFrame):
             from theme_dialog import CustomColorsPanel
             self.custom_panel = CustomColorsPanel(self.window.main)
             text.addWidget(self.custom_panel)
+        elif target == "hover_focus":
+            self.custom_panel = HoverCustomPanel(self.window.main)
+            text.addWidget(self.custom_panel)
         main = self.window.main
         if target.endswith("_action"):
             getattr(main, target).toggled.connect(self._on_action_toggled)
@@ -556,6 +564,8 @@ class _Row(QFrame):
             return main.current_theme_key()
         if target.endswith("_action"):
             return "on" if getattr(main, target).isChecked() else "off"
+        if target == "hover_focus":
+            return main.config.get(target, HOVER_DEFAULT)
         return main.config.get(target, next(iter(self.tiles)))
 
     def _pick(self, value):
@@ -646,6 +656,65 @@ class _Row(QFrame):
             self.control.blockSignals(True)
             self.control.setCurrentIndex(max(0, self.control.findData(main.current_theme_key())))
             self.control.blockSignals(False)
+
+
+class HoverCustomPanel(QWidget):
+    """Eigene Hervorhebung unter der Maus (unter der Kachel „Eigene“): Nebel, Lichtkegel, Leuchten
+    und Rahmen. Gilt beim nächsten Überfahren eines Balkens, gespeichert in config["hover_custom"]."""
+
+    SLIDERS = [("fog", "Nebel", 0, 100, 5, "%", "kein Nebel"),
+               ("cone", "Lichtkegel", 0, 600, 20, "px", "gleichmäßig"),
+               ("glow", "Leuchten", 0, 60, 2, "px", "aus")]
+
+    def __init__(self, main, parent=None):
+        super().__init__(parent)
+        self.main = main
+        self.setObjectName("hover_custom")
+        self.values = {**HOVER_STYLES[HOVER_DEFAULT], **(main.config.get("hover_custom") or {})}
+        grid = QGridLayout(self)
+        grid.setContentsMargins(0, SPACE_S, 0, 0)
+        grid.setHorizontalSpacing(SPACE_M)
+        grid.setVerticalSpacing(SPACE_XS)
+        self.sliders, self.labels = {}, {}
+        for row, (key, name, low, high, step, unit, zero) in enumerate(self.SLIDERS):
+            label = QLabel(name)
+            label.setObjectName("prompt_label")
+            slider = QSlider(Qt.Horizontal)
+            slider.setRange(low, high)
+            slider.setSingleStep(step)
+            slider.setPageStep(step * 4)
+            slider.setAccessibleName(f"Hervorhebung: {name}")
+            slider.setValue(int(self.values[key]))
+            value = QLabel()
+            value.setObjectName("hint")
+            value.setMinimumWidth(90)
+            label.setBuddy(slider)
+            slider.valueChanged.connect(lambda v, k=key: self._set(k, v))
+            grid.addWidget(label, row, 0)
+            grid.addWidget(slider, row, 1)
+            grid.addWidget(value, row, 2)
+            self.sliders[key], self.labels[key] = slider, value
+            self._show_value(key)
+        self.outline = _switch("Rahmen um den Balken")
+        self.outline.setChecked(bool(self.values.get("outline", True)))
+        self.outline.toggled.connect(lambda on: self._set("outline", on))
+        frame_label = QLabel("Rahmen")
+        frame_label.setObjectName("prompt_label")
+        grid.addWidget(frame_label, len(self.SLIDERS), 0)
+        grid.addWidget(self.outline, len(self.SLIDERS), 1, 1, 2, Qt.AlignLeft)
+        grid.setColumnStretch(1, 1)
+
+    def _show_value(self, key):
+        spec = next(s for s in self.SLIDERS if s[0] == key)
+        v = self.sliders[key].value()
+        self.labels[key].setText(spec[6] if v == 0 else f"{v} {spec[5]}")
+
+    def _set(self, key, value):
+        self.values[key] = value
+        if key in self.sliders:
+            self._show_value(key)
+        self.main.config["hover_custom"] = dict(self.values)
+        mt.save_config(self.main.config)
 
 
 class _Tile(QFrame):

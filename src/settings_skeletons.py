@@ -1,12 +1,12 @@
 """Kleine Skelett-Bilder für die Kacheln auf der Seite „Darstellung“ (settings_window.py).
 
 Nur Umrisse und Balken, keine Texte: Design (Hell, Dunkel, Wie Windows, Eigene Farben),
-Timeline beim Start, PC-Aktivität, PC-Verlauf in der Liste und die Ansichten der Tagesliste.
+Timeline beim Start, PC-Aktivität, Hervorhebung unter der Maus, PC-Verlauf in der Liste und die Ansichten der Tagesliste.
 Farben kommen aus den Tokens des Designs (theme.py); die Design-Kacheln zeigen jeweils ihr
 eigenes Design. preview(key, value, tokens) gibt ein QPixmap in 96 × 60 (doppelt aufgelöst).
 """
 from PySide6.QtCore import QPointF, QRectF, Qt
-from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen, QPixmap
+from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen, QPixmap, QRadialGradient
 
 import theme
 
@@ -199,7 +199,48 @@ def _list_view(value, tokens):
     return s.done()
 
 
-PAINTERS = {"theme": _theme, "timeline_range": _timeline_range, "pc_blocks_action": _pc_blocks,
+def _hover(value, tokens):
+    """Drei Zeilen Balken, der mittlere unter der Maus: so stark Nebel, Lichtkegel und Leuchten."""
+    from timeline_only import HOVER_STYLES, HOVER_DEFAULT
+    s = _Sketch(tokens)
+    s.frame()
+    t = s.t
+    colors = [t["accent"], t["good"], t["rate_value_mid"]]
+    bars = [(8, 12, 22, 0), (34, 12, 14, 1), (52, 12, 30, 2), (10, 26, 18, 1), (40, 26, 22, 0),
+            (66, 26, 18, 2), (14, 40, 26, 2), (46, 40, 16, 0), (66, 40, 20, 1)]
+    for x, y, w, c in bars:
+        s.bar(x, y, w, 8, _color(colors[c]), 2)
+    style = HOVER_STYLES.get(value if value != "custom" else HOVER_DEFAULT)
+    focus = QRectF(40, 26, 22, 8)
+    if style:
+        alpha = round(style["fog"] * 2.55)
+        if alpha:
+            if style["cone"]:
+                radius = 11 + style["cone"] / 8
+                grad = QRadialGradient(focus.center(), radius)
+                grad.setColorAt(0, _color(t["bg"], 0))
+                grad.setColorAt(11 / radius, _color(t["bg"], round(alpha * 0.22)))
+                grad.setColorAt(1, _color(t["bg"], alpha))
+                s.p.setBrush(grad)
+            else:
+                s.p.setBrush(_color(t["bg"], alpha))
+            s.p.setPen(Qt.NoPen)
+            s.p.drawRoundedRect(QRectF(1, 1, W - 2, H - 2), 5, 5)
+        for i in range(style["glow"] // 6, 0, -1):  # Leuchten als weiche Ringe
+            s.bar(focus.x() - i, focus.y() - i, focus.width() + 2 * i, focus.height() + 2 * i,
+                  _color(colors[0], 45), 2 + i)
+        s.bar(focus.x(), focus.y(), focus.width(), focus.height(), _color(colors[0]), 2)
+        if style["outline"]:
+            s.outline(focus.x(), focus.y(), focus.width(), focus.height(), _color(t["text"], 110))
+    if value == "custom":  # Regler andeuten
+        for i, at in enumerate((0.35, 0.7, 0.5)):
+            x0 = 8 + i * 28
+            s.bar(x0, 53, 24, 1.5, s.muted(160), 0.75)
+            s.dot(x0 + 24 * at, 53.75, 2.4, _color(t["accent"]))
+    return s.done()
+
+
+PAINTERS = {"hover_focus": _hover, "theme": _theme, "timeline_range": _timeline_range, "pc_blocks_action": _pc_blocks,
             "pc_list_action": _pc_list, "list_view": _list_view}
 
 

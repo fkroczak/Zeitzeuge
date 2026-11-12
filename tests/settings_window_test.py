@@ -172,6 +172,18 @@ def gui_test():
     QTest.qWait(20)
     assert window.config["timeline_range"] == "day" and window.timeline.fit_day
     range_row.tiles["work"].click()
+    # Hervorhebung unter der Maus: Kacheln, „Eigene“ zeigt Regler, Menü Ansicht wählt dasselbe
+    hover_row = next(r for r in settings.rows if r.spec[5] == "hover_focus")
+    assert hover_row.tiles["cone"].isChecked() and not hover_row.custom_panel.isVisible()
+    hover_row.tiles["custom"].click()
+    assert window.config["hover_focus"] == "custom" and hover_row.custom_panel.isVisibleTo(settings)
+    hover_row.custom_panel.sliders["fog"].setValue(20)
+    hover_row.custom_panel.outline.setChecked(False)
+    assert window.config["hover_custom"]["fog"] == 20 and window.config["hover_custom"]["outline"] is False
+    window.hover_actions["strong"].trigger()
+    assert window.config["hover_focus"] == "strong" and hover_row.tiles["strong"].isChecked()
+    assert not hover_row.custom_panel.isVisibleTo(settings)
+    hover_row.tiles["cone"].click()
 
     # Datenquellen: Kacheln schalten dieselben Aktionen wie das Menü
     settings.show_page("sources")
