@@ -217,10 +217,39 @@ class _CustomerChips(QWidget):
             spots = [(0, 0), (0, 1)][:len(widths)]
         height = sizes[0].height()
         chips = self._chips[:k] + ([self._chips[n]] if k < n else [])
-        for chip, (x, row) in zip(chips, spots):
+        spots, widths = self._justify(spots, widths, width)
+        for chip, (x, row), w in zip(chips, spots, widths):
+            chip.setAlignment(Qt.AlignCenter)
+            chip.resize(w, height)
             chip.move(x, row * (height + self.GAP))
             chip.show()
         self._set_rows(spots[-1][1] + 1, height)
+
+    JUSTIFY_MAX = 0.25  # höchstens so viel der Breite auf die Chips einer Reihe verteilen
+
+    def _justify(self, spots, widths, room):
+        """Bei zwei Reihen beide bündig auf volle Breite (Blocksatz statt Flattersatz rechts).
+        Eine Reihe mit viel Luft (z. B. nur ein Chip in Reihe 2) bleibt links, sonst würden die
+        Chips riesig. Ergebnis: neue Positionen und Breiten."""
+        rows = {}
+        for i, (_x, row) in enumerate(spots):
+            rows.setdefault(row, []).append(i)
+        if len(rows) < 2:
+            return spots, widths
+        spots, widths = list(spots), list(widths)
+        for members in rows.values():
+            used = sum(widths[i] for i in members) + self.GAP * (len(members) - 1)
+            extra = room - used
+            if extra <= 0 or extra > self.JUSTIFY_MAX * room:
+                continue
+            x = 0
+            for j, i in enumerate(members):
+                # Rest der Teilung an die letzten Chips, damit die Reihe genau rechts endet
+                add = extra // len(members) + (1 if j >= len(members) - extra % len(members) else 0)
+                widths[i] += add
+                spots[i] = (x, spots[i][1])
+                x += widths[i] + self.GAP
+        return spots, widths
 
     def _place(self, widths, room):
         """Positionen (x, Zeile) oder None, wenn es mehr als ROWS Zeilen bräuchte."""

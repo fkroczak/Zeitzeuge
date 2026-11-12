@@ -46,3 +46,17 @@ def test_strong():
 def test_off():
     mine, other, label, _work = bars({"customer_highlight": "off"})
     assert mine.pen().style() == Qt.NoPen and other.opacity() == label.opacity() == 1
+
+
+def test_customer_chips_justified():
+    """Nach Kunde: zwei Reihen enden bündig rechts; eine fast leere Reihe bleibt links."""
+    from day_summary import _CustomerChips
+    chips = _CustomerChips()
+    _views.append(chips)
+    gap = chips.GAP
+    spots, widths = chips._justify([(0, 0), (100 + gap, 0), (0, 1), (90 + gap, 1)],
+                                   [100, 100, 90, 100], 220)
+    assert spots[1][0] + widths[1] == 220 and spots[3][0] + widths[3] == 220
+    spots, widths = chips._justify([(0, 0), (0, 1)], [200, 40], 220)  # Reihe 2: viel Luft
+    assert widths == [220, 40]
+    assert chips._justify([(0, 0)], [100], 220) == ([(0, 0)], [100])  # eine Reihe: unverändert
