@@ -191,6 +191,50 @@ def merge_tickets(*lists, text=""):
     return rows[:SEARCH_LIMIT]
 
 
+# ------------------------------------------------------------ Meine Tickets
+
+# Übersicht „Meine Tickets“: offene Tickets, bei denen du Bearbeiter (Recipient) bist.
+# Matrix42 filtert „Bearbeiter enthält <Nachname>“, den Rest (ganzer Name, nicht erledigt)
+# prüft Zeitzeuge selbst. So viele Seiten liest es höchstens (neueste zuerst).
+MY_TICKETS_PAGE_SIZE = 100
+MY_TICKETS_PAGES = 5
+
+
+def own_name(text):
+    """'Kroczak, Filip - Systems (3)' -> 'Kroczak, Filip' (Abteilung und Zähler weg)."""
+    return _clean(re.sub(r"\s+-\s+.*$", "", _clean(text)))
+
+
+def _name_words(text):
+    return re.findall(r"\w+", (text or "").casefold())
+
+
+def my_tickets_word(name):
+    """Wort, nach dem Matrix42 im Feld Bearbeiter sucht: der Nachname (längstes Wort vor dem
+    Komma), '' ohne Namen."""
+    name = own_name(name)
+    words = _name_words(name.split(",")[0]) or _name_words(name)
+    return max(words, key=len) if words else ""
+
+
+def is_mine(row, name):
+    """Bin ich Bearbeiter? Alle Wörter meines Namens stehen im Feld Bearbeiter
+    (Reihenfolge egal: 'Kroczak, Filip' passt auf 'Filip Kroczak - Systems')."""
+    words = _name_words(own_name(name))
+    have = set(_name_words(own_name(row.get("recipient"))))
+    return bool(words) and all(w in have for w in words)
+
+
+def my_open_tickets(items, name):
+    """Antworten der Ticketliste -> offene Tickets, bei denen name Bearbeiter ist,
+    jedes einmal, neueste zuerst."""
+    seen = {}
+    for row in filter(None, map(ticket_row, items or [])):
+        if is_mine(row, name) and not is_closed(row):
+            seen.setdefault(row["id"], row)
+    return sorted(seen.values(), key=lambda r: r["created"], reverse=True)
+
+
 def merge_tickets_rows(rows, text):
     """Schon gefundene Treffer auf einen neuen Suchtext eingrenzen (Reihenfolge bleibt)."""
     return [r for r in rows if matches(r, text)]

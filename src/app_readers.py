@@ -31,6 +31,19 @@ M42_BOOKING_RECORD_TEXT = (
     "Zeitzeuge speichert die Mitschnitt-Datei (mitschnitt_m42_buchung_…) im Datenordner. "
     "Abfragen, die etwas speichern, stehen darin vollständig, Passwörter und Token geschwärzt.")
 
+# Anleitung für den Ticket-Mitschnitt (Vorbereitung für „Ticket anlegen“ und „Ticket schließen“)
+M42_TICKET_RECORD_TEXT = (
+    "Ein Edge-Fenster mit Matrix42 öffnet sich.\n\n"
+    "1. Falls nötig anmelden und in den Service Desk wechseln.\n"
+    "2. Einen Incident anlegen: Kunde, Melder (Ansprechperson beim Kunden), Kategorie, "
+    "Betreff und Beschreibung ausfüllen, speichern. Dich selbst als Bearbeiter eintragen.\n"
+    "3. Einen Service Request genauso anlegen.\n"
+    "4. Beide Test-Tickets wieder schließen: Lösungstext eintragen und abschließen.\n"
+    "5. Das Fenster schließen.\n\n"
+    "Bitte nur Test-Tickets (z. B. Betreff „Test Zeitzeuge“) und einen internen Kunden nehmen. "
+    "Zeitzeuge speichert die Mitschnitt-Datei (mitschnitt_m42_ticket_…) im Datenordner. "
+    "Abfragen, die etwas speichern, stehen darin vollständig, Passwörter und Token geschwärzt.")
+
 
 class ReadersMixin:
     def is_paw(self):
@@ -355,18 +368,20 @@ class ReadersMixin:
                  "m42": self.start_m42_reader}[kind]()
         return getattr(self, spec["attr"])
 
-    def record_source(self, kind, booking=False):
+    def record_source(self, kind, booking=False, ticket=False):
         """Mitschnitt: aufzeichnen, welche Abfragen die Seite an ihren Server schickt.
-        booking: Buchung in Matrix42 mitschneiden (speichernde Abfragen ungekürzt)."""
+        booking: Buchung in Matrix42 mitschneiden, ticket: Ticket anlegen und schließen
+        (beide: speichernde Abfragen ungekürzt)."""
         reader = self._debug_reader(kind)
         if not reader:
             return
-        name = f"{kind}_buchung" if booking else kind
+        name = f"{kind}_ticket" if ticket else f"{kind}_buchung" if booking else kind
         path = os.path.join(mt.DATA_DIR, f"mitschnitt_{name}_{datetime.now():%Y-%m-%d_%H%M}.json")
-        if reader.record(path, full_writes=booking):
-            QMessageBox.information(self, "Buchung mitschneiden" if booking else "Abfragen mitschneiden",
-                                    M42_BOOKING_RECORD_TEXT if booking
-                                    else self.READER_DIALOGS[kind]["record_text"])
+        if reader.record(path, full_writes=booking or ticket):
+            title, text = (("Ticket mitschneiden", M42_TICKET_RECORD_TEXT) if ticket
+                           else ("Buchung mitschneiden", M42_BOOKING_RECORD_TEXT) if booking
+                           else ("Abfragen mitschneiden", self.READER_DIALOGS[kind]["record_text"]))
+            QMessageBox.information(self, title, text)
         else:
             QMessageBox.information(self, "Abfragen mitschneiden",
                                     "Es ist schon ein Anmelde- oder Mitschnitt-Fenster offen.")
@@ -406,6 +421,20 @@ class ReadersMixin:
         box.exec()
         if box.clickedButton() is open_btn:
             QDesktopServices.openUrl(QUrl.fromLocalFile(os.path.dirname(path)))
+
+    def show_my_tickets(self):
+        """Fenster „Meine Tickets“ (Kachel über der Timeline), nur eins auf einmal."""
+        from my_tickets_dialogs import MyTicketsDialog
+        if not self.m42_reader:
+            return
+        dialog = getattr(self, "_my_tickets_dialog", None)
+        if dialog is None:
+            dialog = self._my_tickets_dialog = MyTicketsDialog(self.m42_reader, self)
+            dialog.setAttribute(Qt.WA_DeleteOnClose)
+            dialog.destroyed.connect(lambda: setattr(self, "_my_tickets_dialog", None))
+        dialog.show()
+        dialog.raise_()
+        dialog.activateWindow()
 
     # ---------------------- ITM-Personalzeiten --------------------------------
 
@@ -483,7 +512,11 @@ class ReadersMixin:
         self.m42_reader = M42Reader(self.config.get("m42_url", ""), mt.M42_FILE, mt.M42_PROFILE_DIR,
                                     self, weeks_back=self.config.get("m42_weeks_back", 4),
                                     use_api=self.config.get("m42_api", True),
-                                    widget_id=self.config.get("m42_widget_id", ""))
+                                    widget_id=self.config.get("m42_widget_id", ""),
+                                    own_name=self.config.get("m42_own_name", ""))
+        import m42_booking
+        self.m42_reader.ticket_list = m42_booking.ids(self.config).get("ticket_list", "")
+        self.m42_reader.my_tickets_loaded.connect(self.day_summary.show_my_tickets)
         self.m42_reader.status_changed.connect(lambda _t: self.update_source_indicators())
         self.m42_reader.busy_changed.connect(self.update_busy_bar)
         self.m42_reader.day_read.connect(
@@ -509,6 +542,7 @@ class ReadersMixin:
             self.m42_reader.stop()
             self.m42_reader.deleteLater()
             self.m42_reader = None
+            self.day_summary.show_my_tickets(None)
             self.update_source_indicators()
 
     # ---------------------- Absicherung gegen Fehler und Aussetzer -------------

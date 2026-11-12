@@ -223,9 +223,11 @@ def gui_test():
     assert not [b for b in m42_dialog.findChildren(QPushButton) if "mitschneiden" in b.text()]
     m42_dialog.deleteLater()
     calls = []
-    window.record_source = lambda kind, booking=False: calls.append((kind, booking))
+    window.record_source = lambda kind, booking=False, ticket=False: calls.append((kind, booking, ticket))
     next(r for r in settings.rows if r.spec[3] == "Matrix42: Buchung mitschneiden").control.click()
-    assert calls == [("m42", True)], calls
+    next(r for r in settings.rows
+         if r.spec[3] == "Matrix42: Ticket anlegen und schließen mitschneiden").control.click()
+    assert calls == [("m42", True, False), ("m42", False, True)], calls
 
     # Seite Nachfragen: Grenzwert ändern wirkt sofort und wird gespeichert
     settings.show_page("prompts")

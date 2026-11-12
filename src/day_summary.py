@@ -258,6 +258,7 @@ class DaySummary(QWidget):
 
     open_clicked = Signal()
     suggestions_clicked = Signal()
+    tickets_clicked = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -273,13 +274,20 @@ class DaySummary(QWidget):
         self.suggest.button.clicked.connect(self.suggestions_clicked)
         self.suggest.button.setAccessibleName("KI-Vorschläge ansehen")
         self.customers = _Kpi("Nach Kunde", self, customers=True)
+        # Meine Tickets (Matrix42, Bearbeiter = ich): show_my_tickets füllt die Kachel,
+        # ohne Matrix42 bleibt sie aus; Klick öffnet die Liste
+        self.tickets = _Kpi("Meine Tickets", self, "Anzeigen")
+        self.tickets.button.clicked.connect(self.tickets_clicked)
+        self.tickets.button.setAccessibleName("Meine offenen Tickets anzeigen")
+        self.tickets.loaded()  # kein Umriss: die Kachel erscheint erst mit Zahlen
+        self.tickets.hide()
         # Buchungsquote (Matrix42 ÷ Personalzeit): week_dialogs.update_rate_button füllt die
         # Kachel und blendet sie ohne Matrix42 aus; Klick öffnet den Wochenabschluss
         self.rate = RateKpi(self)
         self.rate.hide()
         # Zahlen-Kacheln so breit wie ihr Inhalt (keine leeren Flächen), „Nach Kunde“ füllt
         # den Rest. Im schmalen Fenster dürfen alle schrumpfen (Reflow, Mindestbreite klein).
-        for w in (self.booked, self.rate, self.opened, self.suggest):
+        for w in (self.booked, self.rate, self.opened, self.suggest, self.tickets):
             w.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Preferred)
             w.setMinimumWidth(60)
             layout.addWidget(w, 0)
@@ -312,6 +320,24 @@ class DaySummary(QWidget):
         self.customers.value.set_parts(parts, "Noch nichts eingetragen – hier steht später die Zeit je Kunde")
         self.customers.value.setProperty("empty", not parts)
         self.customers.value.style().polish(self.customers.value)
+
+
+    def show_my_tickets(self, result):
+        """result: M42Reader.my_tickets ({rows, error, at}) oder None (Kachel aus)."""
+        if result is None:
+            self.tickets.hide()
+            return
+        rows = result.get("rows")
+        self.tickets.value.setText("–" if rows is None else str(len(rows)))
+        self.tickets.extra.setText("offen" if rows is not None else "")
+        tip = [f"Offene Tickets in Matrix42, bei denen du Bearbeiter bist (Stand {result.get('at', '')})"]
+        tip += [f"{r['ticket']} · {r['subject']}" for r in (rows or [])[:10]]
+        if rows and len(rows) > 10:
+            tip.append(f"… und {len(rows) - 10} weitere")
+        if result.get("error"):
+            tip.append(f"⚠ {result['error']}")
+        self.tickets.setToolTip("\n".join(tip))
+        self.tickets.show()
 
 
 class ViewChips(QWidget):

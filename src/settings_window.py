@@ -194,6 +194,10 @@ ROWS = [
     ("about/Fehlersuche", "button", "record", "Matrix42: Buchung mitschneiden",
      "Aufzeichnen, wie Matrix42 eine Zeiterfassung speichert. Du legst dabei selbst eine Buchung an.",
      lambda main: main.record_source("m42", booking=True), None),
+    ("about/Fehlersuche", "button", "record", "Matrix42: Ticket anlegen und schließen mitschneiden",
+     "Aufzeichnen, wie Matrix42 Incidents und Service Requests anlegt und mit Lösungstext schließt. "
+     "Du legst dabei selbst zwei Test-Tickets an und schließt sie.",
+     lambda main: main.record_source("m42", ticket=True), None),
     ("about/Fehlersuche", "button", "record", "ITM: Abfragen mitschneiden",
      "Edge-Fenster mit der ITM-Zeiterfassung öffnen und aufzeichnen, was die Seite abfragt.",
      lambda main: main.record_source("itm"), None),
