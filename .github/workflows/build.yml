@@ -42,9 +42,11 @@ jobs:
         with:
           fetch-depth: 0  # version_test liest die git-Geschichte
 
+      # 3.13 statt 3.11: PySide6 unter Linux mit Python 3.11 stürzt in GUI-Tests ab
+      # („none_dealloc“, Zählfehler bei None). Ab 3.12 ist None unsterblich, der Fehler tritt nicht auf.
       - uses: actions/setup-python@v6
         with:
-          python-version: "3.11"
+          python-version: "3.13"
           cache: pip
 
       - name: Abhängigkeiten installieren
