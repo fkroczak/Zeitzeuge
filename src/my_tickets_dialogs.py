@@ -1,7 +1,7 @@
 """Fenster „Meine Tickets“: offene Tickets in Matrix42, bei denen du Bearbeiter bist.
 
 Die Liste liest M42Reader alle 10 Minuten (my_tickets_loaded), „Aktualisieren“ liest sofort.
-Nur lesen: Anlegen und Schließen kommen nach dem Mitschnitt „Ticket anlegen und schließen“.
+„Neues Ticket …“ und „Schließen …“ öffnen die Fenster aus ticket_dialogs.py.
 """
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (QApplication, QDialog, QDialogButtonBox, QLabel, QListWidget,
@@ -16,6 +16,7 @@ class MyTicketsDialog(QDialog):
         self.setWindowTitle("Meine Tickets")
         self.setMinimumSize(560, 360)
         self.reader = reader
+        self._note = ""  # letzte Meldung (angelegt/geschlossen), bleibt beim Neuladen stehen
         layout = QVBoxLayout(self)
         self.results = QListWidget(self)
         self.results.setAccessibleName("Meine offenen Tickets")
@@ -28,17 +29,24 @@ class MyTicketsDialog(QDialog):
         self.status.setObjectName("hint")
         layout.addWidget(self.status)
         buttons = QDialogButtonBox(QDialogButtonBox.Close, self)
-        buttons.button(QDialogButtonBox.Close).setText("Schließen")
+        buttons.button(QDialogButtonBox.Close).setText("Fertig")
         self.copy_button = QPushButton("Nummer &kopieren", self)
         self.copy_button.setEnabled(False)
         self.copy_button.clicked.connect(lambda: self.copy_number(self.results.currentItem()))
         self.refresh_button = QPushButton("&Aktualisieren", self)
         self.refresh_button.clicked.connect(self.refresh)
-        buttons.addButton(self.copy_button, QDialogButtonBox.ActionRole)
-        buttons.addButton(self.refresh_button, QDialogButtonBox.ActionRole)
+        self.new_button = QPushButton("&Neues Ticket …", self)
+        self.new_button.clicked.connect(self.new_ticket)
+        self.close_button = QPushButton("&Schließen …", self)
+        self.close_button.setToolTip("Markiertes Ticket mit Lösungstext schließen")
+        self.close_button.setEnabled(False)
+        self.close_button.clicked.connect(lambda: self.close_ticket(self.results.currentItem()))
+        for button in (self.new_button, self.close_button, self.copy_button, self.refresh_button):
+            button.setAutoDefault(False)
+            buttons.addButton(button, QDialogButtonBox.ActionRole)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
-        self.results.currentItemChanged.connect(lambda item, _old: self.copy_button.setEnabled(item is not None))
+        self.results.currentItemChanged.connect(self._selected)
         reader.my_tickets_loaded.connect(self.show_result, Qt.QueuedConnection)
         if reader.my_tickets is None:
             self.refresh()
@@ -66,7 +74,34 @@ class MyTicketsDialog(QDialog):
                 if rows is not None else "")
         if result.get("error"):
             text = (text + "\n" if text else "") + f"⚠ {result['error']}"
-        self.status.setText(text)
+        self.status.setText("\n".join(t for t in (self._note, text) if t))
+
+    def _selected(self, item, _old=None):
+        self.copy_button.setEnabled(item is not None)
+        self.close_button.setEnabled(item is not None)
+
+    def new_ticket(self):
+        from ticket_dialogs import NewTicketDialog
+        dialog = NewTicketDialog(self.reader, self)
+        if dialog.exec() == QDialog.Accepted and dialog.created:
+            c = dialog.created
+            text = f"{c['ticket']} angelegt" + (" und übernommen" if c.get("taken_over") else "") + \
+                ", Nummer kopiert."
+            self._note = text + (f"\n⚠ {c['warning']}" if c.get("warning") else "")
+            self.status.setText(self._note)
+        dialog.deleteLater()
+
+    def close_ticket(self, item):
+        from ticket_dialogs import CloseTicketDialog
+        row = item.data(Qt.UserRole) if item is not None else None
+        if not row:
+            return
+        dialog = CloseTicketDialog(self.reader, row, self)
+        if dialog.exec() == QDialog.Accepted and dialog.closed:
+            self.results.takeItem(self.results.row(item))
+            self._note = f"{row['ticket']} geschlossen."
+            self.status.setText(self._note)
+        dialog.deleteLater()
 
     def copy_number(self, item):
         if item is None:

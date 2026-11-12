@@ -164,6 +164,8 @@ def test_meine_tickets_lesen(tmp_path):
              "CreatedDate": f"2026-10-{n % 28 + 1:02d}T08:00:00Z"} for n in range(mb.MY_TICKETS_PAGE_SIZE)]
 
     def fetch(method, path, body=None, content_type=None):
+        if path.endswith("/userinfo"):  # eigener Benutzer: hier unbekannt
+            return None
         calls.append((path, body))
         return page if "page=0" in path else page[:3]
     reader._fetch = fetch

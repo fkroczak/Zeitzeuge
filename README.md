@@ -81,7 +81,13 @@ Gedacht ist Zeitzeuge für IT-Dienstleister und Admins, die ihre Zeiten nachträ
   - Das Ticketsystem muss eingeschaltet und angemeldet sein (nur im Firmennetz). Zeitzeuge bucht über das unsichtbare Edge, wie die Seite des Ticketsystems selbst.
 - **Meine Tickets:** Die Kachel **Meine Tickets** über der Timeline zeigt, wie viele Tickets im Ticketsystem offen sind, bei denen du Bearbeiter bist. Der Hinweis listet die ersten zehn. **Anzeigen** öffnet die Liste mit Nummer, Titel, Kunde, Status und Datum, die neuesten oben. Enter oder **Nummer kopieren** legt die Ticketnummer in die Zwischenablage, **Aktualisieren** liest sofort neu.
   - Zeitzeuge liest die Liste alle 10 Minuten, zusammen mit den Buchungen. Offen heißt: nicht gelöst, geschlossen, abgeschlossen oder storniert.
-  - Deinen Namen nimmt Zeitzeuge aus deinen eigenen Buchungen. Steht er im Ticketsystem anders, trägst du ihn in der `zeitzeuge_config.json` unter `m42_own_name` ein (z. B. `"Müller, Anna"`).
+  - Deinen Benutzer fragt Zeitzeuge beim Ticketsystem nach und erkennt deine Tickets an ihm. Klappt das nicht, trägst du deinen Namen in der `zeitzeuge_config.json` unter `m42_own_name` ein (z. B. `"Müller, Anna"`).
+- **Ticket anlegen:** In **Meine Tickets** öffnet **Neues Ticket …** das Fenster dafür. Du wählst die Art (**Störung** oder **Serviceanfrage**), suchst den **Melder** (Ansprechperson beim Kunden, ab 2 Buchstaben) und wählst die **Kategorie** (Suche im Feld, z. B. „Fileserver“, vorbelegt ist „Ticketeingang“). Dazu kommen **Betreff** und **Beschreibung**.
+  - Angelegt wird erst mit **Ticket anlegen**. Zeitzeuge setzt SLA, Auswirkung und Dringlichkeit wie das Ticketsystem aus Kategorie und Melder, die Rückrufnummer aus dem Melder.
+  - **Mich als Bearbeiter eintragen** (Standard an) übernimmt das Ticket gleich. Die neue Ticketnummer steht in der Zwischenablage.
+  - Legt das Ticketsystem eine andere Art an als gewählt, sagt Zeitzeuge es.
+- **Ticket schließen:** In **Meine Tickets** ein Ticket markieren, **Schließen …**, Lösungstext eintragen und **Ticket schließen**. Ist **Melder per E-Mail informieren** an (Standard), bekommt der Melder die Lösung per E-Mail.
+- Bricht die Verbindung beim Anlegen oder Schließen ab, ist unklar, ob es geklappt hat. Zeitzeuge sperrt dann den Knopf und bittet, im Ticketsystem nachzusehen, statt es doppelt zu versuchen.
   - Ohne Ticketsystem bleibt die Kachel aus.
 - **Tagesabschluss** (Menü **Ansicht → Tagesabschluss …**, im Wochenabschluss oder über „Tagesabschluss öffnen“ in der Karte bei Feierabend): Zeitzeuge stellt den Tag aus allen Spuren zu Blöcken je Kunde zusammen, mit Ticket und kurzem Tickettext. Du prüfst die Liste und bestätigst einmal für alles. Ziel: mit wenig Aufwand rund 90 % der Personalzeit erfasst.
   - **Woher die Blöcke kommen:** deine eingetragenen Tätigkeiten, Verbindungen und Telefonate, KI-Vorschläge, die Zuordnung ohne KI und die Arbeitsblöcke am PC, in dieser Reihenfolge. Was im Ticketsystem schon gebucht ist, bleibt außen vor. Gleicher Kunde hintereinander wird ein Block, kurze Lücken (bis 10 Minuten) gehören zum Block davor. PC-Aktivität zählt nur in der Personalzeit.
@@ -526,7 +532,8 @@ Unter **Einstellungen → Nachfragen** legst du fest, wann Zeitzeuge nachfragt. 
 | `m42_reader_enabled` | `false` | Gebuchte Zeiten aus dem Ticketsystem lesen |
 | `m42_weeks_back` | `4` | So viele Wochen zurück einmal pro Sitzung lesen |
 | `m42_gap_minutes` | `5` | Kürzere Lücken ohne Buchung zählen nicht |
-| `m42_own_name` | `""` | Dein Name als Bearbeiter im Ticketsystem, für „Meine Tickets“ (leer: aus deinen Buchungen) |
+| `m42_own_name` | `""` | Dein Name als Bearbeiter im Ticketsystem, für „Meine Tickets“ (leer: Zeitzeuge fragt das Ticketsystem) |
+| `m42_ticket_ids` | `{}` | Kennung des Ticketdialogs (`ticket_dialog`), nur falls das Ticketsystem sie ändert |
 | `pc_blocks` | `true` | PC-Aktivität als Arbeitsblöcke je Tätigkeit statt jedes Fenster einzeln |
 | `pc_jump_seconds` | `120` | Kürzere Fensterwechsel zählen zur Haupttätigkeit (0 = aus) |
 | `day_close_end_of_day` | `true` | Meldung bei Feierabend nennt den Tagesabschluss, ein Klick öffnet ihn (`false`: Meldung wie früher) |
@@ -791,6 +798,8 @@ Module in `src/`:
 | `m42_reader.py` | Ticketsystem: Kalender im unsichtbaren Edge lesen (Wochenansicht, Blättern, Anmeldung) |
 | `m42_data.py` | Ticketsystem: Einträge umwandeln, Abgleich gebucht / nicht gebucht (ohne Qt) |
 | `my_tickets_dialogs.py` | Fenster „Meine Tickets“: offene Tickets, bei denen du Bearbeiter bist |
+| `m42_tickets.py` | Ticketsystem: Ticket anlegen und schließen, Felder wie im Ticket-Mitschnitt (ohne Qt) |
+| `ticket_dialogs.py` | Fenster „Neues Ticket“ und „Ticket schließen“ |
 | `busy_bar.py` | Ladeanzeige: drehender Kreis mit Text in der Werkzeugleiste, Streifen über die ganze Breite |
 | `transfer.py` | Export/Import zwischen zwei PCs (Arbeits-PC → PAW), übernommene Daten (ohne Qt) |
 | `app_transfer.py` | Hauptfenster: Export- und Import-Dialog, PAW-Modus |
