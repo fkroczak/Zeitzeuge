@@ -323,7 +323,7 @@ class TicketSearchDialog(_TicketSearch, QDialog):
     def __init__(self, reader, text="", ticket_list=None, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Ticket suchen")
-        self.setMinimumWidth(560)
+        self.setMinimumSize(960, 480)
         self.reader = reader
         self.ticket_list = ticket_list
         self.row = None
@@ -341,12 +341,12 @@ class TicketSearchDialog(_TicketSearch, QDialog):
         search.addWidget(self.search_edit, 1)
         search.addWidget(self.search_button)
         layout.addLayout(search)
-        self.results = QListWidget()
-        self.results.setAccessibleName("Gefundene Tickets")
-        self.results.setMinimumHeight(180)
-        self.results.itemActivated.connect(self.take)
-        self.results.itemDoubleClicked.connect(self.take)
-        layout.addWidget(self.results)
+        from ticket_table import TicketTable
+        self.results = TicketTable("Gefundene Tickets")
+        self.results.setAccessibleDescription("Enter oder Doppelklick übernimmt das Ticket.")
+        self.results.setMinimumHeight(220)
+        self.results.activated.connect(self._take_row)
+        layout.addWidget(self.results, 1)
         self.status = QLabel()
         self.status.setWordWrap(True)
         self.status.setObjectName("hint")
@@ -356,10 +356,15 @@ class TicketSearchDialog(_TicketSearch, QDialog):
         self.take_button.setText("&Übernehmen")
         self.take_button.setEnabled(False)
         buttons.button(QDialogButtonBox.Cancel).setText("Abbrechen")
-        buttons.accepted.connect(lambda: self.take(self.results.currentItem()))
+        buttons.accepted.connect(lambda: self._take_row(self.results.current_row()))
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
-        self.results.currentItemChanged.connect(lambda item, _old: self.take_button.setEnabled(item is not None))
+        self.results.itemSelectionChanged.connect(
+            lambda: self.take_button.setEnabled(self.results.current_row() is not None))
+        # Rahmen wie „Tätigkeit nachtragen“: Kopf, Inhalt, Fuß mit „Übernehmen“ als Hauptaktion
+        from card_dialog import modernize
+        modernize(self, "Ticket suchen", "In Matrix42 nach Kunde, Melder, Ticketnummer oder Titel", "search",
+                  intro=False, primary=self.take_button)
         if reader is not None:
             reader.tickets_found.connect(self.on_tickets, Qt.QueuedConnection)
         self.search_edit.setFocus()
@@ -377,8 +382,10 @@ class TicketSearchDialog(_TicketSearch, QDialog):
 
     def eventFilter(self, obj, event):
         if obj is self.search_edit and event.type() == QEvent.KeyPress and event.key() == Qt.Key_Down \
-                and self.results.count():
+                and self.results.visible_rows():
             self.results.setFocus()
+            if self.results.current_row() is None:
+                self.results.select_first()
             return True
         return super().eventFilter(obj, event)
 
@@ -390,7 +397,7 @@ class TicketSearchDialog(_TicketSearch, QDialog):
         if rows:
             self._show(rows, "")
         else:  # nichts mehr in den alten Treffern: auf die neue Suche warten
-            self.results.clear()
+            self.results.set_rows([])
             self.status.setText("Enter sucht in Matrix42." if len(text.strip()) >= 3
                                 else "Bitte mindestens 3 Zeichen eingeben.")
         if self.reader is not None and len(text.strip()) >= 3:
@@ -412,20 +419,20 @@ class TicketSearchDialog(_TicketSearch, QDialog):
         self._show(self._rows, result.get("error", ""))
 
     def _show(self, rows, error):
-        self._fill_results(rows)
+        self.results.set_rows(rows)
         if rows:
-            self.results.setCurrentRow(0)
+            self.results.select_first()
             open_n = sum(not mb.is_closed(r) for r in rows)
             self.status.setText(f"{len(rows)} Ticket{'s' if len(rows) != 1 else ''} gefunden, "
-                                f"{open_n} offen (stehen oben). "
+                                f"{open_n} offen (stehen oben, Klick auf eine Spalte sortiert). "
                                 "Doppelklick oder „Übernehmen“ übernimmt das Ticket.")
         else:
             self.status.setText(f"⚠ Kein Ticket gefunden{': ' + error if error else '.'}")
 
-    def take(self, item):
-        if item is None:
+    def _take_row(self, row):
+        if not row:
             return
-        self.row = item.data(Qt.UserRole) or {}
+        self.row = row
         self.accept()
 
 

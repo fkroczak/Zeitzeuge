@@ -326,6 +326,7 @@ class M42Reader(BrowserReader):
     activity_types_loaded = Signal(object)  # [(Wert, Name)] der Tätigkeitsarten
     tickets_found = Signal(object)  # Ergebnis von search_tickets(): {text, rows, error}
     my_tickets_loaded = Signal(object)  # Meine Tickets: {rows (None = unbekannt), error, at}
+    ticket_task_done = Signal(object)  # Ergebnis von ticket_task(): {kind, ok, data | error, unclear}
 
     NAME = "Matrix42"
     READ_INTERVAL = 10 * 60   # aktuelle Woche so oft neu lesen
@@ -333,6 +334,8 @@ class M42Reader(BrowserReader):
     # Matrix42 leitet nach dem Start oft über die Anmeldung weiter (altes Token, Windows-
     # Anmeldung): das Lesen dann auf der neuen Seite wiederholen statt Edge neu zu starten
     NAVIGATION_RETRIES = 3
+    # Abfragen, die etwas speichern: nie wiederholen (könnte doppelt buchen/anlegen/schließen)
+    NO_RETRY = ("UpdateData", "/ticket/Close", "/activity/TakeOver")
 
     def __init__(self, url, data_file, profile_dir, parent=None, weeks_back=4, use_api=True,
                  widget_id="", own_name=""):
@@ -359,6 +362,8 @@ class M42Reader(BrowserReader):
         self.user_name = ""
         self.my_tickets = None  # letzte Antwort von my_tickets_loaded
         self.ticket_list = ""   # Ticketliste (Widget-ID), leer = m42_booking.DEFAULT_IDS
+        self.ticket_ids = {}    # Kennungen für Anlegen/Schließen, leer = m42_tickets.DEFAULT_IDS
+        self._me_checked = False  # eigener Benutzer schon bei Matrix42 nachgefragt (/userinfo)
         self._tickets_read = 0
         self._booking = False
 
@@ -609,6 +614,10 @@ class M42Reader(BrowserReader):
     def _read_my_tickets(self):
         """Offene Tickets lesen, bei denen ich Bearbeiter bin. Nur mit gehaltenem _browser_lock."""
         import m42_booking as mb
+        try:
+            self._me()
+        except Exception as e:  # z. B. Anmeldung nötig: dann scheitert gleich auch die Liste
+            safe_io.log(f"Matrix42: eigener Benutzer nicht gelesen ({e})")
         name = self.own_name or self.user_name
         result = {"rows": None, "error": "", "at": datetime.now().strftime("%H:%M"), "name": name}
         word = mb.my_tickets_word(name)
@@ -627,7 +636,7 @@ class M42Reader(BrowserReader):
                     items.extend(data)
                     if len(data) < mb.MY_TICKETS_PAGE_SIZE:
                         break
-                result["rows"] = mb.my_open_tickets(items, name)
+                result["rows"] = mb.my_open_tickets(items, name, "" if self.own_name else self.user_id)
                 self._tickets_read = time.time()
             except Exception as e:
                 result["error"] = str(e)
@@ -637,6 +646,119 @@ class M42Reader(BrowserReader):
         else:  # Fehler: alte Liste behalten, Fehler dazuschreiben
             self.my_tickets = dict(self.my_tickets, error=result["error"])
         self.my_tickets_loaded.emit(self.my_tickets)
+
+    def _me(self):
+        """Eigenen Benutzer (Kennung und Name) einmal pro Sitzung bei Matrix42 nachfragen.
+        Nur mit gehaltenem _browser_lock."""
+        import m42_tickets
+        if self._me_checked:
+            return
+        me = m42_tickets.own_user(self._fetch("GET", "/m42Services/api/userinfo"))
+        self._me_checked = True
+        if me:
+            self.user_id = me["id"]
+            self.user_name = me["name"] or self.user_name
+
+    # ---- Tickets anlegen und schließen (m42_tickets.py)
+
+    def ticket_task(self, kind, **args):
+        """Im Hintergrund: "users" (text), "user_details" (user), "categories", "create" (request),
+        "close" (request).
+        Ergebnis über ticket_task_done. False, wenn gerade ein Anmeldefenster offen ist."""
+        if self._login_open:
+            return False
+        threading.Thread(target=self._ticket_task, args=(kind, args), daemon=True,
+                         name=f"Matrix42 Ticket {kind}").start()
+        return True
+
+    def _ticket_task(self, kind, args):
+        import m42_tickets as mt
+        result = {"kind": kind, "ok": False, "args": args}
+        state = {"sent": False}
+        try:
+            self._wake.set()
+            with self._browser_lock:
+                ids = dict(mt.DEFAULT_IDS, **{k: v for k, v in self.ticket_ids.items() if v})
+                if kind == "users":
+                    data = self._fetch("POST", "/m42Services/api/entity/fragments/forControl",
+                                       mt.user_query(ids["ticket_dialog"], args.get("text", "")))
+                    result["data"] = mt.users_from_fragments(data)
+                elif kind == "user_details":
+                    user = args["user"]
+                    result["data"] = self._fetch("GET", f"/m42Services/api/activity/UserDetails/{user}/?userId={user}")
+                elif kind == "categories":
+                    data = self._fetch("POST", "/m42Services/api/entity/tree", mt.tree_query(ids["ticket_dialog"]))
+                    result["data"] = mt.categories_from_tree(data)
+                elif kind == "create":
+                    result["data"] = self._create_ticket(args["request"], ids, state)
+                elif kind == "close":
+                    result["data"] = self._close_ticket(args["request"], state)
+                else:
+                    raise ValueError(kind)
+            result["ok"] = True
+        except Exception as e:
+            result["error"] = str(e)
+            if state["sent"]:  # z. B. Zeitüberschreitung: Matrix42 kann es trotzdem gespeichert haben
+                result["unclear"] = True
+                result["error"] = f"unklar, ob es geklappt hat ({e}). Bitte in Matrix42 nachsehen."
+            safe_io.log(f"Matrix42: Ticket {kind} fehlgeschlagen ({e!r})")
+        if result["ok"] and kind in ("create", "close"):
+            self._tickets_read = 0  # Meine Tickets beim nächsten Durchlauf neu lesen
+            threading.Thread(target=self.load_my_tickets, daemon=True).start()
+        self.ticket_task_done.emit(result)
+
+    def _create_ticket(self, request, ids, state):
+        """Ticket anlegen (und übernehmen). Nur mit gehaltenem _browser_lock.
+        -> {"ticket", "id", "type", "taken_over", "warning"}"""
+        import m42_tickets as mt
+        api, dialog = "/m42Services/api", ids["ticket_dialog"]
+        self._me()
+        self._set_status("Matrix42: lege Ticket an …")
+        template = (self._fetch("POST", f"{api}/WidgetDialog/GetNewData/{dialog}", mt.new_ticket_body(),
+                                "text/plain;charset=UTF-8") or {}).get("Entity")
+        category, initiator, kind = request["category"], request["initiator"], int(request["type"])
+        defaults = self._fetch("GET", f"{api}/activity/category/{category}/?categoryId={category}") or {}
+        impact, urgency = defaults.get("Impact"), defaults.get("Urgency")
+        sla = (self._fetch("GET", mt.sla_path(category, initiator, kind, impact)) or {}).get("TightestItem")
+        try:
+            callback = (self._fetch("GET", f"{api}/activity/UserDetails/{initiator}/?userId={initiator}")
+                        or {}).get("Phone")
+        except Exception:  # nur der Rückruf fehlt dann
+            callback = None
+        entity = mt.ticket_entity(template, kind, request.get("subject", ""), request.get("description", ""),
+                                  category, initiator, self.user_id, sla, impact, urgency, callback)
+        state["sent"] = True
+        created = mt.created_ticket(self._fetch("POST", f"{api}/WidgetDialog/UpdateData/{dialog}", mt.wrap(entity)))
+        state["sent"] = False  # angelegt: was jetzt schiefgeht, ist nur noch ein Hinweis
+        created["taken_over"], created["warning"] = False, ""
+        if created["type"] and created["type"] != mt.ENTITY_OF_TYPE[kind]:
+            created["warning"] = (f"Matrix42 hat das Ticket als {created['type'].replace('SPSActivityType', '')} "
+                                  "angelegt. Bitte die Art in Matrix42 prüfen.")
+        if request.get("take_over", True):
+            try:
+                self._fetch("POST", f"{api}/activity/TakeOver",
+                            mt.take_over_body(created["id"], created["type"] or mt.ENTITY_OF_TYPE[kind]))
+                created["taken_over"] = True
+            except Exception as e:
+                created["warning"] = (created["warning"] + " " if created["warning"] else "") + \
+                    f"Übernehmen ging nicht ({e}). Bitte in Matrix42 übernehmen."
+        self._set_status(f"Matrix42: Ticket {created['ticket']} angelegt")
+        return created
+
+    def _close_ticket(self, request, state):
+        """Ticket mit Lösungstext schließen. Nur mit gehaltenem _browser_lock."""
+        import m42_tickets as mt
+        api = "/m42Services/api"
+        ticket_id, kind = request["id"], request.get("type") or "SPSActivityTypeTicket"
+        self._set_status(f"Matrix42: schließe {request.get('ticket', 'Ticket')} …")
+        initial = self._fetch("POST", f"{api}/ticket/CloseWizardInitialData/?ticketType={kind}", [ticket_id]) or {}
+        body = mt.close_body(ticket_id, request.get("solution", ""), initial.get("TicketCategory"),
+                             notify_initiator=request.get("notify", True),
+                             close_related=initial.get("CloseRelatedIncidents", True))
+        state["sent"] = True
+        self._fetch("POST", f"{api}/ticket/Close", body)
+        self._set_status(f"Matrix42: {request.get('ticket', 'Ticket')} geschlossen")
+        return {"ticket": request.get("ticket", "")}
 
     def load_activity_types(self):
         """Tätigkeitsarten aus Matrix42 holen (im Hintergrund), Ergebnis über activity_types_loaded."""
@@ -683,7 +805,8 @@ class M42Reader(BrowserReader):
                                          json.dumps(content_type), json.dumps(fresh)),
                              # Speichern nie wiederholen (könnte doppelt buchen)
                              timeout=self.LOAD_TIMEOUT,
-                             retries=self.NAVIGATION_RETRIES if fresh and "UpdateData" not in path else 0)
+                             retries=self.NAVIGATION_RETRIES
+                             if fresh and not any(w in path for w in self.NO_RETRY) else 0)
         return json.loads(raw) if raw else {"state": "error", "status": 0}
 
     def _load_activity_types(self):

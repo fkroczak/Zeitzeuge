@@ -139,7 +139,7 @@ def gui_test():
                       if isinstance(w, m42_booking_dialogs.TicketSearchDialog) and w.isVisible())
         app.processEvents()
         seen["doc_search"] = search.search_edit.text()
-        seen["doc_rows"] = search.results.count()
+        seen["doc_rows"] = search.results.rowCount()
         search.take_button.click()
 
     reader.searches.clear()
@@ -233,8 +233,10 @@ def gui_test():
     app.processEvents()
     from my_tickets_dialogs import MyTicketsDialog
     mine = window._my_tickets_dialog
-    assert isinstance(mine, MyTicketsDialog) and mine.results.count() == 1
-    assert mine.results.item(0).text().startswith("TCK0000000002 · Drucker · Müller"), mine.results.item(0).text()
+    assert isinstance(mine, MyTicketsDialog) and mine.table.rowCount() == 1
+    cells = [mine.table.item(0, c).text() for c in range(mine.table.columnCount())]
+    assert cells[:5] == ["TCK0000000002", "Drucker", "Müller", "Huber, Max", "Neu"], cells
+    mine.table.select_first()
     assert "1 offenes Ticket" in mine.status.text(), mine.status.text()
     assert tile.isVisibleTo(window) and tile.value.text() == "1" and "TCK0000000002" in tile.toolTip()
     mine.copy_button.click()

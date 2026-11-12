@@ -516,6 +516,7 @@ class ReadersMixin:
                                     own_name=self.config.get("m42_own_name", ""))
         import m42_booking
         self.m42_reader.ticket_list = m42_booking.ids(self.config).get("ticket_list", "")
+        self.m42_reader.ticket_ids = dict(self.config.get("m42_ticket_ids") or {})
         self.m42_reader.my_tickets_loaded.connect(self.day_summary.show_my_tickets)
         self.m42_reader.status_changed.connect(lambda _t: self.update_source_indicators())
         self.m42_reader.busy_changed.connect(self.update_busy_bar)

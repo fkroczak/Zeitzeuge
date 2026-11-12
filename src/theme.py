@@ -419,6 +419,10 @@ QCheckBox#chip_check::indicator { width: 0; height: 0; border: none; }
 QCheckBox#chip_check:hover { border-color: $control; }
 QCheckBox#chip_check:checked { background-color: $primary; color: $onprimary; border-color: $primary; }
 QCheckBox#chip_check:focus { border: 2px solid $accent; padding: 1px 9px; }
+/* Chips im Inhalt eines Kartenfensters (auch in Fenstern, die aus einem geöffnet werden): genauer als
+   „QDialog[card] QWidget#prompt_body QCheckBox { background: transparent }“, sonst weiße Schrift ohne Grund */
+QWidget#prompt_body QCheckBox#chip_check { background-color: $chip; }
+QWidget#prompt_body QCheckBox#chip_check:checked { background-color: $primary; }
 QPushButton#chip_button { background-color: transparent; color: $muted; border: 1px dashed $control;
     border-radius: $radius_chippx; padding: 2px 22px 2px 10px; min-width: 0; }
 QPushButton#chip_button:hover { color: $text; }

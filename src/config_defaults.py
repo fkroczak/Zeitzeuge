@@ -204,6 +204,8 @@ def default_config():
         # Meine Tickets: dein Name, wie er in Matrix42 als Bearbeiter steht (z. B. "Müller, Anna").
         # Leer: Zeitzeuge nimmt ihn aus deinen eigenen Buchungen.
         "m42_own_name": "",
+        # Ticket anlegen: Kennung des Matrix42-Dialogs „Ticket“ (m42_tickets.DEFAULT_IDS), falls sie sich ändert
+        "m42_ticket_ids": {},
         # Zwei PCs (z. B. Arbeits-PC und PAW): "paw" = nur RDM sammeln, kein Edge, keine Nachfragen
         "pc_role": "",
         "export_days": 31,            # Zeitraum beim Export für den anderen PC

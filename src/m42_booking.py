@@ -145,6 +145,7 @@ def ticket_row(item):
     return {"ticket": number, "id": ticket_object_id(item), "subject": (item.get("Subject") or "").strip(),
             "customer": _clean(item.get("Customer")), "state": (item.get("State") or "").strip(),
             "initiator": _clean(item.get("Initiator")), "recipient": _clean(item.get("Recipient")),
+            "recipient_id": item.get("Recipient_Value") or "", "type": item.get("Sys-Entity") or "",
             "created": item.get("CreatedDate") or ""}
 
 
@@ -217,20 +218,22 @@ def my_tickets_word(name):
     return max(words, key=len) if words else ""
 
 
-def is_mine(row, name):
-    """Bin ich Bearbeiter? Alle Wörter meines Namens stehen im Feld Bearbeiter
-    (Reihenfolge egal: 'Kroczak, Filip' passt auf 'Filip Kroczak - Systems')."""
+def is_mine(row, name, user_id=""):
+    """Bin ich Bearbeiter? Mit Benutzer-Kennung über die Kennung des Bearbeiters, sonst: alle
+    Wörter meines Namens stehen im Feld Bearbeiter ('Kroczak, Filip' passt auf 'Filip Kroczak')."""
+    if user_id and row.get("recipient_id"):
+        return row["recipient_id"].lower() == user_id.lower()
     words = _name_words(own_name(name))
     have = set(_name_words(own_name(row.get("recipient"))))
     return bool(words) and all(w in have for w in words)
 
 
-def my_open_tickets(items, name):
-    """Antworten der Ticketliste -> offene Tickets, bei denen name Bearbeiter ist,
+def my_open_tickets(items, name, user_id=""):
+    """Antworten der Ticketliste -> offene Tickets, bei denen ich Bearbeiter bin,
     jedes einmal, neueste zuerst."""
     seen = {}
     for row in filter(None, map(ticket_row, items or [])):
-        if is_mine(row, name) and not is_closed(row):
+        if is_mine(row, name, user_id) and not is_closed(row):
             seen.setdefault(row["id"], row)
     return sorted(seen.values(), key=lambda r: r["created"], reverse=True)
 
