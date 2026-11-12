@@ -140,5 +140,17 @@ class UpdateProgress(QDialog):
             return  # Esc schließt das Fenster nie einfach so
         super().keyPressEvent(event)
 
+    allow_close = False  # erst beim Beenden von Zeitzeuge: dann muss das Fenster mitgehen
+
     def reject(self):
-        pass  # nur über Abbrechen oder das Ende des Updates
+        # Sonst nur über Abbrechen. Wichtig: Qt 6 bricht das Beenden der App ab, wenn ein Fenster
+        # das Schließen ablehnt; beim Beenden für das Update darf es das deshalb nie.
+        if self.allow_close:
+            super().reject()
+
+    def closeEvent(self, event):
+        if self.allow_close:
+            event.accept()
+            self.hide()
+        else:
+            event.ignore()

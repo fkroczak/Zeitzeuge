@@ -4,7 +4,9 @@ Prüft: Klick auf „Jetzt aktualisieren“ zeigt sofort das Update-Fenster mit 
 Fortschritt beim Laden („… 97 % (43 von 44 MB)“), danach „Zeitzeuge wird beendet …“ ohne
 Abbrechen, Setup gestartet und erst dann beendet; Merker für den Neustart, Bestätigung
 „Aktualisiert auf …“ mit Changelog nach dem Neustart, Meldung, wenn die Version gleich blieb;
-Abbrechen während des Ladens schließt das Fenster ohne Fehlermeldung.
+Abbrechen während des Ladens schließt das Fenster ohne Fehlermeldung; zum Schluss das echte
+Beenden mit offenem Update-Fenster (Qt 6 bricht das Beenden ab, wenn ein Fenster das Schließen
+ablehnt – so hing das Update auf 4.1.65).
 
 Ohne Netz und ohne Setup: Laden und Starten sind Attrappen. Läuft als eigener Prozess (Skript).
 """
@@ -126,6 +128,21 @@ spin(lambda: False, 0.1)
 w._update_window._cancel()
 check(spin(lambda: w._update_window is None), "Abbrechen schließt das Fenster")
 check(not started and "abgebrochen" in w.statusBar().currentMessage(), "kein Setup, Hinweis in der Statuszeile")
+
+# --- Echtes Beenden mit offenem Update-Fenster: darf nicht hängen ---
+from PySide6.QtCore import QTimer  # noqa: E402
+
+real_quit = type(w).quit_app
+del w.quit_app  # wieder die echte Methode (TrayMixin.quit_app)
+check(w.quit_app.__func__ is real_quit, "echtes quit_app")
+updater.download = fake_download
+gate["go"] = True
+w._update_busy = False
+w.install_update()
+check(spin(lambda: started), "Setup gestartet (echtes Beenden)")
+QTimer.singleShot(5000, lambda: app.exit(3))  # hängt das Beenden, endet exec mit 3
+code = app.exec()
+check(code == 0, f"Zeitzeuge beendet sich mit offenem Update-Fenster (Code {code}, 3 = hängt)")
 
 print("update_gui_test: alles ok")
 sys.stdout.flush()

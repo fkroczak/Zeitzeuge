@@ -239,6 +239,7 @@ class UpdateMixin:
         mt.save_config(self.config)
         if self._update_window is not None:
             self._update_window.set_step("Zeitzeuge wird beendet, danach wird installiert …")
+            self._update_window.allow_close = True  # sonst lehnt es das Beenden ab (Qt 6)
         # Erst zeichnen lassen, dann beenden (das Beenden hält die Oberfläche kurz an)
         QTimer.singleShot(400, self.quit_app)  # das Setup wartet, bis Zeitzeuge beendet ist
 
