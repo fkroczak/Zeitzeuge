@@ -7,8 +7,10 @@ from functools import lru_cache
 from html import escape
 
 from PySide6.QtCore import QDate, QDateTime, QPoint, QPointF, QRectF, Qt, QTimer, Signal
-from PySide6.QtGui import QBrush, QColor, QContextMenuEvent, QFontMetrics, QPainter, QPainterPath, QPen
-from PySide6.QtWidgets import (QApplication, QDialog, QDialogButtonBox, QFormLayout, QFrame, QGraphicsRectItem,
+from PySide6.QtGui import (QBrush, QColor, QContextMenuEvent, QFontMetrics, QPainter, QPainterPath, QPen,
+                           QRadialGradient)
+from PySide6.QtWidgets import (QApplication, QDialog, QDialogButtonBox, QFormLayout, QFrame,
+                               QGraphicsDropShadowEffect, QGraphicsRectItem,
                                QGraphicsScene, QGraphicsView, QLabel, QLineEdit, QMenu,
                                QPlainTextEdit, QScrollArea, QVBoxLayout)
 
@@ -2063,7 +2065,8 @@ class TimelineView(QGraphicsView):
     def _focus_block(self, rect):
         """Balken unter der Maus leicht hervorheben, den Rest in leichten Nebel tauchen: ein
         halbdurchsichtiger Schleier in der Hintergrundfarbe über allem, der Balken (mit seiner
-        Beschriftung) liegt darüber und bekommt einen feinen Rahmen. None: Nebel weg."""
+        Beschriftung) liegt darüber. Der Nebel wird zum Balken hin weich durchsichtiger
+        (Lichtkegel), der Balken leuchtet sanft in seiner Farbe. None: Nebel weg."""
         if self._focused and self._focused[0] is rect:
             return
         if self._focused:  # vorigen Balken zurück unter den Nebel
@@ -2071,6 +2074,7 @@ class TimelineView(QGraphicsView):
             for item, z in raised:
                 item.setZValue(z)
             old.setPen(pen)
+            old.setGraphicsEffect(None)
             self._focused = None
         if rect is None or rect.scene() is not self.scene:
             if self._fog is not None:
@@ -2080,15 +2084,20 @@ class TimelineView(QGraphicsView):
             self._fog = self.scene.addRect(0, 0, 0, 0, QPen(Qt.NoPen))
             self._fog.setAcceptedMouseButtons(Qt.NoButton)
             self._fog.setAcceptHoverEvents(False)
-        fog = QColor(self.background_color)
-        fog.setAlpha(150)
-        self._fog.setBrush(QBrush(fog))
+        # Lichtkegel: am Balken klar, nach außen weich in den (leichten) Nebel übergehend
+        box = rect.sceneBoundingRect()
+        radius = max(box.width() / 2, 40) + 220
+        light = QRadialGradient(box.center(), radius)
+        for at, alpha in ((0.0, 0), (max(box.width() / 2, 20) / radius, 25), (1.0, 115)):
+            fog = QColor(self.background_color)
+            fog.setAlpha(alpha)
+            light.setColorAt(at, fog)
+        self._fog.setBrush(QBrush(light))
         area = self.sceneRect()
         self._fog.setRect(area.x(), self.AXIS_H, area.width(), area.height() - self.AXIS_H)
         self._fog.setZValue(self.FOG_Z)
         self._fog.show()
         # Balken und alles, was in ihm liegt (Beschriftung), über den Nebel heben
-        box = rect.sceneBoundingRect()
         raised = [(rect, rect.zValue())]
         for item in self.scene.items(box, Qt.ContainsItemBoundingRect):
             if item is not rect and item is not self._fog and item.zValue() < self.FOG_Z \
@@ -2098,8 +2107,15 @@ class TimelineView(QGraphicsView):
             item.setZValue(self.FOCUS_Z)
         pen = rect.pen()
         outline = QColor(self.text_color)
-        outline.setAlpha(170)
-        rect.setPen(QPen(outline, 1.5))
+        outline.setAlpha(110)
+        rect.setPen(QPen(outline, 1))
+        glow = QGraphicsDropShadowEffect()
+        glow.setOffset(0, 0)
+        glow.setBlurRadius(22)
+        shine = QColor(rect.brush().color() if rect.brush().style() != Qt.NoBrush else rect.pen().color())
+        shine.setAlpha(230)
+        glow.setColor(shine)
+        rect.setGraphicsEffect(glow)
         self._focused = (rect, raised, pen)
 
     def _activity_at(self, pos):
@@ -2241,16 +2257,39 @@ class TimelineView(QGraphicsView):
             self._hover_line.hide()
             self._hover_label.hide()
 
-    def _move_tooltip(self, pos):
-        """Hinweis neben die Maus, am rechten/unteren Bildschirmrand auf die andere Seite."""
-        gp = self.mapToGlobal(pos)
-        x, y = gp.x() + 15, gp.y() + 15
-        screen = self.screen().availableGeometry() if hasattr(self, "screen") else None
+    TIP_MAX_W = 560  # breitere Hinweise werden umbrochen statt aus dem Bild zu laufen
+
+    def _fit_tooltip(self, screen):
+        """Lange Zeilen (Ticketbeschreibung) umbrechen: höchstens TIP_MAX_W breit und nie
+        breiter als der Bildschirm."""
+        tip = self.tooltip
+        limit = self.TIP_MAX_W
         if screen is not None:
-            if x + self.tooltip.width() > screen.right():
-                x = gp.x() - 15 - self.tooltip.width()
-            if y + self.tooltip.height() > screen.bottom():
-                y = gp.y() - 15 - self.tooltip.height()
+            limit = max(200, min(limit, screen.width() - 20))
+        tip.setWordWrap(False)
+        tip.setMinimumSize(0, 0)
+        tip.setMaximumSize(16777215, 16777215)
+        tip.adjustSize()
+        if tip.width() > limit:
+            tip.setWordWrap(True)
+            tip.setFixedWidth(limit)
+            tip.setFixedHeight(tip.heightForWidth(limit))
+
+    def _move_tooltip(self, pos):
+        """Hinweis neben die Maus, am rechten/unteren Bildschirmrand auf die andere Seite,
+        immer ganz im sichtbaren Bereich."""
+        gp = self.mapToGlobal(pos)
+        screen = self.screen().availableGeometry() if hasattr(self, "screen") else None
+        self._fit_tooltip(screen)
+        w, h = self.tooltip.width(), self.tooltip.height()
+        x, y = gp.x() + 15, gp.y() + 15
+        if screen is not None:
+            if x + w > screen.right():
+                x = gp.x() - 15 - w
+            if y + h > screen.bottom():
+                y = gp.y() - 15 - h
+            x = max(screen.left(), min(x, screen.right() - w))
+            y = max(screen.top(), min(y, screen.bottom() - h))
         self.tooltip.move(x, y)
 
     def _customer_line(self, entry):
