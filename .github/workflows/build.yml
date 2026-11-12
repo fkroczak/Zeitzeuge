@@ -120,7 +120,12 @@ jobs:
           "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           Write-Host "::notice title=Version::Zeitzeuge $v"
 
+      # Update-Zugang (src/updater.py): Lese-Token für dieses Repo (Releases), kommt in die EXE.
+      # Ohne Secret UPDATE_READ_TOKEN sucht der Build nicht nach Updates.
       - name: EXE bauen
+        env:
+          ZEITZEUGE_UPDATE_TOKEN: ${{ secrets.UPDATE_READ_TOKEN }}
+          ZEITZEUGE_UPDATE_REPO: ${{ github.repository }}
         run: pyinstaller --noconfirm --clean ZeitZeuge.spec
 
       - name: EXE signieren (nur wenn ein Zertifikat hinterlegt ist)
@@ -149,6 +154,8 @@ jobs:
         shell: pwsh
         env:
           ZEITZEUGE_ONEDIR: "1"
+          ZEITZEUGE_UPDATE_TOKEN: ${{ secrets.UPDATE_READ_TOKEN }}
+          ZEITZEUGE_UPDATE_REPO: ${{ github.repository }}
           SIGN_PFX_BASE64: ${{ secrets.SIGN_PFX_BASE64 }}
           SIGN_PFX_PASSWORD: ${{ secrets.SIGN_PFX_PASSWORD }}
         run: |
@@ -258,9 +265,12 @@ jobs:
           # Entwurf aus einem früheren Versuch desselben Stands entfernen
           $alt = gh release view "v$env:ZZ_VERSION" --repo $env:GITHUB_REPOSITORY --json isDraft 2>$null | ConvertFrom-Json
           if ($alt -and $alt.isDraft) { gh release delete "v$env:ZZ_VERSION" --repo $env:GITHUB_REPOSITORY --yes }
+          # Prüfsumme für das Update aus Zeitzeuge (src/updater.py)
+          $sha = (Get-FileHash dist/Zeitzeuge-Setup.exe -Algorithm SHA256).Hash.ToLower()
+          "$sha  Zeitzeuge-Setup.exe" | Out-File -FilePath dist/Zeitzeuge-Setup.exe.sha256 -Encoding ascii -NoNewline
           gh release create "v$env:ZZ_VERSION" --repo $env:GITHUB_REPOSITORY --draft `
             --target $env:GITHUB_SHA --title "Zeitzeuge $env:ZZ_VERSION" --generate-notes `
-            dist/Zeitzeuge-Setup.exe dist/ZeitZeuge.exe dist/ZeitZeuge-Ordner.zip
+            dist/Zeitzeuge-Setup.exe dist/Zeitzeuge-Setup.exe.sha256 dist/ZeitZeuge.exe dist/ZeitZeuge-Ordner.zip
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
   # Veröffentlicht den Entwurf, wenn Bau und alle Tests grün sind; sonst wird er gelöscht.

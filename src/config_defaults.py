@@ -226,6 +226,7 @@ def default_config():
         # Nachfragen nach erkannten Tätigkeiten ("Was hast du gemacht?")
         "prompt_mode": "window",       # "window" (Karte), "compact", "strip" (Leiste), "off"
         "prompt_timeout_seconds": 0,   # Nachfrage ausblenden nach … Sekunden, 0 = dauerhaft
+        "update_check": True,  # alle 6 Stunden nach einer neuen Version suchen (app_update.py)
         "notify_windows": False,  # Hinweise als Windows-Sprechblase statt Karte/Leiste (notices.py)
         "prompt_position": "bottom_right",  # Karte/Kompakt: bottom_right, top_right, bottom_left, top_left
         "prompt_keep_while_active": True,  # nicht ausblenden, solange getippt wird oder die Maus darauf ist

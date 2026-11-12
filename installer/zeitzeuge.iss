@@ -10,6 +10,9 @@
 ; - Daten (Einstellungen im Datenordner, Datenbank unter %LOCALAPPDATA%\Zeitzeuge): bleiben, wo
 ;   sie sind, und werden weiter genutzt. Vor einem Update legt Setup eine Kopie in
 ;   %LOCALAPPDATA%\Zeitzeuge\vor-update an. Deinstallieren lässt die Daten stehen.
+; - Update aus Zeitzeuge (src/updater.py): /SILENT /SUPPRESSMSGBOXES /ZZUPDATE=show|min. Setup wartet,
+;   bis Zeitzeuge sich beendet hat, lässt Autostart und Verknüpfungen wie sie sind und startet
+;   Zeitzeuge danach wieder (bei min im Infobereich).
 
 #ifndef AppVersion
   #define AppVersion "0.0.0-local"
@@ -67,10 +70,14 @@ Name: "{autodesktop}\Zeitzeuge"; Filename: "{app}\ZeitZeuge.exe"; Tasks: desktop
 [Registry]
 ; Gleicher Eintrag wie Einstellungen → Allgemein → Mit Windows starten (src/autostart.py)
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; \
-  ValueName: "Zeitzeuge"; ValueData: """{app}\ZeitZeuge.exe"" --minimized"; Tasks: autostart
+  ValueName: "Zeitzeuge"; ValueData: """{app}\ZeitZeuge.exe"" --minimized"; Tasks: autostart; \
+  Check: not IsAppUpdate
 
 [Run]
 Filename: "{app}\ZeitZeuge.exe"; Description: "Zeitzeuge jetzt starten"; Flags: nowait postinstall skipifsilent
+; Nach einem Update aus Zeitzeuge wieder starten, wie es vorher war (Fenster oder Infobereich)
+Filename: "{app}\ZeitZeuge.exe"; Parameters: "--neustart"; Flags: nowait; Check: RestartAs('show')
+Filename: "{app}\ZeitZeuge.exe"; Parameters: "--minimized --neustart"; Flags: nowait; Check: RestartAs('min')
 
 [Code]
 const
@@ -81,6 +88,18 @@ var
   OldFiles: TStringList;      // alte Einzeldateien ZeitZeuge.exe und Autostart-Verknüpfungen
   FoundPage: TInputOptionWizardPage;
   PreviousVersion: String;
+
+{ ---------- Update aus Zeitzeuge ---------- }
+
+function IsAppUpdate: Boolean;
+begin
+  Result := ExpandConstant('{param:ZZUPDATE|}') <> '';
+end;
+
+function RestartAs(Mode: String): Boolean;
+begin
+  Result := CompareText(ExpandConstant('{param:ZZUPDATE|}'), Mode) = 0;
+end;
 
 { ---------- Suchen ---------- }
 
@@ -259,10 +278,28 @@ begin
 end;
 
 function NextButtonClick(CurPageID: Integer): Boolean;
+var
+  I: Integer;
 begin
   Result := True;
   if CurPageID <> wpReady then
     exit;
+  // Update aus Zeitzeuge: es beendet sich gerade selbst, bis zu 60 Sekunden darauf warten
+  if WizardSilent then
+  begin
+    I := 0;
+    while ZeitzeugeRunning and (I < 120) do
+    begin
+      Sleep(500);
+      I := I + 1;
+    end;
+    if ZeitzeugeRunning then
+    begin
+      Log('Zeitzeuge läuft noch, Update abgebrochen');
+      Result := False;  // im stillen Setup: Setup endet, nichts wird geändert
+    end;
+    exit;
+  end;
   // Ein laufendes Zeitzeuge hält Datenbank und Dateien offen: erst selbst beenden lassen,
   // dann speichert es den laufenden Abschnitt sauber
   while ZeitzeugeRunning do
@@ -335,7 +372,8 @@ begin
   else if CurStep = ssPostInstall then
   begin
     ReplaceOldFiles;
-    if not WizardIsTaskSelected('autostart') then
+    // Beim Update aus Zeitzeuge gilt die Einstellung in Zeitzeuge (src/autostart.py)
+    if not IsAppUpdate and not WizardIsTaskSelected('autostart') then
       RegDeleteValue(HKCU, RunKey, 'Zeitzeuge');
   end;
 end;

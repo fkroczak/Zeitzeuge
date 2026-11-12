@@ -225,7 +225,8 @@ python src/main_timeline.py
 
 Lade **[Zeitzeuge-Setup.exe](https://github.com/fkroczak/Zeitzeuge/releases/latest/download/Zeitzeuge-Setup.exe)** und starte sie. Adminrechte brauchst du nicht: Zeitzeuge landet nur für dich unter `%LOCALAPPDATA%\Programs\Zeitzeuge`, mit Eintrag im Startmenü und auf Wunsch auf dem Desktop und im Autostart.
 
-- **Update:** Neue `Zeitzeuge-Setup.exe` starten. Der Assistent erkennt die vorhandene Installation und aktualisiert sie im selben Ordner. Den Autostart lässt er so, wie du ihn in Zeitzeuge eingestellt hast.
+- **Update aus Zeitzeuge:** Zeitzeuge sucht 2 Minuten nach dem Start und dann alle 6 Stunden nach einer neuen Version. Gibt es eine, erscheint der Hinweis **Update auf x.y.z** mit einem kurzen Changelog (die Titel der PRs aller Versionen seit deiner, aus den Release-Notizen) und **Jetzt aktualisieren**: Zeitzeuge lädt das Setup, prüft Prüfsumme und Signatur, beendet sich, das Setup installiert still und startet Zeitzeuge wieder (lag es im Infobereich, wieder dort). Von Hand: **Einstellungen → Info → Nach Updates suchen**; dort lässt sich die automatische Suche auch ausschalten (`update_check`). Nur in Versionen von GitHub, nicht aus dem Quelltext oder mit `build.bat` gebaut. Einrichtung siehe [Updates einrichten](#updates-einrichten).
+- **Update von Hand:** Neue `Zeitzeuge-Setup.exe` starten. Der Assistent erkennt die vorhandene Installation und aktualisiert sie im selben Ordner. Den Autostart lässt er so, wie du ihn in Zeitzeuge eingestellt hast.
 - **Alte Einzeldatei:** Liegt noch eine `ZeitZeuge.exe` auf dem Desktop (auch OneDrive-Desktop), in Downloads oder im Autostart, zeigt der Assistent sie an und ersetzt sie auf Wunsch durch eine Verknüpfung zur installierten Version.
 - **Deine Daten:** Einstellungen (Datenordner, Standard `Dokumente\Zeitzeuge`) und Datenbank (`%LOCALAPPDATA%\Zeitzeuge`) bleiben, wo sie sind, und die neue Version nutzt sie weiter. Vor jedem Update legt der Assistent eine Kopie unter `%LOCALAPPDATA%\Zeitzeuge\vor-update` an. Auch Deinstallieren (Windows-Einstellungen → Apps) lässt die Daten stehen.
 - **Läuft Zeitzeuge noch,** bittet der Assistent dich, es über das Symbol im Infobereich zu beenden. So speichert Zeitzeuge den laufenden Abschnitt sauber.
@@ -266,6 +267,16 @@ Die Nummer steht im Fenstertitel, unter **Info**, in `fehler.log`, in den Dateie
 | aus dem Quelltext | Zeitzeuge 4.1.3-dev |
 
 Release veröffentlichen: passiert von selbst mit jedem Merge in main (Tag `v<Version>` legt GitHub an). Von Hand geht es weiterhin mit einem Tag `v<Version>` auf den Stand von main, z. B. `v4.1.3`; passt der Tag nicht zur gezählten Version, bricht der Build ab.
+
+#### Updates einrichten
+
+Zeitzeuge holt Updates aus den Releases dieses (privaten) Repositorys. Die EXE bringt dafür ein Token mit, das das Repository nur lesen darf. Wer es aus der EXE holt, kann damit auch den Quellcode lesen; das ist in Ordnung, weil Zeitzeuge nur intern genutzt wird. Deshalb gehören keine Passwörter oder Zugangsdaten in den Code oder die git-Geschichte.
+
+1. Unter **Settings → Developer settings → Personal access tokens → Fine-grained tokens** ein Token anlegen: **Repository access: Only select repositories → Zeitzeuge**, Permissions → Contents: **Read-only**.
+2. Im Repository unter **Settings → Secrets and variables → Actions** als Secret `UPDATE_READ_TOKEN` hinterlegen.
+3. Fertig: Ab dem nächsten Merge in main enthält die EXE den Zugang. Jedes Release hat zusätzlich `Zeitzeuge-Setup.exe.sha256` (Prüfsumme). Erst Versionen ab diesem Merge können sich selbst aktualisieren; ältere einmal von Hand. Ohne Secret baut die CI wie bisher, nur ohne Updates.
+
+**Ablauf des Tokens:** Fine-grained Tokens laufen nach der eingestellten Zeit ab (höchstens etwa ein Jahr). Rechtzeitig vorher ein neues Lese-Token anlegen, `UPDATE_READ_TOKEN` ersetzen und ein Release bauen; die Versionen mit dem alten Token aktualisieren sich dann noch einmal auf die neue. Zeitzeuge schreibt 30 Tage vor Ablauf einen Hinweis in `fehler.log`. Ist das Token abgelaufen, meldet „Nach Updates suchen“ das, und das Setup muss einmal von Hand installiert werden. Ein ausgelesenes oder missbrauchtes Token sperrst du jederzeit auf GitHub; neue Versionen bekommen dann ein neues.
 
 **Fehlalarm „Virus gefunden“:** Der Build kompiliert den Startteil (Bootloader) von PyInstaller selbst, weil der fertige auch in Schadprogrammen steckt und Defender ihn deshalb oft meldet. Meldet Chrome oder Defender die EXE trotzdem, hilft die Ordner-Variante oder eine Meldung als Fehlalarm bei Microsoft (https://www.microsoft.com/wdsi/filesubmission). Dauerhaft hilft nur eine Signatur.
 
@@ -316,7 +327,7 @@ Ein Klick auf **Einstellungen** (oder STRG + ,) öffnet ein eigenes Fenster. Es 
   - **Buchung:** Matrix42, Arbeitszeiten, Abrechnung, Ziel und Anzeige der Quote, Prüfung bei Feierabend.
   - **Darstellung:** Aussehen, Timeline und Tagesliste, gewählt über Kacheln.
   - **Datenschutz:** Speicherort, PIN und Wiederherstellungsschlüssel, Aufbewahren, Daten für einen anderen PC.
-  - **Info:** Über Zeitzeuge, Beenden und (eingeklappt) die Fehlersuche mit den Mitschnitten.
+  - **Info:** Über Zeitzeuge, Updates (automatisch suchen, jetzt suchen), Beenden und (eingeklappt) die Fehlersuche mit den Mitschnitten.
 - **Jede Einstellung steht genau einmal.** Nur „Häufig“ auf der Übersicht wiederholt einige als Abkürzung.
 - **Oben die Suche:** z. B. „Minuten“ zeigt alle Grenzwerte aus allen Bereichen, und du änderst sie direkt dort. Die Suche findet auch die Quellen und die Optionen der Seite Nachfragen.
 - **Darstellung mit Kacheln:** Design, Timeline beim Start, PC-Aktivität, PC-Verlauf in der Liste und die Ansicht der Tagesliste wählst du über Kacheln mit kleinen Skelett-Bildern; jede Kachel zeigt, wie es danach aussieht. Ein Klick gilt sofort, auch im Hauptfenster. Zahlen wirken beim Ändern sofort. Erreichbar auch über **Ansicht → Darstellung anpassen …**.
@@ -748,6 +759,8 @@ Module in `src/`:
 | `view_help.py` | Hilfe zu den Ansichten der Tagesliste |
 | `app_readers.py` | 3CX- und Leser der Zeiterfassung im Hauptfenster |
 | `app_tray.py` | Infobereich, Fensteraufzeichnung, Beenden |
+| `app_update.py` | Updates im Hauptfenster: suchen, Hinweis, laden, still installieren |
+| `updater.py` | Updates ohne Qt: neuestes Release, Download mit Prüfsumme, Signatur, Setup starten |
 | `theme.py` | Design: Farben (hell/dunkel), Stylesheet, Qt-Stil, deutsche Dialogknöpfe |
 | `day_summary.py` | Kennzahlen über der Timeline (Erfasst, Offen, Vorschläge, Nach Kunde) und Ansichts-Chips über der Liste |
 | `range_context.py` | Zeitraum nachtragen: was die Quellen in dieser Zeit sagen, Vorschlag aus Termin oder Anruf (ohne Qt) |

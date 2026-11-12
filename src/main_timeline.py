@@ -10,6 +10,7 @@ TimelineApp setzt sich aus Mixins zusammen:
   app_transfer Export/Import für einen anderen PC (PAW)
   app_protect  Schutz der Daten: Schlüssel, Sicherung der Datenbank
   app_outlook  Outlook (Termine, gesendete Mails) und Teams-Anrufe
+  app_update   Updates suchen, laden und still installieren
 Aussehen in theme.py, Standardwerte der Config in config_defaults.py.
 """
 import os
@@ -65,6 +66,7 @@ from app_tray import TrayMixin
 from app_transfer import TransferMixin
 from app_protect import ProtectMixin
 from app_outlook import OutlookMixin
+from app_update import UpdateMixin
 
 # Weiter über main_timeline erreichbar (Tests, Hilfsskripte)
 __all__ = [
@@ -425,7 +427,7 @@ def merged_seconds(activities):
 
 
 class TimelineApp(MenusMixin, DayListMixin, DayCloseMixin, DocsMixin, ReadersMixin, TrayMixin, TransferMixin,
-                  ProtectMixin, OutlookMixin, QMainWindow):
+                  ProtectMixin, OutlookMixin, UpdateMixin, QMainWindow):
     COLUMNS = ["Von", "Bis", "Dauer", "Typ", "Kunde / Verbindung", "Details"]
 
     def __init__(self):
@@ -685,6 +687,7 @@ class TimelineApp(MenusMixin, DayListMixin, DayCloseMixin, DocsMixin, ReadersMix
         self.timeline.start_first_load(self.show_preferred_range)
         self._init_protection()
         self._init_robustness()
+        self.init_updates()  # neue Version suchen (app_update.py)
         # PC-Verlauf nach N Tagen löschen (Standard aus), beim Start verzögert und täglich
         self.retention = RetentionRunner(self, ACTIVITY_DIR, save_config)
         self.init_customer_discovery()  # Kundenliste aus Matrix42 lernen (customers_dialogs.py)

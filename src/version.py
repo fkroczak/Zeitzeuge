@@ -118,6 +118,11 @@ def _info():
     return _INFO
 
 
+def channel():
+    """Herkunft dieses Builds: "main", "test", "local" oder "dev" (leer, wenn unbekannt)."""
+    return _info().get("channel", "")
+
+
 def full_version():
     """MAJOR.MINOR.PATCH, z. B. "4.1.3"."""
     return _info().get("version") or ".".join(map(str, ANCHOR_VERSION))

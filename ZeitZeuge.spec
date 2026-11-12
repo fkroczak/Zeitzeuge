@@ -14,13 +14,18 @@ sys.path.insert(0, SRC)
 
 import version  # noqa: E402
 
-# Herkunft des Builds (Version z. B. 4.1.3, Buildnummer, Commit, Datum). build_info.py wird mit
+# Herkunft des Builds (Version z. B. 4.1.3, Buildnummer, Commit, Datum) und Update-Zugang. build_info.py wird mit
 # in die EXE gepackt (version.py liest es) und am Ende wieder gelöscht.
 BUILD = version.collect_build_info()
 BUILD_INFO_FILE = os.path.join(SRC, "build_info.py")
 with open(BUILD_INFO_FILE, "w", encoding="utf-8") as f:
     f.write("# Beim Bauen erzeugt (ZeitZeuge.spec), nicht von Hand ändern\n")
     f.write(f"BUILD = {BUILD!r}\n")
+    # Update-Zugang (src/updater.py): Lese-Token für die Releases, aus dem Secret
+    # UPDATE_READ_TOKEN der CI. Ohne Token sucht diese Version nicht nach Updates.
+    UPDATE = {"repo": os.environ.get("ZEITZEUGE_UPDATE_REPO", "").strip(),
+              "token": os.environ.get("ZEITZEUGE_UPDATE_TOKEN", "").strip()}
+    f.write(f"UPDATE = {UPDATE!r}\n")
 version._INFO = BUILD  # Angaben dieses Builds, nicht die aus git
 
 nums = version.file_version()
