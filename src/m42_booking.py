@@ -148,14 +148,73 @@ def ticket_row(item):
             "created": item.get("CreatedDate") or ""}
 
 
-def merge_tickets(*lists):
-    """Treffer mehrerer Abfragen zusammenführen: jedes Ticket einmal, neueste zuerst."""
+# Erledigte Tickets: in der Trefferliste nach den offenen
+CLOSED_STATES = ("gelöst", "geschlossen", "abgeschlossen", "storniert", "erledigt", "closed", "resolved")
+
+
+def is_closed(row):
+    return (row.get("state") or "").strip().lower() in CLOSED_STATES
+
+
+def search_plan(text):
+    """Suchtext -> (Wort für Matrix42, Felder). Matrix42 sucht „enthält“ nur nach einem Text:
+    bei mehreren Wörtern nach dem längsten, die übrigen filtert matches() danach.
+    Nach Ticketnummern nur suchen, wenn Ziffern dabei sind; eine ganze Nummer nur dort."""
+    words = (text or "").split()
+    if not words:
+        return "", ()
+    word = max(words, key=len)
+    if TICKET_RE.fullmatch(word):
+        return word, ("TicketNumber",)
+    fields = SEARCH_FIELDS if any(c.isdigit() for c in word) else \
+        tuple(f for f in SEARCH_FIELDS if f != "TicketNumber")
+    return word, fields
+
+
+def matches(row, text):
+    """Enthält das Ticket (Nummer, Titel, Kunde, Melder, Bearbeiter) jedes Wort des Suchtexts?"""
+    hay = " ".join(str(row.get(k) or "") for k in
+                   ("ticket", "subject", "customer", "initiator", "recipient", "state")).casefold()
+    return all(w.casefold() in hay for w in (text or "").split())
+
+
+def merge_tickets(*lists, text=""):
+    """Treffer mehrerer Abfragen zusammenführen: jedes Ticket einmal, nur die zum ganzen
+    Suchtext passenden, offene vor erledigten, darin neueste zuerst."""
     seen = {}
     for items in lists:
         for row in filter(None, map(ticket_row, items or [])):
-            seen.setdefault(row["id"], row)
+            if matches(row, text):
+                seen.setdefault(row["id"], row)
     rows = sorted(seen.values(), key=lambda r: r["created"], reverse=True)
+    rows.sort(key=is_closed)  # stabil: innerhalb offen/erledigt bleibt neueste zuerst
     return rows[:SEARCH_LIMIT]
+
+
+def merge_tickets_rows(rows, text):
+    """Schon gefundene Treffer auf einen neuen Suchtext eingrenzen (Reihenfolge bleibt)."""
+    return [r for r in rows if matches(r, text)]
+
+
+def ticket_date(row):
+    """'2026-10-05T08:00:00Z' -> '05.10.26' ('' wenn unbekannt)"""
+    c = row.get("created") or ""
+    return f"{c[8:10]}.{c[5:7]}.{c[2:4]}" if len(c) >= 10 and c[4] == "-" else ""
+
+
+def ticket_list_label(row):
+    """Zeile der Trefferliste: wie ticket_label, dazu das Anlagedatum."""
+    return " · ".join(t for t in (ticket_label(row), ticket_date(row)) if t)
+
+
+def ticket_tooltip(row):
+    lines = [ticket_label(row)]
+    for name, key in (("Melder", "initiator"), ("Bearbeiter", "recipient")):
+        if row.get(key):
+            lines.append(f"{name}: {row[key]}")
+    if ticket_date(row):
+        lines.append(f"Angelegt: {ticket_date(row)}")
+    return "\n".join(lines)
 
 
 def ticket_label(row):

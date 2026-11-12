@@ -649,6 +649,7 @@ class TimelineApp(MenusMixin, DayListMixin, DayCloseMixin, DocsMixin, ReadersMix
         # Nachfragen nach erkannten Tätigkeiten: jede Minute prüfen
         self.prompt_timer = QTimer(self)
         self.prompt_timer.timeout.connect(self.check_prompts)
+        self.prompt_timer.timeout.connect(self.tick_live_summary)  # „Erfasst … live“
         self.prompt_timer.start(60 * 1000)
         # Abwesenheit am PC: alle 5 Sekunden prüfen, bei der ersten Eingabe danach nachfragen
         self.idle_watch = IdleWatch(self.config.get("idle_prompt_minutes", 15))

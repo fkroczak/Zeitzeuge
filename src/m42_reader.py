@@ -565,20 +565,21 @@ class M42Reader(BrowserReader):
     def _search_tickets(self, text, ticket_list=None):
         import m42_booking as mb
         text = (text or "").strip()
+        word, fields = mb.search_plan(text)
         found, errors = [], []
         try:
             with self._browser_lock:
-                for field in mb.SEARCH_FIELDS:
+                for field in fields:
                     path = (f"{mb.API}/WidgetList/GetData/{ticket_list or mb.DEFAULT_IDS['ticket_list']}"
                             f"?orderBy=CreatedDate+desc&pageSize={mb.SEARCH_LIMIT}&page=0")
                     try:
-                        data = self._fetch("POST", path, mb.search_query(field, text))
+                        data = self._fetch("POST", path, mb.search_query(field, word))
                         found.append(data if isinstance(data, list) else [])
                     except mb.BookingError as e:
                         errors.append(f"{field}: {e}")
                         if "anmelden" in str(e):
                             raise
-            rows = mb.merge_tickets(*found)
+            rows = mb.merge_tickets(*found, text=text)
             error = "" if found else (errors[0] if errors else "keine Antwort")
             if errors:
                 safe_io.log(f"Matrix42: Ticketsuche, nicht jedes Feld ging ({'; '.join(errors)})")
