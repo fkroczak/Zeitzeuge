@@ -30,6 +30,7 @@ with open(os.path.join(data, "zeitzeuge_config.json"), "w", encoding="utf-8") as
 import main_timeline  # noqa: E402
 import skeleton  # noqa: E402
 import timeline_only  # noqa: E402
+from PySide6.QtCore import QPoint  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
 draws = []
@@ -138,6 +139,13 @@ others = [r for r in tl.activity_rects if r is not bar]
 assert all(r.zValue() < tl._fog.zValue() for r in others)
 tl._focus_block(None)
 assert not tl._fog.isVisible() and bar.zValue() == z_before and tl._focused is None
+assert bar.graphicsEffect() is None
+# Timeline-Tooltip: lange Zeilen werden umbrochen, der Hinweis bleibt im sichtbaren Bereich
+tl.tooltip.setText("Beschreibung " * 80)
+tl._move_tooltip(QPoint(tl.width() - 5, 5))
+screen = tl.screen().availableGeometry()
+assert tl.tooltip.width() <= tl.TIP_MAX_W and screen.contains(tl.tooltip.geometry())
+tl.tooltip.hide()
 chips.set_customers([], "leer")
 assert chips.empty_label.isVisible() and not chips.parts()
 print("OK")
