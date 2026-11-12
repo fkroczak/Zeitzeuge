@@ -526,10 +526,8 @@ class CardParts:
         for w in (form.ticket_status, form.ticket_take, form.error):
             _detach(w, old)
             body_box.addWidget(w)
-        if form.ticket_suggestions:
-            top_label = form.ticket_suggestions[0]["label"]
-            form.ticket_take.setText(f"Vorschlag: {top_label.replace('&', '&&')}")
         form.ticket_take.setObjectName("link_button")
+        form.render_ticket_take()  # „Vorschlag: …“, mit Titel und Kunde, sobald Matrix42 antwortet
         form.ticket_take.setCursor(Qt.PointingHandCursor)
         form.ticket_take.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
         form.text_edit.installEventFilter(self)
