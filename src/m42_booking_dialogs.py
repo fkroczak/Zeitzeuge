@@ -362,9 +362,16 @@ class TicketSearchDialog(_TicketSearch, QDialog):
         self.results.itemSelectionChanged.connect(
             lambda: self.take_button.setEnabled(self.results.current_row() is not None))
         # Rahmen wie „Tätigkeit nachtragen“: Kopf, Inhalt, Fuß mit „Übernehmen“ als Hauptaktion
+        # Nichts Passendes gefunden: gleich ein Ticket anlegen und übernehmen
+        self.new_button = QPushButton("&Neues Ticket …")
+        self.new_button.setAutoDefault(False)
+        self.new_button.setToolTip("Kein passendes Ticket? Störung oder Serviceanfrage in Matrix42 anlegen. "
+                                   "Das neue Ticket wird danach übernommen.")
+        self.new_button.clicked.connect(self.new_ticket)
+        self.new_button.setEnabled(reader is not None)
         from card_dialog import modernize
         modernize(self, "Ticket suchen", "In Matrix42 nach Kunde, Melder, Ticketnummer oder Titel", "search",
-                  intro=False, primary=self.take_button)
+                  intro=False, primary=self.take_button, left=[self.new_button])
         if reader is not None:
             reader.tickets_found.connect(self.on_tickets, Qt.QueuedConnection)
         self.search_edit.setFocus()
@@ -427,13 +434,35 @@ class TicketSearchDialog(_TicketSearch, QDialog):
                                 f"{open_n} offen (stehen oben, Klick auf eine Spalte sortiert). "
                                 "Doppelklick oder „Übernehmen“ übernimmt das Ticket.")
         else:
-            self.status.setText(f"⚠ Kein Ticket gefunden{': ' + error if error else '.'}")
+            self.status.setText(f"⚠ Kein Ticket gefunden{': ' + error if error else '.'} "
+                                "„Neues Ticket …“ legt eins an.")
+
+    def new_ticket(self):
+        """Ticket anlegen (Fenster wie unter „Meine Tickets“) und gleich übernehmen."""
+        from ticket_dialogs import NewTicketDialog
+        dialog = NewTicketDialog(self.reader, self)
+        if self.windowFlags() & Qt.WindowStaysOnTopHint:
+            dialog.setWindowFlag(Qt.WindowStaysOnTopHint, True)  # sonst landet es hinter der Suche
+        created = dialog.created if dialog.exec() == QDialog.Accepted else None
+        if created:
+            self._take_row(new_ticket_row(created, dialog.request(), dialog.initiator))
+        dialog.deleteLater()
 
     def _take_row(self, row):
         if not row:
             return
         self.row = row
         self.accept()
+
+
+def new_ticket_row(created, request, initiator=None):
+    """Gerade angelegtes Ticket als Zeile wie aus der Suche (ticket, id, subject, customer, …).
+    Den Kunden nimmt es aus dem Melder („Name - Firma“)."""
+    name = (initiator or {}).get("name") or ""
+    return {"ticket": created.get("ticket", ""), "id": created.get("id", ""),
+            "subject": (request or {}).get("subject", ""),
+            "customer": name.split(" - ", 1)[1].strip() if " - " in name else "",
+            "initiator": name.split(" - ")[0].strip(), "state": "Neu", "type": created.get("type", "")}
 
 
 class TicketLookup(QObject):

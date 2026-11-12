@@ -18,6 +18,7 @@ Testversionen aus Branches tragen die Version ihres main-Stands plus Buildnummer
 26.10.2026 können sie nicht mehr lesen.
 
 ### Neu
+- **Ticket suchen → Neues Ticket:** Findest du in „Ticket suchen“ kein passendes Ticket, legt **Neues Ticket …** unten links eins in Matrix42 an (gleiches Fenster wie unter Meine Tickets). Das neue Ticket wird danach gleich übernommen, mit Betreff und dem Kunden des Melders.
 - **Einstellungen in breiten Fenstern lesbar:** Die Seiten werden höchstens 960 Pixel breit und bleiben links neben der Navigation. Vorher standen bei großem Fenster Text und Zahlenfeld oder Knopf über 1000 Pixel auseinander, z. B. unter Nachfragen → Fragen bei.
 - **Übersicht erklärt das gelbe Warnzeichen:** In Einstellungen → Übersicht zeigt der Tooltip über Zeichen und Zeile den Grund, z. B. welche Quellen ein Problem haben („TeamViewer: Logdatei nicht gefunden“), wie die Quote zum Ziel steht, wie viele Nachfragen offen sind oder dass der Wiederherstellungsschlüssel fehlt. Das doppelte „!“ hinter der Quote entfällt, das Symbol davor zeigt es schon.
 - **„Orte und Fahrzeiten“ passt ins Fenster:** Ein langer Kundenname in der Auswahl „Ort oder Kunde“ machte den Inhalt breiter als das Fenster, rechts war er abgeschnitten (mit Scrollleiste). Die Auswahl ist jetzt so breit wie der Platz, aufgeklappt zeigt sie die Namen vollständig. Die Erklärung, wie Fahrten vermutet werden, steht als Tooltip an „Fahrten vermuten und vorschlagen“.

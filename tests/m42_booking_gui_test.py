@@ -140,6 +140,7 @@ def gui_test():
         app.processEvents()
         seen["doc_search"] = search.search_edit.text()
         seen["doc_rows"] = search.results.rowCount()
+        seen["new_button"] = search.new_button.isVisible() and search.new_button.isEnabled()
         search.take_button.click()
 
     reader.searches.clear()
@@ -147,6 +148,11 @@ def gui_test():
     doc.form.ticket_search_button.click()
     assert seen["doc_search"] == "Systems" and seen["doc_rows"] == 1, seen
     assert reader.searches == ["Systems"], reader.searches
+    assert seen["new_button"], "Ticket suchen bietet „Neues Ticket …“ an"
+    # Neu angelegtes Ticket wird wie ein Treffer übernommen, Kunde aus dem Melder
+    row = m42_booking_dialogs.new_ticket_row({"ticket": "TCK0000050000", "id": "n1"},
+                                             {"subject": "Drucker"}, {"name": "Huber, Max - Systems"})
+    assert row["ticket"] == "TCK0000050000" and row["customer"] == "Systems" and row["subject"] == "Drucker"
     assert doc.item()["ticket"] == "TCK0000049374", doc.item()
     doc.deleteLater()
 
