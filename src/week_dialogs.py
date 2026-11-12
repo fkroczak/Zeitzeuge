@@ -272,12 +272,19 @@ class WeekDialog(QDialog):
                                      "dokumentieren und in Matrix42 buchen")
         self.close_button.clicked.connect(self.close_day)
         buttons.addButton(self.close_button, QDialogButtonBox.ActionRole)
+        self.report_button = QPushButton("Bericht als &PDF …", self)
+        self.report_button.setEnabled(hasattr(window, "save_report"))
+        self.report_button.setToolTip("Wochenbericht als PDF: je Tag Tätigkeiten, Zeit ohne Matrix42-Buchung "
+                                      "und was zu der Zeit gemacht wurde, zum Ausdrucken als eigener Beleg")
+        self.report_button.clicked.connect(self.save_report)
+        buttons.addButton(self.report_button, QDialogButtonBox.ActionRole)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
         self.fill()
         nav_icons(self, self.prev_button, self.next_button)
         modernize(self, "Wochenabschluss", icon="gauge", intro=False, subtitle_label=self.title,
-                  head=[self.prev_button, self.next_button], right=[self.close_button], primary=self.book_button)
+                  head=[self.prev_button, self.next_button], left=[self.report_button],
+                  right=[self.close_button], primary=self.book_button)
 
     # ---- Daten
 
@@ -392,6 +399,10 @@ class WeekDialog(QDialog):
             item = QListWidgetItem(f"{name}: {text}")
             item.setData(Qt.UserRole, d)
             self.hints.addItem(item)
+
+    def save_report(self):
+        if hasattr(self.window, "save_report"):
+            self.window.save_report(self.monday.strftime("%Y-%m-%d"), week=True, parent=self)
 
     def book_day(self):
         row = self.table.currentRow()

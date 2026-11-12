@@ -328,6 +328,14 @@ class MenusMixin:
         menu.addAction(self.day_close_action)
         self._icon_actions.append((self.day_close_action, "check"))
         self._icon_actions.append((menu.addAction("&Offene Tätigkeiten …", self.show_open_docs), "alert"))
+        # Tages-/Wochenbericht als PDF (report_pdf.py): eigener Beleg, auch ohne Matrix42-Buchung
+        self.report_action = QAction("&Bericht als PDF …", self)
+        self.report_action.setToolTip("Tagesbericht des angezeigten Tags als PDF: Tätigkeiten, Zeit ohne "
+                                      "Matrix42-Buchung und Spuren als eigener Beleg zum Ausdrucken. "
+                                      "Wochenbericht: im Wochenabschluss")
+        self.report_action.triggered.connect(lambda: self.save_report())
+        menu.addAction(self.report_action)
+        self._icon_actions.append((self.report_action, "doc"))
         # Zeitraum (Ganzer Tag, Arbeitszeit) steht in der Werkzeugleiste
         menu.addSeparator()
         # Design: Hell, Dunkel oder eigene Farben. „Dunkles Design“ im Menü
