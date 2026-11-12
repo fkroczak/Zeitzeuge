@@ -21,7 +21,7 @@ BUILD_INFO_FILE = os.path.join(SRC, "build_info.py")
 with open(BUILD_INFO_FILE, "w", encoding="utf-8") as f:
     f.write("# Beim Bauen erzeugt (ZeitZeuge.spec), nicht von Hand ändern\n")
     f.write(f"BUILD = {BUILD!r}\n")
-    # Update-Zugang (src/updater.py): Lese-Token nur für das Release-Repo, aus dem Secret
+    # Update-Zugang (src/updater.py): Lese-Token für die Releases, aus dem Secret
     # UPDATE_READ_TOKEN der CI. Ohne Token sucht diese Version nicht nach Updates.
     UPDATE = {"repo": os.environ.get("ZEITZEUGE_UPDATE_REPO", "").strip(),
               "token": os.environ.get("ZEITZEUGE_UPDATE_TOKEN", "").strip()}

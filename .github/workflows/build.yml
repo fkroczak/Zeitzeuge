@@ -120,12 +120,12 @@ jobs:
           "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           Write-Host "::notice title=Version::Zeitzeuge $v"
 
-      # Update-Zugang (src/updater.py): Lese-Token nur für das Release-Repo, kommt in die EXE.
+      # Update-Zugang (src/updater.py): Lese-Token für dieses Repo (Releases), kommt in die EXE.
       # Ohne Secret UPDATE_READ_TOKEN sucht der Build nicht nach Updates.
       - name: EXE bauen
         env:
           ZEITZEUGE_UPDATE_TOKEN: ${{ secrets.UPDATE_READ_TOKEN }}
-          ZEITZEUGE_UPDATE_REPO: ${{ vars.UPDATE_REPO || 'fkroczak/Zeitzeuge-releases' }}
+          ZEITZEUGE_UPDATE_REPO: ${{ github.repository }}
         run: pyinstaller --noconfirm --clean ZeitZeuge.spec
 
       - name: EXE signieren (nur wenn ein Zertifikat hinterlegt ist)
@@ -155,7 +155,7 @@ jobs:
         env:
           ZEITZEUGE_ONEDIR: "1"
           ZEITZEUGE_UPDATE_TOKEN: ${{ secrets.UPDATE_READ_TOKEN }}
-          ZEITZEUGE_UPDATE_REPO: ${{ vars.UPDATE_REPO || 'fkroczak/Zeitzeuge-releases' }}
+          ZEITZEUGE_UPDATE_REPO: ${{ github.repository }}
           SIGN_PFX_BASE64: ${{ secrets.SIGN_PFX_BASE64 }}
           SIGN_PFX_PASSWORD: ${{ secrets.SIGN_PFX_PASSWORD }}
         run: |
@@ -265,9 +265,12 @@ jobs:
           # Entwurf aus einem früheren Versuch desselben Stands entfernen
           $alt = gh release view "v$env:ZZ_VERSION" --repo $env:GITHUB_REPOSITORY --json isDraft 2>$null | ConvertFrom-Json
           if ($alt -and $alt.isDraft) { gh release delete "v$env:ZZ_VERSION" --repo $env:GITHUB_REPOSITORY --yes }
+          # Prüfsumme für das Update aus Zeitzeuge (src/updater.py)
+          $sha = (Get-FileHash dist/Zeitzeuge-Setup.exe -Algorithm SHA256).Hash.ToLower()
+          "$sha  Zeitzeuge-Setup.exe" | Out-File -FilePath dist/Zeitzeuge-Setup.exe.sha256 -Encoding ascii -NoNewline
           gh release create "v$env:ZZ_VERSION" --repo $env:GITHUB_REPOSITORY --draft `
             --target $env:GITHUB_SHA --title "Zeitzeuge $env:ZZ_VERSION" --generate-notes `
-            dist/Zeitzeuge-Setup.exe dist/ZeitZeuge.exe dist/ZeitZeuge-Ordner.zip
+            dist/Zeitzeuge-Setup.exe dist/Zeitzeuge-Setup.exe.sha256 dist/ZeitZeuge.exe dist/ZeitZeuge-Ordner.zip
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
   # Veröffentlicht den Entwurf, wenn Bau und alle Tests grün sind; sonst wird er gelöscht.
@@ -294,37 +297,6 @@ jobs:
           }
           gh release edit "v$env:ZZ_VERSION" --repo $env:GITHUB_REPOSITORY --draft=false --latest
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-      # Setup ins private Release-Repo spiegeln (nur Setups, kein Code). Von dort holt sich
-      # Zeitzeuge Updates (src/updater.py) mit dem eingebauten Lese-Token.
-      # Secret UPDATE_PUBLISH_TOKEN: Fine-grained Token nur für das Release-Repo, Contents: Read and write.
-      - name: Update im Release-Repo veröffentlichen
-        env:
-          PUBLISH_TOKEN: ${{ secrets.UPDATE_PUBLISH_TOKEN }}
-          UPDATE_REPO: ${{ vars.UPDATE_REPO || 'fkroczak/Zeitzeuge-releases' }}
-        shell: pwsh
-        run: |
-          if (-not $env:PUBLISH_TOKEN) {
-            Write-Host "::notice title=Update::Secret UPDATE_PUBLISH_TOKEN fehlt, Release-Repo wird nicht befüllt."
-            exit 0
-          }
-          $tag = "v$env:ZZ_VERSION"
-          gh release download $tag --repo $env:GITHUB_REPOSITORY --pattern Zeitzeuge-Setup.exe --dir upd --clobber
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $sha = (Get-FileHash upd/Zeitzeuge-Setup.exe -Algorithm SHA256).Hash.ToLower()
-          "$sha  Zeitzeuge-Setup.exe" | Out-File -FilePath upd/Zeitzeuge-Setup.exe.sha256 -Encoding ascii -NoNewline
-          $env:GH_TOKEN = $env:PUBLISH_TOKEN
-          gh release view $tag --repo $env:UPDATE_REPO *> $null
-          if ($LASTEXITCODE -eq 0) { gh release delete $tag --repo $env:UPDATE_REPO --yes --cleanup-tag }
-          gh release create $tag --repo $env:UPDATE_REPO --title "Zeitzeuge $env:ZZ_VERSION" `
-            --notes "Update für Zeitzeuge $env:ZZ_VERSION" --latest `
-            upd/Zeitzeuge-Setup.exe upd/Zeitzeuge-Setup.exe.sha256
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          # Auch dort nur die 10 neuesten behalten
-          $alt = gh release list --repo $env:UPDATE_REPO --limit 1000 --exclude-drafts --json tagName,createdAt |
-            ConvertFrom-Json | Sort-Object { [datetime]$_.createdAt } -Descending |
-            Select-Object -Skip 10 -ExpandProperty tagName
-          foreach ($t in $alt) { gh release delete $t --repo $env:UPDATE_REPO --yes --cleanup-tag }
 
       # Nur die 10 neuesten Releases behalten; ältere samt Tag löschen.
       - name: Alte Releases löschen (10 bleiben)

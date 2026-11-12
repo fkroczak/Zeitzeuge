@@ -1,14 +1,13 @@
 """Updates: neue Version suchen, Setup laden, prüfen und still installieren (ohne Qt).
 
-Die Setups liegen in einem eigenen privaten Repo, das nur Releases enthält (Standard
-fkroczak/Zeitzeuge-releases, nie den Quellcode). Die CI spiegelt jedes veröffentlichte Release
-dorthin (.github/workflows/build.yml, Job „release“).
+Die Setups kommen aus den Releases des (privaten) Repos fkroczak/Zeitzeuge, die die CI bei
+jedem Merge in main anlegt (.github/workflows/build.yml).
 
 Die EXE bringt ein Lese-Token mit: ZeitZeuge.spec schreibt es beim Bauen aus dem Secret
-UPDATE_READ_TOKEN in build_info.py (UPDATE = {"repo": ..., "token": ...}). Das Token darf nur
-das Release-Repo lesen. Wer es aus der EXE holt, bekommt nur die Setups, die jeder Nutzer ohnehin
-hat; sperren lässt es sich jederzeit auf GitHub. Aus dem Quelltext: ZEITZEUGE_UPDATE_REPO und
-ZEITZEUGE_UPDATE_TOKEN.
+UPDATE_READ_TOKEN in build_info.py (UPDATE = {"repo": ..., "token": ...}). Es darf das Repo nur
+lesen. Wer es aus der EXE holt, kann damit auch den Quellcode lesen (bewusst in Kauf genommen:
+Zeitzeuge wird nur intern genutzt). Sperren lässt es sich jederzeit auf GitHub.
+Aus dem Quelltext: ZEITZEUGE_UPDATE_REPO und ZEITZEUGE_UPDATE_TOKEN.
 
 Ablauf: latest() fragt das neueste Release ab, download() lädt Zeitzeuge-Setup.exe und prüft
 SHA-256, signature_ok() die Signatur (nur wenn die laufende EXE selbst signiert ist),
@@ -25,7 +24,7 @@ import urllib.request
 from datetime import datetime, timezone
 
 API = "https://api.github.com"
-DEFAULT_REPO = "fkroczak/Zeitzeuge-releases"
+DEFAULT_REPO = "fkroczak/Zeitzeuge"
 ASSET = "Zeitzeuge-Setup.exe"
 CHECK_HOURS = 6          # so oft sucht Zeitzeuge im Hintergrund
 TOKEN_WARN_DAYS = 30     # so lange vor Ablauf des Tokens warnt Zeitzeuge
@@ -77,7 +76,7 @@ def _http_error(e):
     if e.code in (403, 429):
         return UpdateError("GitHub lässt gerade keine Abfrage zu. Später noch einmal versuchen.")
     if e.code == 404:
-        return UpdateError("Noch kein Update veröffentlicht (oder kein Zugriff auf das Release-Repo).")
+        return UpdateError("Noch kein Update veröffentlicht (oder kein Zugriff auf das Repository).")
     return UpdateError(f"GitHub antwortet mit Fehler {e.code}.")
 
 

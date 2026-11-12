@@ -270,14 +270,11 @@ Release veröffentlichen: passiert von selbst mit jedem Merge in main (Tag `v<Ve
 
 #### Updates einrichten
 
-Das Repository bleibt privat, die Setups auch. Zeitzeuge holt Updates aus einem **zweiten privaten Repository, das nur die Setups enthält** (Standard `fkroczak/Zeitzeuge-releases`, anderes über die Actions-Variable `UPDATE_REPO`). Die EXE bringt dafür ein Token mit, das nur dieses Repository lesen darf. Wer es aus der EXE holt, bekommt nur die Setups, nie den Quellcode.
+Zeitzeuge holt Updates aus den Releases dieses (privaten) Repositorys. Die EXE bringt dafür ein Token mit, das das Repository nur lesen darf. Wer es aus der EXE holt, kann damit auch den Quellcode lesen; das ist in Ordnung, weil Zeitzeuge nur intern genutzt wird. Deshalb gehören keine Passwörter oder Zugangsdaten in den Code oder die git-Geschichte.
 
-1. Auf GitHub ein neues **privates** Repository `Zeitzeuge-releases` anlegen, mit README (ein leeres Repository nimmt keine Releases an).
-2. Unter **Settings → Developer settings → Personal access tokens → Fine-grained tokens** zwei Tokens anlegen, beide mit **Repository access: Only select repositories → Zeitzeuge-releases**:
-   - **Lesen** (kommt in die EXE): Permissions → Contents: **Read-only**.
-   - **Schreiben** (nur für die CI): Permissions → Contents: **Read and write**.
-3. Im Repository `Zeitzeuge` unter **Settings → Secrets and variables → Actions** hinterlegen: `UPDATE_READ_TOKEN` (Lese-Token) und `UPDATE_PUBLISH_TOKEN` (Schreib-Token).
-4. Fertig: Ab dem nächsten Merge in main enthält die EXE den Zugang, und der Job „release“ legt jedes Release zusätzlich in `Zeitzeuge-releases` ab (nur `Zeitzeuge-Setup.exe` und die Prüfsumme, die 10 neuesten bleiben). Erst Versionen ab diesem Merge können sich selbst aktualisieren; ältere einmal von Hand.
+1. Unter **Settings → Developer settings → Personal access tokens → Fine-grained tokens** ein Token anlegen: **Repository access: Only select repositories → Zeitzeuge**, Permissions → Contents: **Read-only**.
+2. Im Repository unter **Settings → Secrets and variables → Actions** als Secret `UPDATE_READ_TOKEN` hinterlegen.
+3. Fertig: Ab dem nächsten Merge in main enthält die EXE den Zugang. Jedes Release hat zusätzlich `Zeitzeuge-Setup.exe.sha256` (Prüfsumme). Erst Versionen ab diesem Merge können sich selbst aktualisieren; ältere einmal von Hand. Ohne Secret baut die CI wie bisher, nur ohne Updates.
 
 **Ablauf des Tokens:** Fine-grained Tokens laufen nach der eingestellten Zeit ab (höchstens etwa ein Jahr). Rechtzeitig vorher ein neues Lese-Token anlegen, `UPDATE_READ_TOKEN` ersetzen und ein Release bauen; die Versionen mit dem alten Token aktualisieren sich dann noch einmal auf die neue. Zeitzeuge schreibt 30 Tage vor Ablauf einen Hinweis in `fehler.log`. Ist das Token abgelaufen, meldet „Nach Updates suchen“ das, und das Setup muss einmal von Hand installiert werden. Ein ausgelesenes oder missbrauchtes Token sperrst du jederzeit auf GitHub; neue Versionen bekommen dann ein neues.
 
