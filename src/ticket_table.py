@@ -1,0 +1,134 @@
+"""Tickettabelle für „Meine Tickets“ und „Ticket suchen“: Spalten Ticket, Betreff, Kunde, Melder,
+Status, Angelegt; nach jeder Spalte sortierbar, filterbar (jedes Wort muss vorkommen, wie bei
+der Ticketsuche), erledigte Tickets grau. Enter oder Doppelklick: Signal activated(row).
+"""
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QAction, QKeySequence, QPalette
+from PySide6.QtWidgets import QAbstractItemView, QHeaderView, QTableWidget, QTableWidgetItem
+
+import m42_booking as mb
+
+# Spalte -> Feld der Ticketzeile (m42_booking.ticket_row)
+COLUMNS = [("Ticket", "ticket"), ("Betreff", "subject"), ("Kunde", "customer"), ("Melder", "initiator"),
+           ("Status", "state"), ("Angelegt", "created")]
+SUBJECT_COL = 1
+
+
+class _Item(QTableWidgetItem):
+    """Zelle, die nach einem eigenen Schlüssel sortiert (Datum nach ISO statt „12.11.26“)."""
+
+    def __init__(self, text, key):
+        super().__init__(text)
+        self.key = key
+
+    def __lt__(self, other):
+        return self.key < getattr(other, "key", other.text().casefold())
+
+
+class TicketTable(QTableWidget):
+    activated = Signal(object)  # Ticketzeile (dict), Enter oder Doppelklick
+
+    def __init__(self, name, parent=None):
+        super().__init__(0, len(COLUMNS), parent)
+        self.setHorizontalHeaderLabels([n for n, _key in COLUMNS])
+        self.verticalHeader().setVisible(False)
+        self.verticalHeader().setDefaultSectionSize(28)
+        self.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.setWordWrap(False)
+        self.setTextElideMode(Qt.ElideRight)
+        self.setAccessibleName(name)
+        # Betreff bekommt den Platz; Kunde und Melder dürfen nicht alles fressen (lange Firmennamen)
+        header = self.horizontalHeader()
+        for col, (_name, key) in enumerate(COLUMNS):
+            if col == SUBJECT_COL:
+                header.setSectionResizeMode(col, QHeaderView.Stretch)
+            elif key in ("customer", "initiator"):
+                header.setSectionResizeMode(col, QHeaderView.Interactive)
+                header.resizeSection(col, 150)
+            else:
+                header.setSectionResizeMode(col, QHeaderView.ResizeToContents)
+        # Sortieren erst auf Klick: bis dahin bleibt die Reihenfolge der Daten (Suche: offene zuerst)
+        self._sort = None
+        header.setSectionsClickable(True)
+        header.setSortIndicatorShown(True)
+        header.setSortIndicator(-1, Qt.AscendingOrder)
+        header.sortIndicatorChanged.connect(self.sort_by)
+        self.cellDoubleClicked.connect(lambda _r, _c: self._activate())
+        enter = QAction(self)
+        enter.setShortcuts([QKeySequence(Qt.Key_Return), QKeySequence(Qt.Key_Enter)])
+        enter.setShortcutContext(Qt.WidgetShortcut)
+        enter.triggered.connect(self._activate)
+        self.addAction(enter)
+
+    def _activate(self):
+        row = self.current_row()
+        if row:
+            self.activated.emit(row)
+
+    def sort_by(self, col, order=Qt.AscendingOrder):
+        """Nach Spalte sortieren (auch bei späteren set_rows); col -1: Reihenfolge der Daten."""
+        self._sort = (col, order) if col >= 0 else None
+        header = self.horizontalHeader()
+        if (header.sortIndicatorSection(), header.sortIndicatorOrder()) != (col, order):
+            header.setSortIndicator(col, order)  # meldet sich über sortIndicatorChanged wieder
+            return
+        if self._sort:
+            self.sortItems(col, order)
+
+    def set_rows(self, rows):
+        """Tickets zeigen: in der Reihenfolge der Daten, oder sortiert, wenn eine Spalte gewählt ist."""
+        selected = (self.current_row() or {}).get("id")
+        grey = self.palette().color(QPalette.PlaceholderText)  # muted (Design), wie Hinweise
+        self.clearSelection()
+        self.setRowCount(len(rows))
+        for r, row in enumerate(rows):
+            closed = mb.is_closed(row)
+            for c, (_name, key) in enumerate(COLUMNS):
+                if key == "created":
+                    text, sort_key = mb.ticket_date(row), row.get("created") or ""
+                else:
+                    text = row.get(key) or ""
+                    if key == "initiator":
+                        text = text.split(" - ")[0]  # „Müller, Jan“ ohne Firma (steht im Hinweis)
+                    sort_key = text.casefold()
+                item = _Item(text, sort_key)
+                item.setToolTip(mb.ticket_tooltip(row))
+                if closed:
+                    item.setForeground(grey)
+                if c == 0:
+                    item.setData(Qt.UserRole, row)
+                self.setItem(r, c, item)
+        if self._sort:
+            self.sortItems(*self._sort)
+        for r in range(self.rowCount()):
+            if selected and self.row_at(r).get("id") == selected:
+                self.selectRow(r)
+                break
+
+    def row_at(self, r):
+        item = self.item(r, 0)
+        return (item.data(Qt.UserRole) if item is not None else None) or {}
+
+    def current_row(self):
+        rows = self.selectionModel().selectedRows()
+        return self.row_at(rows[0].row()) if rows else None
+
+    def select_first(self):
+        for r in range(self.rowCount()):
+            if not self.isRowHidden(r):
+                self.selectRow(r)
+                return
+
+    def visible_rows(self):
+        """Angezeigte Tickets in der Reihenfolge der Tabelle (nach Filter und Sortierung)."""
+        return [self.row_at(r) for r in range(self.rowCount()) if not self.isRowHidden(r)]
+
+    def apply_filter(self, text):
+        text = (text or "").strip()
+        for r in range(self.rowCount()):
+            hide = bool(text) and not mb.matches(self.row_at(r), text)
+            self.setRowHidden(r, hide)
+            if hide and self.selectionModel().isRowSelected(r):
+                self.clearSelection()

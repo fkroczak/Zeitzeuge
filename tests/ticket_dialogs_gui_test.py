@@ -18,7 +18,7 @@ def gui_test():
     global app
     from PySide6.QtCore import QObject, Qt, QTimer, Signal
     from PySide6.QtTest import QTest
-    from PySide6.QtWidgets import QApplication, QDialog
+    from PySide6.QtWidgets import QApplication, QDialog, QFormLayout
 
     import m42_tickets as mt
     from my_tickets_dialogs import MyTicketsDialog
@@ -49,7 +49,8 @@ def gui_test():
                                    {"id": "cat-fs", "path": "Visaas > Server > Fileserver"}],
                     "create": {"ticket": "TCK0000050866", "id": "x", "type": "SPSActivityTypeIncident",
                                "taken_over": True, "warning": ""},
-                    "close": {"ticket": ROW["ticket"]}}[kind]
+                    "close": {"ticket": ROW["ticket"]},
+                    "user_details": {"OrgUnit": "WiRoPa GmbH", "Phone": "02542 1", "Email": "info@example.com"}}[kind]
             result = {"kind": kind, "args": args, "ok": kind not in self.fail, "data": data}
             if kind in self.fail:
                 result.update(error="Zeitüberschreitung", unclear=True)
@@ -59,7 +60,9 @@ def gui_test():
     reader = FakeReader()
     mine = MyTicketsDialog(reader)
     mine.show()
-    assert mine.results.count() == 1 and mine.close_button.isEnabled()
+    assert mine.table.rowCount() == 1 and not mine.close_button.isEnabled()  # erst nach Auswahl
+    mine.table.select_first()
+    assert mine.close_button.isEnabled()
 
     # ---- Neues Ticket: Melder suchen und wählen, Kategorie vorbelegt mit „Ticketeingang“
     seen = {}
@@ -73,15 +76,20 @@ def gui_test():
         QTest.qWait(500)  # Suche nach kurzer Pause
         seen["users"] = dialog.users.count()
         dialog._take_user(dialog.users.item(0))
+        QTest.qWait(20)
+        seen["card"] = [dialog.user_rows.itemAt(i, QFormLayout.FieldRole).widget().text()
+                        for i in range(dialog.user_rows.rowCount())]
         dialog.category_edit.setCurrentText("Visaas > Server > Fileserver")
         dialog.subject_edit.setText("Rückmeldung zu den ZRO-Ordnern")
         dialog.description_edit.setPlainText("Anpassungen an ZRO-Ordnern")
-        dialog.type_edit.setCurrentIndex(dialog.type_edit.findData(mt.SERVICE_REQUEST))
+        dialog.type_chips[mt.SERVICE_REQUEST].click()
+        seen["incident_off"] = not dialog.type_chips[mt.INCIDENT].isChecked()
         seen["ok_after"] = dialog.ok_button.isEnabled()
         dialog.ok_button.click()
     QTimer.singleShot(0, fill_new)
     mine.new_button.click()
-    assert seen == {"category": "cat-in", "ok_before": False, "users": 1, "ok_after": True}, seen
+    assert seen == {"category": "cat-in", "ok_before": False, "users": 1, "ok_after": True, "incident_off": True,
+                    "card": ["Brüning, Gerd", "WiRoPa GmbH", "02542 1", "info@example.com"]}, seen
     kind, args = reader.tasks[-1]
     assert kind == "create", reader.tasks
     assert {k: v for k, v in args["request"].items()} == {
@@ -112,14 +120,39 @@ def gui_test():
         dlg.notify.setChecked(False)
         dlg.ok_button.click()
     QTimer.singleShot(0, fill_close)
-    mine.results.setCurrentRow(0)
+    mine.table.select_first()
     mine.close_button.click()
     kind, args = reader.tasks[-1]
     assert kind == "close" and args["request"] == {"id": "t2", "type": "SPSActivityTypeIncident",
                                                    "ticket": "TCK0000000002", "solution": "Treiber neu installiert",
                                                    "notify": False}, args
-    assert mine.results.count() == 0 and "TCK0000000002 geschlossen" in mine.status.text()
-    assert QDialog and Qt  # (Importe für Typen oben)
+    assert mine.table.rowCount() == 0 and "TCK0000000002 geschlossen" in mine.status.text()
+
+    # ---- Tabelle: neueste zuerst, Filter über alle Spalten, Klick auf eine Spalte sortiert
+    def mk(n, subject, customer, state, created):
+        return dict(ROW, ticket=f"TCK000000000{n}", id=f"t{n}", subject=subject, customer=customer,
+                    state=state, created=created)
+    reader.my_tickets = {"at": "11:00", "error": "", "rows": [
+        mk(1, "VPN bricht ab", "Weber", "Neu", "2026-11-03T08:00:00Z"),
+        mk(3, "Drucker Empfang", "Schmidt", "In Bearbeitung", "2026-11-10T08:00:00Z"),
+        mk(2, "Drucker Lager", "Weber", "Neu", "2026-11-05T08:00:00Z")]}
+    table_dialog = MyTicketsDialog(reader)
+    table_dialog.show()
+    app.processEvents()
+    order = lambda: [r["ticket"][-1] for r in table_dialog.visible_rows()]  # noqa: E731
+    assert order() == ["3", "2", "1"], order()  # Angelegt absteigend
+    table_dialog.filter_edit.setText("drucker weber")
+    assert order() == ["2"] and "1 passen zum Filter" in table_dialog.status.text(), table_dialog.status.text()
+    table_dialog.filter_edit.clear()
+    table_dialog.table.sort_by(2, Qt.AscendingOrder)  # Kunde
+    assert [r["customer"] for r in table_dialog.visible_rows()] == ["Schmidt", "Weber", "Weber"]
+    table_dialog.filter_edit.setFocus()
+    QTest.keyClick(table_dialog.filter_edit, Qt.Key_Down)  # Pfeil runter: erste Zeile markiert
+    assert table_dialog.current_row()["ticket"].endswith("3")
+    QTest.keyClick(table_dialog.table, Qt.Key_Return)
+    assert app.clipboard().text() == "TCK0000000003"
+    table_dialog.close()
+    assert QDialog  # (Import für Typen oben)
     mine.close()
     print("Ticket-Fenster ok")
 

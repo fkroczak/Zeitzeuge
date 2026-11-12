@@ -662,7 +662,8 @@ class M42Reader(BrowserReader):
     # ---- Tickets anlegen und schließen (m42_tickets.py)
 
     def ticket_task(self, kind, **args):
-        """Im Hintergrund: "users" (text), "categories", "create" (request), "close" (request).
+        """Im Hintergrund: "users" (text), "user_details" (user), "categories", "create" (request),
+        "close" (request).
         Ergebnis über ticket_task_done. False, wenn gerade ein Anmeldefenster offen ist."""
         if self._login_open:
             return False
@@ -682,6 +683,9 @@ class M42Reader(BrowserReader):
                     data = self._fetch("POST", "/m42Services/api/entity/fragments/forControl",
                                        mt.user_query(ids["ticket_dialog"], args.get("text", "")))
                     result["data"] = mt.users_from_fragments(data)
+                elif kind == "user_details":
+                    user = args["user"]
+                    result["data"] = self._fetch("GET", f"/m42Services/api/activity/UserDetails/{user}/?userId={user}")
                 elif kind == "categories":
                     data = self._fetch("POST", "/m42Services/api/entity/tree", mt.tree_query(ids["ticket_dialog"]))
                     result["data"] = mt.categories_from_tree(data)
