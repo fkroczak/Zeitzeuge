@@ -50,6 +50,14 @@ def gui_test():
     assert image.width() == 2000 and image.height() > 300
     assert b"/Subtype /Image" in data, "Zeitgraph als Bild im PDF"
 
+    # Timeline: eingetragen, aber nicht in Matrix42 gebucht -> eigener Typ (orange); ohne Matrix42 grün
+    assert [e["type"] for e in window.doc_band(day) if e.get("doc")] == ["Dokumentiert"]
+    window._m42_bookings = lambda d: []
+    doc = [e for e in window.doc_band(day) if e.get("doc")][0]
+    assert doc["type"] == work_report.DOC_UNBOOKED_TYPE and "Matrix42: nicht gebucht" in doc["details"]
+    assert window.config["type_colors"][doc["type"]] == work_report.STATUS_COLORS["doc_missing"]
+    del window._m42_bookings
+
     dialog = week_dialogs.WeekDialog(window, day)
     assert dialog.report_button.isEnabled() and dialog.report_button.isVisibleTo(dialog)
     dialog.reject()

@@ -49,6 +49,7 @@ from retention_dialogs import RetentionRunner
 import datastore
 import safe_io
 import storage
+import work_report
 from vpn_reader import vpn_sources
 from idle_watch import IdleWatch
 from journal import Journal
@@ -176,6 +177,12 @@ GREY_TYPE_COLORS = {
     "Mail gesendet": ("#1F7A8C", "#00A3C4"),
 }
 
+# Personalzeit, Matrix42 und Dokumentation in den Farben des Berichts (work_report.STATUS_COLORS)
+STATUS_TYPE_COLORS = {kind: work_report.STATUS_COLORS[key] for kind, key in work_report.TYPE_STATUS.items()}
+# Bisherige Standardwerte dieser Typen (Version 5 stellt nur genau diese um)
+REPORT_OLD_COLORS = {"Personalzeit": "#3D8BFD", "Arbeitszeit": "#3D8BFD", "Matrix42-Buchung": "#3C5CDB",
+                     "Nicht gebucht": "#E5484D", "Dokumentiert": "#2E9E5B", "Undokumentiert": "#E06D10"}
+
 
 class StoreLocked(Exception):
     """Daten gesperrt und nicht entsperrt (Abbruch im Dialog)."""
@@ -261,10 +268,9 @@ def load_config_with_defaults():
     for kind, color in [("VPN-Verbindung", "#0F9D8A"), ("SSH-Verbindung", "#E06D10"),
                         ("FTP-Verbindung", "#C7195D"), ("TeamViewer-Verbindung", "#3460DB"),
                         ("Zugangsdaten", "#9B59B6"), ("Arbeitsblock", "#5B8DEF"),
-                        (AI_TYPE, "#A55EEA"), ("Dokumentiert", "#2E9E5B"),
-                        ("Undokumentiert", "#E06D10"), ("Klassifizierung", "#0D9F99"),
-                        ("Matrix42-Buchung", "#3C5CDB"), ("Personalzeit", "#3D8BFD"),
-                        ("Arbeitszeit", "#3D8BFD"), ("Nicht gebucht", "#E5484D"),
+                        (AI_TYPE, "#A55EEA"), ("Klassifizierung", "#0D9F99"),
+                        # Personalzeit, Matrix42, Dokumentation: Farben wie im Bericht (work_report)
+                        *STATUS_TYPE_COLORS.items(),
                         # Outlook und Teams (app_outlook.py)
                         ("Termin", "#0F6CBD"), ("Teams-Besprechung", "#5B5FC7"),
                         ("Mail gesendet", "#009BBB"), ("Teams-Anruf", "#565EBF"),
@@ -291,6 +297,12 @@ def load_config_with_defaults():
             if isinstance(color, str) and color.upper() in CONTRAST_TYPE_COLORS:
                 cfg["type_colors"][kind] = CONTRAST_TYPE_COLORS[color.upper()]
         cfg["type_colors_version"] = 4
+    # Farben wie im Tages-/Wochenbericht: nur unveränderte alte Standardwerte umstellen
+    if cfg.get("type_colors_version", 1) < 5:
+        for kind, old in REPORT_OLD_COLORS.items():
+            if str(cfg["type_colors"].get(kind, "")).upper() == old:
+                cfg["type_colors"][kind] = STATUS_TYPE_COLORS[kind]
+        cfg["type_colors_version"] = 5
     # Aufgeräumte Timeline: Zeile "Zuordnung ohne KI" einmalig aus (fließt in "Dokumentation" ein),
     # wer sie danach wieder einschaltet, behält sie
     if cfg.get("layout_version", 1) < 2:

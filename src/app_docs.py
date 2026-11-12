@@ -25,6 +25,7 @@ import learning
 import rules
 import m42_data as m42
 import week_dialogs
+import work_report
 import booking_rate as br
 import day_checks
 import idle_watch
@@ -381,8 +382,18 @@ class DocsMixin(CustomersMixin):
         return result
 
     def doc_band(self, date_str):
-        """Zeile "Doku": eigene Tätigkeiten und (gestrichelt) was noch offen ist."""
+        """Zeile "Doku": eigene Tätigkeiten und (gestrichelt) was noch offen ist.
+
+        Eingetragen, aber nicht in Matrix42 gebucht: orange wie im Bericht (work_report),
+        nur wenn Matrix42 den Tag gelesen hat."""
         entries = self.journal.entries(date_str)
+        bookings = self._m42_bookings(date_str)
+        if bookings is not None:
+            for e in entries:
+                text, level = work_report.booking_state(e["doc_item"], bookings)
+                if level in ("missing", "partly"):
+                    e["type"] = work_report.DOC_UNBOOKED_TYPE
+                    e["details"] = " · ".join(t for t in (e.get("details"), f"Matrix42: {text}") if t)
         opened = [open_entry(e) for e in self.doc_candidates(date_str)]
         # Zuordnung ohne KI fließt hier ein: offene Einträge ohne Kunden bekommen den Vorschlag
         # der Regel, die sie am meisten überdeckt (eigene Zeile ist standardmäßig aus)

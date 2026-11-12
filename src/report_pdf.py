@@ -23,18 +23,20 @@ CHART_DPI = 300
 # Balken im Zeitgraph: (Füllung, Rand, Schrift, gestrichelt). Hell genug für Text, in Graustufen
 # unterscheidbar: Personalzeit hellgrau, Buchung blau, Lücke weiß mit rotem Strichrand,
 # Tätigkeit gebucht grün, nicht gebucht orange mit dunklem Rand
+# Ränder = work_report.STATUS_COLORS, dieselben Farben wie in der Timeline
+_C = work_report.STATUS_COLORS
 STYLES = {
-    "personal": ("#e3e3e3", "#b5b5b5", "#000000", False),
-    "booking": ("#9cc3e6", "#3d6e9e", "#0b2740", False),
-    "gap": ("#ffffff", "#c0392b", "#a0281c", True),
-    "doc_booked": ("#a8d5b5", "#2f7a4a", "#0d3a1e", False),
-    "doc_missing": ("#f5c58f", "#8a4b0a", "#4a2600", False),
+    "personal": ("#e3e3e3", _C["personal"], "#000000", False),
+    "booking": ("#9cc3e6", _C["booking"], "#0b2740", False),
+    "gap": ("#ffffff", _C["gap"], "#a0281c", True),
+    "doc_booked": ("#a8d5b5", _C["doc_booked"], "#0d3a1e", False),
+    "doc_missing": ("#f5c58f", _C["doc_missing"], "#4a2600", False),
     "doc_unknown": ("#dddddd", "#777777", "#000000", False),
     "trace": ("#cfd8e3", "#7d8fa3", "#1c2733", False),
 }
 LEGEND = (("personal", "Personalzeit"), ("booking", "In Matrix42 gebucht"),
-          ("gap", "Ohne Matrix42-Buchung"), ("doc_booked", "Tätigkeit gebucht"),
-          ("doc_missing", "Tätigkeit nicht gebucht"), ("trace", "Aufgezeichnete Spur"))
+          ("gap", "Ohne Matrix42-Buchung"), ("doc_booked", "Tätigkeit in Matrix42 gebucht"),
+          ("doc_missing", "Tätigkeit nicht in Matrix42 gebucht"), ("trace", "Aufgezeichnete Spur"))
 
 
 def _font(points, bold=False):

@@ -16,12 +16,28 @@ from datetime import datetime, timedelta
 
 import booking_rate as br
 
+# Gemeinsame Farben von Bericht und Timeline (Standard der type_colors in main_timeline.py):
+# kräftig genug für 3 : 1 auf hellem und dunklem Grund. Das PDF füllt die Balken heller und
+# nimmt diese Farbe als Rand (report_pdf.STYLES), die Timeline füllt mit ihr.
+STATUS_COLORS = {
+    "personal": "#808080",     # Personalzeit / Arbeitszeit: grau
+    "booking": "#3D6E9E",      # in Matrix42 gebucht: blau
+    "gap": "#C0392B",          # Personalzeit ohne Buchung: rot
+    "doc_booked": "#2F7A4A",   # Tätigkeit dokumentiert (und gebucht): grün
+    "doc_missing": "#AE5F10",  # offen / nicht gebucht: orange
+}
+# Timeline-Zeile Dokumentation: eingetragen, aber (noch) nicht in Matrix42 gebucht -> orange wie im PDF
+DOC_UNBOOKED_TYPE = "Dokumentiert, nicht in Matrix42"
+TYPE_STATUS = {"Personalzeit": "personal", "Arbeitszeit": "personal", "Matrix42-Buchung": "booking",
+               "Nicht gebucht": "gap", "Dokumentiert": "doc_booked", "Undokumentiert": "doc_missing",
+               DOC_UNBOOKED_TYPE: "doc_missing"}
+
 CHART_PREFIX = "zeitgraph-"  # Bildname im HTML; report_pdf.py zeichnet das Bild dazu
 
 TIME_FMT = "%Y-%m-%d %H:%M:%S"
 DAY_NAMES = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]
 # Spuren, die als Beleg nichts beitragen (die Matrix42-Zeile steht eigens im Bericht)
-SKIP_TYPES = ("Matrix42-Buchung", "Undokumentiert", "Dokumentiert")
+SKIP_TYPES = ("Matrix42-Buchung", "Undokumentiert", "Dokumentiert", "Dokumentiert, nicht in Matrix42")
 # Viele kurze Einträge derselben Art (Dateien, Browser) werden zu einer Zeile zusammengefasst
 MERGE_TYPES = ("Datei geöffnet", "Browser")
 MERGE_GAP = timedelta(minutes=10)
