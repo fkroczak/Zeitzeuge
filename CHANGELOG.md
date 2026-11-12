@@ -142,6 +142,7 @@ Testversionen aus Branches tragen die Version ihres main-Stands plus Buildnummer
 - **Remotedesktop (mstsc) aus dem Windows-Ereignisprotokoll:** Zeitzeuge liest zusätzlich `Microsoft-Windows-TerminalServices-RDPClient/Operational` (Aufbau 1024, Trennung 1026). Das füllt Zeiten, in denen Zeitzeuge nicht lief, und macht Beginn und Ende sekundengenau; mit der eigenen Aufzeichnung wird es zu einer Sitzung zusammengeführt. Abschaltbar unter Datenquellen → Remotedesktop (mstsc).
 
 ### Behoben
+- **„In dieser Zeit“ übersichtlicher:** Geöffnete Dateien standen unter „Verbindungen“, mit ganzen Pfaden und Links (z. B. `ms-screensketch:…filePath=…`), die über die Zeilen darunter liefen. Jetzt gibt es eigene Zeilen „Dateien“ (nur der Dateiname), „Web“ und „Netzwerk“; lange Namen und Fenstertitel werden mit „…“ gekürzt statt mitten im Wort abgeschnitten.
 - **Absturz beim Beenden unter Windows:** Zeitzeuge und die GUI-Tests beenden sich mit `safe_io.hard_exit` (TerminateProcess) statt `os._exit`. So räumt Qt beim Entladen nicht mehr in falscher Reihenfolge auf (Zugriffsfehler 3221225477 nach erfolgreichem Lauf). Gespeichert und gestoppt ist vorher schon alles (`quit_app`).
 - **Aktualisieren (F5) liest jetzt alles neu**, auch Outlook und Teams (bisher erst beim nächsten Durchlauf alle 10 Minuten) und die VPN-Logs. Eine geänderte Adresse im Termin ist so sofort da.
 - **Rückfahrt nicht mehr länger als die Hinfahrt:** Ohne bekannte Fahrzeit reichte die Rückfahrt bis zur nächsten Arbeit am PC (z. B. 39 statt 12 Minuten). Jetzt gilt für beide Wege die kürzere Lücke.

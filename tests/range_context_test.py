@@ -106,3 +106,23 @@ def test_kategorie_aus_text():
     top = rc.estimate(s, e, acts, [], cl.Index([]), cats, history=history,
                       text="Lexware aktualisiert")["categories"][0]
     assert top[0] == "Interne Tätigkeit" and "lexware" in top[2], top
+
+
+def test_dateien_und_web_nicht_unter_verbindungen():
+    link = ("ms-screensketch:edit?&filePath=C%3A%5CUsers%5Cx%5COneDrive%5CBilder%5C"
+            "Screenshot%202026-11-12%20101208.png&source=1")
+    acts = [e("10:00", "10:05", type="Datei geöffnet", customer_name=r"C:\Users\x\Screenshot 1.png"),
+            e("10:10", "10:15", type="Datei geöffnet", customer_name=link),
+            e("10:00", "10:30", type="Browser", customer_name="claude.ai"),
+            e("10:00", "11:00", type="Netzwerk", customer_name="Büro")]
+    rows = dict(rc.context(S, E, acts, []))
+    assert "Verbindungen" not in rows
+    assert rows["Dateien"] == "Screenshot 1.png · Screenshot 2026-11-12 101208.png"
+    assert rows["Web"] == "claude.ai 30 min"
+    assert rows["Netzwerk"] == "Büro 1:00 h"
+
+
+def test_lange_namen_gekuerzt():
+    rows = dict(rc.context(S, E, [], [e("10:00", "10:30", type="PC: " + "X" * 80, app="x.exe")]))
+    assert rows["Rechner"].startswith("X" * 39 + "…")
+    assert rc._short("Claude - Anleitung Kennwort ändern - Claude Desktop") == "Claude - Anleitung Kennwort ändern…"
