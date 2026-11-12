@@ -11,7 +11,7 @@ from PySide6.QtCore import QDate, QEvent, QLocale, QObject, Qt, QTime, QTimer, S
 from PySide6.QtGui import QPalette
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QDateEdit, QDialog, QDialogButtonBox, QFormLayout, QHBoxLayout,
                                QLabel, QLineEdit, QListWidget, QListWidgetItem, QPlainTextEdit,
-                               QPushButton, QTimeEdit, QVBoxLayout)
+                               QPushButton, QTimeEdit, QToolButton, QVBoxLayout)
 
 from theme import fit_bold, prose
 from prompt_card import CardParts, _theme_colors
@@ -78,29 +78,30 @@ class BookingDialog(_TicketSearch, CardParts, QDialog):
         layout.addWidget(intro)
 
         form = QFormLayout()
-        self.ticket_edit = QLineEdit(plan.get("ticket", ""))
-        self.ticket_edit.setPlaceholderText("Ticketnummer, z. B. TCK0000049374")
-        form.addRow("T&icket:", self.ticket_edit)
+        # Ein Feld für beides: Ticketnummer eintragen oder Kunde, Benutzer, Titel tippen und suchen.
+        # Ohne Ticket steht der Kunde drin und die Suche läuft gleich los.
+        self.ticket_edit = QLineEdit(plan.get("ticket", "") or plan.get("customer", ""))
+        self.ticket_edit.setPlaceholderText("Ticketnummer oder Kunde, Benutzer, Titel suchen")
+        self.ticket_edit.setClearButtonEnabled(True)
+        self.ticket_edit.setAccessibleName("Ticket oder Suchtext")
+        for clear in self.ticket_edit.findChildren(QToolButton):  # ✕ zum Leeren, für Screenreader
+            clear.setAccessibleName("Ticketfeld leeren")
+        self.ticket_edit.returnPressed.connect(self._ticket_entered)
+        self.search_edit = self.ticket_edit  # _TicketSearch sucht nach dem Text in diesem Feld
+        self.search_button = QPushButton("&Suchen")
+        self.search_button.setAutoDefault(False)
+        self.search_button.setAccessibleName("Tickets in Matrix42 suchen")
+        self.search_button.clicked.connect(self.search)
+        search = QHBoxLayout()
+        search.addWidget(self.ticket_edit, 1)
+        search.addWidget(self.search_button)
+        ticket_label = QLabel("T&icket:")
+        ticket_label.setBuddy(self.ticket_edit)
+        form.addRow(ticket_label, search)
         self.ticket_hint = QLabel(plan.get("customer", ""))
         self.ticket_hint.setObjectName("hint")
         self.ticket_hint.setWordWrap(True)
         form.addRow("Kunde:", self.ticket_hint)
-
-        # Ticket suchen: Kunde, Benutzer (Melder, Bearbeiter), Ticketnummer oder Titel
-        search = QHBoxLayout()
-        self.search_edit = QLineEdit(plan.get("customer", "") if not plan.get("ticket") else "")
-        self.search_edit.setPlaceholderText("Kunde, Benutzer, Ticketnummer oder Titel")
-        self.search_edit.setClearButtonEnabled(True)
-        self.search_edit.returnPressed.connect(self.search)
-        self.search_button = QPushButton("Suchen")
-        self.search_button.setAutoDefault(False)
-        self.search_button.setAccessibleName("Tickets in Matrix42 suchen")
-        self.search_button.clicked.connect(self.search)
-        search.addWidget(self.search_edit, 1)
-        search.addWidget(self.search_button)
-        search_label = QLabel("Ticket &suchen:")
-        search_label.setBuddy(self.search_edit)
-        form.addRow(search_label, search)
         self.results = QListWidget()
         self.results.setAccessibleName("Gefundene Tickets")
         self.results.setMaximumHeight(130)
@@ -206,7 +207,7 @@ class BookingDialog(_TicketSearch, CardParts, QDialog):
                   primary=self.book_button, scroll=True, below_head=[self.time_row])
         self.validate()
         self.text_edit.setFocus()
-        if reader is not None and self.search_edit.text().strip():
+        if reader is not None and self.ticket_edit.text().strip() and not plan.get("ticket"):
             self.search()  # ohne Ticket: gleich nach dem Kunden suchen
 
     # ---- Anzeige
@@ -280,6 +281,11 @@ class BookingDialog(_TicketSearch, CardParts, QDialog):
                                 "Klick übernimmt das Ticket.")
         else:
             self.status.setText(f"⚠ Kein Ticket gefunden{': ' + error if error else '.'}")
+
+    def _ticket_entered(self):
+        """Enter im Ticketfeld: Ticketnummer bleibt stehen, anderer Text sucht in Matrix42."""
+        if not mb.normalize_ticket(self.ticket_edit.text()):
+            self.search()
 
     def take_ticket(self, item):
         row = item.data(Qt.UserRole) or {}
