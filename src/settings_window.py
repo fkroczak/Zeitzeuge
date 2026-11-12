@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (QButtonGroup, QCheckBox, QComboBox, QDialog, QFra
 import icons
 from flow_layout import FlowLayout
 from theme import theme_for, fit_bold, fit_text, prose, SPACE_2XL, SPACE_L, SPACE_M, SPACE_S, SPACE_XL, SPACE_XS
-from timeline_only import HOVER_CHOICES, HOVER_DEFAULT, HOVER_STYLES
+from timeline_only import HOVER_CHOICES, HOVER_CUSTOM_BASE, HOVER_DEFAULT, HOVER_STYLES
 import main_timeline as mt  # Pfade und save_config zur Laufzeit von dort (Tests ersetzen sie dort)
 
 # Bereiche: Schlüssel, Name, Symbol, Satz darunter. Reihenfolge wie der Arbeitstag:
@@ -670,7 +670,7 @@ class HoverCustomPanel(QWidget):
         super().__init__(parent)
         self.main = main
         self.setObjectName("hover_custom")
-        self.values = {**HOVER_STYLES[HOVER_DEFAULT], **(main.config.get("hover_custom") or {})}
+        self.values = {**HOVER_STYLES[HOVER_CUSTOM_BASE], **(main.config.get("hover_custom") or {})}
         grid = QGridLayout(self)
         grid.setContentsMargins(0, SPACE_S, 0, 0)
         grid.setHorizontalSpacing(SPACE_M)

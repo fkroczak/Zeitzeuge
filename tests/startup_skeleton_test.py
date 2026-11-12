@@ -133,6 +133,8 @@ assert not customer_matches({"customer_name": "ITM"}, "WiRoPa GmbH")
 tl = window.timeline
 bar = next(iter(tl.activity_rects))
 z_before = bar.zValue()
+assert timeline_only.hover_style({}) == timeline_only.HOVER_STYLES["glow"], "Standard: nur Leuchten"
+tl.config["hover_focus"] = "cone"
 tl._focus_block(bar)
 assert tl._fog.isVisible() and bar.zValue() > tl._fog.zValue() > z_before
 others = [r for r in tl.activity_rects if r is not bar]
