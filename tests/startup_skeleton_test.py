@@ -106,6 +106,28 @@ for width in (1400, 700):  # Fensterbreite: die Kachel bekommt ihren Platz vom L
     assert parts[-1].startswith("+") and "weitere" in parts[-1], parts
 assert widths[1] < widths[0], widths
 assert "Jörg Spiekermann" in shown[0].toolTip()
+# Klick auf einen Chip filtert die Tagesliste, zweiter Klick hebt den Filter auf
+window.date_edit.setDate(window.date_edit.date().addDays(1))  # zurück auf heute (30 Verbindungen)
+end = time.time() + 20
+while time.time() < end and (window.timeline.loading or not window.list_entries):
+    app.processEvents()
+before = len(window.list_entries)
+assert before, "Tagesliste hat Einträge"
+chips.set_customers(names, "leer")
+seen = []
+window.day_summary.customer_clicked.connect(seen.append)
+chips._chips[0].clicked.emit()
+assert seen == ["Jugendhilfe Olsberg - Jörg Spiekermann"], seen
+assert window.customer_filter == seen[0] and window.list_entries == []
+assert window.view_chips.filter_chip.isVisibleTo(window.view_chips)
+assert chips._chips[0].property("on") is True
+window.view_chips.filter_chip.click()
+assert window.customer_filter == "" and len(window.list_entries) == before
+assert not window.view_chips.filter_chip.isVisibleTo(window.view_chips)
+from app_daylist import customer_matches
+assert customer_matches({"customer_name": "Jugendhilfe Olsberg"}, "Jugendhilfe Olsberg - Jörg Spiekermann")
+assert customer_matches({"customer_name": ""}, "ohne Kunde")
+assert not customer_matches({"customer_name": "ITM"}, "WiRoPa GmbH")
 chips.set_customers([], "leer")
 assert chips.empty_label.isVisible() and not chips.parts()
 print("OK")

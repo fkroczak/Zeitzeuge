@@ -13,7 +13,7 @@ import re
 from PySide6.QtCore import QDate, QEvent, QLocale, QModelIndex, QSize, Qt, QTime, QTimer, Signal
 from PySide6.QtGui import QIcon, QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (QButtonGroup, QCheckBox, QComboBox, QCompleter, QDateEdit, QDialog,
-                               QFormLayout, QFrame, QGridLayout, QHBoxLayout, QLabel, QMenu, QPlainTextEdit,
+                               QFormLayout, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QMenu, QPlainTextEdit,
                                QPushButton, QSpinBox, QTimeEdit, QToolButton, QVBoxLayout,
                                QWidget)
 
@@ -38,8 +38,12 @@ class _EntryForm(QWidget):
                  tv_id=None, parent=None, show_date=True, snippets=(), recent_texts=None,
                  ticket="", ticket_suggestions=(), show_ticket=True, trace=None, rule_subject=None,
                  goodwill=False, travel=False, no_surcharge=False, ticket_search=None,
-                 ticket_lookup=None):
+                 ticket_lookup=None, flag_details=None, travel_guess=None):
         super().__init__(parent)
+        # flag_details: gespeicherte Angaben zu Kulanz/Reise (goodwill_minutes, goodwill_reason,
+        # travel_location, travel_departure, travel_km). travel_guess(start, end) -> dict mit
+        # location/departure/km aus der vermuteten Fahrt oder None (füllt beim Anhaken vor).
+        self.travel_guess = travel_guess
         # ticket_search: Funktion (Suchtext, Fenster) -> Ticket-dict oder None (Matrix42-Suche)
         # ticket_lookup: Funktion (Elternobjekt) -> TicketLookup, Suche beim Tippen im Feld Ticket
         self.ticket_search = ticket_search
@@ -151,6 +155,7 @@ class _EntryForm(QWidget):
         flags.addStretch(1)
         self._flags_row = flags  # rechts daneben „Text einfügen“ (_add_text_helpers)
         form.addRow("", flags)
+        self._build_flag_details(form, flag_details or {})
 
         self.text_edit = QPlainTextEdit(text)
         self.text_edit.setPlaceholderText("Was hast du gemacht? z. B. „Drucker neu eingerichtet, "
@@ -172,6 +177,128 @@ class _EntryForm(QWidget):
         self.billing = None  # billing.Billing: "abgerechnet …" neben der Dauer (set_billing)
         self.customer_edit.currentTextChanged.connect(lambda _t: self.validate())
         self.validate()
+
+    # ---- Angaben zu Kulanz und Reise (erscheinen erst, wenn angehakt)
+
+    def _build_flag_details(self, form, details):
+        def field(grid, col, name, widget):
+            label = QLabel(name)
+            label.setObjectName("prompt_label")
+            label.setBuddy(widget)
+            grid.addWidget(label, 0, col)
+            grid.addWidget(widget, 1, col)
+
+        def panel():
+            host = QWidget()
+            host.setObjectName("flag_details")
+            grid = QGridLayout(host)
+            grid.setContentsMargins(0, 0, 0, 0)
+            grid.setHorizontalSpacing(SPACE_M)
+            grid.setVerticalSpacing(SPACE_XS)
+            return host, grid
+
+        # Kulanz: wie viel der Zeit nicht berechnet wird und warum (Matrix42 will einen Grund)
+        self.goodwill_panel, grid = panel()
+        self.goodwill_minutes = QSpinBox()
+        self.goodwill_minutes.setRange(1, 24 * 60)
+        self.goodwill_minutes.setSuffix(" min")
+        self.goodwill_minutes.setAccessibleName("Kulanzzeit in Minuten")
+        self.goodwill_minutes.setToolTip("So viel der Zeit wird nicht berechnet (Standard: alles)")
+        self._goodwill_minutes_set = bool(details.get("goodwill_minutes"))
+        self.goodwill_minutes.setValue(int(details.get("goodwill_minutes") or 0) or self._minutes())
+        self.goodwill_minutes.valueChanged.connect(lambda _v: setattr(self, "_goodwill_minutes_set", True))
+        self.goodwill_reason = QLineEdit(str(details.get("goodwill_reason") or ""))
+        self.goodwill_reason.setPlaceholderText("z. B. Nacharbeit, eigener Fehler, Kundenbindung")
+        self.goodwill_reason.setAccessibleName("Grund für die Kulanz")
+        field(grid, 0, "Kulanz&zeit", self.goodwill_minutes)
+        field(grid, 1, "Kulanz&grund", self.goodwill_reason)
+        grid.setColumnStretch(1, 1)
+        form.addRow("", self.goodwill_panel)
+
+        # Reise: wohin, wann los, wie weit (aus der vermuteten Fahrt vorbelegt)
+        self.travel_panel, grid = panel()
+        self.travel_location = QLineEdit(str(details.get("travel_location") or ""))
+        self.travel_location.setPlaceholderText("Ort oder Adresse beim Kunden")
+        self.travel_location.setAccessibleName("Reiseziel")
+        self.travel_departure = QTimeEdit()
+        self.travel_departure.setDisplayFormat("HH:mm")
+        self.travel_departure.setAccessibleName("Abfahrt")
+        departure = QTime.fromString(str(details.get("travel_departure") or ""), "HH:mm")
+        self.travel_departure.setTime(departure if departure.isValid() else self.start_edit.time())
+        self.travel_km = QSpinBox()
+        self.travel_km.setRange(0, 2000)
+        self.travel_km.setSuffix(" km")
+        self.travel_km.setSpecialValueText("– km")
+        self.travel_km.setAccessibleName("Anfahrt in Kilometern")
+        self.travel_km.setValue(int(details.get("travel_km") or 0))
+        self.travel_note = QLabel()
+        self.travel_note.setObjectName("hint")
+        self.travel_note.hide()
+        field(grid, 0, "Reise&ziel", self.travel_location)
+        field(grid, 1, "&Abfahrt", self.travel_departure)
+        field(grid, 2, "Anfahrt", self.travel_km)
+        grid.addWidget(self.travel_note, 2, 0, 1, 3)
+        grid.setColumnStretch(0, 1)
+        form.addRow("", self.travel_panel)
+
+        self.goodwill_box.toggled.connect(self._goodwill_toggled)
+        self.travel_box.toggled.connect(self._travel_toggled)
+        self.goodwill_panel.setVisible(self.goodwill_box.isChecked())
+        self.travel_panel.setVisible(self.travel_box.isChecked())
+
+    def _minutes(self):
+        start, end = self.times()
+        return max(1, int((end - start).total_seconds() // 60))
+
+    def _goodwill_toggled(self, on):
+        self.goodwill_panel.setVisible(on)
+        if on:
+            if not self._goodwill_minutes_set:  # noch nicht verändert: die ganze Zeit
+                self.goodwill_minutes.blockSignals(True)
+                self.goodwill_minutes.setValue(self._minutes())
+                self.goodwill_minutes.blockSignals(False)
+            if not self.goodwill_reason.text().strip():
+                self.goodwill_reason.setFocus()
+
+    def _travel_toggled(self, on):
+        self.travel_panel.setVisible(on)
+        if on and not self.travel_location.text().strip() and not self.travel_km.value():
+            self.prefill_travel()
+
+    def prefill_travel(self):
+        """Ziel, Abfahrt und Kilometer aus der vermuteten Fahrt (travel.py), wenn es eine gibt."""
+        guess = None
+        if self.travel_guess is not None:
+            try:
+                guess = self.travel_guess(*self.times())
+            except Exception as e:  # Vorbelegen darf das Eintragen nie stören
+                print(f"Reise vorbelegen ging nicht: {e}")
+        if not guess:
+            self.travel_note.setText("Keine vermutete Fahrt in dieser Zeit. Bitte selbst eintragen.")
+            self.travel_note.show()
+            return
+        if guess.get("location"):
+            self.travel_location.setText(guess["location"])
+        departure = QTime.fromString(guess.get("departure") or "", "HH:mm")
+        if departure.isValid():
+            self.travel_departure.setTime(departure)
+        if guess.get("km"):
+            self.travel_km.setValue(int(guess["km"]))
+        self.travel_note.setText(f"Vorbelegt aus der vermuteten Fahrt ({guess.get('label') or 'Fahrt'}).")
+        self.travel_note.show()
+
+    def flag_details(self):
+        """Angaben zu Kulanz und Reise, nur für angehakte Merker."""
+        result = {}
+        if self.goodwill_box.isChecked():
+            result["goodwill_minutes"] = min(self.goodwill_minutes.value(), self._minutes())
+            result["goodwill_reason"] = self.goodwill_reason.text().strip() or "Kulanz"
+        if self.travel_box.isChecked():
+            result["travel_location"] = self.travel_location.text().strip()
+            result["travel_departure"] = self.travel_departure.time().toString("HH:mm")
+            if self.travel_km.value():
+                result["travel_km"] = self.travel_km.value()
+        return result
 
     def set_billing(self, billing):
         self.billing = billing
@@ -485,6 +612,7 @@ class _EntryForm(QWidget):
             "goodwill": self.goodwill_box.isChecked(),
             "travel": self.travel_box.isChecked(),
             "no_surcharge": self.surcharge_box.isChecked(),
+            **self.flag_details(),
         }
 
 

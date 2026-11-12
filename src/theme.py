@@ -378,7 +378,8 @@ QLabel#hint { color: $muted; }
 /* Nachfrage (prompt_card.py): Karte und Leiste ohne Windows-Rahmen, mit Schatten */
 QDialog#prompt_window, QWidget#prompt_strip_window { background: transparent; }
 QFrame#prompt_card { background-color: $surface; border: 1px solid $border; border-radius: $radius_cardpx; }
-QFrame#prompt_card QLabel, QFrame#prompt_strip QLabel, QFrame#prompt_card QWidget#chips { background: transparent; }
+QFrame#prompt_card QLabel, QFrame#prompt_strip QLabel, QFrame#prompt_card QWidget#chips,
+QFrame#prompt_card QWidget#flag_details { background: transparent; }
 QWidget#prompt_top { background: transparent; border-bottom: 1px solid $line; }
 QWidget#prompt_foot { background-color: $bg; border-top: 1px solid $line;
     border-bottom-left-radius: $radius_cardpx; border-bottom-right-radius: $radius_cardpx; }
@@ -394,7 +395,7 @@ QDialog[card="true"] QScrollArea#card_scroll > QWidget > QWidget#prompt_body { b
 QDialog[card="true"] QWidget#prompt_body QLabel, QDialog[card="true"] QWidget#prompt_top QLabel,
 QDialog[card="true"] QWidget#prompt_body QCheckBox, QDialog[card="true"] QWidget#prompt_body QRadioButton { background: transparent; }
 QDialog[card="true"] QLabel#prompt_src { background-color: $sel; border-radius: 9px; }
-QDialog#entry_dialog QLabel, QDialog#entry_dialog QWidget#chips,
+QDialog#entry_dialog QLabel, QDialog#entry_dialog QWidget#chips, QDialog#entry_dialog QWidget#flag_details,
 QDialog#entry_dialog QWidget#prompt_body { background: transparent; }
 QDialog#entry_dialog QLabel#prompt_src { background-color: $sel; border-radius: 9px; }
 QWidget#prompt_foot[flat="true"] { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
@@ -609,6 +610,12 @@ QToolButton#chip QLabel#chip_count[on="true"] { background-color: $onprimary; co
 QLabel#card_title[empty="true"] { color: $muted; font-weight: normal; }
 QLabel#customer_chip { background-color: $chip; color: $chiptext; border: 1px solid $border;
                        border-radius: $radius_chippx; padding: 2px 10px; }
+QLabel#customer_chip:hover { border-color: $control; }
+QLabel#customer_chip:focus { border-color: $accent; }
+QToolButton#filter_chip { background-color: $primary; color: $onprimary; border: 1px solid $primary;
+                          border-radius: $radius_chippx; padding: 3px 10px; font-weight: bold; }
+QToolButton#filter_chip:focus { border: 2px solid $accent; padding: 2px 9px; }
+QLabel#customer_chip[on="true"] { background-color: $primary; color: $onprimary; border-color: $primary; }
 QLabel#detail_key { color: $muted; background: transparent; }
 QLabel#detail_value { background: transparent; }
 QToolButton#chip:focus { border: 2px solid $accent; padding: 1px 9px; }
@@ -623,7 +630,7 @@ QFrame#notice { background-color: $chip; border: 1px solid $border; border-radiu
 QFrame#notice QLabel { background: transparent; }
 QProgressBar { background-color: $chip; border: none; border-radius: 2px; }
 QProgressBar::chunk { background-color: $good; border-radius: 2px; }
-QWidget#chips, QWidget#band_row { background: transparent; }
+QWidget#chips, QWidget#band_row, QWidget#flag_details { background: transparent; }
 QWidget#customer_detail { background-color: $surface; }
 QScrollArea { background: transparent; border: none; }
 QListWidget#nav_list { border: none; background: transparent; outline: none; padding: 4px; }

@@ -111,7 +111,53 @@ def _trip(start, end, label, appointment, kind):
              "customer_name": label, "details": details, "travel": kind, "is_suggestion": True}
     if appointment:
         entry["email_domains"] = list(appointment.get("email_domains") or [])
+        if _location(appointment):
+            entry["location"] = _location(appointment)
     return entry
+
+
+def address_key(home, place):
+    """Schlüssel für gemerkte Fahrzeiten und Kilometer (travel_address_minutes/_km)."""
+    return f"{' '.join(str(home).split())} → {' '.join(str(place).split())}".casefold()
+
+
+def guess_for(trips, start, end, config, customers=()):
+    """Reise für eine Tätigkeit von start bis end vorbelegen: die vermutete Fahrt, die am meisten
+    in die Zeit fällt, sonst die Hinfahrt, die bis zu 30 Min. vor Beginn endet.
+    -> {location, departure "HH:MM", km (0 = unbekannt), label} oder None."""
+    best, best_overlap = None, timedelta(0)
+    for trip in trips:
+        try:
+            t_start, t_end = _t(trip["start"]), _t(trip["end"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        overlap = min(end, t_end) - max(start, t_start)
+        if overlap > best_overlap:
+            best, best_overlap = trip, overlap
+    if best is None:
+        before = [t for t in trips if t.get("travel") in ("Hinfahrt", "Fahrt")
+                  and timedelta(0) <= start - _t(t["end"]) <= timedelta(minutes=30)]
+        best = max(before, key=lambda t: t["end"]) if before else None
+    if best is None:
+        return None
+    label = best.get("customer_name") or ""
+    location = best.get("location") or ""
+    if not location:  # Fahrt zu einem Kundennetz: „zu Müller GmbH“ / „von Müller GmbH“
+        location = label[3:] if label.startswith("zu ") else label[4:] if label.startswith("von ") else label
+    km = 0
+    home = config.get("travel_home_address") or ""
+    known = config.get("travel_address_km")
+    if home and best.get("location") and isinstance(known, dict):
+        km = known.get(address_key(home, best["location"])) or 0
+    if not km:
+        name = location.casefold()
+        for c in customers or ():
+            if isinstance(c, dict) and str(c.get("name", "")).casefold() == name and c.get("travel_km"):
+                km = c["travel_km"]
+                break
+    return {"location": location, "departure": _t(best["start"]).strftime("%H:%M"),
+            "km": int(km or 0), "label": f"{best.get('travel', 'Fahrt')} {_t(best['start']):%H:%M}–"
+                                         f"{_t(best['end']):%H:%M}"}
 
 
 def _free(spans, start, end):

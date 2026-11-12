@@ -148,7 +148,8 @@ class BookingDialog(_TicketSearch, QDialog):
         flags.addWidget(self.surcharge_box)
         flags.addStretch(1)
         form.addRow("", flags)
-        self.goodwill_reason = QLineEdit("Kulanz" if plan.get("goodwill") else "")
+        self.goodwill_minutes = int(plan.get("goodwill_minutes") or 0)  # beim Eintragen angegeben
+        self.goodwill_reason = QLineEdit((plan.get("goodwill_reason") or "Kulanz") if plan.get("goodwill") else "")
         self.goodwill_reason.setPlaceholderText("Grund für die Kulanz")
         self.goodwill_reason.setAccessibleName("Kulanzgrund")
         self.goodwill_label = QLabel("Kulanz&grund:")
@@ -287,6 +288,7 @@ class BookingDialog(_TicketSearch, QDialog):
                 "activity_type": self.type_edit.currentData(), "ids": self.ids,
                 "goodwill": self.goodwill_box.isChecked(), "travel": self.travel_box.isChecked(),
                 "goodwill_reason": self.goodwill_reason.text().strip(),
+                "goodwill_minutes": self.goodwill_minutes,
                 "no_surcharge": self.surcharge_box.isChecked(),
                 "surcharge_reason": self.surcharge_reason.text().strip()}
 

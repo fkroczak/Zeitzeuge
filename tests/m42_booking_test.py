@@ -186,3 +186,22 @@ def test_meine_tickets_lesen(tmp_path):
     reader._fetch = broken
     reader._read_my_tickets()  # Fehler: alte Liste bleibt, Fehler steht dabei
     assert len(got[-1]["rows"]) == mb.MY_TICKETS_PAGE_SIZE and "500" in got[-1]["error"]
+
+
+def test_kulanz_mit_zeit_und_grund():
+    item = {"start": "2026-11-02 10:00:00", "end": "2026-11-02 11:00:00", "goodwill": True,
+            "goodwill_minutes": 20, "goodwill_reason": "Nacharbeit"}
+    p = mb.plan(item, Billing())
+    assert p["goodwill_minutes"] == 20 and p["goodwill_reason"] == "Nacharbeit"
+    start, end = datetime(2026, 11, 2, 10, 0), datetime(2026, 11, 2, 11, 0)
+    base = mb.time_entry(TEMPLATE, "t", "s", "u", start, end, 60, "x", goodwill=True,
+                         goodwill_reason="Nacharbeit", goodwill_minutes=20)["ITMTimeEntryClassBase"]
+    assert base["IsGoodwill"] and base["GoodwillAmount"] == 20 and base["GoodwillReason"] == "Nacharbeit"
+    # ohne Angabe oder mehr als die Zeit: die ganze Zeit
+    base = mb.time_entry(TEMPLATE, "t", "s", "u", start, end, 60, "x", goodwill=True)["ITMTimeEntryClassBase"]
+    assert base["GoodwillAmount"] == 60
+    base = mb.time_entry(TEMPLATE, "t", "s", "u", start, end, 60, "x", goodwill=True,
+                         goodwill_minutes=90)["ITMTimeEntryClassBase"]
+    assert base["GoodwillAmount"] == 60
+    assert mb.plan({"start": item["start"], "end": item["end"], "goodwill_minutes": 20}, Billing())[
+        "goodwill_minutes"] == 0, "ohne Kulanz keine Kulanzzeit"

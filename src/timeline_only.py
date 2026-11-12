@@ -1112,7 +1112,7 @@ class TimelineView(QGraphicsView):
         place = " ".join(travel._location(appointment).split())
         if not route.looks_like_address(place):
             return None
-        key = f"{home} → {place}".casefold()
+        key = travel.address_key(home, place)
         known = self.config.get("travel_address_minutes")
         if isinstance(known, dict) and key in known:
             return known[key]
@@ -1121,28 +1121,33 @@ class TimelineView(QGraphicsView):
 
             def work():
                 try:
-                    minutes = route.drive_minutes(home, place)
+                    minutes, km = route.drive(home, place)
                 except Exception as e:  # Adresse unbekannt, offline …: Schätzung über Lücken
                     print(f"Fahrzeit zu „{place}“ nicht berechnet: {e}")
-                    minutes = None
+                    minutes = km = None
                 if not self._closing:
-                    self._route_done.emit(key, minutes)
+                    self._route_done.emit(key, (minutes, km))
 
             thread = threading.Thread(target=work, daemon=True, name="Fahrzeit Termin")
             self._threads = [t for t in self._threads if t.is_alive()] + [thread]
             thread.start()
         return None
 
-    def _on_route_done(self, key, minutes):
+    def _on_route_done(self, key, result):
+        minutes, km = result if isinstance(result, tuple) else (result, None)
         if minutes is None or self._closing:
             return
-        known = self.config.get("travel_address_minutes")
-        if not isinstance(known, dict):
-            known = self.config["travel_address_minutes"] = {}
-        known[key] = int(minutes)
-        if len(known) > 300:  # nur die neuesten Adressen behalten
-            for old in list(known)[:-300]:
-                known.pop(old, None)
+        # Fahrzeit für die vermutete Fahrt, Kilometer zum Vorbelegen von „Reise“ beim Eintragen
+        for name, value in (("travel_address_minutes", minutes), ("travel_address_km", km)):
+            if value is None:
+                continue
+            known = self.config.get(name)
+            if not isinstance(known, dict):
+                known = self.config[name] = {}
+            known[key] = int(value)
+            if len(known) > 300:  # nur die neuesten Adressen behalten
+                for old in list(known)[:-300]:
+                    known.pop(old, None)
         self.config_changed.emit()
         self._source_timer.start()  # neu zeichnen, die Fahrt hat jetzt die echte Länge
 

@@ -155,3 +155,26 @@ def test_beantwortete_mails_und_chats():
     script = outlook_data.build_script(outlook_data._time(f"{D} 00:00:00"), outlook_data._time(f"{D} 23:59:00"),
                                        inbox=True, chats=True)
     assert "TeamsMessagesData" in script and "0x10810003" in script and "__" not in script
+
+
+def test_reise_vorbelegen_aus_vermuteter_fahrt():
+    from datetime import datetime
+    there = e("09:25", "10:00", travel.TYPE, "Jugendhilfe Olsberg", travel="Hinfahrt",
+              location="Hauptstr. 5, 59939 Olsberg")
+    back = e("12:00", "12:35", travel.TYPE, "Jugendhilfe Olsberg", travel="Rückfahrt",
+             location="Hauptstr. 5, 59939 Olsberg")
+    config = {"travel_home_address": "Büroweg 1, Gescher",
+              "travel_address_km": {travel.address_key("Büroweg 1,  Gescher", "Hauptstr. 5, 59939 Olsberg"): 42}}
+    # Tätigkeit beim Kunden: Hinfahrt endet direkt davor
+    g = travel.guess_for([there, back], datetime(2026, 11, 3, 10, 5), datetime(2026, 11, 3, 12, 0), config)
+    assert g == {"location": "Hauptstr. 5, 59939 Olsberg", "departure": "09:25", "km": 42,
+                 "label": "Hinfahrt 09:25–10:00"}, g
+    # die Fahrt selbst eingetragen: die überlappende Fahrt zählt
+    g = travel.guess_for([there, back], datetime(2026, 11, 3, 12, 0), datetime(2026, 11, 3, 12, 35), config)
+    assert g["departure"] == "12:00" and g["km"] == 42
+    # Fahrt zu einem Kundennetz: Ziel aus „zu …“, Kilometer aus der Kundenliste
+    net = e("13:00", "13:30", travel.TYPE, "zu Müller GmbH", travel="Fahrt")
+    g = travel.guess_for([net], datetime(2026, 11, 3, 13, 0), datetime(2026, 11, 3, 13, 30), {},
+                         [{"name": "Müller GmbH", "travel_km": 17}])
+    assert g["location"] == "Müller GmbH" and g["km"] == 17
+    assert travel.guess_for([there], datetime(2026, 11, 3, 15, 0), datetime(2026, 11, 3, 16, 0), config) is None

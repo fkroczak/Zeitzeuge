@@ -520,6 +520,10 @@ class CardParts:
         form.insert_button.setText("Text &einfügen")
         chips.addWidget(form.insert_button)
         body_box.addWidget(chips_host)
+        # Angaben zu Kulanz und Reise direkt unter den Chips (nur sichtbar, wenn angehakt)
+        for w in (form.goodwill_panel, form.travel_panel):
+            _detach(w, old)
+            body_box.addWidget(w)
 
         # Ticket: Feld erst nach „+ Ticket“, danach als Chip; Vorschlag darunter als Link
         self.ticket_row = QWidget()

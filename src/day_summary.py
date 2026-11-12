@@ -79,6 +79,27 @@ def summary(doc_band, ai_entries, target_minutes, top=None):
     }
 
 
+class _ClickChip(QLabel):
+    """Kunden-Chip: Klick, Enter oder Leertaste melden sich über clicked."""
+
+    clicked = Signal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFocusPolicy(Qt.StrongFocus)
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.LeftButton and self.rect().contains(event.position().toPoint()):
+            self.clicked.emit()
+        super().mouseReleaseEvent(event)
+
+    def keyPressEvent(self, event):
+        if event.key() in (Qt.Key_Return, Qt.Key_Enter, Qt.Key_Space):
+            self.clicked.emit()
+            return
+        super().keyPressEvent(event)
+
+
 class _CustomerChips(QWidget):
     """Kunden als Chips „Name 1:14“, die größten zuerst, höchstens ROWS Zeilen. Was nicht passt,
     steht im letzten Chip „+3 · 0:45“ (Tooltip: die übrigen Kunden). Ansprechperson hinter
@@ -86,10 +107,12 @@ class _CustomerChips(QWidget):
 
     ROWS = 2
     GAP = 6
+    chosen = Signal(str)  # Kunde angeklickt (voller Name wie in der Dokumentation)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._items, self._empty = [], ""
+        self._active = ""  # Kunde, auf den die Tagesliste gerade gefiltert ist
         self._chips = []
         self._rows_used = 1
         self.empty_label = QLabel(self)
@@ -105,17 +128,41 @@ class _CustomerChips(QWidget):
         self.empty_label.setText(empty)
         self._relayout()
 
+    def set_active(self, name):
+        """Gefilterten Kunden hervorheben (leer: kein Filter)."""
+        self._active = name or ""
+        for i, (full, _sec) in enumerate(self._items):
+            if i < len(self._chips):
+                self._mark(self._chips[i], full == self._active)
+
+    @staticmethod
+    def _mark(chip, on):
+        if chip.property("on") != on:
+            chip.setProperty("on", on)
+            chip.style().unpolish(chip)
+            chip.style().polish(chip)
+
     def parts(self):
         """Sichtbare Chip-Texte (für Tests und Vorlesen)."""
         return [c.accessibleName() for c in self._chips if c.isVisible()]
 
     def _chip(self, index):
         while len(self._chips) <= index:
-            chip = QLabel(self)
+            chip = _ClickChip(self)
             chip.setObjectName("customer_chip")
             chip.setTextFormat(Qt.RichText)
+            chip.setCursor(Qt.PointingHandCursor)
+            chip.clicked.connect(lambda i=len(self._chips): self._clicked(i))
             self._chips.append(chip)
         return self._chips[index]
+
+    def _clicked(self, index):
+        if index < len(self._items):
+            self.chosen.emit(self._items[index][0])
+        else:  # „+N weitere“: kein einzelner Kunde, aufgeklappt im Tooltip
+            chip = self._chips[index]
+            from PySide6.QtWidgets import QToolTip
+            QToolTip.showText(chip.mapToGlobal(chip.rect().bottomLeft()), chip.toolTip(), chip)
 
     def _set_chip(self, chip, name, time, tip, room):
         fm = chip.fontMetrics()
@@ -144,7 +191,10 @@ class _CustomerChips(QWidget):
         sizes = []
         for i, (full, sec) in enumerate(self._items):
             name = full.split(" - ")[0].strip() or full
-            sizes.append(self._set_chip(self._chip(i), name, hm(sec)[:-2], f"{full}: {hm(sec)}", width))
+            on = full == self._active
+            tip = f"{full}: {hm(sec)}\n" + ("Klick: Filter aufheben" if on else "Klick: nur diesen Kunden in der Liste")
+            sizes.append(self._set_chip(self._chip(i), name, hm(sec)[:-2], tip, width))
+            self._mark(self._chip(i), on)
         # So viele Kunden wie möglich, dahinter „+N weitere“, alles in höchstens ROWS Zeilen
         for k in range(n, 0, -1):
             rest = self._items[k:]
@@ -154,6 +204,7 @@ class _CustomerChips(QWidget):
                 text = f"+{len(rest)} weitere" if len(rest) > 1 else "+1 weiterer"
                 tip = "\n".join(f"{name}: {hm(sec)}" for name, sec in rest)
                 widths.append(self._set_chip(self._chip(n), text, hm(total)[:-2], tip, width).width())
+                self._mark(self._chip(n), False)
             spots = self._place(widths, width)
             if spots is not None:
                 break
@@ -333,6 +384,7 @@ class DaySummary(QWidget):
     open_clicked = Signal()
     suggestions_clicked = Signal()
     tickets_clicked = Signal()
+    customer_clicked = Signal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -348,6 +400,7 @@ class DaySummary(QWidget):
         self.suggest.button.clicked.connect(self.suggestions_clicked)
         self.suggest.button.setAccessibleName("KI-Vorschläge ansehen")
         self.customers = _Kpi("Nach Kunde", self, customers=True)
+        self.customers.value.chosen.connect(self.customer_clicked)
         # Meine Tickets (Matrix42, Bearbeiter = ich): show_my_tickets füllt die Kachel,
         # ohne Matrix42 bleibt sie aus; Klick öffnet die Liste
         self.tickets = _Kpi("Meine Tickets", self, "Anzeigen")
@@ -416,6 +469,7 @@ class ViewChips(QWidget):
     """Reihe „Einträge [Alle] [Offen / Doku] …“ über der Tagesliste."""
 
     view_chosen = Signal(str)
+    filter_cleared = Signal()  # „✕ Kunde“ angeklickt: Kundenfilter aufheben
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -451,6 +505,23 @@ class ViewChips(QWidget):
                 gap = QWidget(self)
                 gap.setFixedWidth(8)
                 layout.addWidget(gap)
+        # Kundenfilter (Chip „Nach Kunde“ oben): angehakt, Klick hebt ihn auf
+        self.filter_chip = QToolButton(self)
+        self.filter_chip.setObjectName("filter_chip")
+        self.filter_chip.setCursor(Qt.PointingHandCursor)
+        self.filter_chip.clicked.connect(self.filter_cleared)
+        self.filter_chip.hide()
+        gap = QWidget(self)
+        gap.setFixedWidth(8)
+        layout.addWidget(gap)
+        layout.addWidget(self.filter_chip)
+
+    def show_filter(self, name):
+        """Kundenfilter als Chip „Kunde ✕“ am Ende der Reihe (leer: ausgeblendet)."""
+        self.filter_chip.setText(f"{name.split(' - ')[0]}  ✕" if name else "")
+        self.filter_chip.setToolTip(f"Nur {name} – Klick zeigt wieder alle Kunden" if name else "")
+        self.filter_chip.setAccessibleName(f"Kundenfilter {name} aufheben" if name else "")
+        self.filter_chip.setVisible(bool(name))
 
     def show_state(self, view, counts=None):
         counts = counts or {}

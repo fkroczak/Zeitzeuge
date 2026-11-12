@@ -471,7 +471,7 @@ class DayCloseDialog(QDialog):
                 continue
             request = dict(plan, text=plan["text"] or item.get("text", "") or item.get("category", ""),
                            activity_type=config.get("m42_activity_type", mb.DEFAULT_ACTIVITY_TYPE),
-                           ids=mb.ids(config), goodwill_reason="Kulanz" if plan.get("goodwill") else "")
+                           ids=mb.ids(config), goodwill_reason=(plan.get("goodwill_reason") or "Kulanz") if plan.get("goodwill") else "")
             self.queue.append((row, item, request))
         self.refresh_rows()
         self.update_buttons()

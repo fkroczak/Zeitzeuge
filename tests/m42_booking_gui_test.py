@@ -129,6 +129,19 @@ def gui_test():
     start, end = datetime(2026, 10, 19, 11, 0), datetime(2026, 10, 19, 11, 30)
     doc = EntryDialog(start, end, ["Systems"], ["Fernwartung"], customer="Systems",
                       **window.entry_form_options(start, end))
+    # Kulanz und Reise: Angaben erscheinen erst mit dem Haken, Reise wird vorbelegt
+    form = doc.form
+    assert not form.goodwill_panel.isVisibleTo(doc) and not form.travel_panel.isVisibleTo(doc)
+    form.goodwill_box.setChecked(True)
+    assert form.goodwill_panel.isVisibleTo(doc) and form.goodwill_minutes.value() == form._minutes()
+    form.travel_guess = lambda a, b: {"location": "Hauptstr. 5", "departure": "09:25", "km": 42, "label": "Hinfahrt"}
+    form.travel_box.setChecked(True)
+    details = form.flag_details()
+    assert details["travel_location"] == "Hauptstr. 5" and details["travel_km"] == 42, details
+    assert details["travel_departure"] == "09:25" and details["goodwill_reason"] == "Kulanz", details
+    form.goodwill_box.setChecked(False)
+    form.travel_box.setChecked(False)
+    assert form.flag_details() == {}
     # Ticketfeld liegt hinter „+ Ticket“ (wie in der Nachfrage-Karte)
     assert doc.form.ticket_search_button is not None and not doc.ticket_row.isVisibleTo(doc)
     doc.ticket_add.click()

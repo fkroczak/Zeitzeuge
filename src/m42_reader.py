@@ -848,7 +848,8 @@ class M42Reader(BrowserReader):
                                       travel=request.get("travel", False),
                                       goodwill_reason=request.get("goodwill_reason", ""),
                                       no_surcharge=request.get("no_surcharge", False),
-                                      surcharge_reason=request.get("surcharge_reason", ""))
+                                      surcharge_reason=request.get("surcharge_reason", ""),
+                                      goodwill_minutes=request.get("goodwill_minutes", 0))
                 sent = True
                 saved = self._fetch("POST", f"{mb.API}/WidgetDialog/UpdateData/{ids['dialog']}",
                                     mb.wrap(entry))
