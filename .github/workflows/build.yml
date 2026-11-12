@@ -1,9 +1,15 @@
 name: EXE bauen
 
+# Sparsam mit Actions-Minuten (Windows zählt doppelt, jeder Job wird auf volle Minuten aufgerundet):
+# - Branch-Push: nur ein Test-Job auf Linux (ohne Browser-Tests), keine EXE.
+# - main, Tag v* oder „Run workflow“ (auch auf einem Branch, z. B. für eine Test-EXE):
+#   alle Tests in einem Windows-Job, EXE, Setup und bei main/Tag das Release.
+# - Nur Doku geändert (*.md, docs/): kein Lauf.
 on:
   push:
     branches: ["**"]
     tags: ["v*"]
+    paths-ignore: ["**.md", "docs/**", "LICENSE"]
   # Kein pull_request: jeder Branch-Push läuft schon, die Prüfung erscheint auch im PR.
   # Sonst lief jeder Commit mit offenem PR doppelt.
   workflow_dispatch:
@@ -22,21 +28,51 @@ permissions:
   actions: write   # alte Artefakte löschen (Speicherplatz)
 
 jobs:
-  # Tests laufen parallel zum Bau, aufgeteilt auf drei Rechner: die zwei Browser-Tests
-  # (3CX, M42) brauchen je knapp 3 Minuten, alles andere zusammen etwa 2,5 Minuten.
+  # Branch-Push: schnelle Prüfung auf Linux (zählt einfach statt doppelt). Browser-Tests (3CX, ITM,
+  # Matrix42, Mitschnitt) und Windows-Eigenheiten prüft erst der Lauf auf main.
+  test-linux:
+    name: Tests (Linux)
+    if: >-
+      github.event_name == 'push' && github.ref != 'refs/heads/main' &&
+      !startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0  # version_test liest die git-Geschichte
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Abhängigkeiten installieren
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends libegl1 libgl1 libxkbcommon0 libfontconfig1 libdbus-1-3 > /dev/null
+          grep -v -i '^pyinstaller' requirements.txt > req-test.txt
+          pip install -r req-test.txt -r requirements-dev.txt
+
+      - name: Lesbarkeit (nur Hinweis)
+        run: python tests/readability_check.py
+
+      - name: Tests (pytest)
+        env:
+          QT_QPA_PLATFORM: offscreen
+          PYTHONUTF8: "1"
+        run: >-
+          python -m pytest -rs --durations=10 --ignore=tests/pbx_test.py --ignore=tests/m42_test.py
+          --ignore=tests/itm_test.py --ignore=tests/recorder_test.py
+
+  # main, Tag oder „Run workflow“: alle Tests auf Windows in einem Job (ein Job statt drei spart
+  # das dreifache Einrichten und Aufrunden; läuft parallel zum Bau, dauert etwa 8 Minuten).
   test:
-    name: Tests (${{ matrix.teil }})
+    name: Tests (Windows)
+    if: >-
+      github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' ||
+      startsWith(github.ref, 'refs/tags/v')
     runs-on: windows-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - teil: 3CX
-            args: tests/pbx_test.py
-          - teil: M42
-            args: tests/m42_test.py
-          - teil: Rest
-            args: --ignore=tests/pbx_test.py --ignore=tests/m42_test.py
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v5
         with:
@@ -51,7 +87,6 @@ jobs:
         run: pip install -r requirements.txt -r requirements-dev.txt
 
       - name: Lesbarkeit (nur Hinweis)
-        if: matrix.teil == 'Rest'
         run: python tests/readability_check.py
 
       # Alle Tests (pytest.ini, tests/conftest.py): Logik-Tests direkt, Tests mit Oberfläche,
@@ -60,10 +95,14 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
           PYTHONUTF8: "1"
-        run: python -m pytest -v -rs --durations=10 ${{ matrix.args }}
+        run: python -m pytest -v -rs --durations=10
 
   build:
+    if: >-
+      github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' ||
+      startsWith(github.ref, 'refs/tags/v')
     runs-on: windows-latest
+    timeout-minutes: 30
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
@@ -281,6 +320,7 @@ jobs:
       (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
       startsWith(github.ref, 'refs/tags/v'))
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     env:
       ZZ_VERSION: ${{ needs.build.outputs.version }}
       GH_TOKEN: ${{ github.token }}

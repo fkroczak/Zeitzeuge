@@ -238,7 +238,8 @@ Die fertige EXE liegt unter **[Releases](https://github.com/fkroczak/Zeitzeuge/r
 
 - **Immer die neueste Version (direkter Link):** [ZeitZeuge.exe](https://github.com/fkroczak/Zeitzeuge/releases/latest/download/ZeitZeuge.exe) · [ZeitZeuge-Ordner.zip](https://github.com/fkroczak/Zeitzeuge/releases/latest/download/ZeitZeuge-Ordner.zip)
 - **Ältere Versionen:** in der Liste unter Releases, jede mit ihrer Versionsnummer. Es bleiben die 10 neuesten, ältere löscht der Build samt Tag.
-- **Testversionen aus Branches und PRs:** Reiter **Actions**, Lauf „EXE bauen“, unter **Artifacts** (nur angemeldet, 30 Tage).
+- **Testversionen aus Branches und PRs:** Ein Push auf einen Branch prüft nur die Tests (auf Linux, ohne Browser-Tests) und baut keine EXE, das spart Actions-Minuten. Eine Test-EXE gibt es auf Knopfdruck: Reiter **Actions** → „EXE bauen“ → **Run workflow** → Branch wählen. Danach unter **Artifacts** (nur angemeldet, 5 Tage).
+- **Actions-Minuten sparen:** Windows-Rechner zählen doppelt, jeder Job wird auf volle Minuten aufgerundet. Deshalb laufen alle Windows-Tests in einem Job und nur auf main, Tags oder per „Run workflow“; reine Doku-Änderungen (`*.md`, `docs/`) lösen keinen Lauf aus. Jeder Job hat ein Zeitlimit, ein hängender Test verbraucht also nicht stundenlang Minuten.
 - **Ordner-Variante** (`ZeitZeuge-Ordner.zip`, ebenfalls unter Releases bzw. Artifacts): ZIP entpacken und `ZeitZeuge.exe` im Ordner starten. Sie entpackt beim Start nichts nach `%TEMP%` und ist für Rechner mit EDR wie Cortex XDR gedacht (z. B. die PAW). Selbst bauen: `set ZEITZEUGE_ONEDIR=1` und dann `pyinstaller ZeitZeuge.spec`.
 
 ### EXE selbst bauen
