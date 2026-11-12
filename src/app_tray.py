@@ -367,6 +367,10 @@ class TrayMixin:
             notice.close()
             delete(notice)
         self._notices = []
+        update_window = getattr(self, "_update_window", None)
+        if update_window is not None:  # lehnt sonst das Schließen ab und Qt bricht das Beenden ab
+            update_window.allow_close = True
+            update_window.close()
         self.timeline.shutdown()
         if self.tracker:
             self.tracker.stop()

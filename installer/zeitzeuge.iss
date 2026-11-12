@@ -10,8 +10,9 @@
 ; - Daten (Einstellungen im Datenordner, Datenbank unter %LOCALAPPDATA%\Zeitzeuge): bleiben, wo
 ;   sie sind, und werden weiter genutzt. Vor einem Update legt Setup eine Kopie in
 ;   %LOCALAPPDATA%\Zeitzeuge\vor-update an. Deinstallieren lässt die Daten stehen.
-; - Update aus Zeitzeuge (src/updater.py): /SILENT /SUPPRESSMSGBOXES /ZZUPDATE=show|min. Setup wartet,
-;   bis Zeitzeuge sich beendet hat, lässt Autostart und Verknüpfungen wie sie sind und startet
+; - Update aus Zeitzeuge (src/updater.py): /SILENT /SUPPRESSMSGBOXES /ZZUPDATE=show|min. Setup wartet
+;   bis zu 30 s, bis Zeitzeuge sich beendet hat (hängt es danach noch, beendet Setup es hart; die
+;   Daten sind da schon gespeichert), lässt Autostart und Verknüpfungen wie sie sind und startet
 ;   Zeitzeuge danach wieder (bei min im Infobereich).
 
 #ifndef AppVersion
@@ -284,14 +285,29 @@ begin
   Result := True;
   if CurPageID <> wpReady then
     exit;
-  // Update aus Zeitzeuge: es beendet sich gerade selbst, bis zu 60 Sekunden darauf warten
+  // Update aus Zeitzeuge: es beendet sich gerade selbst, bis zu 30 Sekunden darauf warten
   if WizardSilent then
   begin
     I := 0;
-    while ZeitzeugeRunning and (I < 120) do
+    while ZeitzeugeRunning and (I < 60) do
     begin
       Sleep(500);
       I := I + 1;
+    end;
+    // Läuft es dann noch, hängt nur das Fenster: Zeitzeuge hat Daten und Datenbank vor dem
+    // Beenden schon gespeichert und geschlossen (TrayMixin.quit_app). 4.1.64 hing so am eigenen
+    // Update-Fenster. Nur beim Update aus Zeitzeuge hart beenden, nie bei einem anderen stillen Setup.
+    if ZeitzeugeRunning and IsAppUpdate then
+    begin
+      Log('Zeitzeuge hängt beim Beenden, wird für das Update beendet');
+      Exec(ExpandConstant('{sys}\taskkill.exe'), '/IM ZeitZeuge.exe /F', '', SW_HIDE,
+        ewWaitUntilTerminated, I);
+      I := 0;
+      while ZeitzeugeRunning and (I < 20) do
+      begin
+        Sleep(500);
+        I := I + 1;
+      end;
     end;
     if ZeitzeugeRunning then
     begin
