@@ -607,6 +607,8 @@ QToolButton#chip QLabel#chip_count { background-color: $border; color: $chiptext
 /* spezifischer als „QToolButton#chip QLabel[on]“, sonst weiße Zahl auf weißem Abzeichen */
 QToolButton#chip QLabel#chip_count[on="true"] { background-color: $onprimary; color: $primary; }
 QLabel#card_title[empty="true"] { color: $muted; font-weight: normal; }
+QLabel#customer_chip { background-color: $chip; color: $chiptext; border: 1px solid $border;
+                       border-radius: $radius_chippx; padding: 2px 10px; }
 QLabel#detail_key { color: $muted; background: transparent; }
 QLabel#detail_value { background: transparent; }
 QToolButton#chip:focus { border: 2px solid $accent; padding: 1px 9px; }

@@ -87,6 +87,27 @@ window.date_edit.setDate(window.date_edit.date().addDays(-1))
 app.processEvents()
 assert draws, "Tageswechsel zeichnet"
 assert skeleton.pulse().watching() == 0, "Zeitgeber der Umrisse läuft noch"
+
+# „Nach Kunde“: Chips in höchstens zwei Zeilen, Rest im letzten Chip, Ansprechperson nur im Tooltip
+chips = window.day_summary.customers.value
+names = [("Jugendhilfe Olsberg - Jörg Spiekermann", 4440)] + [(f"Kunde {i:02d} GmbH", 600 - i) for i in range(12)]
+chips.set_customers(names, "leer")
+widths = []
+for width in (1400, 700):  # Fensterbreite: die Kachel bekommt ihren Platz vom Layout
+    window.resize(width, window.height())
+    app.processEvents()
+    widths.append(chips.width())
+    parts = chips.parts()
+    assert parts[0] == "Jugendhilfe Olsberg 1:14", parts
+    shown = [c for c in chips._chips if c.isVisible()]
+    rows = {c.y() for c in shown}
+    assert len(rows) <= 2 and all(c.geometry().right() < chips.width() for c in shown), \
+        (width, chips.width(), [(c.accessibleName(), c.geometry().getRect()) for c in shown])
+    assert parts[-1].startswith("+") and "weitere" in parts[-1], parts
+assert widths[1] < widths[0], widths
+assert "Jörg Spiekermann" in shown[0].toolTip()
+chips.set_customers([], "leer")
+assert chips.empty_label.isVisible() and not chips.parts()
 print("OK")
 window.quit_app()
 sys.stdout.flush()

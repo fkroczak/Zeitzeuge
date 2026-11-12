@@ -1,7 +1,7 @@
 """Kopf der Tagesansicht (Design „Companion“): Kennzahlen und Filter über der Tagesliste.
 
     Erfasst 5:10 h von 8:00 h   Offen 14 Einträge [Jetzt eintragen]   Vorschläge 3 [Ansehen]
-    Nach Kunde  Müller GmbH 2:15 h · Kanzlei Schmidt 1:05 h
+    Nach Kunde  [Müller GmbH 2:15] [Kanzlei Schmidt 1:05] [+3 weitere 0:40]   (Chips, höchstens 2 Zeilen)
 
 Darunter (über der Tagesliste) eine Reihe Chips für die häufigsten Ansichten:
     Einträge  [Alle]  [Offen / Doku 14]  [Vorschläge 3]  [Telefonate]  [Arbeitsblöcke]
@@ -9,7 +9,10 @@ Darunter (über der Tagesliste) eine Reihe Chips für die häufigsten Ansichten:
 Die Zahlen rechnet summary() ohne Qt aus (testbar), die Widgets zeigen sie nur an.
 """
 
+import html
+
 from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtGui import QFont, QFontMetrics
 from PySide6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QProgressBar, QSizePolicy,
                                QToolButton, QVBoxLayout, QWidget)
 
@@ -51,7 +54,7 @@ def hm(seconds):
     return f"{minutes // 60}:{minutes % 60:02d} h"
 
 
-def summary(doc_band, ai_entries, target_minutes, top=8):
+def summary(doc_band, ai_entries, target_minutes, top=None):
     """Kennzahlen des Tages.
 
     doc_band:   Einträge der Zeile Dokumentation (doc = eingetragen, open = offen)
@@ -76,49 +79,119 @@ def summary(doc_band, ai_entries, target_minutes, top=8):
     }
 
 
-class _CustomerLine(QLabel):
-    """Kunden nebeneinander; passt nicht alles, folgen ganze Kunden und „+2“ statt „WiRoPa 0:“."""
+class _CustomerChips(QWidget):
+    """Kunden als Chips „Name 1:14“, die größten zuerst, höchstens ROWS Zeilen. Was nicht passt,
+    steht im letzten Chip „+3 · 0:45“ (Tooltip: die übrigen Kunden). Ansprechperson hinter
+    „ - “ (z. B. „Jugendhilfe Olsberg - Jörg Spiekermann“) nur im Tooltip."""
 
-    SEP = "  ·  "
+    ROWS = 2
+    GAP = 6
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._parts, self._empty = [], ""
-        self.setTextFormat(Qt.PlainText)
+        self._items, self._empty = [], ""
+        self._chips = []
+        self._rows_used = 1
+        self.empty_label = QLabel(self)
+        self.empty_label.setObjectName("card_title")
+        self.empty_label.setProperty("empty", True)
         self.setMinimumWidth(40)
+        self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
 
-    def set_parts(self, parts, empty):
-        self._parts, self._empty = list(parts), empty
-        self.setToolTip("\n".join(self._parts))
-        self._fit()
+    def set_customers(self, items, empty):
+        """items: [(Name, Sekunden)], größte zuerst."""
+        self._items, self._empty = list(items), empty
+        self.setToolTip("")
+        self.empty_label.setText(empty)
+        self._relayout()
+
+    def parts(self):
+        """Sichtbare Chip-Texte (für Tests und Vorlesen)."""
+        return [c.accessibleName() for c in self._chips if c.isVisible()]
+
+    def _chip(self, index):
+        while len(self._chips) <= index:
+            chip = QLabel(self)
+            chip.setObjectName("customer_chip")
+            chip.setTextFormat(Qt.RichText)
+            self._chips.append(chip)
+        return self._chips[index]
+
+    def _set_chip(self, chip, name, time, tip, room):
+        fm = chip.fontMetrics()
+        bold = QFont(chip.font())
+        bold.setBold(True)
+        time_w = QFontMetrics(bold).horizontalAdvance(time)
+        pad = 2 * 10 + 2 + 8  # Innenabstand links/rechts, Rand, Abstand Name–Zeit
+        shown = fm.elidedText(name, Qt.ElideRight, max(20, room - time_w - pad)) if name else ""
+        chip.setText(f"{html.escape(shown)}&nbsp;&nbsp;<b>{html.escape(time)}</b>" if shown
+                     else f"<b>{html.escape(time)}</b>")
+        chip.setToolTip(tip)
+        chip.setAccessibleName(f"{name} {time}".strip())
+        chip.adjustSize()
+        return chip.sizeHint()
+
+    def _relayout(self):
+        for chip in self._chips:
+            chip.hide()
+        self.empty_label.setVisible(not self._items)
+        if not self._items:
+            self.empty_label.setGeometry(0, 0, self.width(), self.empty_label.sizeHint().height())
+            self._set_rows(1)
+            return
+        width = max(40, self.width())
+        n = len(self._items)
+        sizes = []
+        for i, (full, sec) in enumerate(self._items):
+            name = full.split(" - ")[0].strip() or full
+            sizes.append(self._set_chip(self._chip(i), name, hm(sec)[:-2], f"{full}: {hm(sec)}", width))
+        # So viele Kunden wie möglich, dahinter „+N weitere“, alles in höchstens ROWS Zeilen
+        for k in range(n, 0, -1):
+            rest = self._items[k:]
+            widths = [sz.width() for sz in sizes[:k]]
+            if rest:
+                total = sum(sec for _n, sec in rest)
+                text = f"+{len(rest)} weitere" if len(rest) > 1 else "+1 weiterer"
+                tip = "\n".join(f"{name}: {hm(sec)}" for name, sec in rest)
+                widths.append(self._set_chip(self._chip(n), text, hm(total)[:-2], tip, width).width())
+            spots = self._place(widths, width)
+            if spots is not None:
+                break
+        else:  # nicht einmal ein Kunde und „+N“ passen: untereinander
+            spots = [(0, 0), (0, 1)][:len(widths)]
+        height = sizes[0].height()
+        chips = self._chips[:k] + ([self._chips[n]] if k < n else [])
+        for chip, (x, row) in zip(chips, spots):
+            chip.move(x, row * (height + self.GAP))
+            chip.show()
+        self._set_rows(spots[-1][1] + 1, height)
+
+    def _place(self, widths, room):
+        """Positionen (x, Zeile) oder None, wenn es mehr als ROWS Zeilen bräuchte."""
+        spots, x, row = [], 0, 0
+        for w in widths:
+            if x and x + w > room:
+                row, x = row + 1, 0
+                if row >= self.ROWS:
+                    return None
+            spots.append((x, row))
+            x += w + self.GAP
+        return spots
+
+    def _set_rows(self, rows, chip_height=None):
+        chip_height = chip_height or self.empty_label.sizeHint().height()
+        need = rows * chip_height + (rows - 1) * self.GAP
+        if self.minimumHeight() != need:
+            self.setMinimumHeight(need)
+            self.updateGeometry()
 
     def sizeHint(self):
-        hint = super().sizeHint()
-        text = self.SEP.join(self._parts) or self._empty
-        hint.setWidth(self.fontMetrics().horizontalAdvance(text) + 4)
-        return hint
-
-    def minimumSizeHint(self):
-        return QSize(40, super().minimumSizeHint().height())
+        return QSize(400, self.minimumHeight())
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        self._fit()
-
-    def _fit(self):
-        if not self._parts:
-            self.setText(self._empty)
-            return
-        fm, room = self.fontMetrics(), self.width() - 4
-        for n in range(len(self._parts), 0, -1):
-            rest = len(self._parts) - n
-            text = self.SEP.join(self._parts[:n]) + (f"{self.SEP}+{rest}" if rest else "")
-            if fm.horizontalAdvance(text) <= room:
-                break
-        else:
-            text = fm.elidedText(self._parts[0], Qt.ElideRight, room)
-        if text != self.text():
-            self.setText(text)
+        if event.size().width() != event.oldSize().width():
+            self._relayout()
 
 
 class _Kpi(QFrame):
@@ -135,8 +208,9 @@ class _Kpi(QFrame):
         layout.addWidget(head)
         row = QHBoxLayout()
         row.setSpacing(SPACE_S)
-        self.value = _CustomerLine(self) if customers else QLabel("–", self)
-        self.value.setObjectName("card_title" if customers else "kpi_value")
+        self.value = _CustomerChips(self) if customers else QLabel("–", self)
+        if not customers:
+            self.value.setObjectName("kpi_value")
         row.addWidget(self.value, 1 if customers else 0)
         # Bis die Zahlen da sind: Umriss statt „–“ (skeleton.py)
         self.placeholder = skeleton.Bar(160 if customers else 64, 26, self)
@@ -316,10 +390,8 @@ class DaySummary(QWidget):
         self.suggest.extra.setText("wartet" if s == 1 else "warten")
         self.suggest.button.setVisible(bool(s))
         self.suggest.setVisible(bool(s))  # „0 warten“ ist nur Rauschen
-        parts = [f"{name} {hm(sec)}" for name, sec in data["customers"]]
-        self.customers.value.set_parts(parts, "Noch nichts eingetragen – hier steht später die Zeit je Kunde")
-        self.customers.value.setProperty("empty", not parts)
-        self.customers.value.style().polish(self.customers.value)
+        self.customers.value.set_customers(data["customers"],
+                                           "Noch nichts eingetragen – hier steht später die Zeit je Kunde")
 
 
     def show_my_tickets(self, result):

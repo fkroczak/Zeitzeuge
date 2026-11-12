@@ -920,6 +920,7 @@ class MenusMixin:
                           (QPalette.HighlightedText, "seltext"),
                           (QPalette.ToolTipBase, "surface"), (QPalette.ToolTipText, "text"),
                           (QPalette.PlaceholderText, "muted"),
+                          (QPalette.Link, "accent"), (QPalette.LinkVisited, "accent"),
                           (QPalette.Accent, "accent")]:  # Qt 6 nutzt Accent statt Highlight
             pal.setColor(role, QColor(theme[key]))
         self.setStyleSheet("")  # alte Farben vollständig entfernen
