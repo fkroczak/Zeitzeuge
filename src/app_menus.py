@@ -24,6 +24,7 @@ from vpn_reader import DEFAULT_DIRS as VPN_DEFAULT_DIRS, FORTI_TRACE_PATHS, vpn_
 from settings_dialogs import ActivityTypeSettingsDialog, ConnectionSettingsDialog, WorkHoursDialog
 from theme import GERMAN, STYLESHEET, SPACE_XS, default_custom_colors, theme_for
 from timeline_only import (COLOR_ROWS, DEFAULT_CALL_COLORS, LEGEND_BANDS, LEGEND_FIXED, ROW_NAMES,
+                           CUSTOMER_HL_CHOICES, CUSTOMER_HL_DEFAULT,
                            HOVER_CHOICES, HOVER_DEFAULT, TIMELINE_ROWS, entry_color)
 from view_help import VIEW_HELP, ViewHelpDialog, help_text
 import main_timeline as mt  # Pfade und save_config zur Laufzeit von dort (Tests ersetzen sie dort)
@@ -362,6 +363,17 @@ class MenusMixin:
             action.triggered.connect(lambda _c=False, k=key: self.choose_hover(k))
             self.hover_actions[key] = action
         hover.aboutToShow.connect(self._check_hover)
+        # Kundenfilter (Chip „Nach Kunde“): Balken des Kunden in der Timeline hervorheben
+        customer = menu.addMenu("&Kunde hervorheben")
+        group = QActionGroup(customer)
+        self.customer_hl_actions = {}
+        for key, text in CUSTOMER_HL_CHOICES:
+            action = customer.addAction(text)
+            action.setCheckable(True)
+            group.addAction(action)
+            action.triggered.connect(lambda _c=False, k=key: self.choose_customer_highlight(k))
+            self.customer_hl_actions[key] = action
+        customer.aboutToShow.connect(self._check_customer_highlight)
         menu.addSeparator()
         self._icon_actions.append((menu.addAction("Darstellung an&passen …",
                                                   lambda: self.show_settings("view")), "eye"))
@@ -378,6 +390,17 @@ class MenusMixin:
     def _check_hover(self):
         key = self.config.get("hover_focus", HOVER_DEFAULT)
         self.hover_actions.get(key, self.hover_actions[HOVER_DEFAULT]).setChecked(True)
+
+    def _check_customer_highlight(self):
+        key = self.config.get("customer_highlight", CUSTOMER_HL_DEFAULT)
+        self.customer_hl_actions.get(key, self.customer_hl_actions[CUSTOMER_HL_DEFAULT]).setChecked(True)
+
+    def choose_customer_highlight(self, key):
+        """Wie stark der gewählte Kunde (Chip „Nach Kunde“) in der Timeline hervorsticht."""
+        self.config["customer_highlight"] = key
+        mt.save_config(self.config)
+        if getattr(self.timeline, "highlight", None) is not None:
+            self.timeline.relayout()
 
     def choose_hover(self, key):
         """Hervorhebung unter der Maus wählen; „Eigene“ zeigt die Regler in den Einstellungen."""

@@ -562,6 +562,11 @@ HOVER_STYLES = {
 }
 HOVER_CHOICES = [("off", "Aus"), ("glow", "Nur Leuchten"), ("cone", "Lichtkegel"), ("strong", "Kräftig"),
                  ("custom", "Eigene")]
+# Kundenfilter (Chip „Nach Kunde“) in der Timeline (Menü Ansicht → Kunde hervorheben):
+# Rahmen um die Balken des Kunden, Deckkraft der übrigen Balken
+CUSTOMER_HL_STYLES = {"frame": 0.55, "strong": 0.2}
+CUSTOMER_HL_CHOICES = [("frame", "Leicht (Rahmen)"), ("strong", "Kräftig (Rest blass)"), ("off", "Aus")]
+CUSTOMER_HL_DEFAULT = "frame"
 HOVER_DEFAULT = "glow"  # ohne Nebel, nur Leuchten
 HOVER_CUSTOM_BASE = "cone"  # Startwerte der Regler bei „Eigene“
 
@@ -737,6 +742,9 @@ class TimelineView(QGraphicsView):
         self._ai_band = []
         self._bands = []           # obere Zeilen: [(Kennung, Text, Einträge)]
         self.dark_mode = self.config.get("dark_mode", False)
+        # Kundenfilter (Chip „Nach Kunde“): Eintrag -> gehört zum Kunden? Die übrigen Balken
+        # werden blass gezeichnet. None: alles normal.
+        self.highlight = None
 
         self.setRenderHint(QPainter.Antialiasing)
         self.setMinimumHeight(200)
@@ -783,6 +791,35 @@ class TimelineView(QGraphicsView):
         item.setBrush(brush)
         self.scene.addItem(item)
         return item
+
+    def _dim_unless_highlighted(self, a, rect, label=None):
+        """Kundenfilter: Balken des Kunden mit Rahmen, die übrigen (mit Beschriftung) blasser.
+        Stärke: config["customer_highlight"] (CUSTOMER_HL_CHOICES). Personalzeit bleibt."""
+        if self.highlight is None or a.get("work"):
+            return
+        dim = CUSTOMER_HL_STYLES.get(self.config.get("customer_highlight", CUSTOMER_HL_DEFAULT))
+        if dim is None:  # Aus
+            return
+        try:
+            keep = self.highlight(a)
+        except Exception:  # Hervorhebung darf das Zeichnen nie stören
+            keep = True
+        if keep:
+            pen = rect.pen()
+            style = pen.style() if pen.style() != Qt.NoPen else Qt.SolidLine
+            outline = QColor(self.text_color)
+            outline.setAlpha(200)
+            rect.setPen(QPen(outline, 1.6, style))
+        else:
+            for item in (rect, label):
+                if item is not None:
+                    item.setOpacity(dim)
+
+    def set_highlight(self, predicate):
+        """Kundenfilter setzen oder aufheben (None) und nur neu anordnen."""
+        self.highlight = predicate
+        if self._ppm:
+            self.relayout()
 
     def set_dark_mode(self, enabled: bool):
         self.dark_mode = enabled
@@ -1681,7 +1718,8 @@ class TimelineView(QGraphicsView):
             label_text = a["customer_name"] or a["type"]
             if a.get("direction") in CALL_MARKS:  # Richtung auch als Form, nicht nur als Farbe
                 label_text = f"{CALL_MARKS[a['direction']]} {label_text}"
-            self._add_label(label_text, x1, y, w, self.LANE_H, label_font, metrics, label_color)
+            label = self._add_label(label_text, x1, y, w, self.LANE_H, label_font, metrics, label_color)
+            self._dim_unless_highlighted(a, rect, label)
 
         # Obere Zeilen: Doku (eigene Tätigkeiten, offene gestrichelt), Regeln, KI
         for (_kind, items, _n), y in zip(band_layout, band_tops):
@@ -1700,9 +1738,11 @@ class TimelineView(QGraphicsView):
                 rect = self._add_block(x1, band_y, w, pc_h, QPen(Qt.NoPen), QBrush(color))
                 rect.setCursor(Qt.PointingHandCursor)
                 self.activity_rects[rect] = p
+                label = None
                 if p.get("pc_block"):
-                    self._add_label(p["label"], x1, band_y, w, pc_h, label_font, metrics,
-                                    readable_on(color), p.get("short_labels", ()))
+                    label = self._add_label(p["label"], x1, band_y, w, pc_h, label_font, metrics,
+                                            readable_on(color), p.get("short_labels", ()))
+                self._dim_unless_highlighted(p, rect, label)
 
         # Leerer Tag: freundlicher Hinweis mitten im sichtbaren Ausschnitt
         if not placed and not pc_band and not any(band for _k, _t, band in bands) and not self.loading:
@@ -1849,6 +1889,7 @@ class TimelineView(QGraphicsView):
         rect = self._add_block(x1, y, w, self.LANE_H, pen, QBrush(fill))
         rect.setCursor(Qt.PointingHandCursor)
         self.activity_rects[rect] = a
+        label = None
         if w > 28:
             if a.get("work"):
                 label_text = a["customer_name"]
@@ -1868,7 +1909,8 @@ class TimelineView(QGraphicsView):
                 label_text = " · ".join(t for t in (a.get("customer_name"), a.get("category"),
                                                     a.get("description") if a.get("doc") else "")
                                         if t) or a.get("type", "")
-            self._add_label(label_text, x1, y, w, self.LANE_H, font, metrics, label_color)
+            label = self._add_label(label_text, x1, y, w, self.LANE_H, font, metrics, label_color)
+        self._dim_unless_highlighted(a, rect, label)
 
     def _fit_height_to_rows(self, fixed_h, n_rows):
         """Höhe der Timeline an die Zeilen binden: kleinste Höhe = alle Zeilen in der
