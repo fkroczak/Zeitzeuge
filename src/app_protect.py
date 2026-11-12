@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (QDialog, QDialogButtonBox, QGridLayout, QLabel, Q
                                QPushButton, QToolButton, QVBoxLayout)
 
 from card_dialog import modernize
-from theme import prose, SPACE_M
+from theme import fit_bold, prose, SPACE_M
 import datakey
 import datastore
 import protect_dialogs
@@ -148,6 +148,7 @@ class ProtectMixin:
         enter = box.addButton("Vorhandenen &eingeben …", QMessageBox.AcceptRole)
         new = box.addButton("&Neu erzeugen", QMessageBox.ActionRole)
         box.addButton("Abbrechen", QMessageBox.RejectRole)
+        fit_bold(enter)
         box.setDefaultButton(enter)
         box.exec()
         if box.clickedButton() is new:

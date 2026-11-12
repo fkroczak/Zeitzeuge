@@ -431,6 +431,7 @@ class DayCloseDialog(QDialog):
             safe = box.addButton("Nur &sichere buchen", QMessageBox.AcceptRole)
             also = box.addButton("&Vermutete mitbuchen", QMessageBox.YesRole)
             box.addButton("Abbrechen", QMessageBox.RejectRole)
+            fit_bold(safe)
             box.setDefaultButton(safe)
             box.exec()
             if box.clickedButton() not in (safe, also):
