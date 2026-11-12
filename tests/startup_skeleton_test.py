@@ -87,6 +87,59 @@ window.date_edit.setDate(window.date_edit.date().addDays(-1))
 app.processEvents()
 assert draws, "Tageswechsel zeichnet"
 assert skeleton.pulse().watching() == 0, "Zeitgeber der Umrisse läuft noch"
+
+# „Nach Kunde“: Chips in höchstens zwei Zeilen, Rest im letzten Chip, Ansprechperson nur im Tooltip
+chips = window.day_summary.customers.value
+names = [("Jugendhilfe Olsberg - Jörg Spiekermann", 4440)] + [(f"Kunde {i:02d} GmbH", 600 - i) for i in range(12)]
+chips.set_customers(names, "leer")
+widths = []
+for width in (1400, 700):  # Fensterbreite: die Kachel bekommt ihren Platz vom Layout
+    window.resize(width, window.height())
+    app.processEvents()
+    widths.append(chips.width())
+    parts = chips.parts()
+    assert parts[0] == "Jugendhilfe Olsberg 1:14", parts
+    shown = [c for c in chips._chips if c.isVisible()]
+    rows = {c.y() for c in shown}
+    assert len(rows) <= 2 and all(c.geometry().right() < chips.width() for c in shown), \
+        (width, chips.width(), [(c.accessibleName(), c.geometry().getRect()) for c in shown])
+    assert parts[-1].startswith("+") and "weitere" in parts[-1], parts
+assert widths[1] < widths[0], widths
+assert "Jörg Spiekermann" in shown[0].toolTip()
+# Klick auf einen Chip filtert die Tagesliste, zweiter Klick hebt den Filter auf
+window.date_edit.setDate(window.date_edit.date().addDays(1))  # zurück auf heute (30 Verbindungen)
+end = time.time() + 20
+while time.time() < end and (window.timeline.loading or not window.list_entries):
+    app.processEvents()
+before = len(window.list_entries)
+assert before, "Tagesliste hat Einträge"
+chips.set_customers(names, "leer")
+seen = []
+window.day_summary.customer_clicked.connect(seen.append)
+chips._chips[0].clicked.emit()
+assert seen == ["Jugendhilfe Olsberg - Jörg Spiekermann"], seen
+assert window.customer_filter == seen[0] and window.list_entries == []
+assert window.view_chips.filter_chip.isVisibleTo(window.view_chips)
+assert chips._chips[0].property("on") is True
+window.view_chips.filter_chip.click()
+assert window.customer_filter == "" and len(window.list_entries) == before
+assert not window.view_chips.filter_chip.isVisibleTo(window.view_chips)
+from app_daylist import customer_matches
+assert customer_matches({"customer_name": "Jugendhilfe Olsberg"}, "Jugendhilfe Olsberg - Jörg Spiekermann")
+assert customer_matches({"customer_name": ""}, "ohne Kunde")
+assert not customer_matches({"customer_name": "ITM"}, "WiRoPa GmbH")
+# Timeline: Balken unter der Maus über dem Nebel, beim Verlassen ist alles wieder normal
+tl = window.timeline
+bar = next(iter(tl.activity_rects))
+z_before = bar.zValue()
+tl._focus_block(bar)
+assert tl._fog.isVisible() and bar.zValue() > tl._fog.zValue() > z_before
+others = [r for r in tl.activity_rects if r is not bar]
+assert all(r.zValue() < tl._fog.zValue() for r in others)
+tl._focus_block(None)
+assert not tl._fog.isVisible() and bar.zValue() == z_before and tl._focused is None
+chips.set_customers([], "leer")
+assert chips.empty_label.isVisible() and not chips.parts()
 print("OK")
 window.quit_app()
 sys.stdout.flush()

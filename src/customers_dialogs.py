@@ -441,7 +441,9 @@ class CustomersDialog(QDialog):
         def work():
             import route
             try:
-                self.route_done.emit(current, route.drive_minutes(home, address), "")
+                minutes, km = route.drive(home, address)
+                current["travel_km"] = km  # zum Vorbelegen von „Reise“ beim Eintragen
+                self.route_done.emit(current, minutes, "")
             except Exception as e:
                 self.route_done.emit(current, None, str(e))
 

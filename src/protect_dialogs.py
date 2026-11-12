@@ -30,6 +30,13 @@ def copy_secret(text):
     QTimer.singleShot(CLIPBOARD_CLEAR_MS, lambda: clip.text() == text and clip.clear())
 
 
+def _card(dialog, title, subtitle=""):
+    """Rahmen wie „Tätigkeit nachtragen“ (card_dialog.py). Der erklärende Text bleibt im Inhalt:
+    Bei Schlüssel und PIN zählt jedes Wort."""
+    from card_dialog import modernize
+    modernize(dialog, title, subtitle, "lock", intro=False)
+
+
 class CodeDialog(QDialog):
     """Neuen Schlüssel einmal zeigen. „Fertig“ erst nach dem Haken „in RDM abgelegt“."""
 
@@ -67,6 +74,7 @@ class CodeDialog(QDialog):
         self.saved.toggled.connect(self.done_button.setEnabled)
         buttons.accepted.connect(self.accept)
         layout.addWidget(buttons)
+        _card(self, title, "Wird nur dieses eine Mal angezeigt.")
         copy.setFocus()
 
     def reject(self):
@@ -123,6 +131,7 @@ class EnterCodeDialog(QDialog):
         layout.addWidget(buttons)
         self.field.textChanged.connect(lambda _t: self.error.hide())
         self.code = ""
+        _card(self, title)
 
     def _try(self):
         code = self.field.text()
@@ -173,7 +182,8 @@ class NewPinDialog(QDialog):
         self.pin.textChanged.connect(self.validate)
         self.again.textChanged.connect(self.validate)
         self.validate()
-        text.setMinimumHeight(text.heightForWidth(self.minimumWidth() - 24))
+        _card(self, title)
+        text.setMinimumHeight(text.heightForWidth(self.minimumWidth() - 32))
 
     def validate(self):
         pin, again = self.pin.text(), self.again.text()

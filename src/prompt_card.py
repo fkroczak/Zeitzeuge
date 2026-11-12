@@ -197,6 +197,7 @@ class _ElidedLabel(QLabel):
     def __init__(self, text="", parent=None):
         super().__init__(parent)
         self._full = ""
+        self._tip = ""  # eigener Tooltip (z. B. Begründung), gilt statt des vollen Texts
         self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
         self.set_full_text(text)
 
@@ -208,6 +209,10 @@ class _ElidedLabel(QLabel):
 
     def full_text(self):
         return self._full
+
+    def set_tip(self, tip):
+        self._tip = tip or ""
+        self._update()
 
     def minimumSizeHint(self):
         return QSize(40, super().minimumSizeHint().height())
@@ -223,7 +228,7 @@ class _ElidedLabel(QLabel):
         shown = self.fontMetrics().elidedText(self._full, Qt.ElideRight, max(0, self.width()))
         if shown != self.text():
             self.setText(shown)
-        self.setToolTip(self._full if shown != self._full else "")
+        self.setToolTip(self._tip or (self._full if shown != self._full else ""))
 
 
 class _TimerBar(QWidget):
@@ -515,6 +520,10 @@ class CardParts:
         form.insert_button.setText("Text &einfügen")
         chips.addWidget(form.insert_button)
         body_box.addWidget(chips_host)
+        # Angaben zu Kulanz und Reise direkt unter den Chips (nur sichtbar, wenn angehakt)
+        for w in (form.goodwill_panel, form.travel_panel):
+            _detach(w, old)
+            body_box.addWidget(w)
 
         # Ticket: Feld erst nach „+ Ticket“, danach als Chip; Vorschlag darunter als Link
         self.ticket_row = QWidget()

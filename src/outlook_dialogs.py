@@ -113,6 +113,9 @@ class OutlookSettingsDialog(QDialog):
 
         for box in (self.outlook, self.mails):
             box.toggled.connect(self._sync)
+        from card_dialog import modernize  # Rahmen wie „Tätigkeit nachtragen“
+        modernize(self, TITLES.get(part, TITLES[None]), "Was Zeitzeuge aus Outlook und Teams liest.",
+                  "users" if part == "teams" else "calendar", intro=False, scroll=True)
         self._sync()
 
     def _sync(self):

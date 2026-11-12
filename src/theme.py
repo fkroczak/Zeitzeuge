@@ -2,7 +2,8 @@
 
 Ein neues Design ändert nur die Werte in THEMES und ergänzt bei Bedarf STYLESHEET
 ($name wird durch den Wert des Tokens ersetzt, siehe apply_style in app_menus.py;
-$checkmark ist der Pfad zum Haken-Bild aus icons.check_mark_file).
+$checkmark ist der Pfad zum Haken-Bild aus icons.check_mark_file, $switch_on/$switch_off
+die Schalterbilder aus icons.switch_tokens).
 Die Timeline (timeline_only.py) nimmt ihre Grundfarben ebenfalls aus THEMES.
 """
 import html
@@ -357,7 +358,18 @@ QSpinBox, QTimeEdit { padding-right: 6px; }
 QAbstractSpinBox::up-button, QAbstractSpinBox::down-button { width: 0; border: none;
     subcontrol-origin: content; subcontrol-position: center left; } /* sonst Text ohne Rand links (Qt 6.12) */
 QDateEdit { min-width: 102px; } /* + 18 px Kalenderpfeil (Qt 6) = 120 px wie bisher */
-QComboBox QAbstractItemView { padding: 4px; outline: none; }
+QComboBox { padding-right: 28px; }
+/* Dropdown wie Windows 11: kein abgesetzter Pfeil-Kasten, nur ein Winkel rechts im Feld */
+QComboBox::drop-down, QDateEdit::drop-down { subcontrol-origin: padding; subcontrol-position: center right;
+    width: 28px; border: none; background: transparent; }
+QComboBox::down-arrow, QDateEdit::down-arrow { image: url($chevron); width: 12px; height: 12px; }
+QComboBox::down-arrow:disabled, QDateEdit::down-arrow:disabled { image: none; }
+QComboBox:hover, QDateEdit:hover { border-color: $muted; }
+QComboBox QAbstractItemView { padding: 4px; outline: none; border: 1px solid $border;
+    border-radius: $radiuspx; background-color: $surface; }
+QComboBox QAbstractItemView::item { min-height: 26px; padding: 2px 8px; border-radius: $radius_smpx; }
+QComboBox QAbstractItemView::item:hover { background-color: $hover; }
+QComboBox QAbstractItemView::item:selected { background-color: $sel; color: $seltext; }
 QPushButton { background-color: $surface; color: $text; border: 1px solid $control;
               border-radius: $radiuspx; padding: 6px 14px; min-width: 80px; }
 QPushButton:hover { background-color: $hover; }
@@ -377,7 +389,8 @@ QLabel#hint { color: $muted; }
 /* Nachfrage (prompt_card.py): Karte und Leiste ohne Windows-Rahmen, mit Schatten */
 QDialog#prompt_window, QWidget#prompt_strip_window { background: transparent; }
 QFrame#prompt_card { background-color: $surface; border: 1px solid $border; border-radius: $radius_cardpx; }
-QFrame#prompt_card QLabel, QFrame#prompt_strip QLabel, QFrame#prompt_card QWidget#chips { background: transparent; }
+QFrame#prompt_card QLabel, QFrame#prompt_strip QLabel, QFrame#prompt_card QWidget#chips,
+QFrame#prompt_card QWidget#flag_details { background: transparent; }
 QWidget#prompt_top { background: transparent; border-bottom: 1px solid $line; }
 QWidget#prompt_foot { background-color: $bg; border-top: 1px solid $line;
     border-bottom-left-radius: $radius_cardpx; border-bottom-right-radius: $radius_cardpx; }
@@ -392,8 +405,9 @@ QDialog[card="true"] QWidget#prompt_body, QDialog[card="true"] QScrollArea#card_
 QDialog[card="true"] QScrollArea#card_scroll > QWidget > QWidget#prompt_body { background: transparent; }
 QDialog[card="true"] QWidget#prompt_body QLabel, QDialog[card="true"] QWidget#prompt_top QLabel,
 QDialog[card="true"] QWidget#prompt_body QCheckBox, QDialog[card="true"] QWidget#prompt_body QRadioButton { background: transparent; }
-QDialog[card="true"] QLabel#prompt_src { background-color: $sel; border-radius: 9px; }
-QDialog#entry_dialog QLabel, QDialog#entry_dialog QWidget#chips,
+QDialog[card="true"] QLabel#prompt_src, QDialog[card="true"] QWidget#prompt_top QLabel#prompt_src {
+    background-color: $sel; border-radius: 9px; }  /* sonst gewinnt „prompt_top QLabel: transparent“ */
+QDialog#entry_dialog QLabel, QDialog#entry_dialog QWidget#chips, QDialog#entry_dialog QWidget#flag_details,
 QDialog#entry_dialog QWidget#prompt_body { background: transparent; }
 QDialog#entry_dialog QLabel#prompt_src { background-color: $sel; border-radius: 9px; }
 QWidget#prompt_foot[flat="true"] { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
@@ -547,10 +561,14 @@ QListWidget#settings_nav::item:hover:!selected { background-color: $hover; }
 QFrame#tile { background-color: $surface; border: 1px solid $border; border-radius: $radius_cardpx; }
 QFrame#tile QLabel, QFrame#tile QCheckBox { background: transparent; }
 QCheckBox#switch { spacing: 8px; font-weight: normal; color: $muted; }
-QCheckBox#switch::indicator { width: 30px; height: 16px; border: 2px solid $muted; border-radius: $radius_cardpx;
-                              background-color: $surface; }
-QCheckBox#switch::indicator:checked { border-color: $accent; background-color: $accent; image: none; }
-QCheckBox#switch::indicator:focus { border-color: $text; }
+QCheckBox#switch:focus { color: $text; }
+QCheckBox#switch::indicator { width: 40px; height: 20px; border: none; background: transparent;
+                              image: url($switch_off); }
+QCheckBox#switch::indicator:hover, QCheckBox#switch::indicator:focus { border: none; }
+QCheckBox#switch::indicator:checked { border: none; background: transparent; image: url($switch_on); }
+QCheckBox#switch::indicator:disabled { border: none; background: transparent; image: url($switch_off_disabled); }
+QCheckBox#switch::indicator:checked:disabled { border: none; background: transparent;
+                                               image: url($switch_on_disabled); }
 /* Einstellungen (settings_window.py): jede Zeile eine Karte, Icon in ruhiger Kachel, Abschnitte */
 QFrame#setting_row { background-color: $surface; border: 1px solid $border; border-radius: $radius_cardpx; }
 QFrame#setting_row:hover { border-color: $control; }
@@ -602,6 +620,14 @@ QToolButton#chip QLabel#chip_count { background-color: $border; color: $chiptext
 /* spezifischer als „QToolButton#chip QLabel[on]“, sonst weiße Zahl auf weißem Abzeichen */
 QToolButton#chip QLabel#chip_count[on="true"] { background-color: $onprimary; color: $primary; }
 QLabel#card_title[empty="true"] { color: $muted; font-weight: normal; }
+QLabel#customer_chip { background-color: $chip; color: $chiptext; border: 1px solid $border;
+                       border-radius: $radius_chippx; padding: 2px 10px; }
+QLabel#customer_chip:hover { border-color: $control; }
+QLabel#customer_chip:focus { border-color: $accent; }
+QToolButton#filter_chip { background-color: $primary; color: $onprimary; border: 1px solid $primary;
+                          border-radius: $radius_chippx; padding: 3px 10px; font-weight: bold; }
+QToolButton#filter_chip:focus { border: 2px solid $accent; padding: 2px 9px; }
+QLabel#customer_chip[on="true"] { background-color: $primary; color: $onprimary; border-color: $primary; }
 QLabel#detail_key { color: $muted; background: transparent; }
 QLabel#detail_value { background: transparent; }
 QToolButton#chip:focus { border: 2px solid $accent; padding: 1px 9px; }
@@ -616,7 +642,7 @@ QFrame#notice { background-color: $chip; border: 1px solid $border; border-radiu
 QFrame#notice QLabel { background: transparent; }
 QProgressBar { background-color: $chip; border: none; border-radius: 2px; }
 QProgressBar::chunk { background-color: $good; border-radius: 2px; }
-QWidget#chips, QWidget#band_row { background: transparent; }
+QWidget#chips, QWidget#band_row, QWidget#flag_details { background: transparent; }
 QWidget#customer_detail { background-color: $surface; }
 QScrollArea { background: transparent; border: none; }
 QListWidget#nav_list { border: none; background: transparent; outline: none; padding: 4px; }

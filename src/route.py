@@ -66,6 +66,11 @@ def geocode(address, fetch=_get_json):
 
 def drive_minutes(start, target, fetch=_get_json):
     """Fahrzeit mit dem Auto in Minuten (aufgerundet auf ROUND_TO) zwischen zwei Adressen."""
+    return drive(start, target, fetch)[0]
+
+
+def drive(start, target, fetch=_get_json):
+    """(Fahrzeit in Minuten, aufgerundet auf ROUND_TO; Strecke in km, gerundet) mit dem Auto."""
     a, b = geocode(start, fetch), geocode(target, fetch)
     url = ROUTE_URL.format(a=f"{a[1]},{a[0]}", b=f"{b[1]},{b[0]}")  # OSRM: Länge, Breite
     try:
@@ -76,7 +81,8 @@ def drive_minutes(start, target, fetch=_get_json):
     if not routes:
         raise RouteError("keine Route gefunden")
     minutes = float(routes[0].get("duration", 0)) / 60
-    return max(ROUND_TO, int(math.ceil(minutes / ROUND_TO) * ROUND_TO))
+    km = int(round(float(routes[0].get("distance", 0) or 0) / 1000))
+    return max(ROUND_TO, int(math.ceil(minutes / ROUND_TO) * ROUND_TO)), km
 
 
 _STREET = re.compile(r"(stra(ss|ß)e|str\.|weg|platz|gasse|allee|ring|damm|ufer|chaussee|steig|pfad"
