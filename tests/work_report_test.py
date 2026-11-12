@@ -133,3 +133,8 @@ def test_status_colors_readable_on_light_and_dark():
         assert contrast(readable_on(color).name(), color) >= 4.5, (kind, color)  # Schrift im Balken
         for ground in ("#FFFFFF", "#1A1A1A"):
             assert contrast(color, ground) >= 3.0, (kind, color, ground)
+
+
+def test_unbooked_doc_type_is_orange_like_open():
+    assert wr.STATUS_COLORS[wr.TYPE_STATUS[wr.DOC_UNBOOKED_TYPE]] == wr.STATUS_COLORS["doc_missing"]
+    assert wr.DOC_UNBOOKED_TYPE in wr.SKIP_TYPES
