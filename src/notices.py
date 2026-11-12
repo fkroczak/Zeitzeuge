@@ -122,7 +122,7 @@ class NoticeCard(_Notice, QDialog):
             for item in list(items)[:4]:
                 line = QHBoxLayout()
                 line.setSpacing(SPACE_S)
-                line.addWidget(_icon_label("alert", muted, 14), 0, Qt.AlignTop)
+                line.addWidget(_icon_label("alert" if kind == "warn" else "info", muted, 14), 0, Qt.AlignTop)
                 label = QLabel(item)
                 label.setWordWrap(True)
                 line.addWidget(label, 1)

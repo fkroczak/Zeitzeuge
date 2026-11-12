@@ -156,3 +156,30 @@ def test_zugang_aus_umgebung(monkeypatch):
     monkeypatch.setenv("ZEITZEUGE_UPDATE_TOKEN", "abc")
     monkeypatch.delenv("ZEITZEUGE_UPDATE_REPO", raising=False)
     assert updater.settings() == (updater.DEFAULT_REPO, "abc")
+
+
+BODY = """## What's Changed
+* Herausgeber im Setup und in der EXE: Filip Kroczak by @fkroczak in https://github.com/fkroczak/Zeitzeuge/pull/90
+* [minor] Updates aus Zeitzeuge by @fkroczak in https://github.com/fkroczak/Zeitzeuge/pull/92
+* @jemand made their first contribution in https://github.com/fkroczak/Zeitzeuge/pull/91
+
+**Full Changelog**: https://github.com/fkroczak/Zeitzeuge/compare/v4.1.2...v4.1.3"""
+
+
+def test_release_notizen_kurz():
+    assert updater.release_notes(BODY) == ["Herausgeber im Setup und in der EXE: Filip Kroczak",
+                                           "Updates aus Zeitzeuge"]
+    assert updater.release_notes("") == []
+
+
+def test_aenderungen_seit_installierter_version():
+    rels = [{"tag_name": "v4.1.5", "body": "* Neu B by @x in https://g/pull/2"},
+            {"tag_name": "v4.1.6", "draft": True, "body": "* Entwurf by @x in https://g/pull/3"},
+            {"tag_name": "v4.1.4", "body": "* Neu A by @x in https://g/pull/1"},
+            {"tag_name": "v4.1.3", "body": "* Alt by @x in https://g/pull/0"}]
+    url = f"{updater.API}/repos/o/r/releases?per_page=30"
+    gh = FakeGitHub({url: lambda: Resp(json.dumps(rels).encode())})
+    found = updater.changes("o/r", "t", "4.1.3", opener=gh)
+    assert found == [("4.1.5", ["Neu B"]), ("4.1.4", ["Neu A"])]
+    assert updater.change_lines(found) == ["Neu B", "Neu A"]
+    assert updater.changes("o/r", "t", "4.1.3", opener=FakeGitHub({url: urllib.error.URLError("x")})) == []

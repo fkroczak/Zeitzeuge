@@ -128,6 +128,50 @@ def latest(repo, token, timeout=15, opener=urllib.request.urlopen):
             "token_days": token_days_left(expires)}
 
 
+_NOTE = re.compile(r"^\s*[*-]\s+(?P<text>.+?)(?:\s+by\s+@[\w-]+(?:\[bot\])?)?(?:\s+in\s+https?://\S+)?\s*$")
+_MARKS = re.compile(r"\s*\[(?:minor|major)\]\s*", re.I)
+
+
+def release_notes(body):
+    """Kurzfassung aus dem Text eines Releases: die PR-Titel aus „generate-notes“
+    ("* Titel by @name in https://…/pull/90" -> "Titel"), ohne Markierungen wie [minor]."""
+    notes = []
+    for line in (body or "").splitlines():
+        m = _NOTE.match(line)
+        if not m or "made their first contribution" in line:
+            continue
+        text = _MARKS.sub(" ", m.group("text")).strip()
+        if text and text not in notes:
+            notes.append(text)
+    return notes
+
+
+def changes(repo, token, local, timeout=15, opener=urllib.request.urlopen):
+    """Was seit der installierten Version dazukam: [(Version, [Punkte])], neueste zuerst.
+    Leer, wenn die Notizen nicht lesbar sind (das Update selbst hängt nicht daran)."""
+    try:
+        with opener(_request(f"{API}/repos/{repo}/releases?per_page=30", token), timeout=timeout) as resp:
+            releases = json.loads(resp.read().decode("utf-8"))
+    except (urllib.error.URLError, OSError, ValueError):
+        return []
+    result = []
+    for rel in releases if isinstance(releases, list) else []:
+        tag = str(rel.get("tag_name") or "")
+        if rel.get("draft") or rel.get("prerelease") or not is_newer(tag, local):
+            continue
+        result.append((tag.lstrip("v"), release_notes(rel.get("body"))))
+    result.sort(key=lambda item: parse_version(item[0]), reverse=True)
+    return result
+
+
+def change_lines(found):
+    """Alle Punkte aus changes() als eine Liste, neueste Version zuerst, ohne Doppelte."""
+    lines = []
+    for _version, notes in found:
+        lines += [n for n in notes if n not in lines]
+    return lines
+
+
 def download(info, token, folder, progress=None, cancelled=None, timeout=30,
              opener=urllib.request.urlopen):
     """Setup nach folder laden und SHA-256 prüfen; Pfad zurück. progress(geladen, gesamt)."""

@@ -27,6 +27,14 @@ class _Signals(QObject):
     loaded = Signal(object, object)          # Pfad des Setups, Fehlertext
 
 
+def _notes_text(notes, limit=8):
+    """Kurzes Changelog für die Rückfrage: höchstens limit Punkte, Rest unter „Details“."""
+    lines = ["Neu:"] + [f"• {n}" for n in notes[:limit]]
+    if len(notes) > limit:
+        lines.append(f"… und {len(notes) - limit} weitere (Details anzeigen)")
+    return "\n".join(lines)
+
+
 def update_folder():
     return os.path.join(storage.local_dir(), "updates")
 
@@ -75,7 +83,11 @@ class UpdateMixin:
 
         def work():
             try:
-                self._update_signals.checked.emit(updater.latest(repo, token), None, manual)
+                info = updater.latest(repo, token)
+                if updater.is_newer(info["version"], version.full_version()):
+                    info["changes"] = updater.change_lines(
+                        updater.changes(repo, token, version.full_version()))
+                self._update_signals.checked.emit(info, None, manual)
             except updater.UpdateError as e:
                 self._update_signals.checked.emit(None, str(e), manual)
 
@@ -112,11 +124,15 @@ class UpdateMixin:
             return
         self.update_info = info
         self.update_message = f"Version {info['version']} ist da"
+        notes = info.get("changes") or []
         if manual:
             box = QMessageBox(QMessageBox.Question, "Nach Updates suchen",
                               f"Zeitzeuge {info['version']} ist da (installiert: {version.full_version()}).\n\n"
-                              "Jetzt aktualisieren? Zeitzeuge beendet sich, installiert das Update und "
+                              + (_notes_text(notes) + "\n\n" if notes else "")
+                              + "Jetzt aktualisieren? Zeitzeuge beendet sich, installiert das Update und "
                               "startet neu. Deine Daten bleiben erhalten.", parent=self._update_parent())
+            if len(notes) > 8:
+                box.setDetailedText("\n".join(f"• {n}" for n in notes))
             yes = box.addButton("Jetzt &aktualisieren", QMessageBox.AcceptRole)
             box.addButton("&Später", QMessageBox.RejectRole)
             box.setDefaultButton(yes)
@@ -128,9 +144,11 @@ class UpdateMixin:
             return
         self._update_notified.add(info["version"])
         self.notify(f"Update auf {info['version']}",
+                    "Zeitzeuge installiert es und startet danach neu. Neu darin:" if notes else
                     "Zeitzeuge installiert es und startet danach neu. Deine Daten bleiben erhalten.",
                     kind="info", action="Jetzt aktualisieren", on_action=self.install_update,
-                    timeout=60, balloon=f"Zeitzeuge {info['version']} ist da. Einstellungen → Info → "
+                    items=notes, card=bool(notes), timeout=60,
+                    balloon=f"Zeitzeuge {info['version']} ist da. Einstellungen → Info → "
                                         "Nach Updates suchen.")
 
     def install_update(self):
