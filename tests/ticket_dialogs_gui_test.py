@@ -25,6 +25,15 @@ def gui_test():
     from ticket_dialogs import CloseTicketDialog, EditTicketDialog, NewTicketDialog
 
     app = QApplication(sys.argv)
+
+    def wait_for(done, ms):
+        """Ereignisse verarbeiten, bis done() wahr ist (höchstens ms). Unter Windows brauchen
+        Antworten über QueuedConnection länger als ein festes qWait(20)."""
+        for _ in range(ms // 10):
+            if done():
+                return True
+            QTest.qWait(10)
+        return done()
     ROW = {"ticket": "TCK0000000002", "id": "t2", "subject": "Drucker", "customer": "Müller", "state": "Neu",
            "initiator": "Huber, Max", "recipient": "Kroczak, Filip", "recipient_id": "me",
            "type": "SPSActivityTypeIncident", "created": ""}
@@ -109,7 +118,7 @@ def gui_test():
     # ---- Bearbeiten: erst nach dem Laden änderbar, Speichern nur mit Änderung
     edit = EditTicketDialog(reader, ROW)
     assert not edit.subject_edit.isEnabled() and not edit.ok_button.isEnabled()
-    QTest.qWait(20)
+    assert wait_for(lambda: edit.loaded is not None, 3000)
     assert edit.current_edit.toPlainText() == "Druckt nicht" and edit.subject_edit.isEnabled()
     assert not edit.ok_button.isEnabled()  # nichts geändert
     edit.addition_edit.setPlainText("Toner getauscht")
@@ -118,7 +127,7 @@ def gui_test():
 
     def fill_edit():
         dlg = next(w for w in app.topLevelWidgets() if isinstance(w, EditTicketDialog) and w.isVisible())
-        QTest.qWait(20)
+        wait_for(lambda: dlg.loaded is not None, 3000)
         dlg.subject_edit.setText("Drucker Empfang")
         dlg.ok_button.click()
     QTimer.singleShot(0, fill_edit)
@@ -137,7 +146,8 @@ def gui_test():
     assert not dialog.ok_button.isEnabled()  # ohne Lösungstext nicht
     dialog.solution_edit.setPlainText("Treiber neu installiert")
     dialog.ok_button.click()
-    QTest.qWait(20)
+    # Antwort kommt über zwei Ereignisrunden: warten, bis sie da ist (unter Windows dauert das länger als 20 ms)
+    assert wait_for(lambda: "fehlgeschlagen" in dialog.status.text(), 3000), dialog.status.text()
     assert "unklar" not in dialog.status.text() and "Zeitüberschreitung" in dialog.status.text(), dialog.status.text()
     assert not dialog.ok_button.isEnabled() and not dialog.closed
     dialog.reject()

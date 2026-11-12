@@ -176,7 +176,12 @@ class _CustomerChips(QWidget):
         chip.setToolTip(tip)
         chip.setAccessibleName(f"{name} {time}".strip())
         chip.adjustSize()
-        return chip.sizeHint()
+        # Nie breiter als der Platz: unter Windows meldet das Etikett mit RichText teils mehr Breite,
+        # als der gekürzte Text braucht (startup_skeleton_test auf CI: 230 px Chip in 202 px)
+        hint = chip.sizeHint()
+        size = QSize(min(hint.width(), max(40, room)), hint.height())
+        chip.resize(size)
+        return size
 
     def _relayout(self):
         for chip in self._chips:
