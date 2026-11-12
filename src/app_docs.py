@@ -1057,6 +1057,11 @@ class DocsMixin(CustomersMixin):
         """Wochenabschluss: Buchungsquote, Lücken, Offenes und Prüfungen der Woche."""
         week_dialogs.WeekDialog(self, self.current_date.toString("yyyy-MM-dd")).exec()
 
+    def save_report(self, date_str=None, week=False, parent=None):
+        """Tages- oder Wochenbericht als PDF: eigener Beleg, was wann gemacht wurde (report_pdf.py)."""
+        import report_pdf  # PDF-Teil erst laden, wenn er gebraucht wird
+        return report_pdf.save_report(self, date_str, week, parent)
+
     def request_quit(self):
         """Beenden über Menü/Infobereich: vorher an offene Tätigkeiten von heute erinnern."""
         if self.config.get("prompt_on_quit", True) and self.config.get("prompt_mode") != "off":
