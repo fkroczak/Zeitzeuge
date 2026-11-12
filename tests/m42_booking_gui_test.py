@@ -191,6 +191,26 @@ def gui_test():
     doc.close()
     doc.deleteLater()
 
+    # Vorschlag aus dem Fenstertitel: Titel und Kunde aus Matrix42 dazu, Übernehmen setzt den Kunden
+    reader.searches.clear()
+    options = dict(window.entry_form_options(start, end),
+                   ticket_suggestions=[{"ticket": "TCK0000049374", "seconds": 660, "sources": ["PC"],
+                                        "label": "TCK0000049374 (PC, 11 min)"}])
+    doc = EntryDialog(start, end, ["Systems"], ["Fernwartung"], **options)
+    doc.show()
+    form = doc.form
+    QTest.qWait(50)
+    assert reader.searches == ["TCK0000049374"], reader.searches
+    assert form.ticket_take.text() == "Vorschlag: TCK0000049374 · Praktikanten · Systems (PC, 11 min)", \
+        form.ticket_take.text()
+    assert "Neu" in form.ticket_take.toolTip(), form.ticket_take.toolTip()
+    form.customer_edit.setCurrentText("")
+    form.ticket_take.click()
+    assert form.ticket_edit.currentText() == "TCK0000049374"
+    assert form.customer_edit.currentText() == "Systems"
+    doc.close()
+    doc.deleteLater()
+
     # Ohne Matrix42 kein Knopf
     window.m42_reader = None
     assert window.entry_form_options(start, end)["ticket_search"] is None

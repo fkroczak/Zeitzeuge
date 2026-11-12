@@ -231,6 +231,7 @@ class _EntryForm(QWidget):
         self.ticket_status.setWordWrap(True)
         self.ticket_status.hide()
         self._setup_ticket_lookup()
+        self._lookup_suggested_ticket()
         if show_ticket or ticket or self.ticket_suggestions or self.ticket_search:
             label = QLabel("T&icket:")
             label.setBuddy(self.ticket_edit)
@@ -262,6 +263,51 @@ class _EntryForm(QWidget):
         self._lookup.found.connect(self._on_lookup)
         self.ticket_edit.lineEdit().textEdited.connect(self._ticket_typed)
 
+    def _lookup_suggested_ticket(self):
+        """Vorgeschlagenes Ticket in Matrix42 nachschlagen: Titel und Kunde im Vorschlag zeigen."""
+        self._details_for = None
+        self.ticket_details = None  # Matrix42-Zeile zum Vorschlag (ticket, subject, customer, …)
+        if self._lookup is None or not self.ticket_suggestions:
+            return
+        self._details_for = self.ticket_suggestions[0]["ticket"]
+        self._lookup.lookup(self._details_for)
+
+    def _on_details(self, rows):
+        number = (self._details_for or "").upper()
+        row = next((r for r in rows if (r.get("ticket") or "").upper() == number), None)
+        if row is None:
+            return
+        self.ticket_details = row
+        self.render_ticket_take()
+
+    DETAIL_MAX = 50  # Zeichen für Titel und Kunde im Vorschlag, der Rest im Tooltip
+
+    def suggestion_text(self):
+        """'TCK… · Titel · Kunde (Matrix42, 11 min)' oder nur das Label ohne Matrix42-Daten."""
+        if not self.ticket_suggestions:
+            return ""
+        top = self.ticket_suggestions[0]
+        row = self.ticket_details
+        if not row:
+            return top["label"]
+        parts = [(row.get(k) or "").strip() for k in ("subject", "customer")]
+        parts = [p if len(p) <= self.DETAIL_MAX else p[:self.DETAIL_MAX - 1] + "…" for p in parts if p]
+        rest = top["label"][len(top["ticket"]):]  # " (Matrix42, 11 min)"
+        return " · ".join([top["ticket"], *parts]) + rest
+
+    def render_ticket_take(self):
+        """Text, Tooltip und Platzhalter zum Vorschlag (auch nach dem Nachschlagen in Matrix42)."""
+        text = self.suggestion_text()
+        if not text:
+            return
+        full = mb_ticket_label(self.ticket_details) if self.ticket_details else text
+        self.ticket_take.setToolTip(f"{full}\nins Feld „Ticket“ übernehmen")
+        if self.ticket_take.objectName() == "link_button":  # Nachfrage-Karte: Vorschlag als Link
+            self.ticket_take.setText(f"Vorschlag: {text.replace('&', '&&')}")
+        placeholder = self.ticket_edit.lineEdit().placeholderText()
+        tail = placeholder[placeholder.find(" · oder "):] if " · oder " in placeholder else ""
+        self.ticket_edit.lineEdit().setPlaceholderText(f"Gefunden: {text}{tail}")
+
     def _ticket_typed(self, text):
         text = text.strip()
         if len(text) < 3 or self.TICKET_NUMBER.match(text):  # Nummer: nichts zu suchen
@@ -278,6 +324,9 @@ class _EntryForm(QWidget):
         self._lookup.lookup(text)
 
     def _on_lookup(self, text, rows, error):
+        if self._details_for and text == self._details_for:
+            self._on_details(rows)  # Nachschlagen des Vorschlags, keine Suche beim Tippen
+            return
         if text != self.ticket_edit.currentText().strip():
             return  # inzwischen weitergetippt: die neuere Suche kommt noch
         self._lookup_model.clear()
@@ -314,6 +363,9 @@ class _EntryForm(QWidget):
     def _take_ticket(self):
         if self.ticket_suggestions:
             self.ticket_edit.setCurrentText(self.ticket_suggestions[0]["ticket"])
+            customer = (self.ticket_details or {}).get("customer")
+            if customer and not self.customer_edit.currentText().strip():
+                self.customer_edit.setCurrentText(customer)
             self.text_edit.setFocus()
 
     def _search_ticket(self):
