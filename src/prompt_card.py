@@ -12,7 +12,7 @@ Die Felder kommen aus journal_dialogs._EntryForm; die Karte ordnet sie nur neu a
 """
 from datetime import datetime
 
-from PySide6.QtCore import QEvent, QRectF, QSize, Qt, QTimer, Signal
+from PySide6.QtCore import QElapsedTimer, QEvent, QRectF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QGuiApplication, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (QAbstractSpinBox, QDialog, QFrame, QGraphicsDropShadowEffect, QGridLayout,
                                QHBoxLayout, QLabel, QLayout, QPushButton, QSizePolicy, QToolButton,
@@ -237,12 +237,13 @@ class _TimerBar(QWidget):
 
     def set_fraction(self, value):
         value = max(0.0, min(1.0, value))
-        if abs(value - self.fraction) > 0.002:
+        if value != self.fraction:
             self.fraction = value
             self.update()
 
     def paintEvent(self, _event):
         painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)   # Teilpixel: Kante wandert gleichmäßig
         painter.fillRect(QRectF(0, 0, self.width() * self.fraction, self.height()),
                          self.palette().color(self.palette().ColorRole.Accent))
 
@@ -250,7 +251,7 @@ class _TimerBar(QWidget):
 class _AutoHide:
     """Ausblenden nach timeout Sekunden (0 = nie). Hält an, solange gehalten oder die Maus darüber ist."""
 
-    TICK_MS = 100
+    TICK_MS = 16   # ~60 Bilder/s, damit der Balken gleitet statt springt
 
     def _setup_autohide(self, timeout, keep_while_active, bar):
         self._timeout_ms = int(timeout) * 1000
@@ -261,7 +262,10 @@ class _AutoHide:
         self._bar = bar
         bar.setVisible(self._timeout_ms > 0)
         self._hide_timer = QTimer(self)
+        self._hide_timer.setTimerType(Qt.PreciseTimer)
         self._hide_timer.setInterval(self.TICK_MS)
+        self._clock = QElapsedTimer()
+        self._clock.start()
         self._hide_timer.timeout.connect(self._tick)
         if self._timeout_ms > 0:
             self._hide_timer.start()
@@ -283,9 +287,11 @@ class _AutoHide:
         return self._pinned or self._held or (self._keep_while_active and self.underMouse())
 
     def _tick(self):
+        # echte vergangene Zeit statt TICK_MS: verspätete Ticks bremsen den Countdown nicht
+        elapsed = self._clock.restart()
         if self._paused():
             return
-        self._left_ms -= self.TICK_MS
+        self._left_ms -= elapsed
         self._bar.set_fraction(self._left_ms / self._timeout_ms)
         if self._left_ms <= 0:
             self._hide_timer.stop()
