@@ -31,6 +31,7 @@ class TravelSettingsDialog(QDialog):
 
         self.enabled_box = QCheckBox("Fahrten vermuten und vorschlagen")
         self.enabled_box.setChecked(bool(config.get("travel_enabled", True)))
+        self.enabled_box.setToolTip(HINT)  # der lange Text weicht im Fenster dem kurzen Untertitel
         layout.addWidget(self.enabled_box)
         hint = QLabel(HINT)
         hint.setWordWrap(True)
@@ -71,6 +72,11 @@ class TravelSettingsDialog(QDialog):
         self.name_edit.setCurrentText("")
         self.name_edit.lineEdit().setPlaceholderText("Ort oder Kunde, z. B. Besprechungsraum")
         self.name_edit.setAccessibleName("Ort oder Kunde")
+        # nicht so breit wie der längste Kundenname: sonst ragt der Inhalt rechts aus dem Fenster
+        self.name_edit.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        self.name_edit.setMinimumContentsLength(12)
+        self.name_edit.view().setTextElideMode(Qt.ElideNone)
+        self.name_edit.view().setMinimumWidth(320)  # aufgeklappte Liste darf breiter sein
         add.addWidget(self.name_edit, 1)
         self.minutes_spin = QSpinBox()
         self.minutes_spin.setRange(0, 600)

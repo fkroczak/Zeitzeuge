@@ -807,10 +807,14 @@ class PromptSettings(QWidget):
         self.position.setCurrentIndex(max(0, self.position.findData(prompt_position(config))))
         self.position.setToolTip("Wo Karte und Kompakt erscheinen. Die Leiste bleibt unten rechts.")
         self.position.setAccessibleName("Position der Nachfrage")
-        for i, (name, widget) in enumerate((("Ausblenden &nach", self.timeout), ("Position", self.position),
-                                            ("✕ an der Le&iste", self.strip_close))):
-            grid.addWidget(label(name, widget), (i // 2) * 2, i % 2)
-            grid.addWidget(widget, (i // 2) * 2 + 1, i % 2)
+        # Position (Karte, Kompakt) und ✕ an der Leiste (nur Leiste) teilen sich die rechte Spalte:
+        # Sichtbar ist immer nur, was zur gewählten Darstellung passt (_sync_style).
+        self.option_labels = {}
+        for col, name, widget in ((0, "Ausblenden &nach", self.timeout), (1, "Position", self.position),
+                                  (1, "✕ an der Le&iste", self.strip_close)):
+            self.option_labels[widget] = label(name, widget)
+            grid.addWidget(self.option_labels[widget], 0, col)
+            grid.addWidget(widget, 1, col)
         for col in (0, 1):
             grid.setColumnStretch(col, 1)
         for combo in (self.timeout, self.position, self.strip_close):  # schmal werden dürfen (200 %)
@@ -925,6 +929,7 @@ class PromptSettings(QWidget):
             widget.valueChanged.connect(self.apply)
         for widget in (self.timeout, self.position, self.strip_close):
             widget.activated.connect(self.apply)
+        self.timeout.activated.connect(lambda *_: self._sync_style(self.current_style()))
 
     def retheme(self, tokens):
         for key, button in self.style_buttons.items():
@@ -942,11 +947,17 @@ class PromptSettings(QWidget):
         self.apply()
 
     def _sync_style(self, key):
+        """Nur zeigen, was bei dieser Darstellung wirkt: Position bei Karte und Kompakt, ✕ und
+        Leiste nur bei der Leiste, Punkte nur in der Karte, „Stehen lassen“ nur mit Ausblenden."""
         self.style_hint.setText(STYLE_HINTS[key])
-        for widget in (self.timeout, self.keep_active, self.dots):
-            widget.setEnabled(key != "off")
-        self.strip_close.setEnabled(key == "strip")
-        self.position.setEnabled(key in ("window", "compact"))
+        on = key != "off"
+        shown = {self.timeout: on, self.position: key in ("window", "compact"),
+                 self.strip_close: key == "strip", self.dots: key in ("window", "compact"),
+                 self.keep_active: on and self.timeout.currentData() != 0}
+        for widget, visible in shown.items():
+            widget.setVisible(visible)
+            if widget in self.option_labels:
+                self.option_labels[widget].setVisible(visible)
 
     def apply(self, *_):
         self.config["prompt_mode"] = self.current_style()

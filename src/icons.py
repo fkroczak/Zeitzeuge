@@ -318,6 +318,42 @@ def check_mark_file(color):
     return path.replace(os.sep, "/")
 
 
+def switch_file(track, knob, border, on):
+    """Schalter (Spur mit rundem Knopf) als PNG für QCheckBox#switch::indicator.
+
+    An: Spur in Akzentfarbe, Knopf rechts. Aus: Spur mit Rand, Knopf links in Randfarbe
+    (wie bei Windows 11). Doppelte Auflösung, damit es bei 200 % scharf bleibt."""
+    import os
+    import tempfile
+    track, knob, border = (QColor(c).name() for c in (track, knob, border))
+    name = f"zeitzeuge_switch_{'on' if on else 'off'}_{track[1:]}_{knob[1:]}_{border[1:]}.png"
+    path = os.path.join(tempfile.gettempdir(), name)
+    if not os.path.exists(path):
+        cx = 30 if on else 10
+        svg = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 20">'
+               f'<rect x="1" y="1" width="38" height="18" rx="9" fill="{track}" '
+               f'stroke="{border}" stroke-width="1.5"/>'
+               f'<circle cx="{cx}" cy="10" r="{6 if on else 5}" fill="{knob}"/></svg>')
+        renderer = QSvgRenderer(QByteArray(svg.encode()))
+        pix = QPixmap(80, 40)
+        pix.fill(Qt.transparent)
+        painter = QPainter(pix)
+        painter.setRenderHint(QPainter.Antialiasing)
+        renderer.render(painter, QRectF(0, 0, 80, 40))
+        painter.end()
+        pix.save(path, "PNG")
+    return path.replace(os.sep, "/")
+
+
+def switch_tokens(theme):
+    """Bildpfade für die Schalter im Stylesheet: $switch_on, $switch_off und deaktiviert."""
+    accent, surface, muted, border = (theme[k] for k in ("accent", "surface", "muted", "border"))
+    return {"switch_on": switch_file(accent, theme["onaccent"], accent, True),
+            "switch_off": switch_file(surface, muted, muted, False),
+            "switch_on_disabled": switch_file(border, surface, border, True),
+            "switch_off_disabled": switch_file(surface, border, border, False)}
+
+
 def app_icon(resource_path):
     """Programmsymbol für Fenster und Taskleiste.
 
@@ -342,7 +378,8 @@ def app_icon(resource_path):
 
 def set_windows_app_id():
     """Eigene Kennung für die Windows-Taskleiste: Sonst ordnet Windows das Fenster beim Start
-    aus dem Quelltext python.exe zu und zeigt dessen (oder gar kein) Symbol."""
+    aus dem Quelltext python.exe zu und zeigt dessen (oder gar kein) Symbol.
+    Die Startmenü-Verknüpfung trägt dieselbe Kennung (installer/zeitzeuge.iss, [Icons])."""
     import sys
     if sys.platform != "win32":
         return

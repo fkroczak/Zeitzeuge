@@ -174,7 +174,6 @@ ROWS = [
     ("data/Anderer PC", "button", "upload", "Daten exportieren", "Für einen anderen PC, z. B. die PAW.", "export_data", None),
     ("data/Anderer PC", "button", "download", "Daten übernehmen", "Von einem anderen PC einlesen.", "import_data", None),
 
-    ("about", "button", "info", "Über Zeitzeuge", "Version, Neuigkeiten und Projektseite.", "show_about", None),
     ("about", "check", "download", "Updates automatisch suchen",
      "Alle 6 Stunden nach einer neuen Version sehen und sie mit einem Klick installieren.", "update_check", True),
     ("about", "button", "refresh", "Nach Updates suchen",
@@ -867,6 +866,8 @@ class SettingsWindow(QDialog):
         head.addSpacing(SPACE_S)
         if key == "home":
             self._status_rows(layout)
+        if key == "about":
+            layout.addWidget(self._about_card())
         if key == "prompts":
             from journal_dialogs import PromptSettings
             self.prompt_settings = PromptSettings(self.main.config)
@@ -886,6 +887,42 @@ class SettingsWindow(QDialog):
             self._place_tiles(3)
         layout.addStretch(1)
         return self._scroll(page)
+
+    def _about_card(self):
+        """Logo, Version, Build und Links oben auf der Info-Seite (früher eigenes Fenster
+        „Über Zeitzeuge“; das Menü öffnet jetzt diese Seite)."""
+        from version import build_details, full_version
+        card = QFrame()
+        card.setObjectName("setting_row")
+        card.setAccessibleName("Über Zeitzeuge")
+        line = QHBoxLayout(card)
+        line.setContentsMargins(SPACE_L, SPACE_L, SPACE_L, SPACE_L)
+        line.setSpacing(SPACE_L)
+        logo = QLabel()
+        logo.setPixmap(icons.app_icon(mt.resource_path).pixmap(56, 56))
+        line.addWidget(logo, 0, Qt.AlignTop)
+        texts = QVBoxLayout()
+        texts.setSpacing(SPACE_XS)
+        name = QLabel("Zeitzeuge")
+        name.setObjectName("row_title")
+        texts.addWidget(name)
+        self.about_version = QLabel(f"Version {full_version()}")
+        self.about_version.setTextInteractionFlags(Qt.TextSelectableByMouse)  # zum Kopieren für Fehlermeldungen
+        texts.addWidget(self.about_version)
+        build = QLabel(" · ".join(build_details()))
+        build.setObjectName("hint")
+        build.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        build.setWordWrap(True)
+        texts.addWidget(build)
+        links = QLabel("<a href='https://github.com/fkroczak/Zeitzeuge/blob/main/CHANGELOG.md'>Was ist neu?</a>"
+                       " &nbsp;·&nbsp; <a href='https://github.com/fkroczak/Zeitzeuge'>Projektseite</a>")
+        links.setTextFormat(Qt.RichText)
+        links.setOpenExternalLinks(True)
+        links.setTextInteractionFlags(Qt.TextBrowserInteraction)
+        texts.addSpacing(SPACE_XS)
+        texts.addWidget(links)
+        line.addLayout(texts, 1)
+        return card
 
     # ---- Übersicht: Zustand je Bereich
 
@@ -938,37 +975,52 @@ class SettingsWindow(QDialog):
             self.status[key] = (mark, text)
 
     def _status_text(self, key):
-        """(Zustand ok/warn/off, Text) für die Übersicht."""
+        """(Zustand ok/warn/off, Text, Begründung) für die Übersicht. Die Begründung steht als
+        Tooltip auf Zeichen und Text: Warum ist es gelb, und was ist zu tun?"""
         main = self.main
         if key == "sources":
-            states = [tile_state(main, spec[0], spec[5])[0] for spec in SOURCE_TILES]
-            on = len([s for s in states if s != "off"])
-            warn = states.count("warn")
+            states = [(spec[2], *tile_state(main, spec[0], spec[5])) for spec in SOURCE_TILES]
+            on = len([s for _n, s, _w in states if s != "off"])
+            problems = [f"{name}: {why}" for name, state, why in states if state == "warn"]
             text = f"{on} von {len(states)} Quellen an"
-            return ("warn", f"{text} · {warn} mit Problem") if warn else ("ok", text)
+            if not problems:
+                return "ok", text, "Alle eingeschalteten Quellen liefern Daten."
+            return ("warn", f"{text} · {len(problems)} mit Problem",
+                    "Mit Problem:\n" + "\n".join(problems) + "\n\nDetails und Abhilfe: Aufzeichnung …")
         if key == "prompts":
             count = main.open_prompt_count() if hasattr(main, "open_prompt_count") else 0
             summary = _prompt_summary(main)
             if summary == "aus":
-                return "off", "Nachfragen aus"
-            return ("warn" if count else "ok"), f"{summary} · {count} offen" if count else summary
+                return "off", "Nachfragen aus", ""
+            if count:
+                return ("warn", f"{summary} · {count} offen",
+                        f"{count} Nachfrage(n) noch nicht beantwortet. Du findest sie im Infobereich "
+                        "unter „Offene Nachfragen“.")
+            return "ok", summary, "Keine offenen Nachfragen."
         if key == "booking":
             import week_dialogs
             if not week_dialogs.has_m42(main):
-                return "off", "Matrix42 nicht eingerichtet"
+                return "off", "Matrix42 nicht eingerichtet", ""
             try:
                 info = week_dialogs.rate_info(main)
+                text = info["text"].rsplit("  ", 1)[0]  # ohne Zeichen (✓, !) am Ende: das zeigt das Symbol
             except (KeyError, TypeError, ValueError, AttributeError):
-                return "warn", "Quote gerade nicht lesbar"
-            return ("ok" if info["level"] in ("ok", "over") else "warn"), info["text"]
+                return "warn", "Quote gerade nicht lesbar", "Matrix42 hat noch keine Buchungen geliefert, " \
+                    "aus denen sich die Quote rechnen lässt."
+            tip = info["tip"].replace("\nKlick: Wochenabschluss", "")
+            return ("ok" if info["level"] in ("ok", "over") else "warn"), text, tip
         if key == "data":
             try:
                 _win, pin, recovery, _transfer, _where = main.protection_state()
             except Exception:  # Zustand darf die Einstellungen nie blockieren
-                return "warn", "Zustand unbekannt"
+                return "warn", "Zustand unbekannt", "Der Schutz der Daten ließ sich gerade nicht prüfen."
             ok = recovery != "fehlt noch"
-            return ("ok" if ok else "warn"), f"Verschlüsselt · PIN {pin} · Wiederherstellungsschlüssel {recovery}"
-        return "off", ""
+            text = f"Verschlüsselt · PIN {pin} · Wiederherstellungsschlüssel {recovery}"
+            why = ("Daten verschlüsselt, Wiederherstellungsschlüssel vorhanden." if ok else
+                   "Es gibt noch keinen Wiederherstellungsschlüssel. Ohne ihn sind die Daten verloren, "
+                   "wenn Windows-Konto oder PIN nicht mehr gehen. Anlegen unter Datenschutz …")
+            return ("ok" if ok else "warn"), text, why
+        return "off", "", ""
 
     def retheme(self):
         """Design gewechselt (auch eigene Farben): Symbole und Kachelbilder neu malen. Das Fenster
@@ -990,12 +1042,16 @@ class SettingsWindow(QDialog):
 
     def refresh_status(self):
         for key, (mark, text) in self.status.items():
-            state, words = self._status_text(key)
+            state, words, why = self._status_text(key)
             if state == "off":
                 mark.clear()
             else:
                 mark.setPixmap(icons.source_icon(state).pixmap(16, 16))
             text.set_full_text(words)
+            tip = f"{words}\n\n{why}" if why else ""  # Begründung: warum gelb, was tun
+            mark.setToolTip(tip)
+            text.set_tip(tip)
+            mark.setAccessibleDescription(why)
 
     def _prompts_changed(self):
         main = self.main

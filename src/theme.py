@@ -2,7 +2,8 @@
 
 Ein neues Design ändert nur die Werte in THEMES und ergänzt bei Bedarf STYLESHEET
 ($name wird durch den Wert des Tokens ersetzt, siehe apply_style in app_menus.py;
-$checkmark ist der Pfad zum Haken-Bild aus icons.check_mark_file).
+$checkmark ist der Pfad zum Haken-Bild aus icons.check_mark_file, $switch_on/$switch_off
+die Schalterbilder aus icons.switch_tokens).
 Die Timeline (timeline_only.py) nimmt ihre Grundfarben ebenfalls aus THEMES.
 """
 import html
@@ -547,10 +548,14 @@ QListWidget#settings_nav::item:hover:!selected { background-color: $hover; }
 QFrame#tile { background-color: $surface; border: 1px solid $border; border-radius: $radius_cardpx; }
 QFrame#tile QLabel, QFrame#tile QCheckBox { background: transparent; }
 QCheckBox#switch { spacing: 8px; font-weight: normal; color: $muted; }
-QCheckBox#switch::indicator { width: 30px; height: 16px; border: 2px solid $muted; border-radius: $radius_cardpx;
-                              background-color: $surface; }
-QCheckBox#switch::indicator:checked { border-color: $accent; background-color: $accent; image: none; }
-QCheckBox#switch::indicator:focus { border-color: $text; }
+QCheckBox#switch:focus { color: $text; }
+QCheckBox#switch::indicator { width: 40px; height: 20px; border: none; background: transparent;
+                              image: url($switch_off); }
+QCheckBox#switch::indicator:hover, QCheckBox#switch::indicator:focus { border: none; }
+QCheckBox#switch::indicator:checked { border: none; background: transparent; image: url($switch_on); }
+QCheckBox#switch::indicator:disabled { border: none; background: transparent; image: url($switch_off_disabled); }
+QCheckBox#switch::indicator:checked:disabled { border: none; background: transparent;
+                                               image: url($switch_on_disabled); }
 /* Einstellungen (settings_window.py): jede Zeile eine Karte, Icon in ruhiger Kachel, Abschnitte */
 QFrame#setting_row { background-color: $surface; border: 1px solid $border; border-radius: $radius_cardpx; }
 QFrame#setting_row:hover { border-color: $control; }

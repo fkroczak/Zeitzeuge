@@ -131,6 +131,12 @@ def gui_test():
     settings.refresh_status()
     assert set(settings.status) == {"sources", "prompts", "booking", "data"}
     assert "Quellen an" in settings.status["sources"][1].full_text()
+    # Gelbes Zeichen erklärt sich im Tooltip: welche Quelle, warum
+    state, _words, why = settings._status_text("sources")
+    mark, text = settings.status["sources"]
+    if state == "warn":
+        assert "Mit Problem:" in why and why in mark.toolTip() and why in text.toolTip()
+    assert settings._status_text("data")[2], "Datenschutz begründet seinen Zustand"
     settings.show_page("general")  # alter Name leitet weiter
     assert settings.current_page() == "home"
 
