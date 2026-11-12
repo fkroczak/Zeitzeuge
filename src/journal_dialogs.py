@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (QButtonGroup, QCheckBox, QComboBox, QCompleter, Q
                                QPushButton, QSpinBox, QTimeEdit, QToolButton, QVBoxLayout,
                                QWidget)
 
+import spellcheck
 from theme import theme_for, SPACE_M, SPACE_S, SPACE_XS
 from flow_layout import FlowLayout
 import icons
@@ -158,6 +159,7 @@ class _EntryForm(QWidget):
         self._build_flag_details(form, flag_details or {})
 
         self.text_edit = QPlainTextEdit(text)
+        spellcheck.attach(self.text_edit)  # falsche Wörter rot unterkringelt (Windows-Prüfung)
         self.text_edit.setPlaceholderText("Was hast du gemacht? z. B. „Drucker neu eingerichtet, "
                                           "Treiber aktualisiert“")
         self.text_edit.setTabChangesFocus(True)

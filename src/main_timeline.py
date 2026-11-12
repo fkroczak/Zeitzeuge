@@ -457,6 +457,8 @@ class TimelineApp(MenusMixin, DayListMixin, DayCloseMixin, DocsMixin, ReadersMix
         self.data_store = open_store()  # im Start (unten) schon mit Dialog geöffnet, in Tests hier
         first_start = not os.path.exists(CONFIG_FILE)
         self.config = load_config_with_defaults()
+        import spellcheck
+        spellcheck.use_config(self.config)  # Schalter „Rechtschreibprüfung“ für alle Textfelder
         # Einrichtungsassistent nur beim allerersten Start (bestehende Installationen nicht)
         self._wizard_open = False
         self._wizard_pending = (first_start and not self.config.get("setup_done")

@@ -16,6 +16,7 @@ import m42_booking as mb
 import m42_tickets as mt
 from flow_layout import FlowLayout
 from prompt_card import _ElidedLabel, _icon_label, source_tile
+import spellcheck
 from theme import SPACE_M, SPACE_S, SPACE_XS
 
 DEFAULT_CATEGORY = "Ticketeingang"
@@ -221,6 +222,7 @@ class NewTicketDialog(_CardDialog):
         box.addWidget(_label("&Betreff", self.subject_edit))
         box.addWidget(self.subject_edit)
         self.description_edit = QPlainTextEdit(description)
+        spellcheck.attach(self.description_edit)
         self.description_edit.setPlaceholderText("Was ist los? Was hat der Kunde gemeldet?")
         self.description_edit.setTabChangesFocus(True)
         self.description_edit.setFixedHeight(96)
@@ -410,6 +412,7 @@ class CloseTicketDialog(_CardDialog):
         self.head_box.addWidget(line)
 
         self.solution_edit = QPlainTextEdit(solution)
+        spellcheck.attach(self.solution_edit)
         self.solution_edit.setPlaceholderText("Was war die Lösung? z. B. „Treiber neu installiert, mit Kunde getestet“")
         self.solution_edit.setTabChangesFocus(True)
         self.solution_edit.setFixedHeight(110)

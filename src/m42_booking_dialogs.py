@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QDateEdit, QDialog, QDialog
                                QLabel, QLineEdit, QListWidget, QListWidgetItem, QPlainTextEdit,
                                QPushButton, QTimeEdit, QToolButton, QVBoxLayout)
 
+import spellcheck
 from theme import fit_bold, prose
 from prompt_card import CardParts, _theme_colors
 import m42_booking as mb
@@ -171,6 +172,7 @@ class BookingDialog(_TicketSearch, CardParts, QDialog):
         self._surcharge_toggled(self.surcharge_box.isChecked())
 
         self.text_edit = QPlainTextEdit(plan.get("text", ""))
+        spellcheck.attach(self.text_edit)
         self.text_edit.setTabChangesFocus(True)
         self.text_edit.setFixedHeight(90)
         form.addRow("&Beschreibung:", self.text_edit)
