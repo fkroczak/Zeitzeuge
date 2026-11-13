@@ -184,7 +184,7 @@ ROWS = [
     ("data/Anderer PC", "button", "download", "Daten übernehmen", "Von einem anderen PC einlesen.", "import_data", None),
 
     ("about", "check", "download", "Updates automatisch suchen",
-     "Alle 6 Stunden nach einer neuen Version sehen und sie mit einem Klick installieren.", "update_check", True),
+     "Jede Stunde nach einer neuen Version sehen und sie mit einem Klick installieren.", "update_check", True),
     ("about", "button", "refresh", "Nach Updates suchen",
      "Neue Version laden und installieren. Zeitzeuge startet danach neu, die Daten bleiben.",
      "check_update_now", lambda m: m.update_state_text()),

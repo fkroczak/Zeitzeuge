@@ -1,7 +1,7 @@
 """Updates im Hauptfenster: im Hintergrund suchen, Hinweis zeigen, laden, still installieren.
 
 Die Logik (GitHub, Prüfsumme, Signatur, Setup starten) steht in updater.py. Hier nur:
-- Suche 2 Minuten nach dem Start und dann alle 6 Stunden (Einstellung update_check), nur in
+- Suche 2 Minuten nach dem Start und dann jede Stunde (Einstellung update_check), nur in
   gebauten Versionen (main oder Testversion) mit eingebautem Update-Zugang.
 - Neue Version: Hinweis „Update auf x.y.z“ mit „Jetzt aktualisieren“ (je Version einmal pro Sitzung).
 - Einstellungen → Info → „Nach Updates suchen“: dasselbe von Hand, mit Rückmeldung.

@@ -26,7 +26,7 @@ from datetime import datetime, timezone
 API = "https://api.github.com"
 DEFAULT_REPO = "fkroczak/Zeitzeuge"
 ASSET = "Zeitzeuge-Setup.exe"
-CHECK_HOURS = 6          # so oft sucht Zeitzeuge im Hintergrund
+CHECK_HOURS = 1          # so oft sucht Zeitzeuge im Hintergrund
 TOKEN_WARN_DAYS = 30     # so lange vor Ablauf des Tokens warnt Zeitzeuge
 
 
