@@ -160,6 +160,12 @@ class MenusMixin:
         right.setObjectName("fixed")
         right.setIconSize(QSize(18, 18))
         right.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        # „Jetzt updaten“: nur sichtbar, wenn eine neuere Version gefunden wurde (app_update.py)
+        self.update_now_action = self._action("Jetzt updaten", lambda: self.install_update(), None,
+                                              "Neue Version laden und installieren. Zeitzeuge startet "
+                                              "danach neu, die Daten bleiben.", "download")
+        self.update_now_action.setVisible(False)
+        right.addAction(self.update_now_action)
         right.addWidget(self._build_view_button())
         right.addWidget(self._build_settings_button())
         right.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Preferred)

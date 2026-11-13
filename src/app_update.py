@@ -113,6 +113,17 @@ class UpdateMixin:
         window = getattr(self, "_settings_window", None)
         return window if window is not None and window.isVisible() else self
 
+    def show_update_button(self):
+        """Knopf „Jetzt updaten“ links neben „Ansicht“ nur, wenn ein Update da ist."""
+        action = getattr(self, "update_now_action", None)
+        if action is not None:
+            info = self.update_info
+            action.setVisible(bool(info))
+            if info:
+                action.setToolTip(f"<b>Jetzt updaten</b><br>Version {info['version']} laden und installieren "
+                                  f"(installiert: {version.full_version()}). Zeitzeuge startet danach "
+                                  "neu, die Daten bleiben.")
+
     def _update_checked(self, info, error, manual):
         self._update_busy = False
         if error:
@@ -126,12 +137,14 @@ class UpdateMixin:
                         "UPDATE_READ_TOKEN hinterlegen und ein Release bauen.")
         if not updater.is_newer(info["version"], version.full_version()):
             self.update_info = None
+            self.show_update_button()
             self.update_message = f"Aktuell (Version {version.full_version()})"
             if manual:
                 QMessageBox.information(self._update_parent(), "Nach Updates suchen",
                                         f"Zeitzeuge ist aktuell (Version {version.full_version()}).")
             return
         self.update_info = info
+        self.show_update_button()
         self.update_message = f"Version {info['version']} ist da"
         notes = info.get("changes") or []
         if manual:
