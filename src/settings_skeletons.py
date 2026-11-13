@@ -1,7 +1,8 @@
 """Kleine Skelett-Bilder für die Kacheln auf der Seite „Darstellung“ (settings_window.py).
 
 Nur Umrisse und Balken, keine Texte: Design (Hell, Dunkel, Wie Windows, Eigene Farben),
-Timeline beim Start, PC-Aktivität, Hervorhebung unter der Maus, PC-Verlauf in der Liste und die Ansichten der Tagesliste.
+Timeline beim Start, PC-Aktivität, Hervorhebung unter der Maus, PC-Verlauf in der Liste, die Ansichten der Tagesliste
+und die Anordnungen im Fenster „Tickets“.
 Farben kommen aus den Tokens des Designs (theme.py); die Design-Kacheln zeigen jeweils ihr
 eigenes Design. preview(key, value, tokens) gibt ein QPixmap in 96 × 60 (doppelt aufgelöst).
 """
@@ -240,7 +241,72 @@ def _hover(value, tokens):
     return s.done()
 
 
-PAINTERS = {"hover_focus": _hover, "theme": _theme, "timeline_range": _timeline_range, "pc_blocks_action": _pc_blocks,
+def _ticket_layout(value, tokens):
+    """Fenster „Tickets“: Kategorien als Pillen (aktive in Akzentfarbe), Suche, Tabellenzeilen."""
+    s = _Sketch(tokens)
+    s.frame()
+    t = s.t
+    accent, chip, label = _color(t["accent"]), s.muted(60), s.muted(170)
+
+    def pills(x, y, widths, active=0, h=6):
+        for i, w in enumerate(widths):
+            s.bar(x, y, w, h, accent if i == active else chip, h / 2)
+            x += w + 3
+        return x
+
+    def menu_pill(x, y, w):  # Pille mit kleinem Pfeil (Menü)
+        s.bar(x, y, w, 6, chip, 3)
+        s.p.setPen(QPen(s.muted(200), 1))
+        s.p.drawPolyline([QPointF(x + w - 6, y + 2.2), QPointF(x + w - 4.5, y + 3.8), QPointF(x + w - 3, y + 2.2)])
+
+    def table(x, y, rows):
+        s.outline(x, y, W - 6 - x, 4, _color(t["border"]))  # Suchfeld
+        for i in range(rows):
+            s.bar(x + 2, y + 9 + i * 5.5, (W - 14 - x) - (i % 3) * 8, 2.4, s.muted(140))
+
+    value = int(value)
+    if value == 1:  # zwei beschriftete Zeilen
+        for y, widths in ((7, (14, 10, 16, 12)), (16, (12, 16, 10))):
+            s.bar(8, y + 1.5, 9, 3, label)
+            pills(21, y, widths, active=0 if y == 7 else -1)
+        table(8, 26, 4)
+    elif value == 2:  # kompakt: Hauptkategorien, dahinter Menü-Pillen
+        x = pills(8, 8, (14, 10, 14))
+        for w in (13, 15):
+            menu_pill(x, 8, w)
+            x += w + 3
+        table(8, 19, 5)
+    elif value == 3:  # Seitenleiste mit Überschriften
+        s.bar(31, 6, 0.8, H - 12, _color(t["border"]), 0)
+        y = 8
+        for items in (2, 3):
+            s.bar(8, y, 12, 2.6, _color(t["text"], 200))
+            y += 5.5
+            for i in range(items):
+                chosen = y < 20 and i == 0
+                if chosen:
+                    s.bar(10, y - 1, 19, 4.5, _color(t["sel"]), 1.5)
+                s.bar(12, y, 12 - (i % 2) * 4, 2.4, _color(t["seltext"]) if chosen else s.muted(150))
+                y += 5.5
+            y += 3
+        table(36, 8, 7)
+    elif value == 4:  # Bereich oben, darunter seine Kategorien
+        x = 8
+        for i, w in enumerate((20, 14, 18, 16)):
+            s.bar(x, 7, w, 7, accent if i == 0 else chip, 2)
+            x += w + 2
+        pills(10, 17, (12, 16, 10), h=5)
+        table(8, 27, 4)
+    else:  # Favoriten: wenige angeheftete Pillen, Rest über „+ Filter“
+        x = pills(8, 8, (14, 12, 10))
+        s.outline(x, 8, 16, 6, s.muted(180), radius=3, dashed=True)
+        s.bar(x + 4, 10.7, 4, 0.9, s.muted(200), 0)
+        s.bar(x + 5.55, 9.2, 0.9, 4, s.muted(200), 0)
+        table(8, 19, 5)
+    return s.done()
+
+
+PAINTERS = {"ticket_layout": _ticket_layout, "hover_focus": _hover, "theme": _theme, "timeline_range": _timeline_range, "pc_blocks_action": _pc_blocks,
             "pc_list_action": _pc_list, "list_view": _list_view}
 
 
