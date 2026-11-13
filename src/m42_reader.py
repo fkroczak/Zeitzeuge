@@ -729,20 +729,16 @@ class M42Reader(BrowserReader):
         sla = (self._fetch("GET", mt.sla_path(category, initiator, kind, impact)) or {}).get("TightestItem")
         try:
             details = self._fetch("GET", f"{api}/activity/UserDetails/{initiator}/?userId={initiator}") or {}
-        except Exception:  # nur der Rückruf fehlt dann
+        except Exception as e:  # nur der Rückruf fehlt dann
+            safe_io.log(f"Matrix42: UserDetails des Melders nicht gelesen ({e})")
             details = {}
         callback = details.get("Phone") if isinstance(details, dict) else None
         # Kunde (OU) des Melders, sonst gehört das Ticket zur eigenen OU aus der Vorlage
         initiator_ou = mt.initiator_common(details)
-        if not initiator_ou:
-            try:
-                initiator_ou = mt.initiator_common(self._fetch(
-                    "GET", f"{api}/data/objects/SPSPersonType/{initiator}?full=true"))
-            except Exception as e:
-                safe_io.log(f"Matrix42: Personenobjekt des Melders nicht gelesen ({e})")
-        if not initiator_ou:
-            safe_io.log("Matrix42: keine OU des Melders gefunden, UserDetails-Felder: "
-                        f"{sorted(details) if isinstance(details, dict) else type(details).__name__}")
+        if initiator_ou:
+            safe_io.log(f"Matrix42: Kunde des Melders: {initiator_ou}")
+        else:  # Personenobjekt (data/objects) lesen darf ein Agent nicht (403)
+            safe_io.log(f"Matrix42: keine OU des Melders gefunden. UserDetails: {mt.field_overview(details)}")
         entity = mt.ticket_entity(template, kind, request.get("subject", ""), request.get("description", ""),
                                   category, initiator, self.user_id, sla, impact, urgency, callback,
                                   initiator_ou)
