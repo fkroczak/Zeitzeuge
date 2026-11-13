@@ -1093,6 +1093,13 @@ class TimelineView(QGraphicsView):
                 self.rdp_reader.event_sessions()
             except Exception as e:  # Timeline darf daran nie scheitern
                 print(f"RDP-Ereignisprotokoll nicht vorab gelesen: {e}")
+        # VPN-Logs (FortiClient-Trace, Sophos) ebenso hier auswerten: beim Zeichnen liest
+        # connections(update=False) dann nur noch das Archiv
+        try:
+            if vpn_sources(self.config):
+                self.vpn_reader.update_from_logs()
+        except Exception as e:  # Timeline darf daran nie scheitern
+            print(f"VPN-Logs nicht vorab gelesen: {e}")
         if not self._closing and self._day_data is None:  # nur vor dem ersten Zeichnen
             self._warm_up()
         if not self._closing:
@@ -1141,7 +1148,7 @@ class TimelineView(QGraphicsView):
             try:
                 self.vpn_reader.sources = vpn_sources(self.config)
                 self._sophos_index = ConnectionIndex(
-                    self.vpn_reader.connections() if self.vpn_reader.sources else [])
+                    self.vpn_reader.connections(update=False) if self.vpn_reader.sources else [])
             except Exception as e:
                 print(f"Fehler beim Lesen der VPN-Logs: {e}")
                 self._sophos_index = ConnectionIndex([])

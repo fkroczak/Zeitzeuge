@@ -22,6 +22,7 @@ import glob
 import os
 import re
 import sys
+import threading
 from datetime import datetime
 
 import datastore
@@ -395,6 +396,7 @@ class VpnReader:
         self._data = None
         self._running_logs = []
         self._last_sample = None
+        self._logs_lock = threading.Lock()  # Logs liest meist der Hintergrund-Thread der Timeline
 
     # ------------------------------------------------------------ Archiv
 
@@ -484,7 +486,17 @@ class VpnReader:
     # ------------------------------------------------------------ Logs
 
     def update_from_logs(self):
-        """Sophos-/charon-Logs lesen und Neues ins Archiv übernehmen (nur wenn sich Dateien geändert haben)."""
+        """Sophos-/charon-Logs lesen und Neues ins Archiv übernehmen (nur wenn sich Dateien geändert haben).
+        Läuft im Hintergrund (Timeline._load_logs): das Auswerten des FortiClient-Trace hielt laut
+        haenger.log das Fenster sonst alle 2 Minuten um 2 s an. Gleichzeitige Aufrufe warten aufeinander."""
+        with self._logs_lock:
+            self._update_from_logs()
+
+    def logs_read(self):
+        """Wurden die Logs schon einmal gelesen? (Sonst liest connections sie selbst.)"""
+        return self._sig is not None
+
+    def _update_from_logs(self):
         folders = [os.path.expandvars(d) for d in self.dirs if os.path.isdir(os.path.expandvars(d))]
         traces = []
         for p in self.forti_paths:
@@ -540,9 +552,11 @@ class VpnReader:
 
     # ------------------------------------------------------------ Anzeige
 
-    def connections(self):
-        """Alle Verbindungen für die Timeline. Eigene Aufzeichnung nur, wo die Logs nichts haben."""
-        self.update_from_logs()
+    def connections(self, update=True):
+        """Alle Verbindungen für die Timeline. Eigene Aufzeichnung nur, wo die Logs nichts haben.
+        update=False: die Logs nicht selbst lesen (das tut der Hintergrund), nur wenn noch nie gelesen."""
+        if update or not self.logs_read():
+            self.update_from_logs()
         data = self._archive()
         from_logs = data["connections"] + self._running_logs
         result = [dict(c) for c in from_logs]
