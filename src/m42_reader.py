@@ -325,7 +325,9 @@ class M42Reader(BrowserReader):
     booking_done = Signal(object)  # Ergebnis von book(): {ok, entry | error, request}
     activity_types_loaded = Signal(object)  # [(Wert, Name)] der Tätigkeitsarten
     tickets_found = Signal(object)  # Ergebnis von search_tickets(): {text, rows, error}
-    my_tickets_loaded = Signal(object)  # Meine Tickets: {rows (None = unbekannt), error, at}
+    my_tickets_loaded = Signal(object)  # Meine Tickets: {rows (None = unbekannt), all, error, at}
+    tickets_loaded = Signal(object)  # Kategorie im Fenster „Tickets“: {key, rows, error, at, limited}
+    ticket_filters_loaded = Signal(object)  # [{id, title}] gespeicherte Filter der Ticketliste
     ticket_task_done = Signal(object)  # Ergebnis von ticket_task(): {kind, ok, data | error, unclear}
 
     NAME = "Matrix42"
@@ -361,6 +363,8 @@ class M42Reader(BrowserReader):
         self.own_name = (own_name or "").strip()
         self.user_name = ""
         self.my_tickets = None  # letzte Antwort von my_tickets_loaded
+        self.ticket_views = {}  # Kategorie -> letzte Antwort von tickets_loaded
+        self.ticket_filters = None  # letzte Antwort von ticket_filters_loaded
         self.ticket_list = ""   # Ticketliste (Widget-ID), leer = m42_booking.DEFAULT_IDS
         self.ticket_ids = {}    # Kennungen für Anlegen/Schließen, leer = m42_tickets.DEFAULT_IDS
         self._me_checked = False  # eigener Benutzer schon bei Matrix42 nachgefragt (/userinfo)
@@ -625,18 +629,11 @@ class M42Reader(BrowserReader):
             result["error"] = ("Eigener Name noch unbekannt. Er kommt aus deinen Buchungen in Matrix42 "
                                "oder aus der Einstellung „m42_own_name“.")
         else:
-            items = []
             try:
-                for page in range(mb.MY_TICKETS_PAGES):
-                    data = self._fetch("POST", f"{mb.API}/WidgetList/GetData/"
-                                       f"{self.ticket_list or mb.DEFAULT_IDS['ticket_list']}"
-                                       f"?orderBy=CreatedDate+desc&pageSize={mb.MY_TICKETS_PAGE_SIZE}&page={page}",
-                                       mb.search_query("Recipient", word))
-                    data = data if isinstance(data, list) else []
-                    items.extend(data)
-                    if len(data) < mb.MY_TICKETS_PAGE_SIZE:
-                        break
-                result["rows"] = mb.my_open_tickets(items, name, "" if self.own_name else self.user_id)
+                items, result["limited"] = self._ticket_pages("", mb.search_query("Recipient", word))
+                # alle (auch erledigte) fürs Fenster „Tickets“ mit „Geschlossene“, offene für die Kachel
+                result["all"] = mb.my_tickets(items, name, "" if self.own_name else self.user_id)
+                result["rows"] = [r for r in result["all"] if not mb.is_closed(r)]
                 self._tickets_read = time.time()
             except Exception as e:
                 result["error"] = str(e)
@@ -646,6 +643,68 @@ class M42Reader(BrowserReader):
         else:  # Fehler: alte Liste behalten, Fehler dazuschreiben
             self.my_tickets = dict(self.my_tickets, error=result["error"])
         self.my_tickets_loaded.emit(self.my_tickets)
+
+    def _ticket_pages(self, params, body):
+        """Ticketliste seitenweise lesen (neueste zuerst, höchstens MY_TICKETS_PAGES Seiten).
+        -> (Einträge, True wenn es mehr gäbe). Nur mit gehaltenem _browser_lock."""
+        import m42_booking as mb
+        items = []
+        for page in range(mb.MY_TICKETS_PAGES):
+            data = self._fetch("POST", f"{mb.API}/WidgetList/GetData/"
+                               f"{self.ticket_list or mb.DEFAULT_IDS['ticket_list']}"
+                               f"?orderBy=CreatedDate+desc&pageSize={mb.MY_TICKETS_PAGE_SIZE}&page={page}{params}",
+                               body)
+            data = data if isinstance(data, list) else []
+            items.extend(data)
+            if len(data) < mb.MY_TICKETS_PAGE_SIZE:
+                return items, False
+        return items, True
+
+    def load_tickets(self, key, filter_id=""):
+        """Tickets einer Kategorie im Hintergrund lesen (auch erledigte), Ergebnis über
+        tickets_loaded. filter_id: gespeicherter Filter der Ticketliste, leer = alle Tickets."""
+        def run():
+            with self._browser_lock:
+                self._read_tickets(key, filter_id)
+        threading.Thread(target=run, daemon=True, name="Matrix42 Tickets").start()
+
+    def _read_tickets(self, key, filter_id=""):
+        import m42_booking as mb
+        result = {"key": key, "rows": None, "error": "", "at": datetime.now().strftime("%H:%M"),
+                  "limited": False, "time": time.time()}
+        try:
+            items, result["limited"] = self._ticket_pages(f"&filters={filter_id}" if filter_id else "",
+                                                          mb.EMPTY_QUERY)
+            result["rows"] = mb.ticket_rows(items)
+        except Exception as e:
+            result["error"] = str(e)
+            safe_io.log(f"Matrix42: Tickets „{key}“ nicht gelesen ({e})")
+        old = self.ticket_views.get(key)
+        if result["rows"] is None and old and old.get("rows") is not None:
+            result = dict(old, error=result["error"])  # Fehler: alte Liste behalten
+        self.ticket_views[key] = result
+        self.tickets_loaded.emit(result)
+
+    def load_ticket_filters(self):
+        """Gespeicherte Filter der Ticketliste (Kategorien) im Hintergrund lesen,
+        Ergebnis über ticket_filters_loaded ([] bei Fehlern)."""
+        def run():
+            import m42_booking as mb
+            widget = self.ticket_list or mb.DEFAULT_IDS["ticket_list"]
+            filters = []
+            try:
+                with self._browser_lock:
+                    view = self._fetch("GET", f"{mb.API}/widgetCommon/{widget}/html") or {}
+                    query = view.get("DataQueryId") if isinstance(view, dict) else ""
+                    if query:
+                        data = self._fetch("GET", f"{mb.API}/dataQuery/{query}/filters?widget={widget}")
+                        skip = [view.get(k) for k in ("RedFilter", "YellowFilter", "GreenFilter") if view.get(k)]
+                        filters = mb.ticket_filters(data, [mb.TK_FILTER] + skip)
+                self.ticket_filters = filters
+            except Exception as e:
+                safe_io.log(f"Matrix42: Ticketfilter nicht gelesen ({e})")
+            self.ticket_filters_loaded.emit(filters)
+        threading.Thread(target=run, daemon=True, name="Matrix42 Ticketfilter").start()
 
     def _me(self):
         """Eigenen Benutzer (Kennung und Name) einmal pro Sitzung bei Matrix42 nachfragen.
@@ -711,6 +770,8 @@ class M42Reader(BrowserReader):
             safe_io.log(f"Matrix42: Ticket {kind} fehlgeschlagen ({e!r})")
         if result["ok"] and kind in ("create", "edit", "close"):
             self._tickets_read = 0  # Meine Tickets beim nächsten Durchlauf neu lesen
+            for view in self.ticket_views.values():
+                view["time"] = 0  # Kategorien beim nächsten Anzeigen neu lesen
             threading.Thread(target=self.load_my_tickets, daemon=True).start()
         self.ticket_task_done.emit(result)
 

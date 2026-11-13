@@ -145,6 +145,10 @@ def default_config():
         "timeline_stripes": False,
         # Kundenfilter (Chip „Nach Kunde“) in der Timeline: "frame", "strong" oder "off"
         "customer_highlight": "frame",
+        # Fenster „Tickets“: Anordnung der Kategorien 1–5 (Ansicht → Ticketfenster, tickets_dialogs.LAYOUTS)
+        "ticket_layout": 1,
+        # Fenster „Tickets“, Anordnung 5: angeheftete Kategorien ("mine", "tk", "all", "f:<Filter-ID>")
+        "ticket_favorites": ["mine", "tk", "all"],
         # Aktivitätsdetails: Werte in schreibgeschützten Textfeldern statt als Text (zum Kopieren)
         "detail_text_fields": False,
         # Eigene Farben (Menü Ansicht → Design, theme.custom_theme): Grundlage und Grundfarben

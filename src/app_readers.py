@@ -423,18 +423,34 @@ class ReadersMixin:
             QDesktopServices.openUrl(QUrl.fromLocalFile(os.path.dirname(path)))
 
     def show_my_tickets(self):
-        """Fenster „Meine Tickets“ (Kachel über der Timeline), nur eins auf einmal."""
-        from my_tickets_dialogs import MyTicketsDialog
+        """Fenster „Tickets“ mit „Meine Tickets“ (Kachel über der Timeline), nur eins auf einmal."""
+        from tickets_dialogs import TicketsDialog
         if not self.m42_reader:
             return
         dialog = getattr(self, "_my_tickets_dialog", None)
         if dialog is None:
-            dialog = self._my_tickets_dialog = MyTicketsDialog(self.m42_reader, self)
+            dialog = self._my_tickets_dialog = TicketsDialog(
+                self.m42_reader, self, layout=self.config.get("ticket_layout", 1),
+                favorites=self.config.get("ticket_favorites"))
+            dialog.layout_chosen.connect(lambda no: self.choose_ticket_layout(no, from_dialog=True))
+            dialog.favorites_changed.connect(self._save_ticket_favorites)
             dialog.setAttribute(Qt.WA_DeleteOnClose)
             dialog.destroyed.connect(lambda: setattr(self, "_my_tickets_dialog", None))
         dialog.show()
         dialog.raise_()
         dialog.activateWindow()
+
+    def choose_ticket_layout(self, no, from_dialog=False):
+        """Anordnung der Kategorien im Fenster „Tickets“ (1–5) merken und anwenden."""
+        self.config["ticket_layout"] = no
+        mt.save_config(self.config)
+        dialog = getattr(self, "_my_tickets_dialog", None)
+        if dialog is not None and not from_dialog:
+            dialog.choose_layout(no, save=False)
+
+    def _save_ticket_favorites(self, favorites):
+        self.config["ticket_favorites"] = list(favorites)
+        mt.save_config(self.config)
 
     # ---------------------- ITM-Personalzeiten --------------------------------
 

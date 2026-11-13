@@ -221,3 +221,54 @@ def test_reise_mit_kilometern():
     assert base["IsTravel"] and base["Approach"] == 42 and base["Departure"] == 40
     base = mb.time_entry(TEMPLATE, "t", "s", "u", start, end, 60, "x", travel=True)["ITMTimeEntryClassBase"]
     assert base["Approach"] is None and base["Departure"] is None, "ohne Kilometer wie bisher"
+
+
+def test_ticket_kategorien():
+    items = [{"TicketNumber": "TCK0000000001", "Id": "1", "State": "Gelöst", "Recipient": "Kroczak, Filip",
+              "CreatedDate": "2026-10-01T08:00:00Z"},
+             {"TicketNumber": "TCK0000000002", "Id": "2", "State": "Angehalten", "Recipient": "Kroczak, Filip",
+              "CreatedDate": "2026-10-02T08:00:00Z"},
+             {"TicketNumber": "TCK0000000002", "Id": "2", "State": "Angehalten"},  # doppelt
+             {"TicketNumber": "TSK0000000003", "Id": "3", "State": "Neu"}]  # Aufgabe: kein Ticket
+    assert [r["ticket"] for r in mb.ticket_rows(items)] == ["TCK0000000002", "TCK0000000001"]
+    assert [r["ticket"] for r in mb.my_tickets(items, "Kroczak, Filip")] == ["TCK0000000002", "TCK0000000001"]
+    assert [r["ticket"] for r in mb.my_open_tickets(items, "Kroczak, Filip")] == ["TCK0000000002"]
+    filters = [{"Id": "g", "Title": "Keine Eskalationsgefahr", "QuickFilter": 3},
+               {"Id": mb.TK_FILTER, "Title": "TK Tickets"},
+               {"Id": "m", "Title": "Meine  Tickets"},
+               {"Id": "o", "Title": "Ohne Verantwortung"}, {"Id": "o", "Title": "Ohne Verantwortung"},
+               {"Id": "", "Title": "kaputt"}, "Unsinn"]
+    assert mb.ticket_filters(filters) == [{"id": "o", "title": "Ohne Verantwortung"}]
+    # Liste wie im Service Desk: Doppelte zu den festen Pillen weg, Ordner „Meine“ aufgelöst
+    names = ["ALLE offenen Tickets", "ICH bin Verantwortlich", "Neue Tickets", "Neue TK Tickets",
+             "Ohne Verantwortung", "TK Tickets", "Ticket_Pool_A", "Ticket_Pool_Infrastruktur", "Offen Vertrieb"]
+    listing = [{"Id": f"id{i}", "Title": n, "QueryFilter": "{}"} for i, n in enumerate(names)]
+    listing.insert(2, {"Id": "ordner", "Title": "Meine", "Children": [{"Id": "m1", "Title": "Meine Störungen"}]})
+    assert [f["title"] for f in mb.ticket_filters(listing)] == [
+        "Meine Störungen", "Neue Tickets", "Neue TK Tickets", "Ohne Verantwortung", "Ticket Pool A",
+        "Ticket Pool Infrastruktur", "Offen Vertrieb"]
+    assert mb.ticket_filters({"x": 1}) == []
+
+
+def test_tickets_einer_kategorie_lesen(tmp_path):
+    from m42_reader import M42Reader
+    reader = M42Reader("https://m42.example/wm/", str(tmp_path / "m42.json"), str(tmp_path / "p"))
+    calls, got = [], []
+
+    def fetch(method, path, body=None, content_type=None):
+        calls.append((path, body))
+        return [{"TicketNumber": "TCK0000000001", "Id": "1", "State": "Geschlossen",
+                 "CreatedDate": "2026-10-01T08:00:00Z"}]
+    reader._fetch = fetch
+    reader.tickets_loaded.connect(got.append)
+    reader._read_tickets("tk", mb.TK_FILTER)
+    assert calls[0][0].endswith(f"&filters={mb.TK_FILTER}") and calls[0][1] == mb.EMPTY_QUERY
+    assert got[-1]["key"] == "tk" and got[-1]["rows"][0]["state"] == "Geschlossen" and not got[-1]["limited"]
+    reader._read_tickets("all", "")
+    assert "filters=" not in calls[-1][0]
+
+    def broken(*_a, **_k):
+        raise mb.BookingError("Matrix42 antwortet mit Fehler 500")
+    reader._fetch = broken
+    reader._read_tickets("tk", mb.TK_FILTER)  # Fehler: alte Liste bleibt
+    assert len(got[-1]["rows"]) == 1 and "500" in got[-1]["error"] and reader.ticket_views["tk"] is got[-1]

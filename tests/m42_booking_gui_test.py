@@ -250,9 +250,9 @@ def gui_test():
     reader.my_tickets_loaded.connect(window.day_summary.show_my_tickets)
     window.show_my_tickets()  # liest beim ersten Öffnen
     app.processEvents()
-    from my_tickets_dialogs import MyTicketsDialog
+    from tickets_dialogs import TicketsDialog
     mine = window._my_tickets_dialog
-    assert isinstance(mine, MyTicketsDialog) and mine.table.rowCount() == 1
+    assert isinstance(mine, TicketsDialog) and mine.table.rowCount() == 1
     cells = [mine.table.item(0, c).text() for c in range(mine.table.columnCount())]
     assert cells[:6] == ["TCK0000000002", "Drucker", "Müller", "Huber, Max", "", "Neu"], cells  # Art leer: ohne Sys-Entity
     mine.table.select_first()
@@ -262,6 +262,14 @@ def gui_test():
     assert app.clipboard().text() == "TCK0000000002"
     window.show_my_tickets()  # nur ein Fenster
     assert window._my_tickets_dialog is mine
+    # Anordnung: Standard 1, über Ansicht → Ticketfenster umschaltbar (gespeichert, gilt sofort)
+    assert mine.layout_no == 1
+    window.ticket_layout_actions[3].trigger()
+    assert window.config["ticket_layout"] == 3 and mine.layout_no == 3
+    mine.choose_layout(2)  # Menü im Fenster: landet in der Einstellung
+    assert window.config["ticket_layout"] == 2
+    mine.pin("all", False)
+    assert window.config["ticket_favorites"] == ["mine", "tk"]
     mine.close()
     window.day_summary.show_my_tickets(None)
     assert not tile.isVisibleTo(window)

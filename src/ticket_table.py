@@ -1,5 +1,5 @@
-"""Tickettabelle für „Meine Tickets“ und „Ticket suchen“: Spalten Ticket, Betreff, Kunde, Melder,
-Art (Störung/Serviceanfrage), Status, Angelegt; nach jeder Spalte sortierbar, filterbar (jedes Wort muss vorkommen, wie bei
+"""Tickettabelle für „Tickets“ und „Ticket suchen“: Spalten Ticket, Betreff, Kunde, Melder,
+Art (Störung/Serviceanfrage), Status, Bearbeiter, Angelegt; nach jeder Spalte sortierbar, filterbar (jedes Wort muss vorkommen, wie bei
 der Ticketsuche), erledigte Tickets grau. Enter oder Doppelklick: Signal activated(row).
 """
 from PySide6.QtCore import Qt, Signal
@@ -10,7 +10,7 @@ import m42_booking as mb
 
 # Spalte -> Feld der Ticketzeile (m42_booking.ticket_row)
 COLUMNS = [("Ticket", "ticket"), ("Betreff", "subject"), ("Kunde", "customer"), ("Melder", "initiator"),
-           ("Art", "type"), ("Status", "state"), ("Angelegt", "created")]
+           ("Art", "type"), ("Status", "state"), ("Bearbeiter", "recipient"), ("Angelegt", "created")]
 SUBJECT_COL = 1
 
 
@@ -44,13 +44,16 @@ class TicketTable(QTableWidget):
         for col, (_name, key) in enumerate(COLUMNS):
             if col == SUBJECT_COL:
                 header.setSectionResizeMode(col, QHeaderView.Stretch)
-            elif key in ("customer", "initiator"):
+            elif key in ("customer", "initiator", "recipient"):
                 header.setSectionResizeMode(col, QHeaderView.Interactive)
                 header.resizeSection(col, 150)
             else:
                 header.setSectionResizeMode(col, QHeaderView.ResizeToContents)
         # Sortieren erst auf Klick: bis dahin bleibt die Reihenfolge der Daten (Suche: offene zuerst)
         self._sort = None
+        self._filter = ""
+        self.page_size = 0  # Tickets je Seite, 0 = alle auf einer Seite
+        self.page = 0
         header.setSectionsClickable(True)
         header.setSortIndicatorShown(True)
         header.setSortIndicator(-1, Qt.AscendingOrder)
@@ -76,6 +79,7 @@ class TicketTable(QTableWidget):
             return
         if self._sort:
             self.sortItems(col, order)
+            self._show_page()
 
     def set_rows(self, rows):
         """Tickets zeigen: in der Reihenfolge der Daten, oder sortiert, wenn eine Spalte gewählt ist."""
@@ -93,8 +97,8 @@ class TicketTable(QTableWidget):
                     sort_key = text.casefold()
                 else:
                     text = row.get(key) or ""
-                    if key == "initiator":
-                        text = text.split(" - ")[0]  # „Müller, Jan“ ohne Firma (steht im Hinweis)
+                    if key in ("initiator", "recipient"):
+                        text = text.split(" - ")[0]  # „Müller, Jan“ ohne Firma/Abteilung (steht im Hinweis)
                     sort_key = text.casefold()
                 item = _Item(text, sort_key)
                 item.setToolTip(mb.ticket_tooltip(row))
@@ -105,6 +109,7 @@ class TicketTable(QTableWidget):
                 self.setItem(r, c, item)
         if self._sort:
             self.sortItems(*self._sort)
+        self._show_page()
         for r in range(self.rowCount()):
             if selected and self.row_at(r).get("id") == selected:
                 self.selectRow(r)
@@ -129,9 +134,38 @@ class TicketTable(QTableWidget):
         return [self.row_at(r) for r in range(self.rowCount()) if not self.isRowHidden(r)]
 
     def apply_filter(self, text):
-        text = (text or "").strip()
+        """Nur Tickets zeigen, in denen jedes Wort vorkommt; zurück auf die erste Seite."""
+        self._filter = (text or "").strip()
+        self.page = 0
+        self._show_page()
+
+    def _matching(self):
+        """Zeilennummern, die zum Filter passen, in der Reihenfolge der Tabelle."""
+        return [r for r in range(self.rowCount()) if not self._filter or mb.matches(self.row_at(r), self._filter)]
+
+    def matching_rows(self):
+        """Alle zum Filter passenden Tickets (über alle Seiten)."""
+        return [self.row_at(r) for r in self._matching()]
+
+    def pages(self):
+        n = len(self._matching())
+        return max(1, -(-n // self.page_size)) if self.page_size else 1
+
+    def set_page(self, page, size=None):
+        """Seite (ab 0) zeigen; size: Tickets je Seite (0 = alle)."""
+        if size is not None:
+            self.page_size = size
+        self.page = page
+        self._show_page()
+
+    def _show_page(self):
+        """Filter und Seite anwenden: nur die passenden Zeilen der aktuellen Seite zeigen."""
+        match = self._matching()
+        self.page = max(0, min(self.page, self.pages() - 1))
+        shown = set(match[self.page * self.page_size:(self.page + 1) * self.page_size]
+                    if self.page_size else match)
         for r in range(self.rowCount()):
-            hide = bool(text) and not mb.matches(self.row_at(r), text)
+            hide = r not in shown
             self.setRowHidden(r, hide)
             if hide and self.selectionModel().isRowSelected(r):
                 self.clearSelection()

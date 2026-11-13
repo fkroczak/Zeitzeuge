@@ -18,10 +18,11 @@ def gui_test():
     global app
     from PySide6.QtCore import QObject, Qt, QTimer, Signal
     from PySide6.QtTest import QTest
-    from PySide6.QtWidgets import QApplication, QDialog, QFormLayout
+    from PySide6.QtWidgets import QApplication, QDialog, QFormLayout, QToolButton
 
+    import m42_booking as mb
     import m42_tickets as mt
-    from my_tickets_dialogs import MyTicketsDialog
+    from tickets_dialogs import TicketsDialog
     from ticket_dialogs import CloseTicketDialog, EditTicketDialog, NewTicketDialog
 
     app = QApplication(sys.argv)
@@ -74,7 +75,7 @@ def gui_test():
             return True
 
     reader = FakeReader()
-    mine = MyTicketsDialog(reader)
+    mine = TicketsDialog(reader)
     mine.show()
     assert mine.table.rowCount() == 1 and not mine.close_button.isEnabled()  # erst nach Auswahl
     mine.table.select_first()
@@ -202,7 +203,7 @@ def gui_test():
         mk(1, "VPN bricht ab", "Weber", "Neu", "2026-11-03T08:00:00Z"),
         mk(3, "Drucker Empfang", "Schmidt", "In Bearbeitung", "2026-11-10T08:00:00Z"),
         mk(2, "Drucker Lager", "Weber", "Neu", "2026-11-05T08:00:00Z")]}
-    table_dialog = MyTicketsDialog(reader)
+    table_dialog = TicketsDialog(reader)
     table_dialog.show()
     app.processEvents()
     order = lambda: [r["ticket"][-1] for r in table_dialog.visible_rows()]  # noqa: E731
@@ -222,6 +223,151 @@ def gui_test():
     QTest.keyClick(table_dialog.table, Qt.Key_Return)
     assert app.clipboard().text() == "TCK0000000003"
     table_dialog.close()
+
+    # ---- Pillen: Kategorien schalten um, „Geschlossene“ wirkt bei jeder, Filter sucht nur darin
+    class CategoryReader(FakeReader):
+        tickets_loaded = Signal(object)
+        ticket_filters_loaded = Signal(object)
+        ticket_filters = None
+
+        def __init__(self):
+            super().__init__()
+            self.ticket_views, self.loads, self.filter_loads = {}, [], 0
+
+        def load_tickets(self, key, filter_id=""):
+            self.loads.append((key, filter_id))
+            rows = [mk(4, "Telefon TK", "Weber", "Neu", "2026-11-12T08:00:00Z"),
+                    mk(5, "Anlage TK alt", "Weber", "Geschlossen", "2026-11-01T08:00:00Z"),
+                    mk(6, "Telefon pausiert", "Huber", "Angehalten", "2026-11-11T08:00:00Z")]
+            self.ticket_views[key] = {"key": key, "rows": rows, "error": "", "at": "11:05", "time": 9e12}
+            QTimer.singleShot(0, lambda: self.tickets_loaded.emit(self.ticket_views[key]))
+
+        def load_ticket_filters(self):
+            self.filter_loads += 1
+            self.ticket_filters = [{"id": "f-neu", "title": "Neue Tickets"}]
+            QTimer.singleShot(0, lambda: self.ticket_filters_loaded.emit(self.ticket_filters))
+
+    creader = CategoryReader()
+    closed_mine = mk(7, "Drucker erledigt", "Weber", "Gelöst", "2026-11-01T08:00:00Z")
+    creader.my_tickets = dict(reader.my_tickets, all=reader.my_tickets["rows"] + [closed_mine])
+    tickets = TicketsDialog(creader)
+    tickets.show()
+    assert wait_for(lambda: "f:f-neu" in tickets.category_buttons, 2000)
+    def shown():
+        """Sichtbare Knöpfe der Auswahl, in Anzeigereihenfolge (Zeilen, darin von links)."""
+        app.processEvents()
+        buttons = [b for b in tickets.selector.findChildren(QToolButton) if b.isVisibleTo(tickets)]
+        return [b.text() for b in sorted(buttons, key=lambda b: (b.mapTo(tickets, b.rect().topLeft()).y(),
+                                                                  b.mapTo(tickets, b.rect().topLeft()).x()))]
+    def button(text):
+        return next(b for b in tickets.selector.findChildren(QToolButton) if b.text() == text and b.isVisibleTo(tickets))
+    # Anordnung 1 (Standard): Zeile „Ansicht“ und Zeile „Pools“, Geschlossene als Schalter
+    assert tickets.layout_no == 1 and shown() == ["Meine Tickets", "Alle", "Neue Tickets", "TK-Tickets"], shown()
+    assert tickets.closed_button is tickets.closed_switch and tickets.closed_switch.isVisibleTo(tickets)
+    assert tickets.category_buttons["mine"].isChecked() and not tickets.closed_button.isChecked()
+    assert tickets.windowTitle() == "Tickets" and len(tickets.visible_rows()) == 3  # offene von mir
+    tickets.closed_button.click()  # Geschlossene an: auch erledigte von mir
+    assert len(tickets.visible_rows()) == 4 and "davon 1 geschlossen" in tickets.status.text(), tickets.status.text()
+    tickets.category_buttons["tk"].click()  # Kategorie wechseln, „Geschlossene“ bleibt an
+    assert creader.loads == [("tk", mb.TK_FILTER)], creader.loads
+    assert wait_for(lambda: len(tickets.visible_rows()) == 3, 2000)
+    assert not tickets.category_buttons["mine"].isChecked() and tickets.closed_button.isChecked()
+    tickets.filter_edit.setText("tk")  # Suche nur in der Kategorie: auch das geschlossene
+    assert sorted(r["ticket"][-1] for r in tickets.visible_rows()) == ["4", "5"]
+    tickets.closed_button.click()  # aus: nur offene und angehaltene
+    assert [r["ticket"][-1] for r in tickets.visible_rows()] == ["4"]
+    tickets.filter_edit.clear()
+    assert sorted(r["state"] for r in tickets.visible_rows()) == ["Angehalten", "Neu"]
+    tickets.closed_button.click()
+    tickets.table.selectRow(next(r for r in range(tickets.table.rowCount())
+                                 if tickets.table.row_at(r)["state"] == "Geschlossen"))
+    assert not tickets.close_button.isEnabled() and tickets.edit_button.isEnabled()
+    tickets.category_buttons["all"].click()
+    tickets.category_buttons["tk"].click()  # schon gelesen und frisch: nicht nochmal
+    assert [k for k, _f in creader.loads] == ["tk", "all"], creader.loads
+    tickets.category_buttons["f:f-neu"].click()
+    assert creader.loads[-1] == ("f:f-neu", "f-neu")
+
+    # ---- Alle Anordnungen: Kategorie und „Geschlossene“ bleiben beim Wechsel erhalten
+    chosen = []
+    tickets.layout_chosen.connect(chosen.append)
+    tickets.choose("mine")
+    creader.ticket_filters = [{"id": "f-neu", "title": "Neue Tickets"}, {"id": "f-tk", "title": "Neue TK Tickets"},
+                              {"id": "f-a", "title": "Ticket_Pool_A"}, {"id": "f-v", "title": "Offen Vertrieb"}]
+    tickets.show_filters([{"id": "f-tk", "title": "Neue TK Tickets"}, {"id": "f-a", "title": "Ticket Pool A"},
+                          {"id": "f-v", "title": "Offen Vertrieb"}])
+    assert shown() == ["Meine Tickets", "Alle", "Neue Tickets", "Offen Vertrieb",
+                       "TK-Tickets", "Neue TK Tickets", "Ticket Pool A"], shown()
+    tickets.layout_actions[2].trigger()  # Kompakt: TK/Pools/Weitere als Menü
+    assert chosen == [2] and shown() == ["Meine Tickets", "Alle", "Neue Tickets", "TK  ▾", "Pools  ▾", "Weitere  ▾"], shown()
+    tk_menu = button("TK  ▾")
+    tk_menu.menu().actions()[1].trigger()  # „Neue TK Tickets“
+    assert tickets.category == "f:f-tk" and "TK: Neue TK Tickets  ▾" in shown(), shown()
+    tickets.choose_layout(3)  # Seitenleiste: keine Pillen, Geschlossene als Pille neben der Suche
+    assert shown() == [] and tickets.sidebar.isVisibleTo(tickets) and tickets.closed_button is tickets.closed_chip
+    assert tickets.sidebar.currentItem().text().strip() == "Neue TK Tickets"
+    item = next(tickets.sidebar.item(i) for i in range(tickets.sidebar.count())
+                if tickets.sidebar.item(i).text().strip() == "Alle")
+    tickets.sidebar.setCurrentItem(item)
+    assert tickets.category == "all"
+    was = tickets.closed()
+    tickets.closed_button.click()
+    assert tickets.closed() != was and tickets.closed_switch.isChecked() == tickets.closed()
+    tickets.choose_layout(4)  # Bereich „Allgemein“ und seine Kategorien
+    assert not tickets.sidebar.isVisibleTo(tickets)
+    assert shown() == ["Meine", "Allgemein", "TK", "Pools", "Weitere", "Alle", "Neue Tickets"], shown()
+    button("TK").click()
+    assert tickets.category == "f:f-tk"  # zuletzt gewählte im Bereich TK
+    tickets.category_buttons["tk"].click()
+    assert tickets.category == "tk"
+    favs = []
+    tickets.favorites_changed.connect(favs.append)
+    tickets.choose_layout(5)  # Favoriten, Rest über „+ Filter“
+    assert shown() == ["Meine Tickets", "TK-Tickets", "Alle", "+ Filter", "Geschlossene"], shown()
+    more = button("+ Filter")
+    next(a for a in more.menu().actions() if a.text() == "Offen Vertrieb").trigger()
+    assert tickets.category == "f:f-v" and "Offen Vertrieb" in shown()  # vorübergehend
+    more = button("+ Filter")
+    pin = next(a for a in more.menu().actions() if a.menu()).menu()
+    next(a for a in pin.actions() if a.text() == "Ticket Pool A").trigger()
+    assert favs == [["mine", "tk", "all", "f:f-a"]] and "Ticket Pool A" in shown()
+    tickets.choose_layout(1)
+    assert tickets.closed_button is tickets.closed_switch and tickets.category == "f:f-v"
+    assert tickets.category_buttons["f:f-v"].isChecked() and chosen == [2, 3, 4, 5, 1]
+    tickets.close()
+
+    # ---- Reihenfolge wie im Service Desk sinnvoll gruppiert, Unbekannte nach Ähnlichkeit/ans Ende
+    from tickets_dialogs import pill_rank
+    names = ["Offen Vertrieb", "Ticket Pool PVS", "Ticket Pool A", "Ticket Pool TK", "Ohne Verantwortung",
+             "Störungen extern", "Neue TK Tickets", "Neue Tickets", "Ticket Pool B", "TK Eskalation",
+             "Ticket Pool Infrastruktur", "TK-Tickets", "Alle", "Meine Tickets"]
+    assert sorted(names, key=pill_rank) == [
+        "Meine Tickets", "Alle", "Neue Tickets", "Ohne Verantwortung", "TK-Tickets", "Neue TK Tickets",
+        "Ticket Pool TK", "TK Eskalation", "Ticket Pool A", "Ticket Pool B", "Ticket Pool Infrastruktur",
+        "Ticket Pool PVS", "Offen Vertrieb", "Störungen extern"]
+
+    # ---- Seiten: 50 oder 100 Tickets je Seite, Filter und Kategorie fangen wieder bei Seite 1 an
+    many = [dict(ROW, ticket=f"TCK{n:010d}", id=f"p{n}", subject=f"Thema {n}" + (" vpn" if n % 2 else ""),
+                 created=f"2026-10-01T08:{n // 60:02d}:{n % 60:02d}Z") for n in range(120)]
+    creader.my_tickets = {"at": "12:00", "error": "", "rows": many, "all": many}
+    paged = TicketsDialog(creader)
+    paged.show()
+    app.processEvents()
+    assert len(paged.visible_rows()) == 50 and paged.page_label.text() == "Seite 1 von 3"
+    assert paged.visible_rows()[0]["id"] == "p119" and not paged.prev_button.isEnabled()
+    assert "120 offene Tickets" in paged.status.text(), paged.status.text()
+    paged.next_button.click()
+    paged.next_button.click()
+    assert len(paged.visible_rows()) == 20 and not paged.next_button.isEnabled()
+    assert paged.visible_rows()[-1]["id"] == "p0"
+    paged.size_combo.setCurrentIndex(1)  # 100 pro Seite: zurück auf Seite 1
+    assert len(paged.visible_rows()) == 100 and paged.page_label.text() == "Seite 1 von 2"
+    paged.next_button.click()
+    paged.filter_edit.setText("vpn")  # 60 Treffer, wieder Seite 1
+    assert paged.page_label.text() == "Seite 1 von 1" and len(paged.visible_rows()) == 60
+    assert "60 passen zum Filter" in paged.status.text(), paged.status.text()
+    paged.close()
+    assert TicketsDialog(creader).size_combo.currentData() == 100  # Wahl gilt fürs nächste Fenster
     assert QDialog  # (Import für Typen oben)
     mine.close()
     print("Ticket-Fenster ok")
