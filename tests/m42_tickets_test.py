@@ -246,7 +246,8 @@ def test_ticket_bearbeiten_felder():
     view = mt.ticket_view(mt.loaded_entity({"Entity": LOADED}))
     assert view == {"id": "ticket-1", "ticket": "TCK0000050866", "type": "SPSActivityTypeServiceRequest",
                     "subject": "Rückmeldung", "description": "- Anpassungen an ZRO Ordnern\nx",
-                    "category": CAT, "rich": True, "stamp": "00000000DC09AE2F/00000000DC09AEE9"}
+                    "category": CAT, "rich": True, "stamp": "00000000DC09AE2F/00000000DC09AEE9",
+                    "initiator": MELDER, "callback": "02542 1"}
     assert mt.loaded_entity(LOADED) is LOADED  # auch ohne Hülle
     with pytest.raises(BookingError):
         mt.loaded_entity({"Entity": {"ID": "x"}})
@@ -373,3 +374,49 @@ def test_html_text_liest_outlook_html_mail():
             '<p>kann es sein?<br>Gr&uuml;&szlig;e</p><table><tr><td>Name</td><td>M&uuml;ller</td></tr></table>'
             '</body></html>')
     assert mt.html_text(mail) == "Hallo zusammen,\n\nkann es sein?\nGrüße\nName\tMüller"
+
+
+def test_kontakt_des_melders():
+    rows = mt.contact_rows(USER_DETAILS, "Huber, Max", callback="02542 1")
+    assert rows == [("Name", "Huber, Max", ""), ("Firma", "Dr. Koch Beratung und Coaching", ""),
+                    ("Telefon", "02542 1", "tel:025421"), ("E-Mail", "m@kunde.de", "mailto:m@kunde.de")]
+    # andere Rückrufnummer und Mobil zeigen, Standort außer „Global“
+    rows = mt.contact_rows({"MobilePhone": "0171 2", "Location": {"DisplayString": "Coesfeld"}}, callback="+49 2541 9")
+    assert rows == [("Mobil", "0171 2", "tel:01712"), ("Rückruf", "+49 2541 9", "tel:+4925419"),
+                    ("Standort", "Coesfeld", "")]
+    assert mt.contact_rows(None) == []
+
+
+def test_leser_melder_aendern(tmp_path):
+    answers = {"WidgetCommon/GetData": {"Entity": LOADED}, "UserDetails": dict(USER_DETAILS, Phone="0171 9"),
+               "UpdateData": {"Entity": {"ID": "ticket-1", "Sys-Name": "TCK0000050866"}}}
+    reader, calls, got = _reader(tmp_path, answers)
+    req = {"id": "ticket-1", "ticket": "TCK0000050866", "stamp": mt.stamp(LOADED), "subject": "Rückmeldung",
+           "description": None, "category": CAT, "initiator": "melder-neu"}
+    reader._ticket_task("edit", {"request": req})
+    assert got[-1]["ok"], got[-1]
+    assert [p.split("/api/")[1] for _m, p, _b in calls] == [
+        f"WidgetCommon/GetData/{EDIT_DIALOG}/ticket-1", "activity/UserDetails/melder-neu/",
+        f"WidgetDialog/UpdateData/{EDIT_DIALOG}"]
+    saved = json.loads(calls[2][2][1:-1])
+    assert saved["SPSActivityClassBase"]["Initiator"] == "melder-neu"
+    assert saved["SPSActivityClassBase"]["DescriptionHTML"] == LOADED["SPSActivityClassBase"]["DescriptionHTML"]
+    common = saved["SPSCommonClassBase"]
+    assert (common["OU"], common["CostCenter"], common["Location"]) == (OU_KOCH, CC_GLOBAL, LOC_GLOBAL)
+    assert saved["SPSActivityClassIncident"]["Callback"] == "0171 9"
+    # gleicher Melder wie im Ticket: nichts geändert
+    with pytest.raises(BookingError):
+        mt.edited_entity(LOADED, "Rückmeldung", None, initiator=MELDER)
+
+
+def test_leser_uebernehmen(tmp_path):
+    reader, calls, got = _reader(tmp_path, dict(ANSWERS))
+    reader._ticket_task("take_over", {"id": "ticket-1", "type": "SPSActivityTypeIncident", "ticket": "TCK1"})
+    assert got[-1]["ok"] and got[-1]["data"]["user"] == "Kroczak, Filip", got[-1]
+    method, path, body = calls[-1]
+    assert (method, path) == ("POST", "/m42Services/api/activity/TakeOver")
+    assert body == {"Objects": [{"ObjectIds": ["ticket-1"], "TypeName": "SPSActivityTypeIncident"}]}
+    # Zeitüberschreitung: unklar, ob übernommen
+    reader, calls, got = _reader(tmp_path, dict(ANSWERS), fail="/activity/TakeOver")
+    reader._ticket_task("take_over", {"id": "ticket-1", "type": "SPSActivityTypeIncident"})
+    assert not got[-1]["ok"] and got[-1]["unclear"]

@@ -1,4 +1,4 @@
-"""Fenster „Neues Ticket“, „Ticket bearbeiten“ und „Ticket schließen“ (Matrix42), im Stil von „Tätigkeit nachtragen“.
+"""Fenster „Neues Ticket“, „Ticket ansehen“, „Ticket bearbeiten“ und „Ticket schließen“ (Matrix42), im Stil von „Tätigkeit nachtragen“.
 
 Aufbau wie EntryDialog (journal_dialogs.py): Kopf mit Kachel und Titel, Inhalt mit Beschriftung
 über dem Feld, Chips, grauer Infokasten, Fußleiste mit Abbrechen und genau einer Hauptaktion.
@@ -7,12 +7,15 @@ Zeitzeuge legt nie von selbst an, ändert nie von selbst und schließt nie von s
 das Fenster aus und klickst „Ticket anlegen“, „Speichern“ bzw. „Ticket schließen“. Die Abfragen schickt M42Reader.ticket_task
 aus dem angemeldeten Edge (m42_tickets.py).
 """
+import html
+
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import (QApplication, QButtonGroup, QCheckBox, QComboBox, QCompleter, QDialog, QFormLayout,
                                QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem,
-                               QPlainTextEdit, QPushButton, QVBoxLayout, QWidget)
+                               QPlainTextEdit, QPushButton, QToolButton, QVBoxLayout, QWidget)
 
+import icons
 import m42_booking as mb
 import m42_tickets as mt
 from flow_layout import FlowLayout
@@ -132,8 +135,9 @@ class _CardDialog(QDialog):
             value.setTextInteractionFlags(Qt.TextSelectableByMouse)
             rows.addRow(key, value)
 
-    def _ticket_line(self, row):
-        """Zeile unter dem Titel wie die Zeitzeile: Nummer · Kunde · Status."""
+    def _ticket_line(self, row, pen_tip=""):
+        """Zeile unter dem Titel wie die Zeitzeile: Nummer · Kunde · Status. pen_tip: rechts ein Stift
+        (wie bei Datum und Uhrzeit), self.pen_button."""
         line = QFrame()
         line.setObjectName("prompt_time")
         line_box = QHBoxLayout(line)
@@ -146,7 +150,47 @@ class _CardDialog(QDialog):
                 line_box.addWidget(QLabel(text))
                 line_box.addSpacing(SPACE_M)
         line_box.addStretch(1)
+        if pen_tip:
+            self.pen_button = QToolButton()
+            self.pen_button.setObjectName("prompt_tool")
+            self.pen_button.setIcon(icons.icon("edit", self.muted))
+            self.pen_button.setToolTip(pen_tip)
+            self.pen_button.setAccessibleName(pen_tip)
+            self.pen_button.setCursor(Qt.PointingHandCursor)
+            line_box.addWidget(self.pen_button)
         self.head_box.addWidget(line)
+
+    def _add_take_over(self, row):
+        """Knopf „Übernehmen“ (Bearbeiter = ich) links in der Fußleiste; fehlt, wenn das Ticket
+        schon meins oder geschlossen ist. Danach: self.taken_over = Anzeigename (oder "")."""
+        self.taken_over = None
+        self.take_over_button = QPushButton("Über&nehmen")
+        self.take_over_button.setAutoDefault(False)
+        self.take_over_button.setToolTip("Ticket in Matrix42 übernehmen: du wirst Bearbeiter")
+        me = getattr(self.reader, "user_id", "") or ""
+        self.take_over_button.setVisible(not mb.is_closed(row) and not (me and row.get("recipient_id") == me))
+        self.take_over_button.clicked.connect(self._take_over)
+        self.cancel_button.parentWidget().layout().insertWidget(1, self.take_over_button)
+
+    def _take_over(self):
+        self.take_over_button.setEnabled(False)
+        self.status.setText(f"Übernehme {self.row['ticket']} …")
+        if not self._run("take_over", id=self.row["id"], type=self.row.get("type", ""), ticket=self.row["ticket"]):
+            self.take_over_button.setEnabled(True)
+            self.status.setText("⚠ Matrix42-Anmeldefenster ist offen. Bitte erst anmelden.")
+
+    def _on_take_over(self, result):
+        if not result.get("ok"):
+            self.take_over_button.setEnabled(not result.get("unclear"))
+            self.status.setText(f"⚠ Übernehmen fehlgeschlagen: {result.get('error', '')}")
+            return
+        self.taken_over = (result.get("data") or {}).get("user") or ""
+        self.take_over_button.hide()
+        self.status.setText(f"{self.row['ticket']} übernommen, du bist jetzt Bearbeiter.")
+        self._took_over()
+
+    def _took_over(self):
+        """Nach dem Übernehmen (Fenster können mehr zeigen)."""
 
     def _on_task(self, result):
         handler = getattr(self, f"_on_{result.get('kind')}", None)
@@ -189,106 +233,33 @@ class _CardDialog(QDialog):
         super().done(code)
 
 
-class NewTicketDialog(_CardDialog):
-    """Neues Ticket: Art, Melder (Ansprechperson beim Kunden), Kategorie, Betreff, Beschreibung.
-    Nach dem Anlegen: self.created = {"ticket", "id", "type", "taken_over", "warning"}."""
+class _MelderSearch:
+    """Melder (Ansprechperson beim Kunden) suchen und wählen, für „Neues Ticket“ und „Ticket bearbeiten“.
+    Braucht self.user_edit, self.users, self.user_rows (siehe _melder_widgets); nach der Wahl steht
+    er in self.initiator ({"id", "name"}) und _melder_chosen() wird gerufen."""
+    NO_MELDER = "Noch kein Melder gewählt."
 
-    def __init__(self, reader, parent=None, subject="", description=""):
-        super().__init__(parent)
-        self.created = None
-        self.initiator = None
-        self.categories = []
-        self._frame(reader, "Neues Ticket", "Störung oder Serviceanfrage in Matrix42 anlegen", "doc",
-                    "Ticket &anlegen")
-        box = self.body_box
-
-        # Melder | Kategorie nebeneinander wie Kunde | Kategorie
+    def _melder_widgets(self):
         self.user_edit = QLineEdit()
         self.user_edit.setPlaceholderText("Name beim Kunden suchen")
         self.user_edit.setAccessibleName("Melder")
         self.user_edit.setClearButtonEnabled(True)
         self.user_edit.textEdited.connect(self._user_typed)
-        self.category_edit = QComboBox()
-        self.category_edit.setEditable(True)
-        self.category_edit.setInsertPolicy(QComboBox.NoInsert)
-        self.category_edit.lineEdit().setPlaceholderText("Kategorien werden geladen …")
-        self.category_edit.lineEdit().setAccessibleName("Kategorie")
-        self.category_edit.currentIndexChanged.connect(self.validate)
-        self.category_edit.editTextChanged.connect(self.validate)
-        grid = QGridLayout()
-        grid.setHorizontalSpacing(SPACE_M)
-        grid.setVerticalSpacing(SPACE_XS)
-        for col, (name, widget) in enumerate((("&Melder", self.user_edit), ("Kate&gorie", self.category_edit))):
-            grid.addWidget(_label(name, widget), 0, col)
-            grid.addWidget(widget, 1, col)
-            grid.setColumnStretch(col, 1)
-        box.addLayout(grid)
         self.users = QListWidget()
         self.users.setAccessibleName("Gefundene Melder")
         self.users.setMaximumHeight(110)
         self.users.itemActivated.connect(self._take_user)
         self.users.itemClicked.connect(self._take_user)
         self.users.hide()
-        box.addWidget(self.users)
         self._user_timer = QTimer(self, singleShot=True, interval=400)
         self._user_timer.timeout.connect(self._search_users)
 
-        self.subject_edit = QLineEdit(subject)
-        self.subject_edit.setPlaceholderText("Kurz und eindeutig, z. B. „Drucker im Empfang druckt nicht“")
-        self.subject_edit.textChanged.connect(self.validate)
-        box.addSpacing(2)
-        box.addWidget(_label("&Betreff", self.subject_edit))
-        box.addWidget(self.subject_edit)
-        self.description_edit = QPlainTextEdit(description)
-        spellcheck.attach(self.description_edit)
-        self.description_edit.setPlaceholderText("Was ist los? Was hat der Kunde gemeldet?")
-        self.description_edit.setTabChangesFocus(True)
-        self.description_edit.setFixedHeight(96)
-        box.addWidget(_label("Be&schreibung", self.description_edit))
-        box.addWidget(self.description_edit)
-
-        # Chips: Art (eine von beiden) und Übernehmen
-        chips_host = QWidget()
-        chips_host.setObjectName("chips")
-        chips = FlowLayout(chips_host, spacing=6)
-        self.type_group = QButtonGroup(self)
-        self.type_group.setExclusive(True)
-        self.type_chips = {}
-        for value, name in TYPE_CHIPS:
-            chip = QCheckBox(name)
-            chip.setObjectName("chip_check")
-            self.type_group.addButton(chip, value)
-            self.type_chips[value] = chip
-            chips.addWidget(chip)
-        self.type_chips[mt.INCIDENT].setChecked(True)
-        self.type_chips[mt.INCIDENT].setToolTip("Etwas funktioniert nicht (Incident)")
-        self.type_chips[mt.SERVICE_REQUEST].setToolTip("Wunsch oder Auftrag des Kunden (Service Request)")
-        self.take_over = QCheckBox("Ich &bearbeite es")
-        self.take_over.setObjectName("chip_check")
-        self.take_over.setToolTip("Dich gleich als Bearbeiter eintragen (übernehmen)")
-        self.take_over.setChecked(True)
-        chips.addWidget(self.take_over)
-        box.addWidget(chips_host)
-
-        # Infokasten zum Melder (Firma, Telefon, E-Mail aus Matrix42)
-        box.addSpacing(SPACE_XS)
-        self.user_card, self.user_rows = self._info_card("users", "Melder")
-        self._fill_rows(self.user_rows, [("", "Noch kein Melder gewählt.")])
-        box.addWidget(self.user_card)
-
-        self.ok_button.clicked.connect(self.create)
-        self._run("categories")
-        self.validate()
-        self.user_edit.setFocus()
-
-    def ticket_type(self):
-        return self.type_group.checkedId()
-
-    # ---- Melder
+    def _melder_chosen(self):
+        """Nach der Wahl (Fenster setzen hier z. B. den Fokus weiter)."""
 
     def _user_typed(self, text):
         self.initiator = None
-        self._fill_rows(self.user_rows, [("", "Noch kein Melder gewählt.")])
+        self._fill_rows(self.user_rows, [("", self.NO_MELDER)])
         self.validate()
         if len(text.strip()) >= 2:
             self._user_timer.start()
@@ -336,7 +307,7 @@ class NewTicketDialog(_CardDialog):
                         ([("Firma", company)] if company else []))
         self._run("user_details", user=self.initiator["id"])
         self.validate()
-        self.category_edit.setFocus()
+        self._melder_chosen()
 
     def _on_user_details(self, result):
         if not self.initiator or result["args"].get("user") != self.initiator["id"] or not result.get("ok"):
@@ -347,12 +318,103 @@ class NewTicketDialog(_CardDialog):
                 ("E-Mail", d.get("Email") or "")]
         self._fill_rows(self.user_rows, [(k, v) for k, v in rows if v])
 
-    def keyPressEvent(self, event):
-        # Pfeil runter im Melder-Feld: in die Treffer (Enter dort wählt den Melder)
+    def _melder_keys(self, event):
+        """Pfeil runter im Melder-Feld: in die Treffer (Enter dort wählt den Melder). True = erledigt."""
         if self.user_edit.hasFocus() and event.key() == Qt.Key_Down and self.users.isVisible():
             self.users.setFocus()
-            return
-        super().keyPressEvent(event)
+            return True
+        return False
+
+
+class NewTicketDialog(_MelderSearch, _CardDialog):
+    """Neues Ticket: Art, Melder (Ansprechperson beim Kunden), Kategorie, Betreff, Beschreibung.
+    Nach dem Anlegen: self.created = {"ticket", "id", "type", "taken_over", "warning"}."""
+
+    def __init__(self, reader, parent=None, subject="", description=""):
+        super().__init__(parent)
+        self.created = None
+        self.initiator = None
+        self.categories = []
+        self._frame(reader, "Neues Ticket", "Störung oder Serviceanfrage in Matrix42 anlegen", "doc",
+                    "Ticket &anlegen")
+        box = self.body_box
+
+        # Melder | Kategorie nebeneinander wie Kunde | Kategorie
+        self._melder_widgets()
+        self.category_edit = QComboBox()
+        self.category_edit.setEditable(True)
+        self.category_edit.setInsertPolicy(QComboBox.NoInsert)
+        self.category_edit.lineEdit().setPlaceholderText("Kategorien werden geladen …")
+        self.category_edit.lineEdit().setAccessibleName("Kategorie")
+        self.category_edit.currentIndexChanged.connect(self.validate)
+        self.category_edit.editTextChanged.connect(self.validate)
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(SPACE_M)
+        grid.setVerticalSpacing(SPACE_XS)
+        for col, (name, widget) in enumerate((("&Melder", self.user_edit), ("Kate&gorie", self.category_edit))):
+            grid.addWidget(_label(name, widget), 0, col)
+            grid.addWidget(widget, 1, col)
+            grid.setColumnStretch(col, 1)
+        box.addLayout(grid)
+        box.addWidget(self.users)
+
+        self.subject_edit = QLineEdit(subject)
+        self.subject_edit.setPlaceholderText("Kurz und eindeutig, z. B. „Drucker im Empfang druckt nicht“")
+        self.subject_edit.textChanged.connect(self.validate)
+        box.addSpacing(2)
+        box.addWidget(_label("&Betreff", self.subject_edit))
+        box.addWidget(self.subject_edit)
+        self.description_edit = QPlainTextEdit(description)
+        spellcheck.attach(self.description_edit)
+        self.description_edit.setPlaceholderText("Was ist los? Was hat der Kunde gemeldet?")
+        self.description_edit.setTabChangesFocus(True)
+        self.description_edit.setFixedHeight(96)
+        box.addWidget(_label("Be&schreibung", self.description_edit))
+        box.addWidget(self.description_edit)
+
+        # Chips: Art (eine von beiden) und Übernehmen
+        chips_host = QWidget()
+        chips_host.setObjectName("chips")
+        chips = FlowLayout(chips_host, spacing=6)
+        self.type_group = QButtonGroup(self)
+        self.type_group.setExclusive(True)
+        self.type_chips = {}
+        for value, name in TYPE_CHIPS:
+            chip = QCheckBox(name)
+            chip.setObjectName("chip_check")
+            self.type_group.addButton(chip, value)
+            self.type_chips[value] = chip
+            chips.addWidget(chip)
+        self.type_chips[mt.INCIDENT].setChecked(True)
+        self.type_chips[mt.INCIDENT].setToolTip("Etwas funktioniert nicht (Incident)")
+        self.type_chips[mt.SERVICE_REQUEST].setToolTip("Wunsch oder Auftrag des Kunden (Service Request)")
+        self.take_over = QCheckBox("Ich &bearbeite es")
+        self.take_over.setObjectName("chip_check")
+        self.take_over.setToolTip("Dich gleich als Bearbeiter eintragen (übernehmen)")
+        self.take_over.setChecked(True)
+        chips.addWidget(self.take_over)
+        box.addWidget(chips_host)
+
+        # Infokasten zum Melder (Firma, Telefon, E-Mail aus Matrix42)
+        box.addSpacing(SPACE_XS)
+        self.user_card, self.user_rows = self._info_card("users", "Melder")
+        self._fill_rows(self.user_rows, [("", self.NO_MELDER)])
+        box.addWidget(self.user_card)
+
+        self.ok_button.clicked.connect(self.create)
+        self._run("categories")
+        self.validate()
+        self.user_edit.setFocus()
+
+    def ticket_type(self):
+        return self.type_group.checkedId()
+
+    def _melder_chosen(self):
+        self.category_edit.setFocus()
+
+    def keyPressEvent(self, event):
+        if not self._melder_keys(event):
+            super().keyPressEvent(event)
 
     # ---- Kategorie
 
@@ -478,7 +540,7 @@ class CloseTicketDialog(_CardDialog):
         self.accept()
 
 
-class EditTicketDialog(_CardDialog):
+class EditTicketDialog(_MelderSearch, _CardDialog):
     """Bestehendes Ticket: Betreff, Kategorie und Beschreibung ändern. Lädt das Ticket erst frisch aus
     Matrix42; bis dahin ist nichts änderbar. Nach dem Speichern: self.saved = {"ticket", "subject", …}."""
 
@@ -489,8 +551,27 @@ class EditTicketDialog(_CardDialog):
         self.loaded = None
         self.categories = []
         self._frame(reader, "Ticket bearbeiten", row.get("subject") or row["ticket"], "doc", "&Speichern")
-        self._ticket_line(row)
+        self._ticket_line(row, "Melder (Ticketeröffner) ändern")
+        self._add_take_over(row)
         box = self.body_box
+        self.initiator = None
+
+        # Melder: erst mit dem Stift sichtbar
+        self._melder_widgets()
+        self.user_edit.setText(row.get("initiator", ""))
+        self.melder_box = QWidget()
+        melder = QVBoxLayout(self.melder_box)
+        melder.setContentsMargins(0, 0, 0, 0)
+        melder.setSpacing(SPACE_XS)
+        melder.addWidget(_label("&Melder", self.user_edit))
+        melder.addWidget(self.user_edit)
+        melder.addWidget(self.users)
+        self.user_card, self.user_rows = self._info_card("users", "Neuer Melder")
+        self._fill_rows(self.user_rows, [("", self.NO_MELDER)])
+        melder.addWidget(self.user_card)
+        self.melder_box.hide()
+        box.addWidget(self.melder_box)
+        self.pen_button.clicked.connect(self.edit_melder)
 
         self.subject_edit = QLineEdit(row.get("subject", ""))
         self.subject_edit.setAccessibleName("Betreff")
@@ -533,7 +614,31 @@ class EditTicketDialog(_CardDialog):
             self._run("categories")
 
     def _fields(self):
-        return (self.subject_edit, self.category_edit, self.description_edit)
+        return (self.subject_edit, self.category_edit, self.description_edit, self.pen_button)
+
+    def edit_melder(self):
+        """Stift: Melder-Feld zeigen (Name markiert, gleich überschreibbar)."""
+        self.melder_box.show()
+        self.user_edit.setFocus()
+        self.user_edit.selectAll()
+        QTimer.singleShot(0, self.adjustSize)
+
+    def _melder_chosen(self):
+        self.subject_edit.setFocus()
+
+    def _user_typed(self, text):
+        super()._user_typed(text)
+        self.validate()
+
+    def new_initiator(self):
+        """Gewählter Melder, wenn er ein anderer ist als im Ticket, sonst None."""
+        if self.initiator and self.initiator["id"] != (self.loaded or {}).get("initiator"):
+            return self.initiator["id"]
+        return None
+
+    def keyPressEvent(self, event):
+        if not self._melder_keys(event):
+            super().keyPressEvent(event)
 
     def _on_load(self, result):
         if not result.get("ok"):
@@ -587,7 +692,8 @@ class EditTicketDialog(_CardDialog):
         category = self.category()
         return (self.subject_edit.text().strip() != self.loaded["subject"]
                 or self.description_edit.toPlainText().strip() != self.loaded["description"].strip()
-                or bool(category and category != self.loaded.get("category")))
+                or bool(category and category != self.loaded.get("category"))
+                or bool(self.new_initiator()))
 
     def validate(self, *_):
         ok = bool(self.loaded and self.subject_edit.text().strip() and self.changed()) and not self._busy
@@ -599,7 +705,7 @@ class EditTicketDialog(_CardDialog):
     def request(self):
         return {"id": self.row["id"], "ticket": self.row["ticket"], "stamp": self.loaded["stamp"],
                 "subject": self.subject_edit.text().strip(), "description": self.description_edit.toPlainText(),
-                "category": self.category() or self.loaded.get("category")}
+                "category": self.category() or self.loaded.get("category"), "initiator": self.new_initiator()}
 
     def save(self):
         if self.validate():
@@ -611,3 +717,121 @@ class EditTicketDialog(_CardDialog):
             return
         self.saved = result["data"]
         self.accept()
+
+
+class ViewTicketDialog(_CardDialog):
+    """Ticket ansehen: Eckdaten, Beschreibung (HTML als Klartext) und Kontakt des Melders
+    (Telefon und E-Mail anklickbar). Ändert nichts. Nach dem Schließen sagt self.action, ob
+    gleich „Bearbeiten“ ("edit") oder „Schließen“ ("close") folgen soll, sonst None.
+    „Übernehmen“ macht dich zum Bearbeiter (self.taken_over, siehe _CardDialog._add_take_over)."""
+
+    def __init__(self, reader, row, parent=None):
+        super().__init__(parent)
+        self.row = row
+        self.loaded = None
+        self.action = None
+        self._frame(reader, "Ticket ansehen", row.get("subject") or row["ticket"], "eye", "&Bearbeiten …")
+        self.setFixedWidth(720)
+        self._ticket_line(row)
+        box = self.body_box
+        self.cancel_button.setText("Fertig")
+        self.ok_button.setToolTip("Betreff, Kategorie oder Beschreibung ändern (Strg+Enter)")
+        self.ok_button.clicked.connect(lambda: self._leave("edit"))
+        self.close_ticket_button = QPushButton("Ticket &schließen …")
+        self.close_ticket_button.setAutoDefault(False)
+        self.close_ticket_button.setVisible(not mb.is_closed(row))
+        self.close_ticket_button.clicked.connect(lambda: self._leave("close"))
+        self.cancel_button.parentWidget().layout().insertWidget(1, self.close_ticket_button)
+        self._add_take_over(row)
+
+        cards = QHBoxLayout()
+        cards.setSpacing(SPACE_S + 2)
+        ticket_card, ticket_rows = self._info_card("tag", "Ticket")
+        self.ticket_rows = ticket_rows
+        self._fill_rows(ticket_rows, self._ticket_pairs(row.get("recipient", "")))
+        contact_card, self.contact_rows = self._info_card("phone", "Kontakt")
+        self._show_contact([])
+        cards.addWidget(ticket_card, 1)
+        cards.addWidget(contact_card, 1)
+        box.addLayout(cards)
+
+        self.description_view = QPlainTextEdit()
+        self.description_view.setReadOnly(True)
+        self.description_view.setAccessibleName("Beschreibung")
+        self.description_view.setPlaceholderText("Beschreibung wird geladen …")
+        self.description_view.setTabChangesFocus(True)
+        self.description_view.setMinimumHeight(260)
+        box.addWidget(_label("B&eschreibung", self.description_view))
+        box.addWidget(self.description_view)
+
+        self.ok_button.setEnabled(False)
+        self.status.setText(f"Lade {row['ticket']} aus Matrix42 …")
+        if not self._run("load", id=row["id"], type=row.get("type", "")):
+            self.status.setText("⚠ Matrix42-Anmeldefenster ist offen. Bitte erst anmelden.")
+
+    def validate(self, *_):
+        return self.ok_button.isEnabled()
+
+    def _ticket_pairs(self, recipient):
+        row = self.row
+        return [(k, v) for k, v in (
+            ("Art", mb.ticket_kind(row)), ("Status", row.get("state", "")), ("Melder", row.get("initiator", "")),
+            ("Bearbeiter", recipient), ("Angelegt", mb.ticket_date(row))) if v]
+
+    def _took_over(self):
+        self._fill_rows(self.ticket_rows, self._ticket_pairs(self.taken_over or "ich"))
+
+    def _leave(self, action):
+        self.action = action
+        self.accept()
+
+    def _show_contact(self, rows):
+        """Kontaktzeilen (Name, Wert, Link); Links öffnen Telefon-App bzw. E-Mail-Programm."""
+        rows = rows or [("Melder", self.row.get("initiator") or "–", "")]
+        while self.contact_rows.rowCount():
+            self.contact_rows.removeRow(0)
+        for name, text, link in rows:
+            key = QLabel(name)
+            key.setObjectName("hint")
+            value = QLabel()
+            value.setWordWrap(True)
+            if link:
+                value.setTextFormat(Qt.RichText)
+                value.setText(f'<a href="{html.escape(link, quote=True)}">{html.escape(text)}</a>')
+                value.setOpenExternalLinks(True)
+                value.setTextInteractionFlags(Qt.TextBrowserInteraction)
+                value.setToolTip(f"{'E-Mail schreiben an' if link.startswith('mailto:') else 'Anrufen:'} {text}")
+            else:
+                value.setTextFormat(Qt.PlainText)
+                value.setText(text)
+                value.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            value.setAccessibleName(f"{name}: {text}")
+            self.contact_rows.addRow(key, value)
+
+    def _on_load(self, result):
+        if not result.get("ok"):
+            self.description_view.setPlaceholderText("")
+            self.status.setText(f"⚠ Laden fehlgeschlagen: {result.get('error', '')}")
+            self.ok_button.setEnabled(True)  # Bearbeiten zeigt den Fehler genauso, schadet nicht
+            return
+        self.loaded = result["data"]
+        if self.loaded.get("subject"):
+            self.subtitle.setText(self.loaded["subject"])
+        self.description_view.setPlainText(self.loaded.get("description") or "")
+        self.description_view.setPlaceholderText("(keine Beschreibung)")
+        self.ok_button.setEnabled(True)
+        self.status.clear()
+        if self.loaded.get("initiator"):
+            self.status.setText("Lade Kontakt des Melders …")
+            self._run("user_details", user=self.loaded["initiator"])
+        else:
+            self._show_contact(mt.contact_rows({}, self.row.get("initiator", ""), self.loaded.get("callback", "")))
+
+    def _on_user_details(self, result):
+        if not self.loaded or result["args"].get("user") != self.loaded.get("initiator"):
+            return
+        self.status.clear()
+        if not result.get("ok"):
+            self.status.setText(f"⚠ Kontakt nicht gelesen: {result.get('error', '')}")
+        self._show_contact(mt.contact_rows(result.get("data") if result.get("ok") else {},
+                                           self.row.get("initiator", ""), self.loaded.get("callback", "")))

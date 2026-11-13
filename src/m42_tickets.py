@@ -343,7 +343,34 @@ def ticket_view(entity):
     return {"id": entity["ID"], "ticket": entity.get("Sys-Name", ""), "type": entity.get("Sys-Entity", ""),
             "subject": (base.get("Subject") or "").strip(), "description": html_text(description),
             "category": base.get("Category"), "rich": bool(RICH_HTML.search(description)),
-            "stamp": stamp(entity)}
+            "stamp": stamp(entity), "initiator": base.get("Initiator") or "",
+            "callback": ((entity.get("SPSActivityClassIncident") or {}).get("Callback") or "").strip()}
+
+
+def contact_rows(details, name="", callback=""):
+    """Kontakt des Melders aus GET /activity/UserDetails -> [(Name, Wert, Link)], Link "" ohne.
+    Telefon als tel:, E-Mail als mailto:. Die Rückrufnummer des Tickets nur, wenn sie anders ist."""
+    d = details if isinstance(details, dict) else {}
+
+    def text(key):
+        value = d.get(key)
+        if isinstance(value, dict):
+            value = value.get("DisplayString") or value.get("Name") or ""
+        return value.strip() if isinstance(value, str) else ""
+
+    def tel(number):
+        return "tel:" + re.sub(r"[^\d+]", "", number) if re.search(r"\d", number) else ""
+
+    rows = [("Name", name.strip(), ""), ("Firma", text("OrgUnit"), "")]
+    phone, mobile, mail = text("Phone"), text("MobilePhone") or text("Mobile"), text("Email")
+    rows += [("Telefon", phone, tel(phone)), ("Mobil", mobile, tel(mobile)),
+             ("E-Mail", mail, f"mailto:{mail}" if "@" in mail else "")]
+    if callback and re.sub(r"\D", "", callback) not in {re.sub(r"\D", "", phone), re.sub(r"\D", "", mobile)}:
+        rows.append(("Rückruf", callback, tel(callback)))
+    location = text("Location")
+    if location and location.lower() != "global":
+        rows.append(("Standort", location, ""))
+    return [r for r in rows if r[1]]
 
 
 def ticket_kind(entity):
@@ -372,16 +399,20 @@ def _new_description(old_html, text):
     return description_html(text) or ""
 
 
-def edited_entity(entity, subject, description, category=None, sla=None):
-    """Ticket zum Speichern: Betreff, Beschreibung (ganzer Klartext) und Kategorie neu, sonst wie geladen.
-    description None: Beschreibung bleibt. sla: SLA zur neuen Kategorie (TightestItem)."""
+def edited_entity(entity, subject, description, category=None, sla=None, initiator=None, details=None):
+    """Ticket zum Speichern: Betreff, Beschreibung (ganzer Klartext), Kategorie und Melder neu, sonst wie
+    geladen. description None: Beschreibung bleibt. sla: SLA zur neuen Kategorie (TightestItem).
+    initiator: neuer Melder; details: seine UserDetails. Wie beim Anlegen kommen Kunde (OU),
+    Kostenstelle, Standort und Rückrufnummer dann vom Melder (nur gefundene Werte)."""
     base = dict(entity["SPSActivityClassBase"])
     subject = (subject or "").strip()
     if not subject:
         raise BookingError("Bitte einen Betreff eingeben.")
     new_html = None if description is None else _new_description(base.get("DescriptionHTML"), description)
     new_category = category if category and category != base.get("Category") else None
-    if subject == (base.get("Subject") or "").strip() and new_html is None and not new_category:
+    new_initiator = initiator if initiator and initiator != base.get("Initiator") else None
+    if subject == (base.get("Subject") or "").strip() and new_html is None and not new_category \
+            and not new_initiator:
         raise BookingError("Nichts geändert.")
     base["Subject"] = subject
     if new_html is not None:
@@ -398,6 +429,12 @@ def edited_entity(entity, subject, description, category=None, sla=None):
     common = dict(entity.get("SPSCommonClassBase") or {})
     for name in EMPTY_RELATIONS:
         common[name] = dict(EMPTY)
+    if new_initiator:
+        base["Initiator"] = new_initiator
+        common.update(initiator_common(details))
+        phone = (details or {}).get("Phone") if isinstance(details, dict) else None
+        if phone and "Callback" in incident:
+            incident["Callback"] = phone
     out = dict(entity)
     out.update({"SPSActivityClassBase": base, "SPSActivityClassIncident": incident, "SPSCommonClassBase": common,
                 "ITMTimeEntryClassTarget": dict(entity.get("ITMTimeEntryClassTarget") or {},

@@ -18,7 +18,8 @@ Bearbeiter, Angelegt), nach jeder Spalte sortierbar, in Seiten zu 50 oder 100 Ti
 
 Meine Tickets liest M42Reader alle 10 Minuten (my_tickets_loaded), die übrigen Kategorien beim
 ersten Anzeigen und wenn sie älter als 10 Minuten sind (tickets_loaded); „Aktualisieren“ liest
-sofort. „Neues Ticket …“, „Bearbeiten …“ und „Schließen …“ öffnen die Fenster aus ticket_dialogs.py.
+sofort. „Neues Ticket …“, „Ansehen …“ (auch Enter/Doppelklick), „Bearbeiten …“ und „Schließen …“
+öffnen die Fenster aus ticket_dialogs.py.
 """
 import time
 
@@ -155,9 +156,9 @@ class TicketsDialog(QDialog):
         layout.addWidget(self.search_row)
 
         self.table = TicketTable("Tickets", self)
-        self.table.setAccessibleDescription("Enter oder Doppelklick kopiert die Ticketnummer.")
+        self.table.setAccessibleDescription("Enter oder Doppelklick öffnet das Ticket.")
         self.table.sort_by(len(COLUMNS) - 1, Qt.DescendingOrder)  # neueste zuerst
-        self.table.activated.connect(lambda _row: self.copy_number())
+        self.table.activated.connect(lambda _row: self.view_ticket())
         self.table.itemSelectionChanged.connect(self._selected)
         self.table.set_page(0, self.page_size)
         # Mitte: Seitenleiste (Anordnung 3) und Tabelle
@@ -212,13 +213,16 @@ class TicketsDialog(QDialog):
         self.refresh_button.clicked.connect(self.refresh)
         self.new_button = QPushButton("&Neues Ticket …", self)
         self.new_button.clicked.connect(self.new_ticket)
+        self.view_button = QPushButton("Ans&ehen …", self)
+        self.view_button.setToolTip("Markiertes Ticket mit Beschreibung und Kontakt des Melders zeigen (Enter)")
+        self.view_button.clicked.connect(self.view_ticket)
         self.edit_button = QPushButton("&Bearbeiten …", self)
         self.edit_button.setToolTip("Betreff, Kategorie oder Beschreibung des markierten Tickets ändern")
         self.edit_button.clicked.connect(self.edit_ticket)
         self.close_button = QPushButton("&Schließen …", self)
         self.close_button.setToolTip("Markiertes Ticket mit Lösungstext schließen")
         self.close_button.clicked.connect(self.close_ticket)
-        for button in (self.new_button, self.edit_button, self.close_button, self.copy_button,
+        for button in (self.new_button, self.view_button, self.edit_button, self.close_button, self.copy_button,
                        self.refresh_button):
             button.setAutoDefault(False)
             buttons.addButton(button, QDialogButtonBox.ActionRole)
@@ -628,7 +632,7 @@ class TicketsDialog(QDialog):
                 text += f" {shown} passen zum Filter."
             if view.get("limited"):
                 text += f" Nur die neuesten {mb.MY_TICKETS_PAGES * mb.MY_TICKETS_PAGE_SIZE} gelesen."
-            text += " Enter kopiert die Nummer."
+            text += " Enter öffnet das Ticket."
         if view.get("error"):
             text = (text + "\n" if text else "") + f"⚠ {view['error']}"
         self._set_status("\n".join(t for t in (self._note, text) if t))
@@ -640,6 +644,7 @@ class TicketsDialog(QDialog):
     def _selected(self):
         row = self.current_row()
         self.copy_button.setEnabled(row is not None)
+        self.view_button.setEnabled(row is not None)
         self.edit_button.setEnabled(row is not None)
         self.close_button.setEnabled(row is not None and not mb.is_closed(row))
 
@@ -656,22 +661,49 @@ class TicketsDialog(QDialog):
             self._update_status()
         dialog.deleteLater()
 
-    def edit_ticket(self):
-        from ticket_dialogs import EditTicketDialog
+    def view_ticket(self):
+        from ticket_dialogs import ViewTicketDialog
         row = self.current_row()
         if not row:
             return
+        dialog = ViewTicketDialog(self.reader, row, self)
+        action = dialog.action if dialog.exec() == QDialog.Accepted else None
+        self._note_taken_over(row, dialog)
+        dialog.deleteLater()
+        if action == "edit":
+            self.edit_ticket(row)
+        elif action == "close":
+            self.close_ticket(row)
+
+    def edit_ticket(self, row=None):
+        from ticket_dialogs import EditTicketDialog
+        row = row or self.current_row()
+        if not row:
+            return
         dialog = EditTicketDialog(self.reader, row, self)
-        if dialog.exec() == QDialog.Accepted and dialog.saved:
+        accepted = dialog.exec() == QDialog.Accepted
+        self._note_taken_over(row, dialog)
+        if accepted and dialog.saved:
             self._note = f"{row['ticket']} gespeichert."
             subject = dialog.saved.get("subject") or row.get("subject", "")
             self._changed.setdefault(row["id"], {})["subject"] = subject
             self.show_category()
         dialog.deleteLater()
 
-    def close_ticket(self):
+    def _note_taken_over(self, row, dialog):
+        """Im Fenster übernommen: bis zum Neulesen dich als Bearbeiter zeigen."""
+        if getattr(dialog, "taken_over", None) is None:
+            return
+        self._note = f"{row['ticket']} übernommen."
+        changed = self._changed.setdefault(row["id"], {})
+        changed["recipient"] = dialog.taken_over or getattr(self.reader, "user_name", "") or row.get("recipient", "")
+        if getattr(self.reader, "user_id", ""):
+            changed["recipient_id"] = self.reader.user_id
+        self.show_category()
+
+    def close_ticket(self, row=None):
         from ticket_dialogs import CloseTicketDialog
-        row = self.current_row()
+        row = row or self.current_row()
         if not row or mb.is_closed(row):
             return
         dialog = CloseTicketDialog(self.reader, row, self)

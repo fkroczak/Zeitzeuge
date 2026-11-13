@@ -23,7 +23,7 @@ def gui_test():
     import m42_booking as mb
     import m42_tickets as mt
     from tickets_dialogs import TicketsDialog
-    from ticket_dialogs import CloseTicketDialog, EditTicketDialog, NewTicketDialog
+    from ticket_dialogs import CloseTicketDialog, EditTicketDialog, NewTicketDialog, ViewTicketDialog
 
     app = QApplication(sys.argv)
 
@@ -64,10 +64,11 @@ def gui_test():
                     "close_info": {"solution": self.solution},
                     "load": {"id": "t2", "ticket": ROW["ticket"], "type": ROW["type"], "subject": "Drucker",
                              "description": "Druckt nicht", "category": "cat-in", "rich": False,
-                             "stamp": "s1"},
+                             "stamp": "s1", "initiator": "melder-1", "callback": "0171 5"},
                     "edit": {"ticket": ROW["ticket"], "id": "t2", "type": ROW["type"],
                              "subject": "Drucker Empfang"},
-                    "user_details": {"OrgUnit": "WiRoPa GmbH", "Phone": "02542 1", "Email": "info@example.com"}}[kind]
+                    "user_details": {"OrgUnit": "WiRoPa GmbH", "Phone": "02542 1", "Email": "info@example.com"},
+                    "take_over": {"ticket": ROW["ticket"], "id": "t2", "user": "Kroczak, Filip"}}[kind]
             result = {"kind": kind, "args": args, "ok": kind not in self.fail, "data": data}
             if kind in self.fail:
                 result.update(error="Zeitüberschreitung", unclear=True)
@@ -150,9 +151,68 @@ def gui_test():
     kind, args = reader.tasks[-1]
     assert kind == "edit" and args["request"] == {"id": "t2", "ticket": "TCK0000000002", "stamp": "s1",
                                                   "subject": "Drucker Empfang", "category": "cat-fs",
-                                                  "description": "Drucker am Empfang druckt nicht"}, args
+                                                  "description": "Drucker am Empfang druckt nicht",
+                                                  "initiator": None}, args
     assert "TCK0000000002 gespeichert" in mine.status.text(), mine.status.text()
     assert mine.visible_rows()[0]["subject"] == "Drucker Empfang"
+
+    # ---- Bearbeiten: Stift in der Ticketzeile ändert den Melder
+    edit = EditTicketDialog(reader, ROW)
+    assert wait_for(lambda: edit.loaded is not None, 3000)
+    assert not edit.melder_box.isVisibleTo(edit) and edit.pen_button.isEnabled()
+    edit.pen_button.click()
+    assert edit.melder_box.isVisibleTo(edit) and edit.user_edit.text() == "Huber, Max"
+    edit.user_edit.clear()
+    QTest.keyClicks(edit.user_edit, "Bru")
+    assert wait_for(lambda: edit.users.count() == 1, 3000)
+    edit._take_user(edit.users.item(0))
+    assert edit.new_initiator() is None and not edit.ok_button.isEnabled()  # derselbe wie im Ticket
+    edit.loaded["initiator"] = "melder-0"
+    edit.validate()
+    assert edit.new_initiator() == "melder-1" and edit.ok_button.isEnabled()
+    edit.ok_button.click()
+    kind, args = reader.tasks[-1]
+    assert kind == "edit" and args["request"]["initiator"] == "melder-1", args
+    # Übernehmen im Bearbeiten-Fenster
+    edit = EditTicketDialog(reader, dict(ROW, recipient_id="jemand"))
+    assert edit.take_over_button.isVisibleTo(edit)
+    edit.take_over_button.click()
+    assert wait_for(lambda: edit.taken_over is not None, 3000)
+    assert edit.taken_over == "Kroczak, Filip" and not edit.take_over_button.isVisibleTo(edit)
+    assert ("take_over", {"owner": id(edit), "id": "t2", "type": ROW["type"], "ticket": ROW["ticket"]}) in reader.tasks
+    edit.reject()
+
+    # ---- Ansehen: Beschreibung und Kontakt (Telefon/E-Mail als Link), nichts wird geändert
+    view = ViewTicketDialog(reader, ROW)
+    assert wait_for(lambda: view.contact_rows.rowCount() > 2, 3000), view.status.text()
+    assert view.description_view.toPlainText() == "Druckt nicht" and view.description_view.isReadOnly()
+    contact = {view.contact_rows.itemAt(i, QFormLayout.LabelRole).widget().text():
+               view.contact_rows.itemAt(i, QFormLayout.FieldRole).widget().text()
+               for i in range(view.contact_rows.rowCount())}
+    assert contact["Name"] == "Huber, Max" and contact["Firma"] == "WiRoPa GmbH", contact
+    assert 'href="tel:025421"' in contact["Telefon"] and 'href="mailto:info@example.com"' in contact["E-Mail"]
+    assert 'href="tel:01715"' in contact["Rückruf"], contact
+    assert ("user_details", {"owner": id(view), "user": "melder-1"}) in reader.tasks
+    assert not any(k in ("edit", "close") for k, _ in reader.tasks[-2:])
+    view.ok_button.click()
+    assert view.action == "edit"
+
+    # aus der Liste: Enter öffnet das Ticket, „Bearbeiten …“ dort führt ins Bearbeiten-Fenster
+    def view_then_edit():
+        dlg = next(w for w in app.topLevelWidgets() if isinstance(w, ViewTicketDialog) and w.isVisible())
+        wait_for(lambda: dlg.loaded is not None, 3000)
+        dlg.ok_button.click()
+
+        def close_edit():  # Bearbeiten-Fenster öffnet erst, wenn „Ansehen“ zu ist
+            edit = [w for w in app.topLevelWidgets() if isinstance(w, EditTicketDialog) and w.isVisible()]
+            edit[0].reject() if edit else QTimer.singleShot(10, close_edit)
+        QTimer.singleShot(10, close_edit)
+    QTimer.singleShot(0, view_then_edit)
+    mine.table.select_first()
+    assert mine.view_button.isEnabled()
+    loads = sum(1 for k, _ in reader.tasks if k == "load")
+    mine.table.activated.emit(mine.current_row())
+    assert sum(1 for k, _ in reader.tasks if k == "load") == loads + 2  # Ansehen, dann Bearbeiten
 
     # ---- Schließen: Fehler „unklar“ sperrt den Knopf, beim zweiten Fenster klappt es
     reader.fail.add("close")
@@ -220,7 +280,19 @@ def gui_test():
     table_dialog.filter_edit.setFocus()
     QTest.keyClick(table_dialog.filter_edit, Qt.Key_Down)  # Pfeil runter: erste Zeile markiert
     assert table_dialog.current_row()["ticket"].endswith("3")
+    opened = []
+
+    def close_view():  # Enter öffnet „Ticket ansehen“
+        views = [w for w in app.topLevelWidgets() if isinstance(w, ViewTicketDialog) and w.isVisible()]
+        if views:
+            opened.append(views[0].row["ticket"])
+            views[0].reject()
+        else:
+            QTimer.singleShot(10, close_view)
+    QTimer.singleShot(10, close_view)
     QTest.keyClick(table_dialog.table, Qt.Key_Return)
+    assert opened == ["TCK0000000003"], opened
+    table_dialog.copy_button.click()
     assert app.clipboard().text() == "TCK0000000003"
     table_dialog.close()
 
