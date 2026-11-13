@@ -10,7 +10,9 @@ in dem eine Zeiterfassung im Matrix42-Dialog angelegt wurde:
    '"objectType=ITMTimeEntryType&selectedObjects=<Ticket-Id>"' -> neue ID, Kostenstelle,
    Organisationseinheit, Standort.
 3. Ticketbezug holen: POST /WidgetCommon/<Dialog>/<Quelle>/custom_Target.ITMTimeEntryClassTarget
-   mit [{"Name": "@id", "Value": <Ticket-Id>}] -> Target (ID) und SLA.
+   mit [{"Name": "@id", "Value": <Ticket-Id>}] -> Target (ID), SLA und TargetOU (Kunde des
+   Tickets). Die Vorlage aus 2. hat als Organisationseinheit die eigene (z. B. Systems); ohne
+   TargetOU landet die Zeiterfassung beim falschen Kunden.
 4. Speichern: POST /WidgetDialog/UpdateData/<Dialog>, Inhalt '<JSON>' (time_entry) ->
    Sys-Name der neuen Zeiterfassung, z. B. TE0000088403.
 
@@ -312,10 +314,10 @@ def target_body(ticket_id):
 
 
 def target_from_response(data):
-    """Antwort von custom_Target -> (Target-ID, SLA). BookingError, wenn sie fehlt."""
+    """Antwort von custom_Target -> (Target-ID, SLA, OU des Tickets). BookingError, wenn sie fehlt."""
     try:
         target = (data.get("Entity") or {}).get("ITMTimeEntryClassTarget")[0]
-        return target["ID"], target.get("TargetSLA")
+        return target["ID"], target.get("TargetSLA"), target.get("TargetOU")
     except (AttributeError, IndexError, KeyError, TypeError):
         raise BookingError("Matrix42 liefert keinen Ticketbezug für die Zeiterfassung.") from None
 
@@ -331,13 +333,15 @@ SURCHARGE_REASON = "Zuschlag ignoriert"  # Grund, wenn keiner angegeben ist
 def time_entry(template, target, sla, user, start, end, minutes, text,
                activity_type=DEFAULT_ACTIVITY_TYPE, time_zone="Europe/Berlin",
                goodwill=False, travel=False, goodwill_reason="",
-               no_surcharge=False, surcharge_reason="", goodwill_minutes=0, km_there=0, km_back=0):
+               no_surcharge=False, surcharge_reason="", goodwill_minutes=0, km_there=0, km_back=0,
+               ou=None):
     """Zeiterfassung zum Speichern, Felder wie im Mitschnitt. template: Entity aus GetNewData.
 
     goodwill: Kulanz, nicht berechnet werden goodwill_minutes (0: die ganze Zeit; IsGoodwill,
     GoodwillAmount in Minuten, Grund Pflicht wie im Dialog). travel: Reise (IsTravel), dazu
     km_there/km_back als Kilometer für Anfahrt (Approach) und Abfahrt (Departure). no_surcharge: Zuschlag ignorieren
-    (IgnoreSurcharge, mit Grund)."""
+    (IgnoreSurcharge, mit Grund). ou: Organisationseinheit des Tickets (TargetOU) = Kunde der
+    Zeiterfassung; ohne sie bliebe die eigene aus der Vorlage stehen."""
     if not isinstance(template, dict) or not template.get("ID"):
         raise BookingError("Matrix42 liefert keine Vorlage für eine neue Zeiterfassung.")
     if not user:
@@ -346,6 +350,8 @@ def time_entry(template, target, sla, user, start, end, minutes, text,
     if end <= start:
         raise BookingError("„Bis“ muss nach „Von“ liegen.")
     common = dict(template.get("SPSCommonClassBase") or {})
+    if ou:
+        common["OU"] = ou
     for name in EMPTY_RELATIONS:
         common.setdefault(name, {"AddedRelations": [], "RemovedRelations": []})
     base = dict(template.get("ITMTimeEntryClassBase") or {})
