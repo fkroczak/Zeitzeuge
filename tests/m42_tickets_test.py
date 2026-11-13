@@ -308,6 +308,8 @@ def test_kunde_des_melders():
     assert mt.initiator_common({"OU": "o", "CostCenter": {"ID": "c"}, "Location": None}) == \
         {"OU": "o", "CostCenter": "c"}
     person = {"ID": "p", "SPSCommonClassBase": {"OU": "o2", "CostCenter": "c2", "Location": "l2"}}
+    assert mt.initiator_common({"OU": {"ObjectId": "o3", "DisplayString": "Koch"}}) == {"OU": "o3"}
+    assert mt.field_overview({"Phone": "1", "OU": {"ID": "x"}}) == {"Phone": "str", "OU": {"ID": "str"}}
     assert mt.initiator_common({}, person) == {"OU": "o2", "CostCenter": "c2", "Location": "l2"}
     e = mt.ticket_entity(TEMPLATE, mt.INCIDENT, "x", "", CAT, MELDER, ME, initiator_ou={"OU": "o2"})
     assert (e["SPSCommonClassBase"]["OU"], e["SPSCommonClassBase"]["CostCenter"]) == ("o2", "cc")

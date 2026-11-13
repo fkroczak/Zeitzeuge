@@ -138,7 +138,8 @@ COMMON_FIELDS = ("OU", "CostCenter", "Location")  # Kunde, Kostenstelle, Standor
 def _ref(value):
     """Verweis in einer Matrix42-Antwort -> Id ('abc' oder {"ID": 'abc'})."""
     if isinstance(value, dict):
-        value = value.get("ID") or value.get("Id") or value.get("Value")
+        value = (value.get("ID") or value.get("Id") or value.get("ObjectId") or value.get("Sys-ObjectId")
+                 or value.get("Value"))
     return value if isinstance(value, str) and value.strip() else None
 
 
@@ -161,6 +162,17 @@ def initiator_common(*answers):
             if found.get("OU"):
                 return found
     return {}
+
+
+def field_overview(data, depth=1):
+    """Felder einer Antwort fürs Log, ohne Inhalte: {'Phone': 'str', 'SPSCommonClassBase': {...}}."""
+    if isinstance(data, dict):
+        if depth < 0:
+            return "dict"
+        return {k: field_overview(v, depth - 1) for k, v in list(data.items())[:60]}
+    if isinstance(data, list):
+        return f"list[{len(data)}]"
+    return type(data).__name__
 
 
 def ticket_entity(template, ticket_type, subject, description, category, initiator, creator,
