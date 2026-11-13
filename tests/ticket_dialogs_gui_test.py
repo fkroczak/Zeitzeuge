@@ -255,7 +255,7 @@ def gui_test():
     assert wait_for(lambda: "f:f-neu" in tickets.category_buttons, 2000)
     flow = tickets.pills.layout()
     pills = [w.text() for w in (flow.itemAt(i).widget() for i in range(flow.count())) if hasattr(w, "text")]
-    assert pills == ["Meine Tickets", "TK-Tickets", "Alle", "Neue Tickets", "Geschlossene"], pills
+    assert pills == ["Meine Tickets", "Alle", "Neue Tickets", "TK-Tickets", "Geschlossene"], pills
     assert tickets.category_buttons["mine"].isChecked() and not tickets.closed_button.isChecked()
     assert tickets.windowTitle() == "Tickets" and len(tickets.visible_rows()) == 3  # offene von mir
     tickets.closed_button.click()  # Geschlossene an: auch erledigte von mir
@@ -280,6 +280,16 @@ def gui_test():
     tickets.category_buttons["f:f-neu"].click()
     assert creader.loads[-1] == ("f:f-neu", "f-neu")
     tickets.close()
+
+    # ---- Reihenfolge wie im Service Desk sinnvoll gruppiert, Unbekannte nach Ähnlichkeit/ans Ende
+    from tickets_dialogs import pill_rank
+    names = ["Offen Vertrieb", "Ticket Pool PVS", "Ticket Pool A", "Ticket Pool TK", "Ohne Verantwortung",
+             "Störungen extern", "Neue TK Tickets", "Neue Tickets", "Ticket Pool B", "TK Eskalation",
+             "Ticket Pool Infrastruktur", "TK-Tickets", "Alle", "Meine Tickets"]
+    assert sorted(names, key=pill_rank) == [
+        "Meine Tickets", "Alle", "Neue Tickets", "Ohne Verantwortung", "TK-Tickets", "Neue TK Tickets",
+        "Ticket Pool TK", "TK Eskalation", "Ticket Pool A", "Ticket Pool B", "Ticket Pool Infrastruktur",
+        "Ticket Pool PVS", "Offen Vertrieb", "Störungen extern"]
 
     # ---- Seiten: 50 oder 100 Tickets je Seite, Filter und Kategorie fangen wieder bei Seite 1 an
     many = [dict(ROW, ticket=f"TCK{n:010d}", id=f"p{n}", subject=f"Thema {n}" + (" vpn" if n % 2 else ""),

@@ -27,6 +27,32 @@ MINE = "mine"
 STALE_AFTER = 10 * 60  # Kategorien, die älter sind, beim Anzeigen neu lesen
 # Feste Kategorien: (Schlüssel, Pille, gespeicherter Filter in Matrix42; "" = alle Tickets)
 FIXED = [(MINE, "Meine Tickets", None), ("tk", "TK-Tickets", mb.TK_FILTER), ("all", "Alle", "")]
+# Reihenfolge der Pillen: Gruppen (mit Abstand dazwischen), darin diese Reihenfolge.
+# Titel klein und ohne Leer-/Satzzeichen; Filter, die nirgends passen, kommen ans Ende.
+PILL_GROUPS = [
+    ["meinetickets"],                                                         # ich
+    ["alle", "neuetickets", "ohneverantwortung"],                             # alle / unverteilt
+    ["tktickets", "neuetktickets", "ticketpooltk"],                           # TK
+    ["ticketpoola", "ticketpoolb", "ticketpoolinfrastruktur", "ticketpoolpvs"],  # Pools
+    ["offenvertrieb"],                                                        # Vertrieb
+]
+
+
+def pill_rank(title):
+    """Titel -> (Gruppe, Platz) für die Reihenfolge der Pillen. Unbekannte nach Ähnlichkeit:
+    „TK“ zur TK-Gruppe, „Pool“ zu den Pools, sonst ans Ende (Reihenfolge wie in Matrix42)."""
+    key = mb._title_key(title)
+    for g, keys in enumerate(PILL_GROUPS):
+        if key in keys:
+            return g, keys.index(key)
+    words = set(mb.filter_title(title).casefold().split())
+    if "tk" in words:
+        return 2, 99
+    if "pool" in words or key.startswith("ticketpool"):
+        return 3, 99
+    return len(PILL_GROUPS), 99
+
+
 PAGE_SIZES = (50, 100)  # Tickets je Seite; die Wahl gilt bis zum Beenden für jedes neue Fenster
 
 
@@ -63,16 +89,14 @@ class TicketsDialog(QDialog):
         self.category_group = QButtonGroup(self)
         self.category_group.setExclusive(True)
         self.category_buttons = {}
-        for key, title, fid in FIXED:
-            self._add_category(key, title, fid)
-        self._gap = QWidget(self.pills)
-        self._gap.setFixedWidth(14)
-        self._flow.addWidget(self._gap)
+        self._gaps = []
         self.closed_button = _chip("Geschlossene", self.pills)
         self.closed_button.setToolTip("Auch gelöste und geschlossene Tickets der Kategorie zeigen")
         self.closed_button.setAccessibleName("Geschlossene Tickets zeigen")
         self.closed_button.toggled.connect(self._closed_toggled)
-        self._flow.addWidget(self.closed_button)
+        for key, title, fid in FIXED:
+            self._add_category(key, title, fid)
+        self._arrange()
         self.category_buttons[MINE].blockSignals(True)  # Tabelle gibt es noch nicht
         self.category_buttons[MINE].setChecked(True)
         self.category_buttons[MINE].blockSignals(False)
@@ -180,12 +204,40 @@ class TicketsDialog(QDialog):
         self.category_group.addButton(b)
         self.category_buttons[key] = b
         self.categories[key] = (title, fid)
-        self._flow.addWidget(b)
-        gap = getattr(self, "_gap", None)
-        if gap is not None:  # später dazu (Filter aus Matrix42): vor der Lücke zu „Geschlossene“
-            self._flow._items.insert(self._flow.indexOf(gap), self._flow._items.pop())
-            self._flow.invalidate()
         return b
+
+    def _arrange(self):
+        """Pillen nach Gruppen ordnen (pill_rank), Abstand zwischen den Gruppen, „Geschlossene“
+        zuletzt mit etwas mehr Abstand. Die Tab-Reihenfolge folgt der Anzeige."""
+        while self._flow.takeAt(0) is not None:
+            pass
+        for gap in self._gaps:
+            gap.hide()  # sonst bis zum Löschen noch an alter Stelle zu sehen
+            gap.deleteLater()
+        self._gaps = []
+        order = sorted(self.categories, key=lambda k: pill_rank(self.categories[k][0]))  # stabil
+        widgets, group = [], None
+        for key in order:
+            g = pill_rank(self.categories[key][0])[0]
+            if group is not None and g != group:
+                widgets.append(self._new_gap(8))
+            widgets.append(self.category_buttons[key])
+            group = g
+        widgets += [self._new_gap(16), self.closed_button]
+        for w in widgets:
+            self._flow.addWidget(w)
+        buttons = [w for w in widgets if isinstance(w, QToolButton)]
+        for a, b in zip(buttons, buttons[1:]):
+            QWidget.setTabOrder(a, b)
+        self._flow.invalidate()
+
+    def _new_gap(self, width):
+        gap = QWidget(self.pills)
+        gap.setAttribute(Qt.WA_TransparentForMouseEvents)
+        gap.setStyleSheet("background: transparent;")
+        gap.setFixedSize(width, 1)
+        self._gaps.append(gap)
+        return gap
 
     def show_filters(self, filters):
         """Gespeicherte Filter aus Matrix42 als weitere Kategorie-Pillen (nach den festen)."""
@@ -193,6 +245,7 @@ class TicketsDialog(QDialog):
             key = f"f:{f['id']}"
             if key not in self.categories:
                 self._add_category(key, f["title"], f["id"])
+        self._arrange()
         self.pills.updateGeometry()
 
     def choose(self, key):
