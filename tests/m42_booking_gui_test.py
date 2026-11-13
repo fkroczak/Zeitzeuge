@@ -254,7 +254,7 @@ def gui_test():
     mine = window._my_tickets_dialog
     assert isinstance(mine, MyTicketsDialog) and mine.table.rowCount() == 1
     cells = [mine.table.item(0, c).text() for c in range(mine.table.columnCount())]
-    assert cells[:5] == ["TCK0000000002", "Drucker", "Müller", "Huber, Max", "Neu"], cells
+    assert cells[:6] == ["TCK0000000002", "Drucker", "Müller", "Huber, Max", "", "Neu"], cells  # Art leer: ohne Sys-Entity
     mine.table.select_first()
     assert "1 offenes Ticket" in mine.status.text(), mine.status.text()
     assert tile.isVisibleTo(window) and tile.value.text() == "1" and "TCK0000000002" in tile.toolTip()

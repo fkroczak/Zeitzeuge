@@ -24,7 +24,8 @@ Bearbeiten (Dialog des bestehenden Tickets, DEFAULT_IDS["ticket_edit_dialog"]):
 Art ändern (Serviceanfrage -> Störung) und Journaleinträge fehlen noch im Mitschnitt.
 
 Schließen: POST /ticket/CloseWizardInitialData/?ticketType=<Typ> [Id] -> Kategorie, dann
-POST /ticket/Close mit Lösungstext (Comments, HTML).
+POST /ticket/Close mit Lösungstext (Comments, HTML). Beim Öffnen des Fensters holt „close_info“
+die Startwerte und das Ticket: ein Lösungstext von früher (Ticket wieder eröffnet) wird vorbelegt.
 
 Melder suchen: POST /entity/fragments/forControl (Personenauswahl im Ticketdialog).
 Kategorien: POST /entity/tree (ganzer Kategoriebaum).
@@ -259,6 +260,29 @@ def saved_ticket(data, ticket_id):
 
 
 # ------------------------------------------------------------ Schließen
+
+# Felder mit einem früheren Lösungstext: in den Startwerten des Schließen-Assistenten „Comments“
+# (wie beim Schließen geschickt), im Ticket jedes Feld mit „Solution“ im Namen (z. B. SolutionHTML).
+SOLUTION_FIELDS = ("Comments", "SolutionHTML", "SolutionHtml", "Solution")
+
+
+def previous_solution(initial, entity=None):
+    """Lösungstext, den das Ticket schon hat (z. B. vor dem Wiedereröffnen), als Klartext; sonst ""."""
+    sources = [(initial, SOLUTION_FIELDS)]
+    if isinstance(entity, dict):
+        sources += [(entity.get(part), SOLUTION_FIELDS[1:])
+                    for part in ("SPSActivityClassBase", "SPSActivityClassIncident")]
+    for source, first in sources:
+        if not isinstance(source, dict):
+            continue
+        names = [n for n in first if n in source] + sorted(
+            n for n in source if "solution" in n.lower() and n not in first)
+        for name in names:
+            value = source[name]
+            if isinstance(value, str) and html_text(value):
+                return html_text(value)
+    return ""
+
 
 def close_body(ticket_id, solution, category, notify_initiator=True, close_related=True,
                reason=CLOSE_REASON):

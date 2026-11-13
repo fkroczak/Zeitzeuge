@@ -72,6 +72,16 @@ def test_schliessen_felder():
         mt.close_body("ticket-1", "  ", CAT)
 
 
+def test_frueherer_loesungstext():
+    # Startwerte des Schließen-Assistenten haben Vorrang, HTML wird Klartext
+    assert mt.previous_solution({"Comments": "<p>Treiber neu</p><p>getestet</p>"}) == "Treiber neu\ngetestet"
+    # sonst aus dem Ticket (auch unbekannte Feldnamen mit „Solution“), leere Felder zählen nicht
+    entity = {"SPSActivityClassBase": {"SolutionHTML": "<p>&nbsp;</p>", "ClosureSolutionText": "Lizenz erneuert"}}
+    assert mt.previous_solution({"Comments": None}, entity) == "Lizenz erneuert"
+    assert mt.previous_solution({}, {"SPSActivityClassBase": {"Comments": "kein Lösungsfeld"}}) == ""
+    assert mt.previous_solution(None) == ""
+
+
 def test_antworten_lesen():
     assert mt.own_user({"Id": ME, "FirstName": "Filip", "LastName": "Kroczak"}) == {"id": ME, "name": "Kroczak, Filip"}
     assert mt.own_user({}) is None
@@ -168,6 +178,20 @@ def test_leser_ticket_schliessen(tmp_path):
     reader, calls, got = _reader(tmp_path, ANSWERS, fail="/ticket/Close")
     reader._ticket_task("close", {"request": req})
     assert got[-1]["unclear"]
+
+
+def test_leser_loesungstext_vor_dem_schliessen(tmp_path):
+    entity = {"ID": "ticket-1", "SPSActivityClassBase": {"Subject": "x", "SolutionHTML": "<p>Gelöst</p>"}}
+    reader, calls, got = _reader(tmp_path, dict(ANSWERS, GetData=entity))
+    reader._ticket_task("close_info", {"id": "ticket-1", "type": "SPSActivityTypeIncident"})
+    assert got[-1]["ok"] and got[-1]["data"] == {"solution": "Gelöst"}, got[-1]
+    assert calls[0][2] == ["ticket-1"] and "GetData" in calls[1][1]
+
+    # Startwerte haben ihn schon: Ticket nicht extra laden
+    answers = dict(ANSWERS, CloseWizardInitialData={"TicketCategory": CAT, "Comments": "<p>Alt</p>"})
+    reader, calls, got = _reader(tmp_path, answers)
+    reader._ticket_task("close_info", {"id": "ticket-1", "type": ""})
+    assert got[-1]["data"] == {"solution": "Alt"} and len(calls) == 1
 
 
 def test_leser_melder_und_kategorien(tmp_path):

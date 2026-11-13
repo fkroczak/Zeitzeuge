@@ -47,6 +47,7 @@ def gui_test():
             super().__init__()
             self.tasks = []
             self.fail = set()
+            self.solution = ""  # Lösungstext von früher (close_info)
 
         def load_my_tickets(self):
             self.my_tickets_loaded.emit(self.my_tickets)
@@ -59,6 +60,7 @@ def gui_test():
                     "create": {"ticket": "TCK0000050866", "id": "x", "type": "SPSActivityTypeIncident",
                                "taken_over": True, "warning": ""},
                     "close": {"ticket": ROW["ticket"]},
+                    "close_info": {"solution": self.solution},
                     "load": {"id": "t2", "ticket": ROW["ticket"], "type": ROW["type"], "subject": "Drucker",
                              "description": "Druckt nicht", "stamp": "s1"},
                     "edit": {"ticket": ROW["ticket"], "id": "t2", "type": ROW["type"],
@@ -153,6 +155,20 @@ def gui_test():
     dialog.reject()
     reader.fail.clear()
 
+    # Wieder eröffnetes Ticket: bisheriger Lösungstext steht schon drin, Getipptes bleibt
+    reader.solution = "Lizenz erneuert"
+    dialog = CloseTicketDialog(reader, ROW)
+    assert wait_for(lambda: dialog.solution_edit.toPlainText(), 3000)
+    assert dialog.solution_edit.toPlainText() == "Lizenz erneuert" and dialog.ok_button.isEnabled()
+    assert ("close_info", {"owner": id(dialog), "id": "t2", "type": "SPSActivityTypeIncident"}) in reader.tasks
+    dialog.reject()
+    dialog = CloseTicketDialog(reader, ROW)
+    dialog.solution_edit.setPlainText("Selbst getippt")
+    QTest.qWait(50)
+    assert dialog.solution_edit.toPlainText() == "Selbst getippt"
+    dialog.reject()
+    reader.solution = ""
+
     def fill_close():
         dlg = next(w for w in app.topLevelWidgets() if isinstance(w, CloseTicketDialog) and w.isVisible())
         dlg.solution_edit.setPlainText("Treiber neu installiert")
@@ -182,6 +198,10 @@ def gui_test():
     assert order() == ["3", "2", "1"], order()  # Angelegt absteigend
     table_dialog.filter_edit.setText("drucker weber")
     assert order() == ["2"] and "1 passen zum Filter" in table_dialog.status.text(), table_dialog.status.text()
+    table_dialog.filter_edit.setText("störung")  # Spalte Art
+    assert len(order()) == 3 and table_dialog.table.item(0, 4).text() == "Störung"
+    table_dialog.filter_edit.setText("serviceanfrage")
+    assert order() == []
     table_dialog.filter_edit.clear()
     table_dialog.table.sort_by(2, Qt.AscendingOrder)  # Kunde
     assert [r["customer"] for r in table_dialog.visible_rows()] == ["Schmidt", "Weber", "Weber"]

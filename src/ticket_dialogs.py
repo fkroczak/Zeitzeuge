@@ -8,6 +8,7 @@ das Fenster aus und klickst „Ticket anlegen“, „Speichern“ bzw. „Ticket
 aus dem angemeldeten Edge (m42_tickets.py).
 """
 from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import (QApplication, QButtonGroup, QCheckBox, QComboBox, QCompleter, QDialog, QFormLayout,
                                QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem,
                                QPlainTextEdit, QPushButton, QVBoxLayout, QWidget)
@@ -17,7 +18,7 @@ import m42_tickets as mt
 from flow_layout import FlowLayout
 from prompt_card import _ElidedLabel, _icon_label, source_tile
 import spellcheck
-from theme import SPACE_M, SPACE_S, SPACE_XS
+from theme import SPACE_M, SPACE_S, SPACE_XS, fit_bold
 
 DEFAULT_CATEGORY = "Ticketeingang"
 TYPE_CHIPS = [(mt.INCIDENT, "&Störung"), (mt.SERVICE_REQUEST, "Service&anfrage")]
@@ -93,6 +94,7 @@ class _CardDialog(QDialog):
         self.ok_button = QPushButton(main_text)
         self.ok_button.setDefault(True)
         self.ok_button.setToolTip(f"{main_text.replace('&', '')} (Strg+Enter)")
+        fit_bold(self.ok_button)  # fett (Standardknopf): sonst fehlt der letzte Buchstabe
         foot_box.addWidget(self.ok_button)
         outer.addWidget(foot)
         reader.ticket_task_done.connect(self._on_task, Qt.QueuedConnection)
@@ -442,6 +444,19 @@ class CloseTicketDialog(_CardDialog):
         self.ok_button.clicked.connect(self.close_ticket)
         self.validate()
         self.solution_edit.setFocus()
+        # Lösungstext von früher (Ticket wieder eröffnet) übernehmen, solange noch nichts getippt ist
+        if not solution.strip() and self._run("close_info", id=row["id"], type=row.get("type", "")):
+            self.status.setText("Suche bisherigen Lösungstext …")
+
+    def _on_close_info(self, result):
+        if self._busy:
+            return
+        self.status.clear()
+        solution = (result.get("data") or {}).get("solution", "") if result.get("ok") else ""
+        if solution and not self.solution_edit.toPlainText().strip():
+            self.solution_edit.setPlainText(solution)
+            self.solution_edit.moveCursor(QTextCursor.End)
+            self.status.setText("Bisheriger Lösungstext übernommen.")
 
     def validate(self, *_):
         ok = bool(self.solution_edit.toPlainText().strip()) and not self._busy

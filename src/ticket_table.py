@@ -1,5 +1,5 @@
 """Tickettabelle für „Meine Tickets“ und „Ticket suchen“: Spalten Ticket, Betreff, Kunde, Melder,
-Status, Angelegt; nach jeder Spalte sortierbar, filterbar (jedes Wort muss vorkommen, wie bei
+Art (Störung/Serviceanfrage), Status, Angelegt; nach jeder Spalte sortierbar, filterbar (jedes Wort muss vorkommen, wie bei
 der Ticketsuche), erledigte Tickets grau. Enter oder Doppelklick: Signal activated(row).
 """
 from PySide6.QtCore import Qt, Signal
@@ -10,7 +10,7 @@ import m42_booking as mb
 
 # Spalte -> Feld der Ticketzeile (m42_booking.ticket_row)
 COLUMNS = [("Ticket", "ticket"), ("Betreff", "subject"), ("Kunde", "customer"), ("Melder", "initiator"),
-           ("Status", "state"), ("Angelegt", "created")]
+           ("Art", "type"), ("Status", "state"), ("Angelegt", "created")]
 SUBJECT_COL = 1
 
 
@@ -88,6 +88,9 @@ class TicketTable(QTableWidget):
             for c, (_name, key) in enumerate(COLUMNS):
                 if key == "created":
                     text, sort_key = mb.ticket_date(row), row.get("created") or ""
+                elif key == "type":
+                    text = mb.ticket_kind(row)
+                    sort_key = text.casefold()
                 else:
                     text = row.get(key) or ""
                     if key == "initiator":
