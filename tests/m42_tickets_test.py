@@ -355,3 +355,21 @@ def test_leser_ticket_anlegen_ohne_kunde(tmp_path):
     saved = next(json.loads(b[1:-1]) for _m, p, b in calls if "UpdateData" in p)
     assert saved["SPSCommonClassBase"]["OU"] is None
     assert not any("data/objects" in p for _m, p, _b in calls)
+
+
+def test_load_error_macht_object_is_deleted_lesbar():
+    raw = mt.BookingError('Matrix42 antwortet mit Fehler 500: {"Key": "Matrix42.Pandora.BizLogic.'
+                          'ContentWidget.ObjectIsDeleted", "Message": "The object you try to open is deleted"}')
+    err = mt.load_error(raw, "SPSActivityTypeIncident")
+    assert "Störung" in str(err) and "{" not in str(err)
+    other = mt.BookingError("Matrix42 antwortet mit Fehler 500")
+    assert mt.load_error(other) is other
+
+
+def test_html_text_liest_outlook_html_mail():
+    mail = ('<html><head><meta charset="utf-8"><style><!-- p.MsoNormal {margin:0cm} --></style>'
+            '<!--[if gte mso 9]><xml><o:shapedefaults/></xml><![endif]--></head><body>'
+            '<p class="MsoNormal">Hallo zusammen,<o:p></o:p></p><p><o:p>&nbsp;</o:p></p>'
+            '<p>kann es sein?<br>Gr&uuml;&szlig;e</p><table><tr><td>Name</td><td>M&uuml;ller</td></tr></table>'
+            '</body></html>')
+    assert mt.html_text(mail) == "Hallo zusammen,\n\nkann es sein?\nGrüße\nName\tMüller"

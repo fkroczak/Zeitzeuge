@@ -527,7 +527,7 @@ class EditTicketDialog(_CardDialog):
             widget.setEnabled(False)
         self.validate()
         self.status.setText(f"Lade {row['ticket']} aus Matrix42 …")
-        if not self._run("load", id=row["id"]):
+        if not self._run("load", id=row["id"], type=row.get("type", "")):
             self.status.setText("⚠ Matrix42-Anmeldefenster ist offen. Bitte erst anmelden.")
         else:
             self._run("categories")

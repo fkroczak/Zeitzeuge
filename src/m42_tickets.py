@@ -39,6 +39,7 @@ Kategorien: POST /entity/tree (ganzer Kategoriebaum).
 """
 import html
 import re
+from html.parser import HTMLParser
 from urllib.parse import urlencode
 
 from m42_booking import API, BookingError, EMPTY_RELATIONS, wrap
@@ -254,6 +255,19 @@ def edit_data_path(dialog, ticket_id):
     return f"{API}/WidgetCommon/GetData/{dialog}/{ticket_id}?archived=false"
 
 
+def load_error(error, kind=""):
+    """Fehler beim Laden über den Dialog des bestehenden Tickets lesbar machen. Matrix42 meldet
+    ObjectIsDeleted („The object you try to open is deleted“), wenn das Ticket gelöscht ist oder
+    etwas darin nicht lesbar ist, z. B. eine E-Mail im Ticket, die Matrix42 nicht entschlüsseln kann
+    (TCK0000050915, 13.11.2026). Das Ticket selbst gibt es dann noch."""
+    if "ObjectIsDeleted" not in str(error):
+        return error
+    art = {"SPSActivityTypeIncident": "Störung", "SPSActivityTypeServiceRequest": "Serviceanfrage",
+           "SPSActivityTypeTicket": "Ticket"}.get(kind, kind.replace("SPSActivityType", ""))
+    return BookingError("Matrix42 kann dieses Ticket nicht laden" + (f" ({art})" if art else "")
+                        + ". Meist steckt eine E-Mail darin, die Matrix42 nicht entschlüsseln kann.")
+
+
 def loaded_entity(data):
     """Antwort von WidgetCommon/GetData -> Ticket (mit oder ohne Hülle "Entity")."""
     entity = data.get("Entity") if isinstance(data, dict) and isinstance(data.get("Entity"), dict) else data
@@ -262,12 +276,54 @@ def loaded_entity(data):
     return entity
 
 
+class _TextParser(HTMLParser):
+    """HTML (auch ganze HTML-E-Mails aus Outlook) -> Klartext. Kopf, CSS, Skripte und
+    Kommentare fallen weg, Absätze und Zeilenumbrüche bleiben, Entities werden aufgelöst."""
+    SKIP = {"head", "style", "script", "title", "xml", "o:p"}
+    BLOCK = {"p", "div", "li", "tr", "table", "blockquote", "pre", "hr",
+             "h1", "h2", "h3", "h4", "h5", "h6", "ul", "ol"}
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.parts, self.skip = [], 0
+
+    def handle_starttag(self, tag, attrs):
+        if tag in self.SKIP:
+            self.skip += 1
+        elif tag == "br":
+            self.parts.append("\n")
+        elif tag in self.BLOCK and self.parts and not self.parts[-1].endswith("\n"):
+            self.parts.append("\n")  # neuer Block beginnt in einer neuen Zeile
+        elif tag in ("td", "th"):
+            self.parts.append("\t")
+
+    def handle_startendtag(self, tag, attrs):
+        if tag == "br" or tag in self.BLOCK:
+            self.parts.append("\n")
+
+    def handle_endtag(self, tag):
+        if tag in self.SKIP:
+            self.skip = max(0, self.skip - 1)
+        elif tag in self.BLOCK:
+            self.parts.append("\n")
+
+    def handle_data(self, data):
+        if not self.skip:
+            self.parts.append(re.sub(r"[ \t\r\n\f]+", " ", data))
+
+
 def html_text(value):
     """HTML der Beschreibung -> lesbarer Klartext (nur zum Anzeigen)."""
-    text = re.sub(r"(?i)<br\s*/?>", "\n", value or "")
-    text = re.sub(r"(?i)</(p|div|li|tr|h[1-6])\s*>", "\n", text)
-    text = html.unescape(re.sub(r"<[^>]+>", "", text)).replace("\xa0", " ")
-    return "\n".join(line.rstrip() for line in text.strip().splitlines())
+    parser = _TextParser()
+    try:
+        parser.feed(value or "")
+        parser.close()
+    except Exception:  # kaputtes HTML: lieber grob als gar nicht
+        return html.unescape(re.sub(r"<[^>]+>", "", value or "")).strip()
+    text = "".join(parser.parts).replace("\xa0", " ").replace("\u200b", "")
+    lines = [re.sub(r" {2,}", " ", line).strip(" ") for line in text.split("\n")]
+    text = "\n".join(line.replace("\t ", "\t").strip("\t") for line in lines)
+    return re.sub(r"\n{3,}", "\n\n", text).strip()
 
 
 def stamp(entity):
