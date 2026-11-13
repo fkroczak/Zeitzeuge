@@ -50,3 +50,44 @@ def test_schmal_ohne_waagerechte_scrollleiste(font_scale):
     assert sum(sizes.values()) <= viewport, (sizes, viewport)
     assert min(sizes[k] for k in ("customer", "initiator", "recipient")) >= 70, sizes
     assert sizes["subject"] >= 0.25 * (viewport - sizes["ticket"]), (sizes, viewport)
+
+
+@pytest.fixture
+def ini(tmp_path, monkeypatch):
+    """Gezogene Breiten in eine eigene Datei statt in die echten Einstellungen."""
+    import ticket_table
+    from PySide6.QtCore import QSettings
+    path = str(tmp_path / "zz.ini")
+    monkeypatch.setattr(ticket_table, "settings", lambda: QSettings(path, QSettings.IniFormat))
+    return path
+
+
+def test_gezogene_breite_bleibt_und_wird_gemerkt(ini):
+    from ticket_table import COLUMNS, TicketTable
+    app = widgets.QApplication.instance() or widgets.QApplication([])
+    col = [key for _n, key in COLUMNS].index("customer")
+    table = TicketTable("Tickets")
+    table.resize(1000, 400)
+    table.show()
+    app.processEvents()
+    table.horizontalHeader().resizeSection(col, 240)  # wie Ziehen im Kopf
+    table.resize(1100, 400)  # Größe und Inhalt ändern: Breite bleibt
+    table.set_rows([])
+    app.processEvents()
+    assert table.horizontalHeader().sectionSize(col) == 240
+    table.close()
+
+    again = TicketTable("Tickets")  # neues Fenster: gemerkte Breite
+    again.resize(1000, 400)
+    again.show()
+    app.processEvents()
+    assert again.horizontalHeader().sectionSize(col) == 240
+    other = TicketTable("Gefundene Tickets")  # andere Tabelle: eigene Breiten
+    other.resize(1000, 400)
+    other.show()
+    app.processEvents()
+    assert other.horizontalHeader().sectionSize(col) != 240
+    again.reset_widths()
+    assert again.horizontalHeader().sectionSize(col) != 240
+    again.close()
+    other.close()
