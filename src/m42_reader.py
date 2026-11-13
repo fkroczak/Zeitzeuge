@@ -722,7 +722,7 @@ class M42Reader(BrowserReader):
 
     def ticket_task(self, kind, **args):
         """Im Hintergrund: "users" (text), "user_details" (user), "categories", "create" (request),
-        "load" (id), "edit" (request), "close_info" (id, type), "close" (request).
+        "load" (id), "edit" (request), "take_over" (id, type, ticket), "close_info" (id, type), "close" (request).
         Ergebnis über ticket_task_done. False, wenn gerade ein Anmeldefenster offen ist."""
         if self._login_open:
             return False
@@ -758,6 +758,13 @@ class M42Reader(BrowserReader):
                     result["data"] = mt.ticket_view(mt.loaded_entity(data))
                 elif kind == "edit":
                     result["data"] = self._edit_ticket(args["request"], ids, state)
+                elif kind == "take_over":
+                    self._me()
+                    state["sent"] = True
+                    self._fetch("POST", "/m42Services/api/activity/TakeOver",
+                                mt.take_over_body(args["id"], args.get("type") or "SPSActivityTypeTicket"))
+                    result["data"] = {"ticket": args.get("ticket", ""), "id": args["id"],
+                                      "user": self.user_name or ""}
                 elif kind == "close_info":
                     result["data"] = self._close_info(args["id"], args.get("type"), ids)
                 elif kind == "close":
@@ -771,7 +778,7 @@ class M42Reader(BrowserReader):
                 result["unclear"] = True
                 result["error"] = f"unklar, ob es geklappt hat ({e}). Bitte in Matrix42 nachsehen."
             safe_io.log(f"Matrix42: Ticket {kind} fehlgeschlagen ({e!r})")
-        if result["ok"] and kind in ("create", "edit", "close"):
+        if result["ok"] and kind in ("create", "edit", "close", "take_over"):
             self._tickets_read = 0  # Meine Tickets beim nächsten Durchlauf neu lesen
             for view in self.ticket_views.values():
                 view["time"] = 0  # Kategorien beim nächsten Anzeigen neu lesen
@@ -826,7 +833,7 @@ class M42Reader(BrowserReader):
         return created
 
     def _edit_ticket(self, request, ids, state):
-        """Betreff, Beschreibung und Kategorie ändern. Nur mit gehaltenem _browser_lock.
+        """Betreff, Beschreibung, Kategorie und Melder ändern. Nur mit gehaltenem _browser_lock.
         Lädt das Ticket frisch; hat es inzwischen jemand gespeichert (andere Versionsmarke als beim
         Öffnen), wird nichts geschickt."""
         import m42_tickets as mt
@@ -840,8 +847,11 @@ class M42Reader(BrowserReader):
         sla, path = None, mt.category_sla_path(entity, request.get("category"))
         if path:  # neue Kategorie: SLA wie im Dialog neu bestimmen
             sla = (self._fetch("GET", path) or {}).get("TightestItem")
+        initiator, details = request.get("initiator"), None
+        if initiator:  # neuer Melder: Kunde, Kostenstelle, Standort und Rückruf von ihm
+            details = self._fetch("GET", f"/m42Services/api/activity/UserDetails/{initiator}/?userId={initiator}")
         body = mt.edited_entity(entity, request.get("subject", ""), request.get("description"),
-                                request.get("category"), sla)
+                                request.get("category"), sla, initiator, details)
         state["sent"] = True
         saved = mt.saved_ticket(self._fetch("POST", f"/m42Services/api/WidgetDialog/UpdateData/{dialog}",
                                             mt.wrap(body)), ticket_id)
