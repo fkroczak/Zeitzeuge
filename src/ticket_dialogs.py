@@ -705,7 +705,8 @@ class EditTicketDialog(_MelderSearch, _CardDialog):
     def request(self):
         return {"id": self.row["id"], "ticket": self.row["ticket"], "stamp": self.loaded["stamp"],
                 "subject": self.subject_edit.text().strip(), "description": self.description_edit.toPlainText(),
-                "category": self.category() or self.loaded.get("category"), "initiator": self.new_initiator()}
+                "category": self.category() or self.loaded.get("category"), "initiator": self.new_initiator(),
+                "type": self.loaded.get("type") or self.row.get("type", "")}
 
     def save(self):
         if self.validate():
@@ -822,7 +823,11 @@ class ViewTicketDialog(_CardDialog):
         self.description_view.setPlaceholderText("(keine Beschreibung)")
         self.ok_button.setEnabled(True)
         self.status.clear()
-        if self.loaded.get("initiator"):
+        contact = self.loaded.get("contact") or {}
+        if contact.get("Phone") or contact.get("Email"):  # kam mit dem Ticket
+            self._show_contact(mt.contact_rows(contact, self.row.get("initiator", ""),
+                                               self.loaded.get("callback", "")))
+        elif self.loaded.get("initiator"):
             self.status.setText("Lade Kontakt des Melders …")
             self._run("user_details", user=self.loaded["initiator"])
         else:

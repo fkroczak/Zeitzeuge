@@ -247,7 +247,7 @@ def test_ticket_bearbeiten_felder():
     assert view == {"id": "ticket-1", "ticket": "TCK0000050866", "type": "SPSActivityTypeServiceRequest",
                     "subject": "Rückmeldung", "description": "- Anpassungen an ZRO Ordnern\nx",
                     "category": CAT, "rich": True, "stamp": "00000000DC09AE2F/00000000DC09AEE9",
-                    "initiator": MELDER, "callback": "02542 1"}
+                    "initiator": MELDER, "callback": "02542 1", "contact": {}}
     assert mt.loaded_entity(LOADED) is LOADED  # auch ohne Hülle
     with pytest.raises(BookingError):
         mt.loaded_entity({"Entity": {"ID": "x"}})
@@ -302,7 +302,7 @@ def test_leser_ticket_bearbeiten(tmp_path):
 
     req = {"id": "ticket-1", "ticket": "TCK0000050866", "stamp": got[-1]["data"]["stamp"],
            "subject": "Rückmeldung", "description": got[-1]["data"]["description"] + "\nOrdner angelegt",
-           "category": CAT}
+           "category": CAT, "type": "SPSActivityTypeServiceRequest"}
     calls.clear()
     reader._ticket_task("edit", {"request": req})
     assert got[-1]["ok"], got[-1]
@@ -392,7 +392,8 @@ def test_leser_melder_aendern(tmp_path):
                "UpdateData": {"Entity": {"ID": "ticket-1", "Sys-Name": "TCK0000050866"}}}
     reader, calls, got = _reader(tmp_path, answers)
     req = {"id": "ticket-1", "ticket": "TCK0000050866", "stamp": mt.stamp(LOADED), "subject": "Rückmeldung",
-           "description": None, "category": CAT, "initiator": "melder-neu"}
+           "description": None, "category": CAT, "initiator": "melder-neu",
+           "type": "SPSActivityTypeServiceRequest"}
     reader._ticket_task("edit", {"request": req})
     assert got[-1]["ok"], got[-1]
     assert [p.split("/api/")[1] for _m, p, _b in calls] == [
@@ -423,14 +424,51 @@ def test_leser_uebernehmen(tmp_path):
 
 
 def test_melder_per_name_finden():
-    users = [{"id": "a", "name": "Kersting, Cornelia - Ärzte - Dienst Scharf GmbH & Co. KG, Rosendahl"},
-             {"id": "b", "name": "Kersting, Anna - Andere GmbH"}]
-    name = "Kersting, Cornelia - Ärzte - Dienst  Scharf GmbH & Co. KG, Rosendahl"
-    assert mt.melder_search_text(name) == "Kersting, Cornelia"
+    users = [{"id": "a", "name": "Muster, Erika - Praxis - Dienst Beispiel GmbH & Co. KG, Musterstadt"},
+             {"id": "b", "name": "Muster, Anna - Andere GmbH"}]
+    name = "Muster, Erika - Praxis - Dienst  Beispiel GmbH & Co. KG, Musterstadt"
+    assert mt.melder_search_text(name) == "Muster, Erika"
     assert mt.match_user(users, name)["id"] == "a"
     # Firma anders geschrieben: der einzige Treffer mit gleichem Namen
-    assert mt.match_user(users, "Kersting, Cornelia - Ärztedienst")["id"] == "a"
+    assert mt.match_user(users, "Muster, Erika - Praxisdienst")["id"] == "a"
     # nicht eindeutig: lieber keiner als eine falsche Nummer
-    twice = users + [{"id": "c", "name": "Kersting, Cornelia - Praxis Nord"}]
-    assert mt.match_user(twice, "Kersting, Cornelia - Ärztedienst") is None
+    twice = users + [{"id": "c", "name": "Muster, Erika - Praxis Nord"}]
+    assert mt.match_user(twice, "Muster, Erika - Praxisdienst") is None
     assert mt.match_user(users, "") is None
+
+
+INCIDENT_DIALOG = mt.DEFAULT_IDS["incident_edit_dialog"]
+
+
+def test_dialog_je_ticketart(tmp_path):
+    """Störungen über den Incident Dialog laden, sonst meldet Matrix42 ObjectIsDeleted
+    (Mitschnitt „Ticket ansehen“ TCK0000050902, 13.11.2026)."""
+    ids = dict(mt.DEFAULT_IDS)
+    assert mt.edit_dialog(ids, "SPSActivityTypeIncident") == INCIDENT_DIALOG
+    assert mt.edit_dialog(ids, "SPSActivityTypeServiceRequest") == EDIT_DIALOG
+    assert mt.edit_dialog(ids, "SPSActivityTypeTicket") == mt.DEFAULT_IDS["ticket_type_edit_dialog"]
+    assert mt.edit_dialog(ids, "") == EDIT_DIALOG
+    assert mt.entity_type('"SPSActivityTypeIncident"') == "SPSActivityTypeIncident"
+    assert mt.entity_type({"x": 1}) == "" and mt.entity_type("Fehler") == ""
+
+    incident = dict(LOADED, **{"Sys-Entity": "SPSActivityTypeIncident",
+                               "InitialData": {"UserDetails": {"Phone": "02542 9", "Email": "a@b.de",
+                                                               "OrgUnit": "Praxis Beispiel"}}})
+    answers = {"GetTicketEntityType": "SPSActivityTypeIncident", "WidgetCommon/GetData": {"Entity": incident}}
+    reader, calls, got = _reader(tmp_path, answers)
+    reader._ticket_task("load", {"id": "ticket-1", "type": "SPSActivityTypeIncident"})
+    assert got[-1]["ok"] and [p.split("/api/")[1] for _m, p, _b in calls] == [
+        f"WidgetCommon/GetData/{INCIDENT_DIALOG}/ticket-1"]
+    assert got[-1]["data"]["contact"]["Phone"] == "02542 9"  # Kontakt kommt mit dem Ticket
+    # Art unbekannt: wie Matrix42 erst nachfragen
+    calls.clear()
+    reader._ticket_task("load", {"id": "ticket-1"})
+    assert [p.split("/api/")[1] for _m, p, _b in calls] == [
+        "ticket/GetTicketEntityType/ticket-1", f"WidgetCommon/GetData/{INCIDENT_DIALOG}/ticket-1"]
+
+
+def test_html_mail_mit_bild():
+    text = mt.html_text('<html><!-- [if !mso]&amp;amp;gt;&amp;amp;lt;style&amp;amp;gt; --><body>'
+                        '<p>Hallo guten Morgen,</p><p><img src="data:image/png;base64,AAAA"></p>'
+                        '<p>Beste Grüße</p></body></html>')
+    assert text == "Hallo guten Morgen,\n[Bild]\nBeste Grüße", text

@@ -19,7 +19,12 @@ Anlegen (Dialog „Ticket“, Widget DEFAULT_IDS["ticket_dialog"]):
    SPSActivityTypeIncident bzw. SPSActivityTypeServiceRequest. Antwort: Sys-Name (TCK…).
 6. Übernehmen (Bearbeiter = ich): POST /activity/TakeOver.
 
-Bearbeiten (Dialog des bestehenden Tickets, DEFAULT_IDS["ticket_edit_dialog"]):
+Bearbeiten (Dialog des bestehenden Tickets je Art, edit_dialog()): Matrix42 hat je Ticketart einen
+eigenen Dialog (WidgetCommon/GetWidgets, Purpose 2): Störung „Incident Dialog“, Serviceanfrage
+„Service Request Dialog“, Ticket „ITM.SD.EditTicket Dialog“. Lädt man eine Störung über den Dialog
+der Serviceanfrage, meldet Matrix42 ObjectIsDeleted (Mitschnitt „Ticket ansehen“, TCK0000050902,
+13.11.2026). Ist die Art unbekannt, fragt Zeitzeuge sie wie Matrix42 ab:
+GET /ticket/GetTicketEntityType/<Id> -> "SPSActivityTypeIncident".
 1. Laden: GET /WidgetCommon/GetData/<Dialog>/<Ticket-Id>?archived=false -> ganzes Ticket mit Sys-TimeStamp.
 2. Speichern: POST /WidgetDialog/UpdateData/<Dialog> mit dem geladenen Ticket, Sys-EntityState 202,
    Beziehungen leer (AddedRelations/RemovedRelations), geändert nur Betreff, Beschreibung und
@@ -45,8 +50,10 @@ from urllib.parse import urlencode
 from m42_booking import API, BookingError, EMPTY_RELATIONS, wrap
 
 # Kennungen aus dem Mitschnitt (in der Config unter m42_ticket_ids änderbar)
-DEFAULT_IDS = {"ticket_dialog": "be4ceef2-aadf-ca41-a130-08d46543427a",       # Neues Ticket
-               "ticket_edit_dialog": "89427fc1-3c2b-c21a-f6dc-08d46550b705"}  # bestehendes Ticket
+DEFAULT_IDS = {"ticket_dialog": "be4ceef2-aadf-ca41-a130-08d46543427a",            # Neues Ticket
+               "ticket_edit_dialog": "89427fc1-3c2b-c21a-f6dc-08d46550b705",       # Serviceanfrage
+               "incident_edit_dialog": "44823b12-332d-c3fb-7d47-08d2f40c5bfe",     # Störung
+               "ticket_type_edit_dialog": "2725327a-bc66-ef11-debc-0050569e2f05"}  # Ticket
 
 INCIDENT, SERVICE_REQUEST = 0, 6  # SPSTicketPickupType: 0 Störung, 6 Serviceanfrage (5 Ticket)
 TYPES = [(INCIDENT, "Störung (Incident)"), (SERVICE_REQUEST, "Serviceanfrage (Service Request)")]
@@ -102,7 +109,7 @@ def _same(text):
 
 def melder_search_text(name):
     """Suchtext für die Personensuche aus dem Melder der Ticketliste:
-    'Kersting, Cornelia - Ärzte - Dienst …' -> 'Kersting, Cornelia'."""
+    'Muster, Erika - Praxis Beispiel …' -> 'Muster, Erika'."""
     return (name or "").split(" - ")[0].strip()
 
 
@@ -276,21 +283,34 @@ def take_over_body(ticket_id, entity_type):
 ENTITY_STATE_CHANGED = 202  # Sys-EntityState beim Speichern eines geänderten Tickets (Mitschnitt)
 
 
+def edit_dialog(ids, kind):
+    """Dialog, mit dem Matrix42 ein bestehendes Ticket dieser Art öffnet und speichert."""
+    return {"SPSActivityTypeIncident": ids.get("incident_edit_dialog"),
+            "SPSActivityTypeTicket": ids.get("ticket_type_edit_dialog")}.get(kind) or ids["ticket_edit_dialog"]
+
+
+def entity_type(data):
+    """Antwort von GET /ticket/GetTicketEntityType/<Id> -> 'SPSActivityTypeIncident' ('' wenn unklar)."""
+    text = data.strip().strip('"') if isinstance(data, str) else ""
+    return text if text.startswith("SPSActivityType") else ""
+
+
 def edit_data_path(dialog, ticket_id):
     return f"{API}/WidgetCommon/GetData/{dialog}/{ticket_id}?archived=false"
 
 
 def load_error(error, kind=""):
-    """Fehler beim Laden über den Dialog des bestehenden Tickets lesbar machen. Matrix42 meldet
-    ObjectIsDeleted („The object you try to open is deleted“), wenn das Ticket gelöscht ist oder
-    etwas darin nicht lesbar ist, z. B. eine E-Mail im Ticket, die Matrix42 nicht entschlüsseln kann
-    (TCK0000050915, 13.11.2026). Das Ticket selbst gibt es dann noch."""
+    """Fehler beim Laden eines bestehenden Tickets lesbar machen. Matrix42 meldet ObjectIsDeleted
+    („The object you try to open is deleted“), wenn das Ticket über den Dialog einer anderen Ticketart
+    geladen wird (z. B. Störung über den Dialog der Serviceanfrage, siehe edit_dialog) oder es
+    wirklich gelöscht ist."""
     if "ObjectIsDeleted" not in str(error):
         return error
     art = {"SPSActivityTypeIncident": "Störung", "SPSActivityTypeServiceRequest": "Serviceanfrage",
            "SPSActivityTypeTicket": "Ticket"}.get(kind, kind.replace("SPSActivityType", ""))
     return BookingError("Matrix42 kann dieses Ticket nicht laden" + (f" ({art})" if art else "")
-                        + ". Meist steckt eine E-Mail darin, die Matrix42 nicht entschlüsseln kann.")
+                        + ". Es ist gelöscht oder hat eine andere Art als in der Liste. "
+                          "Bitte die Liste aktualisieren.")
 
 
 def loaded_entity(data):
@@ -317,13 +337,17 @@ class _TextParser(HTMLParser):
             self.skip += 1
         elif tag == "br":
             self.parts.append("\n")
+        elif tag == "img" and not self.skip:
+            self.parts.append("[Bild]")  # wie Matrix42 im Klartext der E-Mail
         elif tag in self.BLOCK and self.parts and not self.parts[-1].endswith("\n"):
             self.parts.append("\n")  # neuer Block beginnt in einer neuen Zeile
         elif tag in ("td", "th"):
             self.parts.append("\t")
 
     def handle_startendtag(self, tag, attrs):
-        if tag == "br" or tag in self.BLOCK:
+        if tag == "img":
+            self.handle_starttag(tag, attrs)
+        elif tag == "br" or tag in self.BLOCK:
             self.parts.append("\n")
 
     def handle_endtag(self, tag):
@@ -369,7 +393,14 @@ def ticket_view(entity):
             "subject": (base.get("Subject") or "").strip(), "description": html_text(description),
             "category": base.get("Category"), "rich": bool(RICH_HTML.search(description)),
             "stamp": stamp(entity), "initiator": base.get("Initiator") or "",
-            "callback": ((entity.get("SPSActivityClassIncident") or {}).get("Callback") or "").strip()}
+            "callback": ((entity.get("SPSActivityClassIncident") or {}).get("Callback") or "").strip(),
+            # Kontakt des Melders kommt mit dem Ticket (Telefon, E-Mail, Firma), dann ohne Extra-Abfrage
+            "contact": _user_details(entity)}
+
+
+def _user_details(entity):
+    details = (entity.get("InitialData") or {}).get("UserDetails") if isinstance(entity.get("InitialData"), dict) else None
+    return details if isinstance(details, dict) else {}
 
 
 def contact_rows(details, name="", callback=""):

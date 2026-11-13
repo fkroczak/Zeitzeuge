@@ -154,7 +154,7 @@ def gui_test():
     assert kind == "edit" and args["request"] == {"id": "t2", "ticket": "TCK0000000002", "stamp": "s1",
                                                   "subject": "Drucker Empfang", "category": "cat-fs",
                                                   "description": "Drucker am Empfang druckt nicht",
-                                                  "initiator": None}, args
+                                                  "initiator": None, "type": "SPSActivityTypeIncident"}, args
     assert "TCK0000000002 gespeichert" in mine.status.text(), mine.status.text()
     assert mine.visible_rows()[0]["subject"] == "Drucker Empfang"
 
@@ -200,7 +200,7 @@ def gui_test():
     view.ok_button.click()
     assert view.action == "edit"
 
-    # Ticket nicht ladbar (z. B. E-Mail, die Matrix42 nicht entschlüsseln kann): Telefon trotzdem
+    # Ticket nicht ladbar (z. B. gelöscht): Telefon trotzdem
     reader.fail.add("load")
     view = ViewTicketDialog(reader, ROW)
     assert wait_for(lambda: view.contact_rows.rowCount() > 2, 3000), view.status.text()
