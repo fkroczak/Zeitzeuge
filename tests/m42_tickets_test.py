@@ -13,6 +13,12 @@ import m42_tickets as mt  # noqa: E402
 from m42_booking import BookingError  # noqa: E402
 
 ME, MELDER, CAT, SLA = "me-1", "melder-1", "cat-fileserver", "sla-sr"
+OU_KOCH, CC_GLOBAL, LOC_GLOBAL = ("11111111-2222-3333-4444-555555555555", "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+                                  "99999999-8888-7777-6666-555555555555")
+# GET /activity/UserDetails wie im Log vom 13.11.2026 (Feldnamen echt, Werte erfunden)
+USER_DETAILS = {"Accounts": [], "Phone": "02542 1", "Email": "m@kunde.de",
+                "OrgUnit": "Dr. Koch Beratung und Coaching", "OrgUnitId": OU_KOCH,
+                "CostCenter": "Global", "CostCenterId": CC_GLOBAL, "Location": "Global", "LocationId": LOC_GLOBAL}
 TEMPLATE = {"Sys-Entity": "SPSActivityTypeTicket", "ID": "ticket-1", "Sys-IsNew": True,
             "SPSActivityClassBase": {"NotifyResponsible": True, "Subject": None, "Category": "cat-default",
                                      "Initiator": None, "Recipient": None, "Urgency": 2, "Impact": 2,
@@ -121,7 +127,7 @@ def _reader(tmp_path, answers, fail=None):
 
 ANSWERS = {"/userinfo": {"Id": ME, "FirstName": "Filip", "LastName": "Kroczak"},
            "GetNewData": {"Entity": TEMPLATE}, "/activity/category/": {"Impact": 2, "Urgency": 2},
-           "suitableSLAs": {"TightestItem": SLA}, "UserDetails": {"Phone": "02542 1", "OU": {"ID": "ou-kunde"}},
+           "suitableSLAs": {"TightestItem": SLA}, "UserDetails": USER_DETAILS,
            "UpdateData": {"Entity": {"Sys-Name": "TCK0000050866", "ID": "ticket-1",
                                      "Sys-Entity": "SPSActivityTypeServiceRequest"}},
            "CloseWizardInitialData": {"TicketCategory": CAT, "CloseRelatedIncidents": True}}
@@ -142,7 +148,8 @@ def test_leser_ticket_anlegen(tmp_path):
                      "activity/TakeOver"], paths
     saved = json.loads(calls[5][2][1:-1])
     assert saved["SPSActivityClassBase"]["Creator"] == ME and saved["SPSActivityClassBase"]["SLA"] == SLA
-    assert saved["SPSCommonClassBase"]["OU"] == "ou-kunde"  # Kunde des Melders, nicht die eigene OU
+    common = saved["SPSCommonClassBase"]  # Kunde des Melders, nicht die eigene OU (Systems)
+    assert (common["OU"], common["CostCenter"], common["Location"]) == (OU_KOCH, CC_GLOBAL, LOC_GLOBAL)
     assert calls[6][2] == {"Objects": [{"ObjectIds": ["ticket-1"], "TypeName": "SPSActivityTypeServiceRequest"}]}
 
     # Störung gewählt, Matrix42 macht etwas anderes daraus: Hinweis; ohne Übernehmen kein TakeOver
@@ -305,26 +312,19 @@ def test_leser_ticket_bearbeiten(tmp_path):
 
 def test_kunde_des_melders():
     assert mt.initiator_common({"Phone": "1"}) == {}
-    assert mt.initiator_common({"OU": "o", "CostCenter": {"ID": "c"}, "Location": None}) == \
-        {"OU": "o", "CostCenter": "c"}
-    person = {"ID": "p", "SPSCommonClassBase": {"OU": "o2", "CostCenter": "c2", "Location": "l2"}}
-    assert mt.initiator_common({"OU": {"ObjectId": "o3", "DisplayString": "Koch"}}) == {"OU": "o3"}
+    # echte UserDetails: Ids nehmen, nie die Anzeigenamen daneben
+    assert mt.initiator_common(USER_DETAILS) == {"OU": OU_KOCH, "CostCenter": CC_GLOBAL, "Location": LOC_GLOBAL}
+    assert mt.initiator_common({"OrgUnit": "Systems", "OrgUnitId": None}) == {}
+    assert mt.initiator_common({"OrgUnit": {"ObjectId": OU_KOCH, "DisplayString": "Koch"}}) == {"OU": OU_KOCH}
     assert mt.field_overview({"Phone": "1", "OU": {"ID": "x"}}) == {"Phone": "str", "OU": {"ID": "str"}}
-    assert mt.initiator_common({}, person) == {"OU": "o2", "CostCenter": "c2", "Location": "l2"}
-    e = mt.ticket_entity(TEMPLATE, mt.INCIDENT, "x", "", CAT, MELDER, ME, initiator_ou={"OU": "o2"})
-    assert (e["SPSCommonClassBase"]["OU"], e["SPSCommonClassBase"]["CostCenter"]) == ("o2", "cc")
+    e = mt.ticket_entity(TEMPLATE, mt.INCIDENT, "x", "", CAT, MELDER, ME, initiator_ou={"OU": OU_KOCH})
+    assert (e["SPSCommonClassBase"]["OU"], e["SPSCommonClassBase"]["CostCenter"]) == (OU_KOCH, "cc")
     assert mt.ticket_entity(TEMPLATE, mt.INCIDENT, "x", "", CAT, MELDER, ME)["SPSCommonClassBase"]["OU"] == "ou"
 
 
-def test_leser_ticket_anlegen_ou_aus_personenobjekt(tmp_path):
-    answers = dict(ANSWERS, UserDetails={"Phone": "1"},
-                   **{"/data/objects/SPSPersonType/": {"SPSCommonClassBase": {"OU": "ou-p"}}})
-    reader, calls, got = _reader(tmp_path, answers)
-    reader._ticket_task("create", {"request": REQUEST})
-    assert got[-1]["ok"] and got[-1]["data"]["warning"] == "", got[-1]
-    saved = next(json.loads(b[1:-1]) for _m, p, b in calls if "UpdateData" in p)
-    assert saved["SPSCommonClassBase"]["OU"] == "ou-p"
-    # gar keine OU: angelegt, aber mit Hinweis
-    reader, calls, got = _reader(tmp_path, dict(ANSWERS, UserDetails={"Phone": "1"}))
+def test_leser_ticket_anlegen_ohne_kunde(tmp_path):
+    # UserDetails ohne OrgUnitId: angelegt, aber mit Hinweis; Personenobjekt wird nicht gelesen (403)
+    reader, calls, got = _reader(tmp_path, dict(ANSWERS, UserDetails={"Phone": "1", "OrgUnit": "Systems"}))
     reader._ticket_task("create", {"request": REQUEST})
     assert got[-1]["ok"] and "Kunden" in got[-1]["data"]["warning"]
+    assert not any("data/objects" in p for _m, p, _b in calls)

@@ -10,7 +10,7 @@ Anlegen (Dialog „Ticket“, Widget DEFAULT_IDS["ticket_dialog"]):
 3. SLA: GET /activity/suitableSLAsForTicket/?Category&User=<Melder>&TicketType&Priority=-1&Impact
    -> TightestItem.
 4. Melder: GET /activity/UserDetails/<Id> -> Telefon (Rückruf); OU, Kostenstelle und Standort des
-   Melders (initiator_common), sonst aus GET /data/objects/SPSPersonType/<Id>?full=true. Die
+   Melders (initiator_common: OrgUnitId, CostCenterId, LocationId). Die
    Vorlage aus 1. hat die eigenen (z. B. Systems); der Dialog setzt sie beim Wählen des Melders
    um. Ohne das gehört das Ticket intern zu Systems, und Zeiterfassungen darauf ebenso.
 5. Speichern: POST /WidgetDialog/UpdateData/<Dialog> mit dem Ticket. Die Art steht in
@@ -135,19 +135,27 @@ def description_html(text):
 COMMON_FIELDS = ("OU", "CostCenter", "Location")  # Kunde, Kostenstelle, Standort
 
 
+GUID = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+
+
 def _ref(value):
-    """Verweis in einer Matrix42-Antwort -> Id ('abc' oder {"ID": 'abc'})."""
+    """Verweis in einer Matrix42-Antwort -> Id (GUID als Text oder {"ID": GUID}), sonst None.
+    Nur GUIDs: UserDetails liefert neben OrgUnitId auch OrgUnit mit dem Anzeigenamen."""
     if isinstance(value, dict):
         value = (value.get("ID") or value.get("Id") or value.get("ObjectId") or value.get("Sys-ObjectId")
                  or value.get("Value"))
-    return value if isinstance(value, str) and value.strip() else None
+    return value.strip() if isinstance(value, str) and GUID.fullmatch(value.strip()) else None
+
+
+# Feldnamen je Ziel, die Id-Felder zuerst. UserDetails (Log vom 13.11.2026): OrgUnit/OrgUnitId,
+# CostCenter/CostCenterId, Location/LocationId; die Felder ohne Id sind dort Anzeigenamen.
+COMMON_ALIASES = {"OU": ("OrgUnitId", "OUId", "OrganizationalUnitId", "OrgUnit", "OU", "OrganizationalUnit"),
+                  "CostCenter": ("CostCenterId", "CostCenter"), "Location": ("LocationId", "Location")}
 
 
 def initiator_common(*answers):
-    """OU, Kostenstelle und Standort des Melders aus UserDetails oder dem Personenobjekt
+    """OU (Kunde), Kostenstelle und Standort des Melders aus GET /activity/UserDetails
     -> {"OU": …, "CostCenter": …, "Location": …} (nur gefundene). Erste Antwort mit OU gewinnt."""
-    aliases = {"OU": ("OU", "OUId", "OrganizationalUnit", "OrganizationalUnitId"),
-               "CostCenter": ("CostCenter", "CostCenterId"), "Location": ("Location", "LocationId")}
     for data in answers:
         if not isinstance(data, dict):
             continue
@@ -155,7 +163,7 @@ def initiator_common(*answers):
             if not isinstance(source, dict):
                 continue
             found = {}
-            for field, names in aliases.items():
+            for field, names in COMMON_ALIASES.items():
                 value = next((_ref(source.get(n)) for n in names if _ref(source.get(n))), None)
                 if value:
                     found[field] = value
