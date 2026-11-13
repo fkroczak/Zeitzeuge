@@ -288,11 +288,15 @@ class _Kpi(QFrame):
         Erfasst                      Offen
         3:41 h  von 8:34 h           4  Einträge        <- Höhe der ersten Chip-Reihe
         ████░░░░░░░░░░  43 %         [Jetzt eintragen]  <- unten, Höhe der zweiten Chip-Reihe
-    """
+
+    Mit set_clickable(True) ist die ganze Karte ein Knopf (Maus, Enter, Leertaste): clicked."""
+
+    clicked = Signal()
 
     def __init__(self, label, parent=None, action=None, customers=False):
         super().__init__(parent)
         self.setObjectName("card")
+        self.clickable = False
         layout = QVBoxLayout(self)
         layout.setContentsMargins(SPACE_L, SPACE_M, SPACE_L, SPACE_M)
         layout.setSpacing(SPACE_XS)
@@ -355,6 +359,23 @@ class _Kpi(QFrame):
         self.percent.setObjectName("kpi_label")
         self.foot.addWidget(self.bar, 1)
         self.foot.addWidget(self.percent)
+
+    def set_clickable(self, on):
+        self.clickable = on
+        self.setCursor(Qt.PointingHandCursor if on else Qt.ArrowCursor)
+        self.setFocusPolicy(Qt.StrongFocus if on else Qt.NoFocus)
+
+    def mouseReleaseEvent(self, event):
+        if (self.clickable and event.button() == Qt.LeftButton
+                and self.rect().contains(event.position().toPoint())):
+            self.clicked.emit()
+        super().mouseReleaseEvent(event)
+
+    def keyPressEvent(self, event):
+        if self.clickable and event.key() in (Qt.Key_Return, Qt.Key_Enter, Qt.Key_Space):
+            self.clicked.emit()
+            return
+        super().keyPressEvent(event)
 
 
 class RateKpi(QFrame):
@@ -445,6 +466,7 @@ class DaySummary(QWidget):
     open_clicked = Signal()
     suggestions_clicked = Signal()
     tickets_clicked = Signal()
+    booked_clicked = Signal()  # Kachel „Erfasst“ mit ITM-Personalzeit: ITM-Zeiterfassung öffnen
     customer_clicked = Signal(str)
 
     def __init__(self, parent=None):
@@ -454,6 +476,7 @@ class DaySummary(QWidget):
         layout.setSpacing(SPACE_S)
         self.booked = _Kpi("Erfasst", self)
         self.booked.add_progress()
+        self.booked.clicked.connect(self.booked_clicked)
         self.opened = _Kpi("Offen", self, "Jetzt eintragen")
         self.opened.button.clicked.connect(self.open_clicked)
         self.opened.button.setAccessibleName("Offene Tätigkeiten jetzt eintragen")
@@ -496,7 +519,12 @@ class DaySummary(QWidget):
         tips = {"gestempelt": " im Verhältnis zur gestempelten Personalzeit (ITM)",
                 "bis jetzt": " im Verhältnis zur Personalzeit bis jetzt (noch eingestempelt, läuft live)",
                 "Arbeitszeit": " im Verhältnis zur eingestellten Arbeitszeit"}
-        self.booked.setToolTip("Eingetragene Tätigkeiten des Tages" + (tips.get(basis, "") if target else ""))
+        # Bezug ist die ITM-Personalzeit: Klick öffnet die ITM-Zeiterfassung im Browser
+        itm = bool(target) and basis in ("gestempelt", "bis jetzt")
+        self.booked.set_clickable(itm)
+        self.booked.setAccessibleName("Erfasst. ITM-Zeiterfassung im Browser öffnen" if itm else "")
+        self.booked.setToolTip("Eingetragene Tätigkeiten des Tages" + (tips.get(basis, "") if target else "")
+                               + ("\nKlicken: ITM-Zeiterfassung im Browser öffnen" if itm else ""))
         n = data["open"]
         self.opened.value.setText(str(n))
         self.opened.extra.setText("Eintrag" if n == 1 else "Einträge")
