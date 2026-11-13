@@ -38,9 +38,10 @@ class MyTicketsDialog(QDialog):
         layout.addWidget(self.table, 1)
 
         self.status = QLabel(self)
-        self.status.setWordWrap(True)
+        # Ohne Umbruch: jede Meldung ist eine Zeile. Ein umbrechendes Label bekommt im Kartenrahmen
+        # bei mehr Zeilen nicht mehr Platz (zweite Zeile unter der Fußleiste); lange Texte im Tooltip.
         self.status.setObjectName("hint")
-        self.status.installEventFilter(self)  # Höhe bei Breitenänderung nachziehen (_fit_status)
+        self.status.setTextFormat(Qt.PlainText)
         layout.addWidget(self.status)
         buttons = QDialogButtonBox(QDialogButtonBox.Close, self)
         buttons.button(QDialogButtonBox.Close).setText("Fertig")
@@ -75,9 +76,7 @@ class MyTicketsDialog(QDialog):
         self.filter_edit.setFocus()
 
     def eventFilter(self, obj, event):
-        if obj is self.status and event.type() == QEvent.Resize:
-            self._fit_status()
-        # Pfeil runter im Filterfeld: in die Tabelle
+            # Pfeil runter im Filterfeld: in die Tabelle
         if obj is self.filter_edit and event.type() == QEvent.KeyPress and event.key() == Qt.Key_Down:
             self.table.setFocus()
             if self.current_row() is None:
@@ -89,8 +88,7 @@ class MyTicketsDialog(QDialog):
 
     def refresh(self):
         self.refresh_button.setEnabled(False)
-        self.status.setText("Lese meine Tickets aus Matrix42 …")
-        self._fit_status()
+        self._set_status("Lese meine Tickets aus Matrix42 …")
         self.reader.load_my_tickets()
 
     def show_result(self, result):
@@ -128,17 +126,11 @@ class MyTicketsDialog(QDialog):
             text += " Enter kopiert die Nummer."
         if self._error:
             text = (text + "\n" if text else "") + f"⚠ {self._error}"
-        self.status.setText("\n".join(t for t in (self._note, text) if t))
-        self._fit_status()
+        self._set_status("\n".join(t for t in (self._note, text) if t))
 
-    def _fit_status(self):
-        """Umbrechendes Label im Kartenrahmen: der Inhaltsbereich gibt ihm sonst die Höhe für eine
-        geschätzte Breite, Zeilen wären abgeschnitten. Daher feste Höhe für die echte Breite."""
-        width = self.status.width()
-        if width > 1 and self.status.isVisible():  # vorher misst es mit einer Platzhalterbreite
-            self.status.setMinimumHeight(0)  # heightForWidth zählt gesetzte Grenzen mit
-            self.status.setMaximumHeight(16777215)
-            self.status.setFixedHeight(self.status.heightForWidth(width))
+    def _set_status(self, text):
+        self.status.setText(text)
+        self.status.setToolTip(text)
 
     def _selected(self):
         on = self.current_row() is not None
