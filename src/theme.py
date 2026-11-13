@@ -631,6 +631,11 @@ QToolButton#filter_chip:focus { border: 2px solid $accent; padding: 2px 9px; }
 QLabel#customer_chip[on="true"] { background-color: $primary; color: $onprimary; border-color: $primary; }
 QLabel#detail_key { color: $muted; background: transparent; }
 QLabel#detail_value { background: transparent; }
+/* Aktivitätsdetails als Textfelder: grau wie die Zeitzeile (QFrame#prompt_time), nur zum Ansehen */
+QLineEdit#detail_field, QPlainTextEdit#detail_field, QTextEdit#detail_field, QFrame#detail_field {
+    background-color: $bg; border: 1px solid $line; border-radius: 8px; }
+QLineEdit#detail_field:focus, QPlainTextEdit#detail_field:focus, QTextEdit#detail_field:focus { border-color: $accent; }
+QFrame#detail_field QLabel { background: transparent; }
 QToolButton#chip:focus { border: 2px solid $accent; padding: 1px 9px; }
 QToolButton#chip_add { background: transparent; color: $muted; border: 1px dashed $control;
                        border-radius: $radius_chippx; padding: 2px 10px; }
