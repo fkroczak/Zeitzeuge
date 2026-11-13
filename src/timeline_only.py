@@ -12,7 +12,7 @@ from PySide6.QtGui import (QBrush, QColor, QContextMenuEvent, QFontMetrics, QPai
 from PySide6.QtWidgets import (QApplication, QDialog, QDialogButtonBox, QFormLayout, QFrame,
                                QGraphicsDropShadowEffect, QGraphicsRectItem,
                                QGraphicsScene, QGraphicsView, QLabel, QLineEdit, QMenu,
-                               QHBoxLayout, QPlainTextEdit, QScrollArea, QVBoxLayout)
+                               QHBoxLayout, QPlainTextEdit, QScrollArea, QTextBrowser, QVBoxLayout)
 
 from activity_tracker import app_label, merge_segments, read_segments
 import call_import
@@ -558,10 +558,25 @@ class ActivityViewDialog(QDialog):
         if activity.get("ai"):
             text = activity.get("description", "")
             row("Sicherheit", f"{round(activity.get('confidence', 0) * 100)} %")
+        # Ticketnummern auch in den Details als Links (öffnen das Ticket in Zeitzeuge)
+        linked = _ticket_link_html(text) if text else None
+        rich = (f'<span style="white-space:pre-wrap">{linked.replace(chr(10), "<br>")}</span>'
+                if linked is not None else None)
+
+        def open_link(href):
+            open_ticket_from(self, str(href).split(":", 1)[1])
+
         if text and fields:
-            details = QPlainTextEdit(text)
+            if rich is not None:
+                details = QTextBrowser()
+                details.setOpenLinks(False)
+                details.setHtml(rich)
+                details.anchorClicked.connect(lambda url: open_link(url.toString()))
+                details.setToolTip("Ticketnummer anklicken: Ticket in Zeitzeuge ansehen")
+            else:
+                details = QPlainTextEdit(text)
+                details.setReadOnly(True)
             details.setObjectName("detail_field")
-            details.setReadOnly(True)
             details.setMaximumHeight(240 if parts else 110)
             label = QLabel("Details")
             label.setObjectName("detail_key")
@@ -576,6 +591,13 @@ class ActivityViewDialog(QDialog):
             details = QLabel(text)
             details.setWordWrap(True)
             details.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            if rich is not None:
+                details.setTextFormat(Qt.RichText)
+                details.setText(rich)
+                details.setTextInteractionFlags(Qt.TextBrowserInteraction)
+                details.setOpenExternalLinks(False)
+                details.linkActivated.connect(open_link)
+                details.setToolTip("Ticketnummer anklicken: Ticket in Zeitzeuge ansehen")
             details.setAlignment(Qt.AlignLeft | Qt.AlignTop)
             scroll = QScrollArea()  # lange Listen (Arbeitsblöcke) scrollen statt das Fenster zu sprengen
             scroll.setWidget(details)
