@@ -18,7 +18,7 @@ def gui_test():
     global app
     from PySide6.QtCore import QObject, Qt, QTimer, Signal
     from PySide6.QtTest import QTest
-    from PySide6.QtWidgets import QApplication, QDialog, QFormLayout
+    from PySide6.QtWidgets import QApplication, QDialog, QFormLayout, QToolButton
 
     import m42_booking as mb
     import m42_tickets as mt
@@ -253,9 +253,17 @@ def gui_test():
     tickets = TicketsDialog(creader)
     tickets.show()
     assert wait_for(lambda: "f:f-neu" in tickets.category_buttons, 2000)
-    flow = tickets.pills.layout()
-    pills = [w.text() for w in (flow.itemAt(i).widget() for i in range(flow.count())) if hasattr(w, "text")]
-    assert pills == ["Meine Tickets", "Alle", "Neue Tickets", "TK-Tickets", "Geschlossene"], pills
+    def shown():
+        """Sichtbare Knöpfe der Auswahl, in Anzeigereihenfolge (Zeilen, darin von links)."""
+        app.processEvents()
+        buttons = [b for b in tickets.selector.findChildren(QToolButton) if b.isVisibleTo(tickets)]
+        return [b.text() for b in sorted(buttons, key=lambda b: (b.mapTo(tickets, b.rect().topLeft()).y(),
+                                                                  b.mapTo(tickets, b.rect().topLeft()).x()))]
+    def button(text):
+        return next(b for b in tickets.selector.findChildren(QToolButton) if b.text() == text and b.isVisibleTo(tickets))
+    # Anordnung 1 (Standard): Zeile „Ansicht“ und Zeile „Pools“, Geschlossene als Schalter
+    assert tickets.layout_no == 1 and shown() == ["Meine Tickets", "Alle", "Neue Tickets", "TK-Tickets"], shown()
+    assert tickets.closed_button is tickets.closed_switch and tickets.closed_switch.isVisibleTo(tickets)
     assert tickets.category_buttons["mine"].isChecked() and not tickets.closed_button.isChecked()
     assert tickets.windowTitle() == "Tickets" and len(tickets.visible_rows()) == 3  # offene von mir
     tickets.closed_button.click()  # Geschlossene an: auch erledigte von mir
@@ -279,6 +287,53 @@ def gui_test():
     assert [k for k, _f in creader.loads] == ["tk", "all"], creader.loads
     tickets.category_buttons["f:f-neu"].click()
     assert creader.loads[-1] == ("f:f-neu", "f-neu")
+
+    # ---- Alle Anordnungen: Kategorie und „Geschlossene“ bleiben beim Wechsel erhalten
+    chosen = []
+    tickets.layout_chosen.connect(chosen.append)
+    tickets.choose("mine")
+    creader.ticket_filters = [{"id": "f-neu", "title": "Neue Tickets"}, {"id": "f-tk", "title": "Neue TK Tickets"},
+                              {"id": "f-a", "title": "Ticket_Pool_A"}, {"id": "f-v", "title": "Offen Vertrieb"}]
+    tickets.show_filters([{"id": "f-tk", "title": "Neue TK Tickets"}, {"id": "f-a", "title": "Ticket Pool A"},
+                          {"id": "f-v", "title": "Offen Vertrieb"}])
+    assert shown() == ["Meine Tickets", "Alle", "Neue Tickets", "Offen Vertrieb",
+                       "TK-Tickets", "Neue TK Tickets", "Ticket Pool A"], shown()
+    tickets.layout_actions[2].trigger()  # Kompakt: TK/Pools/Weitere als Menü
+    assert chosen == [2] and shown() == ["Meine Tickets", "Alle", "Neue Tickets", "TK  ▾", "Pools  ▾", "Weitere  ▾"], shown()
+    tk_menu = button("TK  ▾")
+    tk_menu.menu().actions()[1].trigger()  # „Neue TK Tickets“
+    assert tickets.category == "f:f-tk" and "TK: Neue TK Tickets  ▾" in shown(), shown()
+    tickets.choose_layout(3)  # Seitenleiste: keine Pillen, Geschlossene als Pille neben der Suche
+    assert shown() == [] and tickets.sidebar.isVisibleTo(tickets) and tickets.closed_button is tickets.closed_chip
+    assert tickets.sidebar.currentItem().text().strip() == "Neue TK Tickets"
+    item = next(tickets.sidebar.item(i) for i in range(tickets.sidebar.count())
+                if tickets.sidebar.item(i).text().strip() == "Alle")
+    tickets.sidebar.setCurrentItem(item)
+    assert tickets.category == "all"
+    was = tickets.closed()
+    tickets.closed_button.click()
+    assert tickets.closed() != was and tickets.closed_switch.isChecked() == tickets.closed()
+    tickets.choose_layout(4)  # Bereich „Allgemein“ und seine Kategorien
+    assert not tickets.sidebar.isVisibleTo(tickets)
+    assert shown() == ["Meine", "Allgemein", "TK", "Pools", "Weitere", "Alle", "Neue Tickets"], shown()
+    button("TK").click()
+    assert tickets.category == "f:f-tk"  # zuletzt gewählte im Bereich TK
+    tickets.category_buttons["tk"].click()
+    assert tickets.category == "tk"
+    favs = []
+    tickets.favorites_changed.connect(favs.append)
+    tickets.choose_layout(5)  # Favoriten, Rest über „+ Filter“
+    assert shown() == ["Meine Tickets", "TK-Tickets", "Alle", "+ Filter", "Geschlossene"], shown()
+    more = button("+ Filter")
+    next(a for a in more.menu().actions() if a.text() == "Offen Vertrieb").trigger()
+    assert tickets.category == "f:f-v" and "Offen Vertrieb" in shown()  # vorübergehend
+    more = button("+ Filter")
+    pin = next(a for a in more.menu().actions() if a.menu()).menu()
+    next(a for a in pin.actions() if a.text() == "Ticket Pool A").trigger()
+    assert favs == [["mine", "tk", "all", "f:f-a"]] and "Ticket Pool A" in shown()
+    tickets.choose_layout(1)
+    assert tickets.closed_button is tickets.closed_switch and tickets.category == "f:f-v"
+    assert tickets.category_buttons["f:f-v"].isChecked() and chosen == [2, 3, 4, 5, 1]
     tickets.close()
 
     # ---- Reihenfolge wie im Service Desk sinnvoll gruppiert, Unbekannte nach Ähnlichkeit/ans Ende

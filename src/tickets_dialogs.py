@@ -1,13 +1,20 @@
 """Fenster „Tickets“: aktuelle Tickets in Matrix42, nach Kategorie.
 
-Über dem Filterfeld eine Reihe Pillen. Kategorien schalten um (immer genau eine):
-„Meine Tickets“ (Bearbeiter = ich, vorausgewählt), „TK-Tickets“, „Alle“ und die gespeicherten
-Filter der Ticketliste in Matrix42. Dahinter die Pille „Geschlossene“: an zeigt sie in jeder
-Kategorie auch gelöste/geschlossene Tickets, aus nur offene und angehaltene.
+Kategorien schalten um (immer genau eine): „Meine Tickets“ (vorausgewählt), „TK-Tickets“, „Alle“
+und die gespeicherten Filter der Ticketliste in Matrix42. „Geschlossene“ wirkt bei jeder
+Kategorie: an zeigt sie auch gelöste/geschlossene Tickets, aus nur offene und angehaltene.
 
-Das Filterfeld sucht nur in dem, was die Pillen zeigen (Kategorie und Status); jedes Wort
-muss irgendwo vorkommen, wie bei der Ticketsuche. Tabelle (Ticket, Betreff, Kunde, Melder,
-Art, Status, Bearbeiter, Angelegt), nach jeder Spalte sortierbar, in Seiten zu 50 oder 100 Tickets.
+Wie die Kategorien angeboten werden, wählt das Menü „Anordnung“ im Fenster (oder Ansicht →
+Ticketfenster), gespeichert in der Einstellung ticket_layout:
+  1 Zwei beschriftete Zeilen „Ansicht“ und „Pools“, Schalter „Geschlossene zeigen“ (Standard)
+  2 Kompakt: Hauptkategorien als Pillen, TK/Pools/Weitere als Menü-Pillen
+  3 Seitenleiste mit Überschriften wie in Matrix42
+  4 Zwei Ebenen: oben der Bereich, darunter seine Kategorien
+  5 Favoriten: angeheftete Pillen (ticket_favorites), der Rest über „+ Filter“
+
+Das Filterfeld sucht nur in dem, was Kategorie und Status zeigen; jedes Wort muss irgendwo
+vorkommen, wie bei der Ticketsuche. Tabelle (Ticket, Betreff, Kunde, Melder, Art, Status,
+Bearbeiter, Angelegt), nach jeder Spalte sortierbar, in Seiten zu 50 oder 100 Tickets.
 
 Meine Tickets liest M42Reader alle 10 Minuten (my_tickets_loaded), die übrigen Kategorien beim
 ersten Anzeigen und wenn sie älter als 10 Minuten sind (tickets_loaded); „Aktualisieren“ liest
@@ -15,9 +22,11 @@ sofort. „Neues Ticket …“, „Bearbeiten …“ und „Schließen …“ ö
 """
 import time
 
-from PySide6.QtCore import QEvent, Qt
-from PySide6.QtWidgets import (QApplication, QButtonGroup, QComboBox, QDialog, QDialogButtonBox, QHBoxLayout,
-                               QLabel, QLineEdit, QPushButton, QToolButton, QVBoxLayout, QWidget)
+from PySide6.QtCore import QEvent, Qt, Signal
+from PySide6.QtGui import QAction, QActionGroup, QFont
+from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QHBoxLayout, QLabel,
+                               QLineEdit, QListWidget, QListWidgetItem, QMenu, QPushButton, QSizePolicy, QToolButton,
+                               QVBoxLayout, QWidget)
 
 import m42_booking as mb
 from flow_layout import FlowLayout
@@ -53,23 +62,49 @@ def pill_rank(title):
     return len(PILL_GROUPS), 99
 
 
+GROUP_NAMES = ["Meine", "Allgemein", "TK", "Pools", "Weitere"]  # zu PILL_GROUPS, „Weitere“ = Rest
+
+# Anordnungen (Einstellung ticket_layout), Nummer -> Name im Menü
+LAYOUTS = {1: "Zwei beschriftete Zeilen", 2: "Kompakt mit Menüs", 3: "Seitenleiste wie in Matrix42",
+           4: "Bereich und Unterfilter", 5: "Favoriten"}
+DEFAULT_LAYOUT = 1
+DEFAULT_FAVORITES = [MINE, "tk", "all"]
+
 PAGE_SIZES = (50, 100)  # Tickets je Seite; die Wahl gilt bis zum Beenden für jedes neue Fenster
 
 
-def _chip(text, parent):
+def _chip(text, parent, name="chip"):
     b = QToolButton(parent)
-    b.setObjectName("chip")
+    b.setObjectName(name)
     b.setText(text)
-    b.setCheckable(True)
+    b.setCheckable(name == "chip")
     b.setCursor(Qt.PointingHandCursor)
     b.setFocusPolicy(Qt.StrongFocus)
     return b
 
 
+class _Row(FlowLayout):
+    """Fließende Pillen-Zeile ohne „Höhe aus Breite“ nach außen: die Höhe setzt _fit_rows. Sonst
+    verteilt der Kartenrahmen freien Platz als Lücken zwischen Auswahl, Suche und Tabelle."""
+
+    def hasHeightForWidth(self):
+        return False
+
+
+def _gap(parent, width):
+    gap = QWidget(parent)
+    gap.setAttribute(Qt.WA_TransparentForMouseEvents)
+    gap.setStyleSheet("background: transparent;")
+    gap.setFixedSize(width, 1)
+    return gap
+
+
 class TicketsDialog(QDialog):
     page_size = PAGE_SIZES[0]
+    layout_chosen = Signal(int)       # Anordnung im Fenster gewählt (zum Speichern)
+    favorites_changed = Signal(list)  # Favoriten (Anordnung 5) geändert (zum Speichern)
 
-    def __init__(self, reader, parent=None):
+    def __init__(self, reader, parent=None, layout=DEFAULT_LAYOUT, favorites=None):
         super().__init__(parent)
         self.setWindowTitle("Tickets")
         self.setMinimumSize(1040, 520)
@@ -82,32 +117,61 @@ class TicketsDialog(QDialog):
         self.categories = {}  # Schlüssel -> (Titel, Filter)
         layout = QVBoxLayout(self)
 
-        # ---- Pillen: Kategorien (umschalten) | Geschlossene (wirkt bei jeder Kategorie)
-        self.pills = QWidget(self)
-        self.pills.setObjectName("chips")
-        self._flow = FlowLayout(self.pills, spacing=6)
-        self.category_group = QButtonGroup(self)
-        self.category_group.setExclusive(True)
-        self.category_buttons = {}
-        self._gaps = []
-        self.closed_button = _chip("Geschlossene", self.pills)
-        self.closed_button.setToolTip("Auch gelöste und geschlossene Tickets der Kategorie zeigen")
-        self.closed_button.setAccessibleName("Geschlossene Tickets zeigen")
-        self.closed_button.toggled.connect(self._closed_toggled)
+        self.layout_no = layout if layout in LAYOUTS else DEFAULT_LAYOUT
+        self.favorites = list(favorites) if favorites else list(DEFAULT_FAVORITES)
+        self.category_buttons = {}  # Kategorie -> Pille, soweit in der Anordnung als Pille sichtbar
         for key, title, fid in FIXED:
-            self._add_category(key, title, fid)
-        self._arrange()
-        self.category_buttons[MINE].blockSignals(True)  # Tabelle gibt es noch nicht
-        self.category_buttons[MINE].setChecked(True)
-        self.category_buttons[MINE].blockSignals(False)
-        layout.addWidget(self.pills)
+            self.categories[key] = (title, fid)
+
+        # „Geschlossene“: als Pille (Anordnungen 3, 5) oder als Schalter (1, 2, 4), beide gleich
+        self.closed_chip = _chip("Geschlossene", self)
+        self.closed_switch = QCheckBox("Geschlossene zeigen", self)
+        self.closed_switch.setObjectName("switch")
+        for w in (self.closed_chip, self.closed_switch):
+            w.setToolTip("Auch gelöste und geschlossene Tickets der Kategorie zeigen")
+            w.setAccessibleName("Geschlossene Tickets zeigen")
+            w.toggled.connect(self._closed_toggled)
+
+        # Oben: Auswahl der Kategorie (je nach Anordnung neu gebaut), darunter Suche
+        self.selector = QWidget(self)
+        self.selector.setObjectName("chips")
+        self.selector_layout = QVBoxLayout(self.selector)
+        self.selector_layout.setContentsMargins(0, 0, 0, 0)
+        self.selector_layout.setSpacing(6)
+        self.selector.setStyleSheet("QWidget#chips, QWidget#chip_row { background: transparent; }")
+        self.selector.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)  # Platz bekommt die Tabelle
+        layout.addWidget(self.selector)
 
         self.filter_edit = QLineEdit(self)
         self.filter_edit.setAccessibleName("Tickets filtern")
         self.filter_edit.setClearButtonEnabled(True)
         self.filter_edit.textChanged.connect(self.apply_filter)
         self.filter_edit.installEventFilter(self)
-        layout.addWidget(self.filter_edit)
+        self.layout_button = QToolButton(self)
+        self.layout_button.setObjectName("chip_add")
+        self.layout_button.setText("Anordnung")
+        self.layout_button.setToolTip("Wie die Kategorien angeordnet sind")
+        self.layout_button.setAccessibleName("Anordnung der Kategorien wählen")
+        self.layout_button.setPopupMode(QToolButton.InstantPopup)
+        self.layout_menu = QMenu(self.layout_button)
+        group = QActionGroup(self.layout_menu)
+        self.layout_actions = {}
+        for no, name in LAYOUTS.items():
+            action = QAction(f"&{no} {name}", self.layout_menu)
+            action.setCheckable(True)
+            group.addAction(action)
+            action.triggered.connect(lambda _c=False, n=no: self.choose_layout(n))
+            self.layout_menu.addAction(action)
+            self.layout_actions[no] = action
+        self.layout_button.setMenu(self.layout_menu)
+        self.search_row = QWidget(self)
+        search = self._search_layout = QHBoxLayout(self.search_row)
+        search.setContentsMargins(0, 0, 0, 0)
+        search.addWidget(self.filter_edit, 1)
+        search.addWidget(self.closed_switch)
+        search.addWidget(self.closed_chip)
+        search.addWidget(self.layout_button)
+        layout.addWidget(self.search_row)
 
         self.table = TicketTable("Tickets", self)
         self.table.setAccessibleDescription("Enter oder Doppelklick kopiert die Ticketnummer.")
@@ -115,7 +179,20 @@ class TicketsDialog(QDialog):
         self.table.activated.connect(lambda _row: self.copy_number())
         self.table.itemSelectionChanged.connect(self._selected)
         self.table.set_page(0, self.page_size)
-        layout.addWidget(self.table, 1)
+        # Mitte: Seitenleiste (Anordnung 3) und Tabelle
+        self.sidebar = QListWidget(self)
+        self.sidebar.setAccessibleName("Kategorien")
+        self.sidebar.setFixedWidth(220)
+        self.sidebar.itemClicked.connect(self._sidebar_clicked)
+        self.sidebar.currentItemChanged.connect(lambda item, _old: self._sidebar_clicked(item))
+        self.middle = QWidget(self)
+        self.middle.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)  # der Platz geht an die Tabelle
+        mid = QHBoxLayout(self.middle)
+        mid.setContentsMargins(0, 0, 0, 0)
+        mid.setSpacing(12)
+        mid.addWidget(self.sidebar)
+        mid.addWidget(self.table, 1)
+        layout.addWidget(self.middle, 1)
 
         self.status = QLabel(self)
         # Ohne Umbruch: jede Meldung ist eine Zeile. Ein umbrechendes Label bekommt im Kartenrahmen
@@ -170,6 +247,7 @@ class TicketsDialog(QDialog):
         from card_dialog import modernize
         modernize(self, "Tickets", "Aktuelle Tickets in Matrix42, nach Kategorie", "list",
                   intro=False, primary=self.new_button)
+        self._build_selector()
         self._selected()
         reader.my_tickets_loaded.connect(self._mine_loaded, Qt.QueuedConnection)
         if hasattr(reader, "tickets_loaded"):
@@ -195,76 +273,288 @@ class TicketsDialog(QDialog):
             return True
         return super().eventFilter(obj, event)
 
-    # ---- Pillen
+    # ---- Auswahl der Kategorie (Anordnungen 1–5)
 
-    def _add_category(self, key, title, fid):
-        b = _chip(title, self.pills)
-        b.setAccessibleName(f"Kategorie {title}")
-        b.toggled.connect(lambda on, k=key: on and self.choose(k))
-        self.category_group.addButton(b)
-        self.category_buttons[key] = b
-        self.categories[key] = (title, fid)
-        return b
+    @property
+    def closed_button(self):
+        """Der sichtbare Knopf für „Geschlossene“ (Pille oder Schalter)."""
+        return self.closed_chip if self.layout_no in (3, 5) else self.closed_switch
 
-    def _arrange(self):
-        """Pillen nach Gruppen ordnen (pill_rank), Abstand zwischen den Gruppen, „Geschlossene“
-        zuletzt mit etwas mehr Abstand. Die Tab-Reihenfolge folgt der Anzeige."""
-        while self._flow.takeAt(0) is not None:
-            pass
-        for gap in self._gaps:
-            gap.hide()  # sonst bis zum Löschen noch an alter Stelle zu sehen
-            gap.deleteLater()
-        self._gaps = []
+    def closed(self):
+        return self.closed_switch.isChecked()
+
+    def _closed_toggled(self, on):
+        for w in (self.closed_chip, self.closed_switch):
+            if w.isChecked() != on:
+                w.blockSignals(True)
+                w.setChecked(on)
+                w.blockSignals(False)
+        self.show_category()
+
+    def groups(self):
+        """[(Gruppe, [Kategorien])] in Anzeigereihenfolge, leere Gruppen weggelassen."""
         order = sorted(self.categories, key=lambda k: pill_rank(self.categories[k][0]))  # stabil
-        widgets, group = [], None
+        out = {}
         for key in order:
-            g = pill_rank(self.categories[key][0])[0]
-            if group is not None and g != group:
-                widgets.append(self._new_gap(8))
-            widgets.append(self.category_buttons[key])
-            group = g
-        widgets += [self._new_gap(16), self.closed_button]
-        for w in widgets:
-            self._flow.addWidget(w)
-        buttons = [w for w in widgets if isinstance(w, QToolButton)]
-        for a, b in zip(buttons, buttons[1:]):
-            QWidget.setTabOrder(a, b)
-        self._flow.invalidate()
+            out.setdefault(pill_rank(self.categories[key][0])[0], []).append(key)
+        return [(g, out[g]) for g in sorted(out)]
 
-    def _new_gap(self, width):
-        gap = QWidget(self.pills)
-        gap.setAttribute(Qt.WA_TransparentForMouseEvents)
-        gap.setStyleSheet("background: transparent;")
-        gap.setFixedSize(width, 1)
-        self._gaps.append(gap)
-        return gap
+    def group_of(self, key):
+        return pill_rank(self.categories[key][0])[0]
 
     def show_filters(self, filters):
-        """Gespeicherte Filter aus Matrix42 als weitere Kategorie-Pillen (nach den festen)."""
+        """Gespeicherte Filter aus Matrix42 als weitere Kategorien."""
         for f in filters or []:
             key = f"f:{f['id']}"
             if key not in self.categories:
-                self._add_category(key, f["title"], f["id"])
-        self._arrange()
-        self.pills.updateGeometry()
+                self.categories[key] = (f["title"], f["id"])
+        self._build_selector()
+
+    def choose_layout(self, no, save=True):
+        """Anordnung wechseln (Menü im Fenster oder Ansicht → Ticketfenster)."""
+        if no not in LAYOUTS:
+            return
+        self.layout_no = no
+        self._build_selector()
+        if save:
+            self.layout_chosen.emit(no)
+
+    def _pill(self, key, parent, text=None):
+        title = self.categories[key][0]
+        b = _chip(text or title, parent)
+        b.setAccessibleName(f"Kategorie {title}")
+        b.setChecked(key == self.category)
+        b.clicked.connect(lambda _c=False, k=key: self.choose(k))
+        self.category_buttons[key] = b
+        return b
+
+    def _flow(self, parent=None):
+        w = QWidget(parent or self.selector)
+        w.setObjectName("chip_row")  # ohne eigenen Hintergrund (Stil am Auswahlbereich)
+        return w, _Row(w, spacing=6)
+
+    def _row_label(self, text, parent):
+        label = QLabel(text, parent)
+        label.setObjectName("section_title")
+        label.setFixedWidth(64)
+        return label
+
+    def _build_selector(self):
+        """Auswahl der Kategorie für die gewählte Anordnung neu bauen; die Kategorie mit dem
+        Fokus behält ihn."""
+        focused = next((k for k, b in self.category_buttons.items() if b.hasFocus()), None)
+        if self.closed_chip.parentWidget() is not self.search_row:  # aus Anordnung 5 zurückholen
+            self._search_layout.insertWidget(2, self.closed_chip)
+        while self.selector_layout.count():
+            w = self.selector_layout.takeAt(0).widget()
+            if w is not None:
+                w.hide()
+                w.deleteLater()
+        self.category_buttons = {}
+        self.layout_actions[self.layout_no].setChecked(True)
+        no = self.layout_no
+        self.sidebar.setVisible(no == 3)
+        self.closed_switch.setVisible(no in (1, 2, 4))
+        self.closed_chip.setVisible(no == 3)
+        getattr(self, f"_build_{no}")()
+        for b in self.selector.findChildren(QToolButton):
+            b.ensurePolished()  # Größe mit Stil (Polster), sonst schneidet die Zeile Knöpfe ab
+        self.selector.setVisible(self.selector_layout.count() > 0)
+        # Höhe neu rechnen: sonst behält der Bereich die Höhe der vorigen Anordnung
+        self._fit_rows()
+        if focused in self.category_buttons:
+            self.category_buttons[focused].setFocus()
+
+    def _fit_rows(self):
+        """Pillen-Zeilen so hoch wie für die echte Breite nötig. Ohne bekannte Breite schätzt
+        Qt eine fließende Zeile, als stünde jede Pille allein (viel zu hoch)."""
+        width = self.search_row.width()
+        if width <= 0:
+            return
+        for i in range(self.selector_layout.count()):
+            row = self.selector_layout.itemAt(i).widget()
+            if row is not None and row.layout() is not None:
+                row.setFixedHeight(row.layout().heightForWidth(width))
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._fit_rows()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._fit_rows()
+
+    def _build_1(self):
+        """Zwei beschriftete Zeilen: „Ansicht“ (Meine, Allgemein, Weitere) und „Pools“ (TK, Pools)."""
+        for title, wanted in (("Ansicht", (0, 1, 4)), ("Pools", (2, 3))):
+            row, flow = self._flow()
+            flow.addWidget(self._row_label(title, row))
+            first = True
+            for g, keys in self.groups():
+                if g not in wanted:
+                    continue
+                if not first:
+                    flow.addWidget(_gap(row, 10))
+                first = False
+                for key in keys:
+                    flow.addWidget(self._pill(key, row))
+            if not first:
+                self.selector_layout.addWidget(row)
+            else:
+                row.deleteLater()
+
+    def _build_2(self):
+        """Kompakt: Meine und Allgemein als Pillen, TK/Pools/Weitere als Menü-Pillen."""
+        row, flow = self._flow()
+        for g, keys in self.groups():
+            if g in (0, 1):
+                for key in keys:
+                    flow.addWidget(self._pill(key, row))
+                continue
+            name = GROUP_NAMES[g]
+            current = self.category if self.category in keys else None
+            b = _chip((f"{name}: {self.categories[current][0]}" if current else name) + "  ▾", row)
+            b.setChecked(current is not None)
+            b.setAccessibleName(f"Kategorien {name}")
+            b.setPopupMode(QToolButton.InstantPopup)
+            menu = QMenu(b)
+            for key in keys:
+                action = menu.addAction(self.categories[key][0])
+                action.setCheckable(True)
+                action.setChecked(key == self.category)
+                action.triggered.connect(lambda _c=False, k=key: self.choose(k))
+            b.setMenu(menu)
+            b.group_keys = keys
+            flow.addWidget(_gap(row, 4))
+            flow.addWidget(b)
+        self.selector_layout.addWidget(row)
+
+    def _build_3(self):
+        """Seitenleiste mit Überschriften je Gruppe (wie in Matrix42)."""
+        self.sidebar.blockSignals(True)
+        self.sidebar.clear()
+        heads = ["Persönlich", "Allgemein", "TK", "Pools", "Weitere"]
+        for g, keys in self.groups():
+            head = QListWidgetItem(heads[g].upper())
+            head.setFlags(Qt.NoItemFlags)
+            font = QFont(self.sidebar.font())
+            font.setBold(True)
+            font.setPointSizeF(max(7.0, font.pointSizeF() - 1.5))
+            head.setFont(font)
+            self.sidebar.addItem(head)
+            for key in keys:
+                item = QListWidgetItem("   " + self.categories[key][0])
+                item.setData(Qt.UserRole, key)
+                self.sidebar.addItem(item)
+                if key == self.category:
+                    self.sidebar.setCurrentItem(item)
+        self.sidebar.blockSignals(False)
+
+    def _sidebar_clicked(self, item):
+        key = item.data(Qt.UserRole) if item is not None else None
+        if key and key != self.category:
+            self.choose(key)
+
+    def _build_4(self):
+        """Zwei Ebenen: oben die Bereiche, darunter die Kategorien des gewählten Bereichs."""
+        groups = self.groups()
+        current = self.group_of(self.category)
+        top, flow = self._flow()
+        for g, keys in groups:
+            b = _chip(GROUP_NAMES[g], top)
+            b.setStyleSheet("QToolButton#chip { padding: 4px 16px; font-weight: bold; }")
+            b.setChecked(g == current)
+            b.setAccessibleName(f"Bereich {GROUP_NAMES[g]}")
+            b.clicked.connect(lambda _c=False, k=keys: self.choose(self._last_in(k)))
+            flow.addWidget(b)
+        self.selector_layout.addWidget(top)
+        keys = dict(groups).get(current, [])
+        if len(keys) > 1:
+            sub, flow = self._flow()
+            label = QLabel(f"{GROUP_NAMES[current]}:", sub)
+            label.setObjectName("hint")
+            flow.addWidget(label)
+            for key in keys:
+                flow.addWidget(self._pill(key, sub))
+            self.selector_layout.addWidget(sub)
+
+    def _last_in(self, keys):
+        """Zuletzt gewählte Kategorie eines Bereichs (sonst die erste)."""
+        last = getattr(self, "_last_by_group", {})
+        return last.get(self.group_of(keys[0]), keys[0])
+
+    def _build_5(self):
+        """Favoriten als Pillen, die übrigen über „+ Filter“ (dort auch anheften/lösen)."""
+        row, flow = self._flow()
+        shown = [k for k in self.favorites if k in self.categories]
+        if self.category not in shown:
+            shown.append(self.category)  # gewählt, aber nicht angeheftet: vorübergehend zeigen
+        for key in shown:
+            flow.addWidget(self._pill(key, row))
+        more = _chip("+ Filter", row, name="chip_add")
+        more.setAccessibleName("Weitere Kategorien und Favoriten")
+        more.setPopupMode(QToolButton.InstantPopup)
+        menu = QMenu(more)
+        for g, keys in self.groups():
+            menu.addSection(GROUP_NAMES[g])
+            for key in keys:
+                action = menu.addAction(self.categories[key][0])
+                action.triggered.connect(lambda _c=False, k=key: self.choose(k))
+        menu.addSeparator()
+        pin = menu.addMenu("Als Pille &anheften")
+        for g, keys in self.groups():
+            for key in keys:
+                action = pin.addAction(self.categories[key][0])
+                action.setCheckable(True)
+                action.setChecked(key in self.favorites)
+                action.toggled.connect(lambda on, k=key: self.pin(k, on))
+        more.setMenu(menu)
+        flow.addWidget(more)
+        flow.addWidget(_gap(row, 18))
+        self.closed_chip.setParent(row)
+        flow.addWidget(self.closed_chip)
+        self.closed_chip.show()
+        self.selector_layout.addWidget(row)
+
+    def pin(self, key, on):
+        """Kategorie als Favoriten-Pille anheften oder lösen (Anordnung 5)."""
+        if on and key not in self.favorites:
+            self.favorites.append(key)
+        elif not on and key in self.favorites:
+            self.favorites.remove(key)
+        else:
+            return
+        self.favorites_changed.emit(list(self.favorites))
+        self._build_selector()
 
     def choose(self, key):
-        """Kategorie umschalten (Pille), bei Bedarf neu lesen."""
+        """Kategorie umschalten, bei Bedarf neu lesen."""
         if key not in self.categories:
             return
-        if not self.category_buttons[key].isChecked():
-            self.category_buttons[key].setChecked(True)  # meldet sich über toggled wieder
-            return
+        if not hasattr(self, "_last_by_group"):
+            self._last_by_group = {}
+        self._last_by_group[self.group_of(key)] = key
+        changed = key != self.category
         self.category = key
-        self.table.clearSelection()
-        view = self._view()
-        if key != MINE and key not in self._loading and \
-                (view is None or time.time() - view.get("time", 0) > STALE_AFTER):
-            self.refresh()
-        self.show_category()
+        if changed:
+            self.table.clearSelection()
+            view = self._view()
+            if key != MINE and key not in self._loading and \
+                    (view is None or time.time() - view.get("time", 0) > STALE_AFTER):
+                self.refresh()
+            self.show_category()
+        if self.layout_no == 3:
+            self._sync_sidebar()  # nicht neu bauen: kann aus dem Signal der Liste kommen
+        else:
+            self._build_selector()
 
-    def _closed_toggled(self, _on):
-        self.show_category()
+    def _sync_sidebar(self):
+        for i in range(self.sidebar.count()):
+            item = self.sidebar.item(i)
+            if item.data(Qt.UserRole) == self.category and self.sidebar.currentItem() is not item:
+                self.sidebar.blockSignals(True)
+                self.sidebar.setCurrentItem(item)
+                self.sidebar.blockSignals(False)
 
     def go_page(self, page):
         self.table.set_page(page)
@@ -314,10 +604,10 @@ class TicketsDialog(QDialog):
         self.refresh_button.setEnabled(self.category not in self._loading)
         view = self._view() or {}
         rows = view.get("rows")
-        if self.category == MINE and self.closed_button.isChecked():
+        if self.category == MINE and self.closed():
             rows = view.get("all", rows)
         rows = [dict(r, **self._changed.get(r.get("id"), {})) for r in rows or []]
-        if not self.closed_button.isChecked():
+        if not self.closed():
             rows = [r for r in rows if not mb.is_closed(r)]
         self._rows = rows
         self.table.page = 0
@@ -344,7 +634,7 @@ class TicketsDialog(QDialog):
         self.page_label.setText(f"Seite {page + 1} von {pages}")
         self.prev_button.setEnabled(page > 0)
         self.next_button.setEnabled(page < pages - 1)
-        closed = self.closed_button.isChecked()
+        closed = self.closed()
         text = ""
         if self.category in self._loading:
             text = f"Lese {self.title()} aus Matrix42 …"
