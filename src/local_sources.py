@@ -584,8 +584,9 @@ class LocalReader:
                 changed = True
         return changed
 
-    def sample(self, now=None):
-        """Alle 30 Sekunden: Sperre und Sitzungen; alle 2 Minuten zusätzlich den Rest. True = geändert."""
+    def sample(self, now=None, procs=None):
+        """Alle 30 Sekunden: Sperre und Sitzungen; alle 2 Minuten zusätzlich den Rest. True = geändert.
+        procs: schon gelesene Prozessliste (process_func im Hintergrund, siehe background.py)."""
         now = now or datetime.now()
         gap = self._last_sample is None or (now - self._last_sample).total_seconds() > 3 * SAMPLE_SECONDS
         self._last_sample = now
@@ -602,7 +603,7 @@ class LocalReader:
                     live = {}
                 changed |= self._track(data["locked"], live, now, gap)
             if self.on("shell_enabled"):
-                changed |= self._track(data["sessions"], self._live_sessions(now, gap), now, gap)
+                changed |= self._track(data["sessions"], self._live_sessions(now, gap, procs), now, gap)
             if changed:
                 self._save()
         if self._last_slow is None or (now - self._last_slow).total_seconds() >= SLOW_SECONDS:
@@ -618,11 +619,12 @@ class LocalReader:
     def _collect_later(self, now):
         self._pending = self._collect(now)
 
-    def _live_sessions(self, now, gap):
-        try:
-            procs = self.process_func()
-        except Exception:
-            return {}
+    def _live_sessions(self, now, gap, procs=None):
+        if procs is None:
+            try:
+                procs = self.process_func()
+            except Exception:
+                return {}
         titles = {}
         if procs and self.title_func:
             try:

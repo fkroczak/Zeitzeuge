@@ -67,6 +67,8 @@ check("beschädigt" in window.statusBar().currentMessage(), "Hinweis auf die kap
 
 # ---------------------------------------------------------------- anrufe.json
 from call_import import load_call_suggestions, load_calls, merge_calls  # noqa: E402
+import datastore  # noqa: E402
+datastore.ABSENT_SECONDS = 0  # hier sofort wieder nachsehen: der Test legt alte Dateien mehrmals an
 
 calls = os.path.join(DATA, "anrufe_test.json")
 BROKEN_CALLS = '[{"start": "2026-10-20 08:00:00", "number": "0301", "duration_s": 60}, {"start": '
