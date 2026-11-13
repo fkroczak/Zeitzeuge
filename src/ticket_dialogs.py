@@ -479,7 +479,7 @@ class CloseTicketDialog(_CardDialog):
 
 
 class EditTicketDialog(_CardDialog):
-    """Bestehendes Ticket: Betreff ändern, Beschreibung ergänzen. Lädt das Ticket erst frisch aus
+    """Bestehendes Ticket: Betreff, Kategorie und Beschreibung ändern. Lädt das Ticket erst frisch aus
     Matrix42; bis dahin ist nichts änderbar. Nach dem Speichern: self.saved = {"ticket", "subject", …}."""
 
     def __init__(self, reader, row, parent=None):
@@ -487,6 +487,7 @@ class EditTicketDialog(_CardDialog):
         self.row = row
         self.saved = None
         self.loaded = None
+        self.categories = []
         self._frame(reader, "Ticket bearbeiten", row.get("subject") or row["ticket"], "doc", "&Speichern")
         self._ticket_line(row)
         box = self.body_box
@@ -496,61 +497,109 @@ class EditTicketDialog(_CardDialog):
         self.subject_edit.textChanged.connect(self.validate)
         box.addWidget(_label("&Betreff", self.subject_edit))
         box.addWidget(self.subject_edit)
-        self.current_edit = QPlainTextEdit()
-        self.current_edit.setReadOnly(True)
-        self.current_edit.setAccessibleName("Bisherige Beschreibung")
-        self.current_edit.setPlaceholderText("Beschreibung wird geladen …")
-        self.current_edit.setTabChangesFocus(True)
-        self.current_edit.setFixedHeight(96)
-        box.addWidget(_label("Bisherige Beschreibun&g (bleibt, wie sie ist)", self.current_edit))
-        box.addWidget(self.current_edit)
-        self.addition_edit = QPlainTextEdit()
-        self.addition_edit.setAccessibleName("Ergänzung der Beschreibung")
-        self.addition_edit.setPlaceholderText("Was kommt dazu? Wird unten an die Beschreibung angehängt.")
-        self.addition_edit.setTabChangesFocus(True)
-        self.addition_edit.setFixedHeight(96)
-        self.addition_edit.textChanged.connect(self.validate)
-        spellcheck.attach(self.addition_edit)
-        box.addWidget(_label("Beschreibung &ergänzen", self.addition_edit))
-        box.addWidget(self.addition_edit)
+        self.category_edit = QComboBox()
+        self.category_edit.setEditable(True)
+        self.category_edit.setInsertPolicy(QComboBox.NoInsert)
+        self.category_edit.lineEdit().setPlaceholderText("Kategorien werden geladen …")
+        self.category_edit.lineEdit().setAccessibleName("Kategorie")
+        self.category_edit.currentIndexChanged.connect(self.validate)
+        self.category_edit.editTextChanged.connect(self.validate)
+        box.addWidget(_label("Kate&gorie", self.category_edit))
+        box.addWidget(self.category_edit)
+        self.description_edit = QPlainTextEdit()
+        self.description_edit.setAccessibleName("Beschreibung")
+        self.description_edit.setPlaceholderText("Beschreibung wird geladen …")
+        self.description_edit.setTabChangesFocus(True)
+        self.description_edit.setMinimumHeight(140)
+        self.description_edit.textChanged.connect(self.validate)
+        spellcheck.attach(self.description_edit)
+        box.addWidget(_label("B&eschreibung", self.description_edit))
+        box.addWidget(self.description_edit)
+        self.rich_hint = QLabel("Die Beschreibung hat Bilder, Tabellen oder Formatierungen. Text hinten anfügen "
+                                "behält sie, jede andere Änderung ersetzt sie durch reinen Text.")
+        self.rich_hint.setWordWrap(True)
+        self.rich_hint.setObjectName("hint")
+        self.rich_hint.hide()
+        box.addWidget(self.rich_hint)
 
         self.ok_button.clicked.connect(self.save)
-        for widget in (self.subject_edit, self.addition_edit):
+        for widget in self._fields():
             widget.setEnabled(False)
         self.validate()
         self.status.setText(f"Lade {row['ticket']} aus Matrix42 …")
         if not self._run("load", id=row["id"]):
             self.status.setText("⚠ Matrix42-Anmeldefenster ist offen. Bitte erst anmelden.")
+        else:
+            self._run("categories")
+
+    def _fields(self):
+        return (self.subject_edit, self.category_edit, self.description_edit)
 
     def _on_load(self, result):
         if not result.get("ok"):
-            self.current_edit.setPlaceholderText("")
+            self.description_edit.setPlaceholderText("")
             self.status.setText(f"⚠ Laden fehlgeschlagen: {result.get('error', '')}")
             return
         self.loaded = result["data"]
         self.subject_edit.setText(self.loaded["subject"] or self.row.get("subject", ""))
-        self.current_edit.setPlainText(self.loaded["description"])
-        self.current_edit.setPlaceholderText("(keine Beschreibung)")
-        for widget in (self.subject_edit, self.addition_edit):
+        self.description_edit.setPlainText(self.loaded["description"])
+        self.description_edit.setPlaceholderText("(keine Beschreibung)")
+        self.rich_hint.setVisible(bool(self.loaded.get("rich")))
+        self._select_category()
+        for widget in self._fields():
             widget.setEnabled(True)
         self.status.clear()
         self.validate()
-        self.addition_edit.setFocus()
+        self.description_edit.setFocus()
+        self.description_edit.moveCursor(QTextCursor.End)
+
+    def _on_categories(self, result):
+        self.categories = result.get("data") or []
+        self.category_edit.blockSignals(True)
+        self.category_edit.clear()
+        for cat in self.categories:
+            self.category_edit.addItem(cat["path"], cat["id"])
+        self.category_edit.blockSignals(False)
+        completer = QCompleter([c["path"] for c in self.categories], self)
+        completer.setFilterMode(Qt.MatchContains)
+        completer.setCaseSensitivity(Qt.CaseInsensitive)
+        self.category_edit.setCompleter(completer)
+        self.category_edit.lineEdit().setPlaceholderText("Kategorie suchen, z. B. Fileserver")
+        self._select_category()
+        if not result.get("ok"):
+            self.status.setText(f"⚠ Kategorien laden ging nicht: {result.get('error', '')}")
+        self.validate()
+
+    def _select_category(self):
+        """Aktuelle Kategorie des Tickets auswählen, sobald Ticket und Liste da sind."""
+        current = (self.loaded or {}).get("category")
+        if current and self.categories:
+            self.category_edit.setCurrentIndex(self.category_edit.findData(current))
+
+    def category(self):
+        """Gewählte Kategorie; None, solange die Liste fehlt oder der Text keine Kategorie ist."""
+        index = self.category_edit.findText(self.category_edit.currentText())
+        return self.category_edit.itemData(index) if index >= 0 else None
 
     def changed(self):
         if not self.loaded:
             return False
+        category = self.category()
         return (self.subject_edit.text().strip() != self.loaded["subject"]
-                or bool(self.addition_edit.toPlainText().strip()))
+                or self.description_edit.toPlainText().strip() != self.loaded["description"].strip()
+                or bool(category and category != self.loaded.get("category")))
 
     def validate(self, *_):
         ok = bool(self.loaded and self.subject_edit.text().strip() and self.changed()) and not self._busy
+        if self.categories and self.category_edit.currentText().strip() and not self.category():
+            ok = False  # getippter Text ist keine Kategorie
         self.ok_button.setEnabled(ok)
         return ok
 
     def request(self):
         return {"id": self.row["id"], "ticket": self.row["ticket"], "stamp": self.loaded["stamp"],
-                "subject": self.subject_edit.text().strip(), "addition": self.addition_edit.toPlainText()}
+                "subject": self.subject_edit.text().strip(), "description": self.description_edit.toPlainText(),
+                "category": self.category() or self.loaded.get("category")}
 
     def save(self):
         if self.validate():

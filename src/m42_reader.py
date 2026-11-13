@@ -762,7 +762,7 @@ class M42Reader(BrowserReader):
         return created
 
     def _edit_ticket(self, request, ids, state):
-        """Betreff ändern und Beschreibung ergänzen. Nur mit gehaltenem _browser_lock.
+        """Betreff, Beschreibung und Kategorie ändern. Nur mit gehaltenem _browser_lock.
         Lädt das Ticket frisch; hat es inzwischen jemand gespeichert (andere Versionsmarke als beim
         Öffnen), wird nichts geschickt."""
         import m42_tickets as mt
@@ -773,7 +773,11 @@ class M42Reader(BrowserReader):
         if request.get("stamp") and mt.stamp(entity) != request["stamp"]:
             raise mt.BookingError(f"{name} wurde inzwischen in Matrix42 geändert. "
                                   "Bitte das Fenster schließen und neu öffnen.")
-        body = mt.edited_entity(entity, request.get("subject", ""), request.get("addition", ""))
+        sla, path = None, mt.category_sla_path(entity, request.get("category"))
+        if path:  # neue Kategorie: SLA wie im Dialog neu bestimmen
+            sla = (self._fetch("GET", path) or {}).get("TightestItem")
+        body = mt.edited_entity(entity, request.get("subject", ""), request.get("description"),
+                                request.get("category"), sla)
         state["sent"] = True
         saved = mt.saved_ticket(self._fetch("POST", f"/m42Services/api/WidgetDialog/UpdateData/{dialog}",
                                             mt.wrap(body)), ticket_id)
