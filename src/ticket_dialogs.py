@@ -7,13 +7,15 @@ Zeitzeuge legt nie von selbst an, ändert nie von selbst und schließt nie von s
 das Fenster aus und klickst „Ticket anlegen“, „Speichern“ bzw. „Ticket schließen“. Die Abfragen schickt M42Reader.ticket_task
 aus dem angemeldeten Edge (m42_tickets.py).
 """
+import base64
 import html
+from urllib.parse import unquote_to_bytes
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QTextCursor
+from PySide6.QtGui import QImage, QTextCursor, QTextDocument
 from PySide6.QtWidgets import (QApplication, QButtonGroup, QCheckBox, QComboBox, QCompleter, QDialog, QFormLayout,
                                QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem,
-                               QPlainTextEdit, QPushButton, QToolButton, QVBoxLayout, QWidget)
+                               QPlainTextEdit, QPushButton, QTextBrowser, QToolButton, QVBoxLayout, QWidget)
 
 import icons
 import m42_booking as mb
@@ -711,7 +713,8 @@ class EditTicketDialog(_MelderSearch, _CardDialog):
     def request(self):
         return {"id": self.row["id"], "ticket": self.row["ticket"], "stamp": self.loaded["stamp"],
                 "subject": self.subject_edit.text().strip(), "description": self.description_edit.toPlainText(),
-                "category": self.category() or self.loaded.get("category"), "initiator": self.new_initiator()}
+                "category": self.category() or self.loaded.get("category"), "initiator": self.new_initiator(),
+                "type": self.loaded.get("type") or self.row.get("type", "")}
 
     def save(self):
         if self.validate():
@@ -723,6 +726,42 @@ class EditTicketDialog(_MelderSearch, _CardDialog):
             return
         self.saved = result["data"]
         self.accept()
+
+
+class _DescriptionView(QTextBrowser):
+    """Beschreibung: Klartext oder HTML mit Bildern wie in Matrix42. Bilder kommen nur aus der
+    Beschreibung selbst (data:), nie aus dem Netz, und werden auf die Breite verkleinert."""
+
+    def __init__(self):
+        super().__init__()
+        self.setOpenLinks(False)  # Links im Browser bzw. Mailprogramm, nicht im Feld
+        self.anchorClicked.connect(self._open_link)
+
+    @staticmethod
+    def _open_link(url):
+        from PySide6.QtGui import QDesktopServices
+        if url.scheme() in ("http", "https", "mailto", "tel"):
+            QDesktopServices.openUrl(url)
+
+    def loadResource(self, kind, url):
+        if kind != QTextDocument.ImageResource or url.scheme() != "data":
+            return None  # nichts nachladen (kein Netz, keine Dateien)
+        head, _, payload = url.toString().partition(",")
+        try:
+            raw = base64.b64decode(payload) if head.endswith(";base64") else unquote_to_bytes(payload)
+        except ValueError:
+            return None
+        image = QImage.fromData(raw)
+        width = max(100, self.viewport().width() - 24)
+        if not image.isNull() and image.width() > width:
+            image = image.scaledToWidth(width, Qt.SmoothTransformation)
+        return image
+
+    def show_html(self, text):
+        """HTML wie eine E-Mail: dunkle Schrift auf weißem Papier, auch im dunklen Design."""
+        # am Feld selbst, sonst gewinnt das Stylesheet des Designs (theme.py)
+        self.setStyleSheet("QTextBrowser { background-color: white; color: black; }")
+        self.setHtml(mt.view_html(text))  # Bilder ohne feste Größe, damit loadResource sie einpasst
 
 
 class ViewTicketDialog(_CardDialog):
@@ -764,8 +803,7 @@ class ViewTicketDialog(_CardDialog):
         cards.addWidget(contact_card, 1)
         box.addLayout(cards)
 
-        self.description_view = QPlainTextEdit()
-        self.description_view.setReadOnly(True)
+        self.description_view = _DescriptionView()
         self.description_view.setAccessibleName("Beschreibung")
         self.description_view.setTabChangesFocus(True)
         self.description_view.setMinimumHeight(260)
@@ -836,11 +874,18 @@ class ViewTicketDialog(_CardDialog):
         self.loaded = result["data"]
         if self.loaded.get("subject"):
             self.subtitle.setText(self.loaded["subject"])
-        self.description_view.setPlainText(self.loaded.get("description") or "")
+        if self.loaded.get("html"):  # Bilder, Tabellen, Formatierung wie in Matrix42
+            self.description_view.show_html(self.loaded["html"])
+        else:
+            self.description_view.setPlainText(self.loaded.get("description") or "")
         self.description_view.setPlaceholderText("(keine Beschreibung)")
         self.ok_button.setEnabled(True)
         self.status.clear()
-        if self.loaded.get("initiator"):
+        contact = self.loaded.get("contact") or {}
+        if contact.get("Phone") or contact.get("Email"):  # kam mit dem Ticket
+            self._show_contact(mt.contact_rows(contact, self.row.get("initiator", ""),
+                                               self.loaded.get("callback", "")))
+        elif self.loaded.get("initiator"):
             self.status.setText("Lade Kontakt des Melders …")
             self._run("user_details", user=self.loaded["initiator"])
         else:

@@ -760,7 +760,8 @@ class M42Reader(BrowserReader):
                     result["data"] = self._create_ticket(args["request"], ids, state)
                 elif kind == "load":
                     try:
-                        data = self._fetch("GET", mt.edit_data_path(ids["ticket_edit_dialog"], args["id"]))
+                        dialog = self._edit_dialog(ids, args["id"], args.get("type"))
+                        data = self._fetch("GET", mt.edit_data_path(dialog, args["id"]))
                     except mt.BookingError as e:
                         raise mt.load_error(e, args.get("type") or "") from e
                     result["data"] = mt.ticket_view(mt.loaded_entity(data))
@@ -792,6 +793,17 @@ class M42Reader(BrowserReader):
                 view["time"] = 0  # Kategorien beim nächsten Anzeigen neu lesen
             threading.Thread(target=self.load_my_tickets, daemon=True).start()
         self.ticket_task_done.emit(result)
+
+    def _edit_dialog(self, ids, ticket_id, kind=""):
+        """Dialog für ein bestehendes Ticket je Art. Ohne Art fragt Zeitzeuge sie ab wie Matrix42.
+        Nur mit gehaltenem _browser_lock."""
+        import m42_tickets as mt
+        if not kind:
+            try:
+                kind = mt.entity_type(self._fetch("GET", f"/m42Services/api/ticket/GetTicketEntityType/{ticket_id}"))
+            except Exception as e:  # dann wie bisher über den Dialog der Serviceanfrage
+                safe_io.log(f"Matrix42: Ticketart nicht gelesen ({e})")
+        return mt.edit_dialog(ids, kind)
 
     def _create_ticket(self, request, ids, state):
         """Ticket anlegen (und übernehmen). Nur mit gehaltenem _browser_lock.
@@ -845,7 +857,8 @@ class M42Reader(BrowserReader):
         Lädt das Ticket frisch; hat es inzwischen jemand gespeichert (andere Versionsmarke als beim
         Öffnen), wird nichts geschickt."""
         import m42_tickets as mt
-        dialog, ticket_id = ids["ticket_edit_dialog"], request["id"]
+        ticket_id = request["id"]
+        dialog = self._edit_dialog(ids, ticket_id, request.get("type"))
         name = request.get("ticket") or "Ticket"
         self._set_status(f"Matrix42: speichere {name} …")
         entity = mt.loaded_entity(self._fetch("GET", mt.edit_data_path(dialog, ticket_id)))
@@ -870,11 +883,13 @@ class M42Reader(BrowserReader):
         """Vor dem Schließen: Lösungstext, den das Ticket schon hat (wieder eröffnet). -> {"solution"}"""
         import m42_tickets as mt
         api = "/m42Services/api"
+        known = kind  # leer: Art für den Dialog abfragen
         kind = kind or "SPSActivityTypeTicket"
         initial = self._fetch("POST", f"{api}/ticket/CloseWizardInitialData/?ticketType={kind}", [ticket_id]) or {}
         solution = mt.previous_solution(initial)
         if not solution:
-            entity = mt.loaded_entity(self._fetch("GET", mt.edit_data_path(ids["ticket_edit_dialog"], ticket_id)))
+            entity = mt.loaded_entity(self._fetch("GET", mt.edit_data_path(
+                self._edit_dialog(ids, ticket_id, known), ticket_id)))
             solution = mt.previous_solution(initial, entity)
         return {"solution": solution}
 
