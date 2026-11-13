@@ -247,14 +247,57 @@ def is_mine(row, name, user_id=""):
     return bool(words) and all(w in have for w in words)
 
 
-def my_open_tickets(items, name, user_id=""):
-    """Antworten der Ticketliste -> offene Tickets, bei denen ich Bearbeiter bin,
+def my_tickets(items, name, user_id=""):
+    """Antworten der Ticketliste -> Tickets (auch erledigte), bei denen ich Bearbeiter bin,
     jedes einmal, neueste zuerst."""
+    return [r for r in ticket_rows(items) if is_mine(r, name, user_id)]
+
+
+def my_open_tickets(items, name, user_id=""):
+    """Wie my_tickets, nur die offenen (auch angehaltene)."""
+    return [r for r in my_tickets(items, name, user_id) if not is_closed(r)]
+
+
+def ticket_rows(items):
+    """Antworten der Ticketliste -> Ticketzeilen, jede einmal, neueste zuerst."""
     seen = {}
     for row in filter(None, map(ticket_row, items or [])):
-        if is_mine(row, name, user_id) and not is_closed(row):
-            seen.setdefault(row["id"], row)
+        seen.setdefault(row["id"], row)
     return sorted(seen.values(), key=lambda r: r["created"], reverse=True)
+
+
+# ------------------------------------------------------------ Kategorien im Fenster „Tickets“
+
+# Gespeicherte Filter der Ticketliste im Service Desk (Mitschnitt 13.11.26): die Weboberfläche
+# hängt sie als „&filters=<Id>“ an GetData, der Inhalt bleibt leer. „TK Tickets“ =
+# Bearbeiterrolle TK. Weitere Filter liest Zeitzeuge aus Matrix42 (ticket_filters).
+TK_FILTER = "69c33e3b-2339-4a9c-8115-18453813fdbd"
+EMPTY_QUERY = {"Groups": [{"Groups": [], "Conditions": [], "LogicalOperator": 1},
+                          {"Groups": [], "Conditions": [], "LogicalOperator": 1}],
+               "Conditions": [], "LogicalOperator": 1}
+
+
+def _title_key(text):
+    return re.sub(r"[\W_]+", "", (text or "").casefold())
+
+
+# Diese Filter haben eigene Pillen (oder sind „Meine“ ohne erledigte): nicht doppelt zeigen
+OWN_FILTER_TITLES = {_title_key(t) for t in ("TK Tickets", "TK-Tickets", "Meine Tickets", "Meine")}
+
+
+def ticket_filters(data, skip_ids=()):
+    """Antwort von dataQuery/<id>/filters -> [{"id", "title"}] in der Reihenfolge von Matrix42.
+    Ohne Schnellfilter (Ampelfarben „Eskaliert“ …) und ohne die Filter mit eigener Pille."""
+    out, seen = [], set(skip_ids)
+    for f in data if isinstance(data, list) else []:
+        if not isinstance(f, dict) or f.get("QuickFilter"):
+            continue
+        fid, title = (f.get("Id") or "").strip(), re.sub(r"\s+", " ", f.get("Title") or "").strip()
+        if not fid or not title or fid in seen or _title_key(title) in OWN_FILTER_TITLES:
+            continue
+        seen.add(fid)
+        out.append({"id": fid, "title": title})
+    return out
 
 
 def merge_tickets_rows(rows, text):

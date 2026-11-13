@@ -1,5 +1,5 @@
-"""Tickettabelle für „Meine Tickets“ und „Ticket suchen“: Spalten Ticket, Betreff, Kunde, Melder,
-Art (Störung/Serviceanfrage), Status, Angelegt; nach jeder Spalte sortierbar, filterbar (jedes Wort muss vorkommen, wie bei
+"""Tickettabelle für „Tickets“ und „Ticket suchen“: Spalten Ticket, Betreff, Kunde, Melder,
+Art (Störung/Serviceanfrage), Status, Bearbeiter, Angelegt; nach jeder Spalte sortierbar, filterbar (jedes Wort muss vorkommen, wie bei
 der Ticketsuche), erledigte Tickets grau. Enter oder Doppelklick: Signal activated(row).
 """
 from PySide6.QtCore import Qt, Signal
@@ -10,7 +10,7 @@ import m42_booking as mb
 
 # Spalte -> Feld der Ticketzeile (m42_booking.ticket_row)
 COLUMNS = [("Ticket", "ticket"), ("Betreff", "subject"), ("Kunde", "customer"), ("Melder", "initiator"),
-           ("Art", "type"), ("Status", "state"), ("Angelegt", "created")]
+           ("Art", "type"), ("Status", "state"), ("Bearbeiter", "recipient"), ("Angelegt", "created")]
 SUBJECT_COL = 1
 
 
@@ -44,7 +44,7 @@ class TicketTable(QTableWidget):
         for col, (_name, key) in enumerate(COLUMNS):
             if col == SUBJECT_COL:
                 header.setSectionResizeMode(col, QHeaderView.Stretch)
-            elif key in ("customer", "initiator"):
+            elif key in ("customer", "initiator", "recipient"):
                 header.setSectionResizeMode(col, QHeaderView.Interactive)
                 header.resizeSection(col, 150)
             else:
@@ -93,8 +93,8 @@ class TicketTable(QTableWidget):
                     sort_key = text.casefold()
                 else:
                     text = row.get(key) or ""
-                    if key == "initiator":
-                        text = text.split(" - ")[0]  # „Müller, Jan“ ohne Firma (steht im Hinweis)
+                    if key in ("initiator", "recipient"):
+                        text = text.split(" - ")[0]  # „Müller, Jan“ ohne Firma/Abteilung (steht im Hinweis)
                     sort_key = text.casefold()
                 item = _Item(text, sort_key)
                 item.setToolTip(mb.ticket_tooltip(row))

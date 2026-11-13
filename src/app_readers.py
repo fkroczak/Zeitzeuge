@@ -423,13 +423,13 @@ class ReadersMixin:
             QDesktopServices.openUrl(QUrl.fromLocalFile(os.path.dirname(path)))
 
     def show_my_tickets(self):
-        """Fenster „Meine Tickets“ (Kachel über der Timeline), nur eins auf einmal."""
-        from my_tickets_dialogs import MyTicketsDialog
+        """Fenster „Tickets“ mit „Meine Tickets“ (Kachel über der Timeline), nur eins auf einmal."""
+        from tickets_dialogs import TicketsDialog
         if not self.m42_reader:
             return
         dialog = getattr(self, "_my_tickets_dialog", None)
         if dialog is None:
-            dialog = self._my_tickets_dialog = MyTicketsDialog(self.m42_reader, self)
+            dialog = self._my_tickets_dialog = TicketsDialog(self.m42_reader, self)
             dialog.setAttribute(Qt.WA_DeleteOnClose)
             dialog.destroyed.connect(lambda: setattr(self, "_my_tickets_dialog", None))
         dialog.show()

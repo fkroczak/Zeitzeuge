@@ -20,8 +20,9 @@ def gui_test():
     from PySide6.QtTest import QTest
     from PySide6.QtWidgets import QApplication, QDialog, QFormLayout
 
+    import m42_booking as mb
     import m42_tickets as mt
-    from my_tickets_dialogs import MyTicketsDialog
+    from tickets_dialogs import TicketsDialog
     from ticket_dialogs import CloseTicketDialog, EditTicketDialog, NewTicketDialog
 
     app = QApplication(sys.argv)
@@ -74,7 +75,7 @@ def gui_test():
             return True
 
     reader = FakeReader()
-    mine = MyTicketsDialog(reader)
+    mine = TicketsDialog(reader)
     mine.show()
     assert mine.table.rowCount() == 1 and not mine.close_button.isEnabled()  # erst nach Auswahl
     mine.table.select_first()
@@ -202,7 +203,7 @@ def gui_test():
         mk(1, "VPN bricht ab", "Weber", "Neu", "2026-11-03T08:00:00Z"),
         mk(3, "Drucker Empfang", "Schmidt", "In Bearbeitung", "2026-11-10T08:00:00Z"),
         mk(2, "Drucker Lager", "Weber", "Neu", "2026-11-05T08:00:00Z")]}
-    table_dialog = MyTicketsDialog(reader)
+    table_dialog = TicketsDialog(reader)
     table_dialog.show()
     app.processEvents()
     order = lambda: [r["ticket"][-1] for r in table_dialog.visible_rows()]  # noqa: E731
@@ -222,6 +223,63 @@ def gui_test():
     QTest.keyClick(table_dialog.table, Qt.Key_Return)
     assert app.clipboard().text() == "TCK0000000003"
     table_dialog.close()
+
+    # ---- Pillen: Kategorien schalten um, „Geschlossene“ wirkt bei jeder, Filter sucht nur darin
+    class CategoryReader(FakeReader):
+        tickets_loaded = Signal(object)
+        ticket_filters_loaded = Signal(object)
+        ticket_filters = None
+
+        def __init__(self):
+            super().__init__()
+            self.ticket_views, self.loads, self.filter_loads = {}, [], 0
+
+        def load_tickets(self, key, filter_id=""):
+            self.loads.append((key, filter_id))
+            rows = [mk(4, "Telefon TK", "Weber", "Neu", "2026-11-12T08:00:00Z"),
+                    mk(5, "Anlage TK alt", "Weber", "Geschlossen", "2026-11-01T08:00:00Z"),
+                    mk(6, "Telefon pausiert", "Huber", "Angehalten", "2026-11-11T08:00:00Z")]
+            self.ticket_views[key] = {"key": key, "rows": rows, "error": "", "at": "11:05", "time": 9e12}
+            QTimer.singleShot(0, lambda: self.tickets_loaded.emit(self.ticket_views[key]))
+
+        def load_ticket_filters(self):
+            self.filter_loads += 1
+            self.ticket_filters = [{"id": "f-neu", "title": "Neue Tickets"}]
+            QTimer.singleShot(0, lambda: self.ticket_filters_loaded.emit(self.ticket_filters))
+
+    creader = CategoryReader()
+    closed_mine = mk(7, "Drucker erledigt", "Weber", "Gelöst", "2026-11-01T08:00:00Z")
+    creader.my_tickets = dict(reader.my_tickets, all=reader.my_tickets["rows"] + [closed_mine])
+    tickets = TicketsDialog(creader)
+    tickets.show()
+    assert wait_for(lambda: "f:f-neu" in tickets.category_buttons, 2000)
+    flow = tickets.pills.layout()
+    pills = [w.text() for w in (flow.itemAt(i).widget() for i in range(flow.count())) if hasattr(w, "text")]
+    assert pills == ["Meine Tickets", "TK-Tickets", "Alle", "Neue Tickets", "Geschlossene"], pills
+    assert tickets.category_buttons["mine"].isChecked() and not tickets.closed_button.isChecked()
+    assert tickets.windowTitle() == "Tickets" and len(tickets.visible_rows()) == 3  # offene von mir
+    tickets.closed_button.click()  # Geschlossene an: auch erledigte von mir
+    assert len(tickets.visible_rows()) == 4 and "davon 1 geschlossen" in tickets.status.text(), tickets.status.text()
+    tickets.category_buttons["tk"].click()  # Kategorie wechseln, „Geschlossene“ bleibt an
+    assert creader.loads == [("tk", mb.TK_FILTER)], creader.loads
+    assert wait_for(lambda: len(tickets.visible_rows()) == 3, 2000)
+    assert not tickets.category_buttons["mine"].isChecked() and tickets.closed_button.isChecked()
+    tickets.filter_edit.setText("tk")  # Suche nur in der Kategorie: auch das geschlossene
+    assert sorted(r["ticket"][-1] for r in tickets.visible_rows()) == ["4", "5"]
+    tickets.closed_button.click()  # aus: nur offene und angehaltene
+    assert [r["ticket"][-1] for r in tickets.visible_rows()] == ["4"]
+    tickets.filter_edit.clear()
+    assert sorted(r["state"] for r in tickets.visible_rows()) == ["Angehalten", "Neu"]
+    tickets.closed_button.click()
+    tickets.table.selectRow(next(r for r in range(tickets.table.rowCount())
+                                 if tickets.table.row_at(r)["state"] == "Geschlossen"))
+    assert not tickets.close_button.isEnabled() and tickets.edit_button.isEnabled()
+    tickets.category_buttons["all"].click()
+    tickets.category_buttons["tk"].click()  # schon gelesen und frisch: nicht nochmal
+    assert [k for k, _f in creader.loads] == ["tk", "all"], creader.loads
+    tickets.category_buttons["f:f-neu"].click()
+    assert creader.loads[-1] == ("f:f-neu", "f-neu")
+    tickets.close()
     assert QDialog  # (Import für Typen oben)
     mine.close()
     print("Ticket-Fenster ok")

@@ -250,9 +250,9 @@ def gui_test():
     reader.my_tickets_loaded.connect(window.day_summary.show_my_tickets)
     window.show_my_tickets()  # liest beim ersten Öffnen
     app.processEvents()
-    from my_tickets_dialogs import MyTicketsDialog
+    from tickets_dialogs import TicketsDialog
     mine = window._my_tickets_dialog
-    assert isinstance(mine, MyTicketsDialog) and mine.table.rowCount() == 1
+    assert isinstance(mine, TicketsDialog) and mine.table.rowCount() == 1
     cells = [mine.table.item(0, c).text() for c in range(mine.table.columnCount())]
     assert cells[:6] == ["TCK0000000002", "Drucker", "Müller", "Huber, Max", "", "Neu"], cells  # Art leer: ohne Sys-Entity
     mine.table.select_first()
