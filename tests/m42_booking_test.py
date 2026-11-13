@@ -54,7 +54,7 @@ def test_abfragen_wie_im_mitschnitt():
     assert mb.new_data_body("abc") == "'\"objectType=ITMTimeEntryType&selectedObjects=abc\"'"
     assert mb.target_body("abc") == [{"Name": "@id", "Value": "abc", "Type": 1}]
     resp = {"Entity": {"ITMTimeEntryClassTarget": [{"ID": "e7ee", "TargetSLA": "df3d", "TargetOU": "fa01"}]}}
-    assert mb.target_from_response(resp) == ("e7ee", "df3d")
+    assert mb.target_from_response(resp) == ("e7ee", "df3d", "fa01")
     with pytest.raises(mb.BookingError):
         mb.target_from_response({"Entity": {}})
 
@@ -71,6 +71,9 @@ def test_zeiterfassung_wie_im_mitschnitt():
     assert e["ITMILVClassBase"] == {"State": 10}  # Status „Neu“
     common = e["SPSCommonClassBase"]
     assert common["CostCenter"] == "cc" and common["Bookings"] == {"AddedRelations": [], "RemovedRelations": []}
+    assert common["OU"] == "ou"  # ohne TargetOU bleibt die Vorlage
+    assert mb.time_entry(TEMPLATE, "e7ee", "df3d", "edc4", start, end, 30, "x",
+                         ou="fa01")["SPSCommonClassBase"]["OU"] == "fa01"  # Kunde des Tickets
     body = mb.wrap(e)
     assert body.startswith("'{") and body.endswith("}'") and json.loads(body[1:-1]) == e
     with pytest.raises(mb.BookingError, match="Benutzer"):

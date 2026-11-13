@@ -9,7 +9,10 @@ Anlegen (Dialog „Ticket“, Widget DEFAULT_IDS["ticket_dialog"]):
 2. Kategorie: GET /activity/category/<Id> -> Impact, Urgency.
 3. SLA: GET /activity/suitableSLAsForTicket/?Category&User=<Melder>&TicketType&Priority=-1&Impact
    -> TightestItem.
-4. Melder: GET /activity/UserDetails/<Id> -> Telefon (Rückruf).
+4. Melder: GET /activity/UserDetails/<Id> -> Telefon (Rückruf); OU, Kostenstelle und Standort des
+   Melders (initiator_common), sonst aus GET /data/objects/SPSPersonType/<Id>?full=true. Die
+   Vorlage aus 1. hat die eigenen (z. B. Systems); der Dialog setzt sie beim Wählen des Melders
+   um. Ohne das gehört das Ticket intern zu Systems, und Zeiterfassungen darauf ebenso.
 5. Speichern: POST /WidgetDialog/UpdateData/<Dialog> mit dem Ticket. Die Art steht in
    InitialData.Configuration.TicketType (0 = Störung, 6 = Serviceanfrage); Matrix42 macht daraus
    SPSActivityTypeIncident bzw. SPSActivityTypeServiceRequest. Antwort: Sys-Name (TCK…).
@@ -128,9 +131,41 @@ def description_html(text):
     return "".join(f"<p>{html.escape(line) or '&nbsp;'}</p>" for line in lines) or None
 
 
+COMMON_FIELDS = ("OU", "CostCenter", "Location")  # Kunde, Kostenstelle, Standort
+
+
+def _ref(value):
+    """Verweis in einer Matrix42-Antwort -> Id ('abc' oder {"ID": 'abc'})."""
+    if isinstance(value, dict):
+        value = value.get("ID") or value.get("Id") or value.get("Value")
+    return value if isinstance(value, str) and value.strip() else None
+
+
+def initiator_common(*answers):
+    """OU, Kostenstelle und Standort des Melders aus UserDetails oder dem Personenobjekt
+    -> {"OU": …, "CostCenter": …, "Location": …} (nur gefundene). Erste Antwort mit OU gewinnt."""
+    aliases = {"OU": ("OU", "OUId", "OrganizationalUnit", "OrganizationalUnitId"),
+               "CostCenter": ("CostCenter", "CostCenterId"), "Location": ("Location", "LocationId")}
+    for data in answers:
+        if not isinstance(data, dict):
+            continue
+        for source in (data.get("SPSCommonClassBase"), data):
+            if not isinstance(source, dict):
+                continue
+            found = {}
+            for field, names in aliases.items():
+                value = next((_ref(source.get(n)) for n in names if _ref(source.get(n))), None)
+                if value:
+                    found[field] = value
+            if found.get("OU"):
+                return found
+    return {}
+
+
 def ticket_entity(template, ticket_type, subject, description, category, initiator, creator,
-                  sla=None, impact=None, urgency=None, callback=None):
-    """Ticket zum Speichern (UpdateData), Felder wie im Mitschnitt. template: Entity aus GetNewData."""
+                  sla=None, impact=None, urgency=None, callback=None, initiator_ou=None):
+    """Ticket zum Speichern (UpdateData), Felder wie im Mitschnitt. template: Entity aus GetNewData.
+    initiator_ou: initiator_common() des Melders; ersetzt OU, Kostenstelle und Standort der Vorlage."""
     if not isinstance(template, dict) or not template.get("ID"):
         raise BookingError("Matrix42 liefert keine Vorlage für ein neues Ticket.")
     if int(ticket_type) not in ENTITY_OF_TYPE:
@@ -159,6 +194,7 @@ def ticket_entity(template, ticket_type, subject, description, category, initiat
     if callback:
         incident["Callback"] = callback
     common = dict(template.get("SPSCommonClassBase") or {})
+    common.update({k: v for k, v in (initiator_ou or {}).items() if k in COMMON_FIELDS and v})
     for name in EMPTY_RELATIONS:
         common[name] = dict(EMPTY)
     initial = dict(template.get("InitialData") or {})

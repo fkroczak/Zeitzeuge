@@ -115,7 +115,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                        if ok else {"Message": "falscher Inhalt"}, 200 if ok else 400)
         elif path == f"{API}/WidgetCommon/{IDS['dialog']}/{IDS['target_source']}/custom_Target.ITMTimeEntryClassTarget":
             ok = json.loads(text) == [{"Name": "@id", "Value": "ticket-1", "Type": 1}]
-            self._json({"Entity": {"ITMTimeEntryClassTarget": [{"ID": "target-1", "TargetSLA": "sla-1"}]}}
+            self._json({"Entity": {"ITMTimeEntryClassTarget": [{"ID": "target-1", "TargetSLA": "sla-1", "TargetOU": "kunde-ou"}]}}
                        if ok else {}, 200 if ok else 400)
         elif path == f"{API}/WidgetDialog/UpdateData/{IDS['dialog']}":
             if not (text.startswith("'{") and text.endswith("}'")):
@@ -289,6 +289,7 @@ assert (base["Target"], base["SLA"], base["User"], base["ActivityType"]) == ("ta
 assert base["Start"] == start.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
 assert base["WorktimeRounded"] == 30 and base["Description"] == "- Praktikantenbetreuung"
 assert entry["SPSCommonClassBase"]["CostCenter"] == "cc"
+assert entry["SPSCommonClassBase"]["OU"] == "kunde-ou"  # Kunde des Tickets, nicht die eigene OU
 print("ok: Buchung angelegt |", reader.status)
 
 # 6. Tickets suchen: Kunde, Benutzer, Ticketnummer oder Titel (ein Feld geht nicht: egal)

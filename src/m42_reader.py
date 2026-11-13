@@ -726,18 +726,34 @@ class M42Reader(BrowserReader):
         impact, urgency = defaults.get("Impact"), defaults.get("Urgency")
         sla = (self._fetch("GET", mt.sla_path(category, initiator, kind, impact)) or {}).get("TightestItem")
         try:
-            callback = (self._fetch("GET", f"{api}/activity/UserDetails/{initiator}/?userId={initiator}")
-                        or {}).get("Phone")
+            details = self._fetch("GET", f"{api}/activity/UserDetails/{initiator}/?userId={initiator}") or {}
         except Exception:  # nur der Rückruf fehlt dann
-            callback = None
+            details = {}
+        callback = details.get("Phone") if isinstance(details, dict) else None
+        # Kunde (OU) des Melders, sonst gehört das Ticket zur eigenen OU aus der Vorlage
+        initiator_ou = mt.initiator_common(details)
+        if not initiator_ou:
+            try:
+                initiator_ou = mt.initiator_common(self._fetch(
+                    "GET", f"{api}/data/objects/SPSPersonType/{initiator}?full=true"))
+            except Exception as e:
+                safe_io.log(f"Matrix42: Personenobjekt des Melders nicht gelesen ({e})")
+        if not initiator_ou:
+            safe_io.log("Matrix42: keine OU des Melders gefunden, UserDetails-Felder: "
+                        f"{sorted(details) if isinstance(details, dict) else type(details).__name__}")
         entity = mt.ticket_entity(template, kind, request.get("subject", ""), request.get("description", ""),
-                                  category, initiator, self.user_id, sla, impact, urgency, callback)
+                                  category, initiator, self.user_id, sla, impact, urgency, callback,
+                                  initiator_ou)
         state["sent"] = True
         created = mt.created_ticket(self._fetch("POST", f"{api}/WidgetDialog/UpdateData/{dialog}", mt.wrap(entity)))
         state["sent"] = False  # angelegt: was jetzt schiefgeht, ist nur noch ein Hinweis
         created["taken_over"], created["warning"] = False, ""
+        if not initiator_ou:
+            created["warning"] = ("Den Kunden des Melders hat Matrix42 nicht geliefert: das Ticket steht "
+                                  "evtl. auf der eigenen Organisationseinheit. Bitte in Matrix42 den Kunden "
+                                  "setzen, bevor Zeiten darauf gebucht werden.")
         if created["type"] and created["type"] != mt.ENTITY_OF_TYPE[kind]:
-            created["warning"] = (f"Matrix42 hat das Ticket als {created['type'].replace('SPSActivityType', '')} "
+            created["warning"] = (created["warning"] + " " if created["warning"] else "") + (f"Matrix42 hat das Ticket als {created['type'].replace('SPSActivityType', '')} "
                                   "angelegt. Bitte die Art in Matrix42 prüfen.")
         if request.get("take_over", True):
             try:
@@ -861,7 +877,7 @@ class M42Reader(BrowserReader):
                 ticket = mb.ticket_from_search(found if isinstance(found, list) else [], number)
                 template = self._fetch("POST", f"{mb.API}/WidgetDialog/GetNewData/{ids['dialog']}",
                                        mb.new_data_body(ticket["id"]), "text/plain;charset=UTF-8")
-                target, sla = mb.target_from_response(self._fetch(
+                target, sla, ou = mb.target_from_response(self._fetch(
                     "POST", f"{mb.API}/WidgetCommon/{ids['dialog']}/{ids['target_source']}"
                             "/custom_Target.ITMTimeEntryClassTarget", mb.target_body(ticket["id"])))
                 entry = mb.time_entry((template or {}).get("Entity"), target, sla, self.user_id,
@@ -875,7 +891,7 @@ class M42Reader(BrowserReader):
                                       surcharge_reason=request.get("surcharge_reason", ""),
                                       goodwill_minutes=request.get("goodwill_minutes", 0),
                                       km_there=request.get("travel_km_there", 0),
-                                      km_back=request.get("travel_km_back", 0))
+                                      km_back=request.get("travel_km_back", 0), ou=ou)
                 sent = True
                 saved = self._fetch("POST", f"{mb.API}/WidgetDialog/UpdateData/{ids['dialog']}",
                                     mb.wrap(entry))
