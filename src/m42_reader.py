@@ -738,7 +738,8 @@ class M42Reader(BrowserReader):
         if initiator_ou:
             safe_io.log(f"Matrix42: Kunde des Melders: {initiator_ou}")
         else:  # Personenobjekt (data/objects) lesen darf ein Agent nicht (403)
-            safe_io.log(f"Matrix42: keine OU des Melders gefunden. UserDetails: {mt.field_overview(details)}")
+            safe_io.log("Matrix42: keine OU des Melders in UserDetails, Matrix42 setzt sie selbst. "
+                        f"UserDetails: {mt.field_overview(details)}")
         entity = mt.ticket_entity(template, kind, request.get("subject", ""), request.get("description", ""),
                                   category, initiator, self.user_id, sla, impact, urgency, callback,
                                   initiator_ou)
@@ -746,10 +747,6 @@ class M42Reader(BrowserReader):
         created = mt.created_ticket(self._fetch("POST", f"{api}/WidgetDialog/UpdateData/{dialog}", mt.wrap(entity)))
         state["sent"] = False  # angelegt: was jetzt schiefgeht, ist nur noch ein Hinweis
         created["taken_over"], created["warning"] = False, ""
-        if not initiator_ou:
-            created["warning"] = ("Den Kunden des Melders hat Matrix42 nicht geliefert: das Ticket steht "
-                                  "evtl. auf der eigenen Organisationseinheit. Bitte in Matrix42 den Kunden "
-                                  "setzen, bevor Zeiten darauf gebucht werden.")
         if created["type"] and created["type"] != mt.ENTITY_OF_TYPE[kind]:
             created["warning"] = (created["warning"] + " " if created["warning"] else "") + (f"Matrix42 hat das Ticket als {created['type'].replace('SPSActivityType', '')} "
                                   "angelegt. Bitte die Art in Matrix42 prüfen.")
