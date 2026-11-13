@@ -721,7 +721,7 @@ class M42Reader(BrowserReader):
     # ---- Tickets anlegen und schließen (m42_tickets.py)
 
     def ticket_task(self, kind, **args):
-        """Im Hintergrund: "users" (text), "user_details" (user), "categories", "create" (request),
+        """Im Hintergrund: "users" (text), "user_details" (user), "melder" (name), "categories", "create" (request),
         "load" (id), "edit" (request), "take_over" (id, type, ticket), "close_info" (id, type), "close" (request).
         Ergebnis über ticket_task_done. False, wenn gerade ein Anmeldefenster offen ist."""
         if self._login_open:
@@ -745,6 +745,14 @@ class M42Reader(BrowserReader):
                 elif kind == "user_details":
                     user = args["user"]
                     result["data"] = self._fetch("GET", f"/m42Services/api/activity/UserDetails/{user}/?userId={user}")
+                elif kind == "melder":  # Melder nur mit Namen (Ticket nicht ladbar): suchen, dann Kontakt
+                    name = args.get("name", "")
+                    data = self._fetch("POST", "/m42Services/api/entity/fragments/forControl",
+                                       mt.user_query(ids["ticket_dialog"], mt.melder_search_text(name)))
+                    user = mt.match_user(mt.users_from_fragments(data), name)
+                    details = (self._fetch("GET", f"/m42Services/api/activity/UserDetails/{user['id']}"
+                                                  f"/?userId={user['id']}") if user else None)
+                    result["data"] = {"user": user, "details": details or {}}
                 elif kind == "categories":
                     data = self._fetch("POST", "/m42Services/api/entity/tree", mt.tree_query(ids["ticket_dialog"]))
                     result["data"] = mt.categories_from_tree(data)

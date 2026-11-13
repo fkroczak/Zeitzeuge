@@ -96,6 +96,31 @@ def users_from_fragments(data):
     return out
 
 
+def _same(text):
+    return " ".join((text or "").split()).casefold()
+
+
+def melder_search_text(name):
+    """Suchtext für die Personensuche aus dem Melder der Ticketliste:
+    'Kersting, Cornelia - Ärzte - Dienst …' -> 'Kersting, Cornelia'."""
+    return (name or "").split(" - ")[0].strip()
+
+
+def match_user(users, name):
+    """Melder aus der Ticketliste (nur Name, keine Id) in den Treffern der Personensuche finden.
+    Genau gleicher Anzeigename zuerst, sonst der einzige Treffer mit gleichem Namen ohne Firma.
+    None, wenn es nicht eindeutig ist (dann lieber keine falsche Telefonnummer zeigen)."""
+    want = _same(name)
+    if not want:
+        return None
+    exact = [u for u in users if _same(u.get("name")) == want]
+    if exact:
+        return exact[0] if len({u["id"] for u in exact}) == 1 else None
+    short = _same(melder_search_text(name))
+    same = [u for u in users if _same(melder_search_text(u.get("name"))) == short]
+    return same[0] if len(same) == 1 else None
+
+
 def tree_query(widget):
     return {"entityClass": "SPSScCategoryClassBase", "parentExpression": "Parent", "includeRoot": True,
             "FilterExpression": {"Path": {"propertyName": "filter-expression", "controlName": "object-picker3",

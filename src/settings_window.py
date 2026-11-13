@@ -200,23 +200,29 @@ ROWS = [
     ("about/Fehlersuche", "button", "phone", "3CX: Direkt-Abfrage prüfen",
      "Anrufe ohne Webseite direkt vom 3CX-Server holen und mit der gespeicherten Anrufliste vergleichen.",
      "check_pbx_direct", None),
-    ("about/Fehlersuche", "button", "record", "Matrix42: Abfragen mitschneiden",
-     "Edge-Fenster mit dem Matrix42-Kalender öffnen und aufzeichnen, was die Seite abfragt.",
-     lambda main: main.record_source("m42"), None),
-    ("about/Fehlersuche", "button", "record", "Matrix42: Buchung mitschneiden",
-     "Aufzeichnen, wie Matrix42 eine Zeiterfassung speichert. Du legst dabei selbst eine Buchung an.",
-     lambda main: main.record_source("m42", booking=True), None),
-    ("about/Fehlersuche", "button", "record", "Matrix42: Ticket anlegen und schließen mitschneiden",
-     "Aufzeichnen, wie Matrix42 Incidents und Service Requests anlegt und mit Lösungstext schließt. "
-     "Du legst dabei selbst zwei Test-Tickets an und schließt sie.",
-     lambda main: main.record_source("m42", ticket=True), None),
     ("about/Fehlersuche", "button", "record", "ITM: Abfragen mitschneiden",
      "Edge-Fenster mit der ITM-Zeiterfassung öffnen und aufzeichnen, was die Seite abfragt.",
      lambda main: main.record_source("itm"), None),
+    ("about/Fehlersuche Matrix42", "button", "record", "Matrix42: Abfragen mitschneiden",
+     "Edge-Fenster mit dem Matrix42-Kalender öffnen und aufzeichnen, was die Seite abfragt.",
+     lambda main: main.record_source("m42"), None),
+    ("about/Fehlersuche Matrix42", "button", "record", "Matrix42: Buchung mitschneiden",
+     "Aufzeichnen, wie Matrix42 eine Zeiterfassung speichert. Du legst dabei selbst eine Buchung an.",
+     lambda main: main.record_source("m42", booking=True), None),
+    ("about/Fehlersuche Matrix42", "button", "record", "Matrix42: Ticket anlegen und schließen mitschneiden",
+     "Aufzeichnen, wie Matrix42 Incidents und Service Requests anlegt und mit Lösungstext schließt. "
+     "Du legst dabei selbst zwei Test-Tickets an und schließt sie.",
+     lambda main: main.record_source("m42", ticket=True), None),
+    ("about/Fehlersuche Matrix42", "button", "record", "Matrix42: Ticket ansehen mitschneiden",
+     "Aufzeichnen, was Matrix42 beim Öffnen eines Tickets lädt: Beschreibung, E-Mails und Kontakt des "
+     "Melders, ungekürzt. Für Tickets, die Zeitzeuge nicht oder unvollständig zeigt.",
+     lambda main: main.record_source("m42", view=True), None),
 ]
 # Eingeklappte Abschnitte (im Alltag nicht nötig): Bereich/Abschnitt -> Satz darunter
 COLLAPSED = {"about/Fehlersuche": "Für tiefergehende Analysen, z. B. wenn nach einem Update etwas nicht mehr "
-             "gelesen wird. Passwörter und Token werden geschwärzt, die Mitschnitte landen im Datenordner."}
+             "gelesen wird. Passwörter und Token werden geschwärzt, die Mitschnitte landen im Datenordner.",
+             "about/Fehlersuche Matrix42": "Mitschnitte aus Matrix42: Kalender, Buchungen und Tickets. "
+             "Die Mitschnitte landen im Datenordner."}
 
 # Suchbegriffe für die Seite „Nachfragen“ (dort keine Zeilen, sondern eigene Bedienelemente)
 PROMPT_TOPICS = [

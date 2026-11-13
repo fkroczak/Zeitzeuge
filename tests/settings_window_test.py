@@ -236,16 +236,21 @@ def gui_test():
     from settings_window import row_section
     debug_rows = [r.spec[3] for r in settings.rows if row_section(r.spec) == "Fehlersuche"]
     assert all(r.isVisible() for r in settings.rows if row_section(r.spec) == "Fehlersuche")
-    assert "Matrix42: Buchung mitschneiden" in debug_rows and "3CX: Direkt-Abfrage prüfen" in debug_rows
+    assert "3CX: Direkt-Abfrage prüfen" in debug_rows
+    settings.collapsed["about/Fehlersuche Matrix42"].click()
+    m42_rows = [r.spec[3] for r in settings.rows if row_section(r.spec) == "Fehlersuche Matrix42"]
+    assert "Matrix42: Buchung mitschneiden" in m42_rows and "Matrix42: Ticket ansehen mitschneiden" in m42_rows
     m42_dialog = window.build_reader_dialog("m42")
     assert not [b for b in m42_dialog.findChildren(QPushButton) if "mitschneiden" in b.text()]
     m42_dialog.deleteLater()
     calls = []
-    window.record_source = lambda kind, booking=False, ticket=False: calls.append((kind, booking, ticket))
+    window.record_source = lambda kind, booking=False, ticket=False, view=False: calls.append(
+        (kind, booking, ticket, view))
     next(r for r in settings.rows if r.spec[3] == "Matrix42: Buchung mitschneiden").control.click()
     next(r for r in settings.rows
          if r.spec[3] == "Matrix42: Ticket anlegen und schließen mitschneiden").control.click()
-    assert calls == [("m42", True, False), ("m42", False, True)], calls
+    next(r for r in settings.rows if r.spec[3] == "Matrix42: Ticket ansehen mitschneiden").control.click()
+    assert calls == [("m42", True, False, False), ("m42", False, True, False), ("m42", False, False, True)], calls
 
     # Seite Nachfragen: Grenzwert ändern wirkt sofort und wird gespeichert
     settings.show_page("prompts")
