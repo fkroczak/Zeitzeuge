@@ -104,8 +104,9 @@ def test_script_runs_with_progress(tk_root):
     assert float(tk_root.tk.eval("set zz_goal")) == 84
 
     # „!“ davor: Startbild in den Vordergrund, Text und Balken bleiben (step_on_top)
+    before = text()
     tk_root.tk.call("set", "status_text", "!97|Fenster zeichnen …")
-    assert text() == "Fenster aufbauen …" and float(tk_root.tk.eval("set zz_goal")) == 84
+    assert text() == before and float(tk_root.tk.eval("set zz_goal")) == 84
 
 
 def test_bild_je_skalierung(tk_root):
