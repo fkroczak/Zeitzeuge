@@ -227,7 +227,9 @@ class WeekDialog(QDialog):
         enter.triggered.connect(lambda: self.open_day(self.table.currentRow()))
         self.table.addAction(enter)
         self.table.verticalHeader().setDefaultSectionSize(28)
-        self.table.setMinimumHeight(28 * 7 + 40)  # die ganze Woche ohne Blättern
+        # Mo–Fr ohne Blättern (Sa/So nur, wenn gestempelt); größer wird die Tabelle mit dem Fenster.
+        # Mit 7 Zeilen passte der Dialog nicht auf 960 × 540 (Full HD bei 200 %)
+        self.table.setMinimumHeight(28 * 5 + 40)
         layout.addWidget(self.table, 2)
 
         self.seven_label = QLabel(self)
@@ -240,7 +242,7 @@ class WeekDialog(QDialog):
         hints_label.setBuddy(self.hints)
         self.hints.itemActivated.connect(self.open_hint)
         layout.addWidget(hints_label)
-        self.hints.setMinimumHeight(80)  # mit Rändern der Token-Skala passt der Dialog noch auf 960 × 540
+        self.hints.setMinimumHeight(72)  # mit Rändern der Token-Skala passt der Dialog noch auf 960 × 540
         layout.addWidget(self.hints, 1)
 
         form = QFormLayout()

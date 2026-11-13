@@ -389,7 +389,7 @@ class AiClassifier(QObject):
         return importlib.util.find_spec("anthropic") is not None  # ohne das Paket zu laden
 
     def input_text(self, entries, pc_entries):
-        send_pc = self.config.get("ai_send_window_titles", True)
+        send_pc = self.config.get("ai_send_window_titles", False)
         return build_day_text(entries, pc_entries if send_pc else None)
 
     def input_hash(self, text):

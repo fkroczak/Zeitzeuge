@@ -217,8 +217,10 @@ class ActivityTracker:
         Zeile im Speicher und wird beim nächsten Abschnitt erneut versucht. Nie mit Ausnahme."""
         if (end - start).total_seconds() < 2:
             return
-        self.pending.append({"start": start.strftime(TIME_FMT), "end": end.strftime(TIME_FMT),
-                             "app": app, "title": title})
+        # Über Mitternacht: je Tag ein Abschnitt, sonst fehlt der Teil nach 0 Uhr am Folgetag
+        for piece_start, piece_end in split_at_midnight(start, end):
+            self.pending.append({"start": piece_start.strftime(TIME_FMT),
+                                 "end": piece_end.strftime(TIME_FMT), "app": app, "title": title})
         self.flush()
 
     def flush(self):
@@ -244,11 +246,25 @@ class ActivityTracker:
         result = read_segments(self.folder, date_str)
         result += [dict(p) for p in self.pending if p["start"].startswith(date_str)]
         cur = self.current
-        if cur and cur["start"].strftime("%Y-%m-%d") == date_str:
-            result.append({"start": cur["start"].strftime(TIME_FMT),
-                           "end": cur["last"].strftime(TIME_FMT),
-                           "app": cur["app"], "title": cur["title"]})
+        if cur:  # laufender Abschnitt, über Mitternacht auf den Tag zugeschnitten
+            for piece_start, piece_end in split_at_midnight(cur["start"], cur["last"]):
+                if piece_start.strftime("%Y-%m-%d") == date_str:
+                    result.append({"start": piece_start.strftime(TIME_FMT),
+                                   "end": piece_end.strftime(TIME_FMT),
+                                   "app": cur["app"], "title": cur["title"]})
         return result
+
+
+def split_at_midnight(start, end):
+    """[(start, end)] je Kalendertag; das Ende eines Tages ist 23:59:59 (Zeitformat ohne
+    Sekundenbruchteile), der nächste beginnt um 00:00:00."""
+    pieces = []
+    while start.date() < end.date():
+        next_day = datetime.combine(start.date() + timedelta(days=1), datetime.min.time())
+        pieces.append((start, next_day - timedelta(seconds=1)))
+        start = next_day
+    pieces.append((start, end))
+    return pieces
 
 
 def _valid_segment(seg):

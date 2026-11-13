@@ -227,7 +227,7 @@ def default_config():
         # KI-Vorschläge (Anthropic). Der API-Schlüssel steht nicht hier, sondern lokal.
         "ai_model": "claude-opus-5-5",
         "ai_effort": "low",
-        "ai_send_window_titles": True,
+        "ai_send_window_titles": False,  # Datensparsam: Fenstertitel nur auf Wunsch an die KI
         "ai_auto": False,          # vergangene Tage beim Anzeigen automatisch einordnen
 
         # Zeilen der Timeline, jede einzeln aus- und einblendbar (timeline_only.TIMELINE_ROWS)

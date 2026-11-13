@@ -176,3 +176,20 @@ def test_kaputte_zeilen_und_haeufigste_programme(check):
 
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-q"]))
+
+
+def test_ueber_mitternacht(check):
+    """Fenster von 23:40 bis 00:50: je Tag ein Abschnitt, auch der laufende am Folgetag."""
+    tr = at.ActivityTracker(tempfile.mkdtemp())
+    late = datetime(2026, 10, 22, 23, 40, 0)
+    window["info"] = ("mstsc.exe", "Server Kunde")
+    for minute in range(0, 71):  # alle Minute ein Blick, bis 00:50
+        tr.sample(late + timedelta(minutes=minute))
+    running = tr.segments_for("2026-10-23")
+    check([(s["start"][11:], s["end"][11:]) for s in running] == [("00:00:00", "00:50:00")],
+          f"laufender Abschnitt am Folgetag fehlt: {running}")
+    tr.stop()
+    day1 = [(s["start"][11:], s["end"][11:]) for s in at.read_segments(tr.folder, "2026-10-22")]
+    day2 = [(s["start"][11:], s["end"][11:]) for s in at.read_segments(tr.folder, "2026-10-23")]
+    check(day1 == [("23:40:00", "23:59:59")], f"Vortag falsch: {day1}")
+    check(day2 == [("00:00:00", "00:50:00")], f"Folgetag falsch: {day2}")
