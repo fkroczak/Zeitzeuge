@@ -247,7 +247,8 @@ def test_ticket_bearbeiten_felder():
     assert view == {"id": "ticket-1", "ticket": "TCK0000050866", "type": "SPSActivityTypeServiceRequest",
                     "subject": "Rückmeldung", "description": "- Anpassungen an ZRO Ordnern\nx",
                     "category": CAT, "rich": True, "stamp": "00000000DC09AE2F/00000000DC09AEE9",
-                    "initiator": MELDER, "callback": "02542 1", "contact": {}}
+                    "initiator": MELDER, "callback": "02542 1", "contact": {},
+                    "html": mt.view_html(LOADED["SPSActivityClassBase"]["DescriptionHTML"])}
     assert mt.loaded_entity(LOADED) is LOADED  # auch ohne Hülle
     with pytest.raises(BookingError):
         mt.loaded_entity({"Entity": {"ID": "x"}})
@@ -472,3 +473,12 @@ def test_html_mail_mit_bild():
                         '<p>Hallo guten Morgen,</p><p><img src="data:image/png;base64,AAAA"></p>'
                         '<p>Beste Grüße</p></body></html>')
     assert text == "Hallo guten Morgen,\n[Bild]\nBeste Grüße", text
+
+
+def test_html_zum_ansehen():
+    raw = ('<p>Hallo</p><script>alert(1)</script><iframe src="x"></iframe><form><input name="a"></form>'
+           '<img width="1900" height=400 style="width:19in" src="data:image/png;base64,AAAA">')
+    out = mt.view_html(raw)
+    assert "script" not in out and "iframe" not in out and "input" not in out and "alert" not in out
+    assert '<img src="data:image/png;base64,AAAA">' in out and "<p>Hallo</p>" in out
+    assert mt.ticket_view(mt.loaded_entity(LOADED))["html"].startswith("<p>- Anpassungen")  # Tabelle: rich

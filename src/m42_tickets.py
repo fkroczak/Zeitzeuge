@@ -381,6 +381,21 @@ def stamp(entity):
     return f"{entity.get('Sys-TimeStamp', '')}/{base.get('Sys-TimeStamp', '')}"
 
 
+# Für die Anzeige im Fenster „Ticket ansehen“ (QTextBrowser: führt nichts aus, lädt nichts aus dem Netz)
+_DROP_BLOCKS = re.compile(r"(?is)<(script|iframe|object|embed|form|title)\b.*?</\1\s*>")
+_DROP_TAGS = re.compile(r"(?i)</?(script|iframe|object|embed|form|input|button|meta|link|base)\b[^>]*>")
+_IMG = re.compile(r"(?is)<img\b[^>]*>")
+_IMG_SIZE = re.compile(r"""(?is)\s(width|height)\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)""")
+_IMG_STYLE = re.compile(r"""(?is)\sstyle\s*=\s*("[^"]*"|'[^']*')""")
+
+
+def view_html(value):
+    """Beschreibung als HTML zum Ansehen (mit eingebetteten Bildern): Skripte, Formulare und
+    Rahmen fallen weg, Bilder ohne feste Größe (das Fenster verkleinert sie auf seine Breite)."""
+    text = _DROP_TAGS.sub("", _DROP_BLOCKS.sub("", value or ""))
+    return _IMG.sub(lambda m: _IMG_STYLE.sub("", _IMG_SIZE.sub("", m.group(0))), text)
+
+
 RICH_HTML = re.compile(r"(?i)<(img|table|ul|ol|a|b|strong|i|em|u|span|font|h[1-6])\b")
 
 
@@ -392,6 +407,7 @@ def ticket_view(entity):
     return {"id": entity["ID"], "ticket": entity.get("Sys-Name", ""), "type": entity.get("Sys-Entity", ""),
             "subject": (base.get("Subject") or "").strip(), "description": html_text(description),
             "category": base.get("Category"), "rich": bool(RICH_HTML.search(description)),
+            "html": view_html(description) if RICH_HTML.search(description) else "",
             "stamp": stamp(entity), "initiator": base.get("Initiator") or "",
             "callback": ((entity.get("SPSActivityClassIncident") or {}).get("Callback") or "").strip(),
             # Kontakt des Melders kommt mit dem Ticket (Telefon, E-Mail, Firma), dann ohne Extra-Abfrage

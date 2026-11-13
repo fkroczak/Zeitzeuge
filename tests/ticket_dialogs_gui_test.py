@@ -200,6 +200,28 @@ def gui_test():
     view.ok_button.click()
     assert view.action == "edit"
 
+    # HTML-Mail mit Bild: wie in Matrix42 mit Bild, auf die Breite verkleinert
+    import base64
+    from PySide6.QtCore import QBuffer, QIODevice
+    from PySide6.QtGui import QColor, QImage
+    picture = QImage(1900, 300, QImage.Format_RGB32)
+    picture.fill(QColor("red"))
+    buf = QBuffer()
+    buf.open(QIODevice.WriteOnly)
+    picture.save(buf, "PNG")
+    src = "data:image/png;base64," + base64.b64encode(bytes(buf.data())).decode()
+    view = ViewTicketDialog(reader, ROW)
+    view.show()
+    assert wait_for(lambda: view.loaded is not None, 3000)
+    view._on_load({"ok": True, "kind": "load", "args": {}, "data": dict(
+        view.loaded, html=f'<p><b>Hallo</b></p><img width="1900" src="{src}"><p>Ende</p>', contact={})})
+    QTest.qWait(20)
+    doc = view.description_view.document()
+    assert "Hallo" in view.description_view.toPlainText() and "<img" in doc.toHtml()
+    assert 100 < doc.size().width() <= view.description_view.viewport().width() + 2, doc.size()
+    assert doc.size().height() > 60, "Bild ist zu sehen"
+    view.reject()
+
     # Ticket nicht ladbar (z. B. gelöscht): Telefon trotzdem
     reader.fail.add("load")
     view = ViewTicketDialog(reader, ROW)
