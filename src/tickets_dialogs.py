@@ -7,7 +7,7 @@ Kategorie auch gelöste/geschlossene Tickets, aus nur offene und angehaltene.
 
 Das Filterfeld sucht nur in dem, was die Pillen zeigen (Kategorie und Status); jedes Wort
 muss irgendwo vorkommen, wie bei der Ticketsuche. Tabelle (Ticket, Betreff, Kunde, Melder,
-Art, Status, Bearbeiter, Angelegt), nach jeder Spalte sortierbar.
+Art, Status, Bearbeiter, Angelegt), nach jeder Spalte sortierbar, in Seiten zu 50 oder 100 Tickets.
 
 Meine Tickets liest M42Reader alle 10 Minuten (my_tickets_loaded), die übrigen Kategorien beim
 ersten Anzeigen und wenn sie älter als 10 Minuten sind (tickets_loaded); „Aktualisieren“ liest
@@ -16,8 +16,8 @@ sofort. „Neues Ticket …“, „Bearbeiten …“ und „Schließen …“ ö
 import time
 
 from PySide6.QtCore import QEvent, Qt
-from PySide6.QtWidgets import (QApplication, QButtonGroup, QDialog, QDialogButtonBox, QLabel, QLineEdit,
-                               QPushButton, QToolButton, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QApplication, QButtonGroup, QComboBox, QDialog, QDialogButtonBox, QHBoxLayout,
+                               QLabel, QLineEdit, QPushButton, QToolButton, QVBoxLayout, QWidget)
 
 import m42_booking as mb
 from flow_layout import FlowLayout
@@ -27,6 +27,7 @@ MINE = "mine"
 STALE_AFTER = 10 * 60  # Kategorien, die älter sind, beim Anzeigen neu lesen
 # Feste Kategorien: (Schlüssel, Pille, gespeicherter Filter in Matrix42; "" = alle Tickets)
 FIXED = [(MINE, "Meine Tickets", None), ("tk", "TK-Tickets", mb.TK_FILTER), ("all", "Alle", "")]
+PAGE_SIZES = (50, 100)  # Tickets je Seite; die Wahl gilt bis zum Beenden für jedes neue Fenster
 
 
 def _chip(text, parent):
@@ -40,6 +41,8 @@ def _chip(text, parent):
 
 
 class TicketsDialog(QDialog):
+    page_size = PAGE_SIZES[0]
+
     def __init__(self, reader, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Tickets")
@@ -87,6 +90,7 @@ class TicketsDialog(QDialog):
         self.table.sort_by(len(COLUMNS) - 1, Qt.DescendingOrder)  # neueste zuerst
         self.table.activated.connect(lambda _row: self.copy_number())
         self.table.itemSelectionChanged.connect(self._selected)
+        self.table.set_page(0, self.page_size)
         layout.addWidget(self.table, 1)
 
         self.status = QLabel(self)
@@ -94,7 +98,30 @@ class TicketsDialog(QDialog):
         # bei mehr Zeilen nicht mehr Platz (zweite Zeile unter der Fußleiste); lange Texte im Tooltip.
         self.status.setObjectName("hint")
         self.status.setTextFormat(Qt.PlainText)
-        layout.addWidget(self.status)
+        # Seiten: ‹ Seite 1 von 3 ›  [50 pro Seite]
+        self.prev_button = QToolButton(self)
+        self.prev_button.setText("‹")
+        self.prev_button.setToolTip("Vorherige Seite")
+        self.prev_button.setAccessibleName("Vorherige Seite")
+        self.prev_button.clicked.connect(lambda: self.go_page(self.table.page - 1))
+        self.page_label = QLabel(self)
+        self.page_label.setObjectName("hint")
+        self.next_button = QToolButton(self)
+        self.next_button.setText("›")
+        self.next_button.setToolTip("Nächste Seite")
+        self.next_button.setAccessibleName("Nächste Seite")
+        self.next_button.clicked.connect(lambda: self.go_page(self.table.page + 1))
+        self.size_combo = QComboBox(self)
+        self.size_combo.setAccessibleName("Tickets pro Seite")
+        for size in PAGE_SIZES:
+            self.size_combo.addItem(f"{size} pro Seite", size)
+        self.size_combo.setCurrentIndex(PAGE_SIZES.index(self.page_size))
+        self.size_combo.currentIndexChanged.connect(self._size_chosen)
+        foot = QHBoxLayout()
+        foot.addWidget(self.status, 1)
+        for w in (self.prev_button, self.page_label, self.next_button, self.size_combo):
+            foot.addWidget(w)
+        layout.addLayout(foot)
         buttons = QDialogButtonBox(QDialogButtonBox.Close, self)
         buttons.button(QDialogButtonBox.Close).setText("Fertig")
         self.copy_button = QPushButton("Nummer &kopieren", self)
@@ -186,6 +213,17 @@ class TicketsDialog(QDialog):
     def _closed_toggled(self, _on):
         self.show_category()
 
+    def go_page(self, page):
+        self.table.set_page(page)
+        self._update_status()
+        self._selected()
+
+    def _size_chosen(self, _index):
+        TicketsDialog.page_size = self.size_combo.currentData()
+        self.table.set_page(0, self.page_size)
+        self._update_status()
+        self._selected()
+
     def title(self):
         return self.categories[self.category][0]
 
@@ -229,6 +267,7 @@ class TicketsDialog(QDialog):
         if not self.closed_button.isChecked():
             rows = [r for r in rows if not mb.is_closed(r)]
         self._rows = rows
+        self.table.page = 0
         self.table.set_rows(rows)
         self.filter_edit.setPlaceholderText(
             f"In „{self.title()}“ filtern nach Ticket, Betreff, Kunde, Melder, Art, Status oder Bearbeiter")
@@ -247,7 +286,11 @@ class TicketsDialog(QDialog):
 
     def _update_status(self):
         view = self._view() or {}
-        n, shown = len(self._rows), len(self.visible_rows())
+        n, shown = len(self._rows), len(self.table.matching_rows())
+        page, pages = self.table.page, self.table.pages()
+        self.page_label.setText(f"Seite {page + 1} von {pages}")
+        self.prev_button.setEnabled(page > 0)
+        self.next_button.setEnabled(page < pages - 1)
         closed = self.closed_button.isChecked()
         text = ""
         if self.category in self._loading:

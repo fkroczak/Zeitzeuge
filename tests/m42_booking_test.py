@@ -239,6 +239,14 @@ def test_ticket_kategorien():
                {"Id": "o", "Title": "Ohne Verantwortung"}, {"Id": "o", "Title": "Ohne Verantwortung"},
                {"Id": "", "Title": "kaputt"}, "Unsinn"]
     assert mb.ticket_filters(filters) == [{"id": "o", "title": "Ohne Verantwortung"}]
+    # Liste wie im Service Desk: Doppelte zu den festen Pillen weg, Ordner „Meine“ aufgelöst
+    names = ["ALLE offenen Tickets", "ICH bin Verantwortlich", "Neue Tickets", "Neue TK Tickets",
+             "Ohne Verantwortung", "TK Tickets", "Ticket_Pool_A", "Ticket_Pool_Infrastruktur", "Offen Vertrieb"]
+    listing = [{"Id": f"id{i}", "Title": n, "QueryFilter": "{}"} for i, n in enumerate(names)]
+    listing.insert(2, {"Id": "ordner", "Title": "Meine", "Children": [{"Id": "m1", "Title": "Meine Störungen"}]})
+    assert [f["title"] for f in mb.ticket_filters(listing)] == [
+        "Meine Störungen", "Neue Tickets", "Neue TK Tickets", "Ohne Verantwortung", "Ticket Pool A",
+        "Ticket Pool Infrastruktur", "Offen Vertrieb"]
     assert mb.ticket_filters({"x": 1}) == []
 
 

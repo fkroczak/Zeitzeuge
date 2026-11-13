@@ -281,18 +281,37 @@ def _title_key(text):
     return re.sub(r"[\W_]+", "", (text or "").casefold())
 
 
-# Diese Filter haben eigene Pillen (oder sind „Meine“ ohne erledigte): nicht doppelt zeigen
-OWN_FILTER_TITLES = {_title_key(t) for t in ("TK Tickets", "TK-Tickets", "Meine Tickets", "Meine")}
+# Diese Filter haben eigene Pillen: nicht doppelt zeigen. „ALLE offenen Tickets“ ≙ „Alle“,
+# „ICH bin Verantwortlich“ ≙ „Meine Tickets“ (Filterliste im Service Desk, Screenshot 13.11.26)
+OWN_FILTER_TITLES = {_title_key(t) for t in ("TK Tickets", "TK-Tickets", "Meine Tickets", "Meine",
+                                             "ALLE offenen Tickets", "Alle Tickets", "Alle",
+                                             "ICH bin Verantwortlich")}
+
+
+def _filter_entries(data):
+    """Filterliste flach: Ordner (z. B. „Meine“) mit ihren Unterfiltern aufgelöst."""
+    for f in data if isinstance(data, list) else []:
+        if not isinstance(f, dict):
+            continue
+        yield f
+        for value in f.values():
+            if isinstance(value, list) and any(isinstance(v, dict) and v.get("Id") for v in value):
+                yield from _filter_entries(value)
+
+
+def filter_title(title):
+    """'Ticket_Pool_A' -> 'Ticket Pool A' (Unterstriche als Leerzeichen, Leerraum zusammen)."""
+    return re.sub(r"\s+", " ", (title or "").replace("_", " ")).strip()
 
 
 def ticket_filters(data, skip_ids=()):
     """Antwort von dataQuery/<id>/filters -> [{"id", "title"}] in der Reihenfolge von Matrix42.
-    Ohne Schnellfilter (Ampelfarben „Eskaliert“ …) und ohne die Filter mit eigener Pille."""
+    Ohne Schnellfilter (Ampelfarben „Eskaliert“ …), ohne Ordner und ohne die Filter mit eigener Pille."""
     out, seen = [], set(skip_ids)
-    for f in data if isinstance(data, list) else []:
-        if not isinstance(f, dict) or f.get("QuickFilter"):
+    for f in _filter_entries(data):
+        if f.get("QuickFilter"):
             continue
-        fid, title = (f.get("Id") or "").strip(), re.sub(r"\s+", " ", f.get("Title") or "").strip()
+        fid, title = (f.get("Id") or "").strip(), filter_title(f.get("Title"))
         if not fid or not title or fid in seen or _title_key(title) in OWN_FILTER_TITLES:
             continue
         seen.add(fid)

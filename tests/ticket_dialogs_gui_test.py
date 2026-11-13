@@ -280,6 +280,29 @@ def gui_test():
     tickets.category_buttons["f:f-neu"].click()
     assert creader.loads[-1] == ("f:f-neu", "f-neu")
     tickets.close()
+
+    # ---- Seiten: 50 oder 100 Tickets je Seite, Filter und Kategorie fangen wieder bei Seite 1 an
+    many = [dict(ROW, ticket=f"TCK{n:010d}", id=f"p{n}", subject=f"Thema {n}" + (" vpn" if n % 2 else ""),
+                 created=f"2026-10-01T08:{n // 60:02d}:{n % 60:02d}Z") for n in range(120)]
+    creader.my_tickets = {"at": "12:00", "error": "", "rows": many, "all": many}
+    paged = TicketsDialog(creader)
+    paged.show()
+    app.processEvents()
+    assert len(paged.visible_rows()) == 50 and paged.page_label.text() == "Seite 1 von 3"
+    assert paged.visible_rows()[0]["id"] == "p119" and not paged.prev_button.isEnabled()
+    assert "120 offene Tickets" in paged.status.text(), paged.status.text()
+    paged.next_button.click()
+    paged.next_button.click()
+    assert len(paged.visible_rows()) == 20 and not paged.next_button.isEnabled()
+    assert paged.visible_rows()[-1]["id"] == "p0"
+    paged.size_combo.setCurrentIndex(1)  # 100 pro Seite: zurück auf Seite 1
+    assert len(paged.visible_rows()) == 100 and paged.page_label.text() == "Seite 1 von 2"
+    paged.next_button.click()
+    paged.filter_edit.setText("vpn")  # 60 Treffer, wieder Seite 1
+    assert paged.page_label.text() == "Seite 1 von 1" and len(paged.visible_rows()) == 60
+    assert "60 passen zum Filter" in paged.status.text(), paged.status.text()
+    paged.close()
+    assert TicketsDialog(creader).size_combo.currentData() == 100  # Wahl gilt fürs nächste Fenster
     assert QDialog  # (Import für Typen oben)
     mine.close()
     print("Ticket-Fenster ok")
