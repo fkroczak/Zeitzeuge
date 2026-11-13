@@ -425,12 +425,7 @@ class DayListMixin:
         self.date_edit.setDate(QDate.currentDate())
 
     def refresh(self):
-        """Aktualisieren (F5): alle Quellen sofort neu lesen."""
-        try:
-            if vpn_sources(self.config):
-                self.timeline.vpn_reader.update_from_logs()  # neue Sophos-Zeilen gleich mitnehmen
-        except Exception as e:
-            print(f"Fehler beim Lesen der VPN-Logs: {e}")
+        """Aktualisieren (F5): alle Quellen sofort neu lesen (VPN-Logs liest timeline.refresh im Hintergrund mit)."""
         self.timeline.refresh()
         # 3CX, Matrix42, ITM und Outlook/Teams gleich mit neu lesen (sonst erst beim nächsten Durchlauf)
         names = []
@@ -447,15 +442,18 @@ class DayListMixin:
             self.statusBar().showMessage("Logs werden neu eingelesen …", 2000)
 
     def auto_refresh(self):
-        try:
-            if vpn_sources(self.config):
-                self.timeline.vpn_reader.update_from_logs()  # Sophos-Logs sichern, bevor sie überschrieben werden
-        except Exception as e:
-            print(f"Fehler beim Lesen der VPN-Logs: {e}")
         if self.current_date == QDate.currentDate():
+            # refresh liest im Hintergrund auch die VPN-Logs (Sophos-Logs sichern, bevor sie
+            # überschrieben werden)
             # Im Infobereich oder minimiert nur lesen (für die Nachfragen), nicht zeichnen:
             # spart Rechenzeit und Akku, beim Öffnen wird einmal nachgezeichnet
             self.timeline.refresh(draw=self.isVisible() and not self.isMinimized())
+        elif vpn_sources(self.config):  # anderer Tag angezeigt: nur die VPN-Logs sichern, im Hintergrund
+            background.run(self.timeline.vpn_reader.update_from_logs, self._vpn_logs_read, "VPN-Logs")
+
+    def _vpn_logs_read(self, ok, error):
+        if not ok:
+            print(f"Fehler beim Lesen der VPN-Logs: {error}")
 
     def apply_vpn_monitor(self):
         """Eigene VPN-Aufzeichnung nur, wenn Sophos Connect oder FortiClient eingeschaltet ist."""

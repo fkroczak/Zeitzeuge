@@ -164,3 +164,25 @@ def test_namenloses_doppel_faellt_weg():
              conn("09:10:00", "09:20:00", "Sophos Connect", "Sophos")]  # andere Quelle: bleibt
     names = [(c["start"][11:], c["customer_name"]) for c in drop_unnamed_twins(conns)]
     assert names == [("09:00:00", "kreimer"), ("11:00:00", "FortiClient"), ("09:10:00", "Sophos Connect")], names
+
+
+def test_zeichnen_liest_logs_nicht_selbst(same):
+    """connections(update=False): beim Zeichnen nur das Archiv, die Logs liest der Hintergrund
+    (FortiClient-Trace hielt das Fenster laut haenger.log sonst 2 s an). Nur wenn noch nie
+    gelesen, liest es sie selbst."""
+    with temp_dir() as tmp:
+        logs = os.path.join(tmp, "Connect")
+        os.makedirs(logs)
+        for name, lines in [("scvpn.log", SCVPN[:6]), ("scgui.log", SCGUI), ("charon.log.old", CHARON)]:
+            with open(os.path.join(logs, name), "w", encoding="utf-8") as f:
+                f.write("\n".join(lines) + "\n")
+        reader = VpnReader(os.path.join(tmp, "vpn_verbindungen.json"), [logs])
+        calls = []
+        real = reader._update_from_logs
+        reader._update_from_logs = lambda: calls.append(1) or real()
+        same("noch nie gelesen: liest selbst", len(reader.connections(update=False)), 3)
+        same("einmal gelesen", len(calls), 1)
+        reader.connections(update=False)
+        same("danach nur das Archiv", len(calls), 1)
+        reader.update_from_logs()  # Hintergrund
+        same("Hintergrund liest", len(calls), 2)
