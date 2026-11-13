@@ -482,6 +482,12 @@ class ReadersMixin:
         if ok and password:
             reader.login_password(reader.username, password, reader.mandant)
 
+    def open_itm_web(self):
+        """ITM-Zeiterfassung im Standardbrowser öffnen (Kachel „Erfasst“). Die Anmeldung
+        übernimmt der Browser selbst (Cookie der Web-App), Zeitzeuge gibt keine Daten mit."""
+        url = self.config.get("itm_url", "") or "https://app.itm-gruppe.com"
+        QDesktopServices.openUrl(QUrl(url))
+
     def on_itm_issues(self, texts):
         """Fehlerhafte Buchungen in ITM (je Buchung einmal)."""
         text = "\n".join(texts[:3]) + (f"\n(und {len(texts) - 3} weitere)" if len(texts) > 3 else "")

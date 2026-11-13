@@ -603,6 +603,7 @@ class TimelineApp(MenusMixin, DayListMixin, DayCloseMixin, DocsMixin, ReadersMix
         self.day_summary.open_clicked.connect(self.document_next_open)
         self.day_summary.suggestions_clicked.connect(lambda: self.change_view("ai"))
         self.day_summary.tickets_clicked.connect(self.show_my_tickets)
+        self.day_summary.booked_clicked.connect(self.open_itm_web)
         self.day_summary.customer_clicked.connect(self.toggle_customer_filter)
         central_layout.addWidget(self.day_summary)
         central_layout.addWidget(splitter, 1)
