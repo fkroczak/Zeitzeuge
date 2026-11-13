@@ -1,10 +1,12 @@
 """Tickettabelle für „Tickets“ und „Ticket suchen“: Spalten Ticket, Betreff, Kunde, Melder,
 Art (Störung/Serviceanfrage), Status, Bearbeiter, Angelegt; nach jeder Spalte sortierbar, filterbar (jedes Wort muss vorkommen, wie bei
 der Ticketsuche), erledigte Tickets grau. Enter oder Doppelklick: Signal activated(row).
+Spaltenbreiten lassen sich im Kopf ziehen; gezogene Breiten bleiben (je Tabelle gespeichert),
+Rechtsklick auf den Kopf setzt sie zurück. Der Betreff bekommt immer den Rest.
 """
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QSettings, Qt, Signal
 from PySide6.QtGui import QAction, QKeySequence, QPainter, QPalette
-from PySide6.QtWidgets import QAbstractItemView, QHeaderView, QTableWidget, QTableWidgetItem
+from PySide6.QtWidgets import QAbstractItemView, QHeaderView, QMenu, QTableWidget, QTableWidgetItem
 
 import m42_booking as mb
 import skeleton
@@ -20,6 +22,11 @@ PEOPLE_SHARE, PEOPLE_MIN, PEOPLE_MAX = 0.09, 70, 130
 # Art, Status, Angelegt: nach Inhalt, aber nur so breit, dass dem Betreff gut ein Drittel bleibt
 # (unter Windows sind sie fast doppelt so breit wie unter Linux); nie schmaler als SMALL_MIN
 SUBJECT_SHARE, SMALL_MIN = 0.35, 50
+
+
+def settings():
+    """Ablage der gezogenen Spaltenbreiten (Tests ersetzen sie)."""
+    return QSettings("ZeitZeuge", "ZeitZeuge")
 
 
 class _Item(QTableWidgetItem):
@@ -61,6 +68,13 @@ class TicketTable(QTableWidget):
         self.page_size = 0  # Tickets je Seite, 0 = alle auf einer Seite
         self.page = 0
         self._loading = False
+        # Vom Benutzer gezogene Breiten {Feld: px}; _fit_columns lässt sie stehen
+        self._fitting = False
+        self._settings_key = "ticket_table/%s/widths" % name
+        self._user_widths = self._load_widths()
+        header.sectionResized.connect(self._section_resized)
+        header.setContextMenuPolicy(Qt.CustomContextMenu)
+        header.customContextMenuRequested.connect(self._header_menu)
         header.setSectionsClickable(True)
         header.setSortIndicatorShown(True)
         header.setSortIndicator(-1, Qt.AscendingOrder)
@@ -76,10 +90,52 @@ class TicketTable(QTableWidget):
         super().resizeEvent(event)
         self._fit_columns()
 
+    def _load_widths(self):
+        try:
+            raw = settings().value(self._settings_key, {}) or {}
+            keys = {key for _n, key in COLUMNS} - {COLUMNS[SUBJECT_COL][1]}
+            return {k: int(v) for k, v in dict(raw).items() if k in keys and int(v) > 0}
+        except (TypeError, ValueError):
+            return {}
+
+    def _save_widths(self):
+        store = settings()
+        if self._user_widths:
+            store.setValue(self._settings_key, dict(self._user_widths))
+        else:
+            store.remove(self._settings_key)
+
+    def _section_resized(self, col, _old, new):
+        """Spalte im Kopf gezogen (oder Doppelklick auf den Rand): Breite merken."""
+        if self._fitting or col == SUBJECT_COL or new <= 0:
+            return
+        self._user_widths[COLUMNS[col][1]] = new
+        self._save_widths()
+
+    def reset_widths(self):
+        """Gezogene Breiten vergessen, wieder automatisch."""
+        self._user_widths = {}
+        self._save_widths()
+        self._fit_columns()
+
+    def _header_menu(self, pos):
+        menu = QMenu(self)
+        reset = menu.addAction("Spaltenbreiten zurücksetzen")
+        reset.setEnabled(bool(self._user_widths))
+        reset.triggered.connect(self.reset_widths)
+        menu.exec(self.horizontalHeader().mapToGlobal(pos))
+
     def _fit_columns(self):
+        self._fitting = True
+        try:
+            self._fit_auto()
+        finally:
+            self._fitting = False
+
+    def _fit_auto(self):
         """Spaltenbreiten so, dass der Betreff (gestreckt) den meisten Platz bekommt:
         Ticketnummer ganz, Kunde/Melder/Bearbeiter mit Anteil an der Breite, Art/Status/Angelegt
-        nach Inhalt, bei Platzmangel gekürzt (…, ganz im Hinweis)."""
+        nach Inhalt, bei Platzmangel gekürzt (…, ganz im Hinweis). Gezogene Breiten bleiben."""
         header = self.horizontalHeader()
         width = self.viewport().width()
         people = max(PEOPLE_MIN, min(PEOPLE_MAX, int(width * PEOPLE_SHARE)))
@@ -87,15 +143,22 @@ class TicketTable(QTableWidget):
         def content(col):
             return max(self.sizeHintForColumn(col), header.sectionSizeHint(col))
         small = {}
+        fixed = 0  # schon vergebene Breite (ohne Betreff und Art/Status/Angelegt)
         for col, (_name, key) in enumerate(COLUMNS):
-            if key == "ticket":
-                ticket = content(col)
-                header.resizeSection(col, ticket)
+            if key in self._user_widths:
+                want = self._user_widths[key]
+                header.resizeSection(col, want)
+                fixed += want
+            elif key == "ticket":
+                want = content(col)
+                header.resizeSection(col, want)
+                fixed += want
             elif key in PEOPLE_KEYS:
                 header.resizeSection(col, people)
+                fixed += people
             elif col != SUBJECT_COL:
                 small[col] = content(col)
-        budget = width * (1 - SUBJECT_SHARE) - ticket - people * len(PEOPLE_KEYS)
+        budget = width * (1 - SUBJECT_SHARE) - fixed
         scale = min(1.0, max(budget, 0) / max(sum(small.values()), 1))
         for col, want in small.items():
             header.resizeSection(col, max(SMALL_MIN, min(want, int(want * scale))))
