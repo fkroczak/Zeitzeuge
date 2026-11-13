@@ -34,15 +34,23 @@ def _utf16_slice(text, start, length):
     return data[2 * start:2 * (start + length)].decode("utf-16-le", errors="ignore")
 
 
+_FUNCTYPE = getattr(ctypes, "WINFUNCTYPE", ctypes.CFUNCTYPE)  # COM = stdcall (nur Windows)
+
+
+def _argtypes(args):
+    return [type(a) if isinstance(a, ctypes._SimpleCData) else ctypes.c_void_p for a in args]
+
+
 class _Com:
     """Kleine Hilfe für COM-Aufrufe über die Vtable (ohne comtypes)."""
 
     @staticmethod
     def call(obj, index, restype, *args):
         vtbl = ctypes.cast(obj, ctypes.POINTER(ctypes.POINTER(ctypes.c_void_p))).contents
-        # Nur „this“ ist typisiert, die übrigen Argumente (byref, c_wchar_p, c_ulong) gibt ctypes
-        # unverändert weiter
-        proto = ctypes.WINFUNCTYPE(restype, ctypes.c_void_p)
+        # Jedes Argument braucht einen Typ: ctypes lässt bei stdcall (WINFUNCTYPE) keine
+        # zusätzlichen, untypisierten Argumente zu („takes 1 argument (3 given)“), dann schlug
+        # schon der Start der Prüfung fehl. byref(...) und Zeiger gehen als c_void_p.
+        proto = _FUNCTYPE(restype, ctypes.c_void_p, *_argtypes(args))
         return proto(vtbl[index])(obj, *args)
 
     @staticmethod
