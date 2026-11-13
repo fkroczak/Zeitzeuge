@@ -53,6 +53,14 @@ version._INFO = {"channel": "main", "version": "4.1.62"}
 w = mt.TimelineApp()
 check(w.updates_possible(), "Updates in einer main-Version mit Token möglich")
 
+# --- Knopf „Jetzt updaten“ links neben „Ansicht“: nur, wenn ein Update da ist ---
+check(not w.update_now_action.isVisible(), "Ohne Update kein Knopf „Jetzt updaten“")
+w._update_checked({"version": "4.1.63", "changes": []}, None, False)
+check(w.update_now_action.isVisible(), "Update gefunden: Knopf „Jetzt updaten“ sichtbar")
+check("4.1.63" in w.update_now_action.toolTip(), "Hinweis am Knopf nennt die neue Version")
+w._update_checked({"version": "4.1.62"}, None, False)
+check(not w.update_now_action.isVisible(), "Wieder aktuell: Knopf verschwindet")
+
 # --- Laden mit Fortschritt, dann Prüfen, Setup starten, beenden ---
 gate = {"go": False}
 
