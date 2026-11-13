@@ -262,12 +262,10 @@ def gui_test():
     assert app.clipboard().text() == "TCK0000000002"
     window.show_my_tickets()  # nur ein Fenster
     assert window._my_tickets_dialog is mine
-    # Anordnung: Standard 1, über Ansicht → Ticketfenster umschaltbar (gespeichert, gilt sofort)
+    # Anordnung: Standard 1, über Einstellungen → Darstellung → Tickets umschaltbar (gespeichert, gilt sofort)
     assert mine.layout_no == 1
-    window.ticket_layout_actions[3].trigger()
+    window.choose_ticket_layout(3)
     assert window.config["ticket_layout"] == 3 and mine.layout_no == 3
-    mine.choose_layout(2)  # Menü im Fenster: landet in der Einstellung
-    assert window.config["ticket_layout"] == 2
     mine.pin("all", False)
     assert window.config["ticket_favorites"] == ["mine", "tk"]
     mine.close()

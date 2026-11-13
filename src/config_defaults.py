@@ -145,7 +145,7 @@ def default_config():
         "timeline_stripes": False,
         # Kundenfilter (Chip „Nach Kunde“) in der Timeline: "frame", "strong" oder "off"
         "customer_highlight": "frame",
-        # Fenster „Tickets“: Anordnung der Kategorien 1–5 (Ansicht → Ticketfenster, tickets_dialogs.LAYOUTS)
+        # Fenster „Tickets“: Anordnung der Kategorien 1–5 (Einstellungen → Darstellung → Tickets, tickets_dialogs.LAYOUTS)
         "ticket_layout": 1,
         # Fenster „Tickets“, Anordnung 5: angeheftete Kategorien ("mine", "tk", "all", "f:<Filter-ID>")
         "ticket_favorites": ["mine", "tk", "all"],

@@ -160,6 +160,10 @@ ROWS = [
     ("view/Tagesliste", "spin", "layers", "Zusammenfassen bis Pause",
      "Ansicht „Zusammengefasst“: gleiche Verbindungen mit kürzerer Pause werden eine Zeile.",
      "merge_gap_minutes", (0, 120, "min", "nie", "redraw")),
+    ("view/Tickets", "tiles", "list", "Fenster „Tickets“",
+     "Wie die Kategorien (Meine Tickets, TK, Pools, Filter) angeordnet sind. Gilt sofort.",
+     "ticket_layout", [(1, "Zwei Zeilen"), (2, "Kompakt"), (3, "Seitenleiste"), (4, "Bereiche"),
+                       (5, "Favoriten")]),
     ("view/Texte", "check", "edit", "Rechtschreibprüfung",
      "Falsche Wörter in Tätigkeit, Buchung und Ticket rot unterkringeln, Vorschläge per Rechtsklick. "
      "Nutzt die Prüfung von Windows (deutsches Sprachpaket). Gilt für neu geöffnete Fenster.",
@@ -575,6 +579,8 @@ class _Row(QFrame):
             main.choose_theme(value)
         elif target.endswith("_action"):
             getattr(main, target).setChecked(value == "on")
+        elif target == "ticket_layout":
+            main.choose_ticket_layout(value)
         else:
             self._set_config(target, value, {"timeline_range": "range", "list_view": "view"}.get(target))
         self.refresh()

@@ -380,19 +380,6 @@ class MenusMixin:
             action.triggered.connect(lambda _c=False, k=key: self.choose_customer_highlight(k))
             self.customer_hl_actions[key] = action
         customer.aboutToShow.connect(self._check_customer_highlight)
-        # Fenster „Tickets“: wie die Kategorien angeordnet sind
-        from tickets_dialogs import DEFAULT_LAYOUT, LAYOUTS
-        tickets = menu.addMenu("&Ticketfenster")
-        group = QActionGroup(tickets)
-        self.ticket_layout_actions = {}
-        for no, text in LAYOUTS.items():
-            action = tickets.addAction(f"&{no} {text}" + (" (Standard)" if no == DEFAULT_LAYOUT else ""))
-            action.setCheckable(True)
-            group.addAction(action)
-            action.triggered.connect(lambda _c=False, n=no: self.choose_ticket_layout(n))
-            self.ticket_layout_actions[no] = action
-        tickets.aboutToShow.connect(lambda: self.ticket_layout_actions.get(
-            self.config.get("ticket_layout", DEFAULT_LAYOUT), self.ticket_layout_actions[DEFAULT_LAYOUT]).setChecked(True))
         menu.addSeparator()
         self._icon_actions.append((menu.addAction("Darstellung an&passen …",
                                                   lambda: self.show_settings("view")), "eye"))

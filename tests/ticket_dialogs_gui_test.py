@@ -289,8 +289,6 @@ def gui_test():
     assert creader.loads[-1] == ("f:f-neu", "f-neu")
 
     # ---- Alle Anordnungen: Kategorie und „Geschlossene“ bleiben beim Wechsel erhalten
-    chosen = []
-    tickets.layout_chosen.connect(chosen.append)
     tickets.choose("mine")
     creader.ticket_filters = [{"id": "f-neu", "title": "Neue Tickets"}, {"id": "f-tk", "title": "Neue TK Tickets"},
                               {"id": "f-a", "title": "Ticket_Pool_A"}, {"id": "f-v", "title": "Offen Vertrieb"}]
@@ -298,8 +296,10 @@ def gui_test():
                           {"id": "f-v", "title": "Offen Vertrieb"}])
     assert shown() == ["Meine Tickets", "Alle", "Neue Tickets", "Offen Vertrieb",
                        "TK-Tickets", "Neue TK Tickets", "Ticket Pool A"], shown()
-    tickets.layout_actions[2].trigger()  # Kompakt: TK/Pools/Weitere als Menü
-    assert chosen == [2] and shown() == ["Meine Tickets", "Alle", "Neue Tickets", "TK  ▾", "Pools  ▾", "Weitere  ▾"], shown()
+    # Kein Knopf „Anordnung“ mehr im Fenster (Einstellungen → Darstellung → Tickets)
+    assert all(b.text() != "Anordnung" for b in tickets.findChildren(QToolButton))
+    tickets.choose_layout(2)  # Kompakt: TK/Pools/Weitere als Menü
+    assert shown() == ["Meine Tickets", "Alle", "Neue Tickets", "TK  ▾", "Pools  ▾", "Weitere  ▾"], shown()
     tk_menu = button("TK  ▾")
     tk_menu.menu().actions()[1].trigger()  # „Neue TK Tickets“
     assert tickets.category == "f:f-tk" and "TK: Neue TK Tickets  ▾" in shown(), shown()
@@ -333,7 +333,7 @@ def gui_test():
     assert favs == [["mine", "tk", "all", "f:f-a"]] and "Ticket Pool A" in shown()
     tickets.choose_layout(1)
     assert tickets.closed_button is tickets.closed_switch and tickets.category == "f:f-v"
-    assert tickets.category_buttons["f:f-v"].isChecked() and chosen == [2, 3, 4, 5, 1]
+    assert tickets.category_buttons["f:f-v"].isChecked() and tickets.layout_no == 1
     tickets.close()
 
     # ---- Reihenfolge wie im Service Desk sinnvoll gruppiert, Unbekannte nach Ähnlichkeit/ans Ende
