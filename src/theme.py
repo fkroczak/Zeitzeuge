@@ -294,6 +294,7 @@ def fit_bold(button):
     Platz für den fetten Text, damit er nie abgeschnitten wird. Nach setText aufrufen.
     (min-width im Stylesheet, setMinimumWidth überschriebe das Design beim Polieren)"""
     bold = QFont(button.font())
+    bold.setPixelSize(FONT_BASE)  # Schrift des Stylesheets, auch wenn der Knopf noch nicht poliert ist
     bold.setBold(True)
     width = QFontMetrics(bold).horizontalAdvance(button.text().replace("&", "")) + 36
     button.setStyleSheet(f"QPushButton {{ min-width: {width}px; }}")

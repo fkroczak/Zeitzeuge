@@ -154,6 +154,17 @@ def ticket_row(item):
             "created": item.get("CreatedDate") or ""}
 
 
+# Art des Tickets (Sys-Entity) für die Tabelle
+KINDS = {"SPSActivityTypeIncident": "Störung", "SPSActivityTypeServiceRequest": "Serviceanfrage",
+         "SPSActivityTypeTicket": "Ticket"}
+
+
+def ticket_kind(row):
+    """„Störung“, „Serviceanfrage“ oder „Ticket“; unbekannte Arten ohne Präfix, sonst ""."""
+    kind = row.get("type") or ""
+    return KINDS.get(kind, kind.replace("SPSActivityType", ""))
+
+
 # Erledigte Tickets: in der Trefferliste nach den offenen
 CLOSED_STATES = ("gelöst", "geschlossen", "abgeschlossen", "storniert", "erledigt", "closed", "resolved")
 
@@ -178,9 +189,10 @@ def search_plan(text):
 
 
 def matches(row, text):
-    """Enthält das Ticket (Nummer, Titel, Kunde, Melder, Bearbeiter) jedes Wort des Suchtexts?"""
-    hay = " ".join(str(row.get(k) or "") for k in
-                   ("ticket", "subject", "customer", "initiator", "recipient", "state")).casefold()
+    """Enthält das Ticket (Nummer, Titel, Kunde, Melder, Bearbeiter, Status, Art) jedes Wort des Suchtexts?"""
+    hay = " ".join([str(row.get(k) or "") for k in
+                     ("ticket", "subject", "customer", "initiator", "recipient", "state")]
+                    + [ticket_kind(row)]).casefold()
     return all(w.casefold() in hay for w in (text or "").split())
 
 

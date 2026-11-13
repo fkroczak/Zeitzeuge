@@ -1,6 +1,6 @@
 """Fenster „Meine Tickets“: offene Tickets in Matrix42, bei denen du Bearbeiter bist.
 
-Tabelle (Ticket, Betreff, Kunde, Melder, Status, Angelegt), nach jeder Spalte sortierbar, mit
+Tabelle (Ticket, Betreff, Kunde, Melder, Art, Status, Angelegt), nach jeder Spalte sortierbar, mit
 Filterfeld darüber (jedes Wort muss irgendwo vorkommen, wie bei der Ticketsuche).
 Die Liste liest M42Reader alle 10 Minuten (my_tickets_loaded), „Aktualisieren“ liest sofort.
 „Neues Ticket …“, „Bearbeiten …“ und „Schließen …“ öffnen die Fenster aus ticket_dialogs.py.
@@ -23,7 +23,7 @@ class MyTicketsDialog(QDialog):
         self._at = ""
         layout = QVBoxLayout(self)
         self.filter_edit = QLineEdit(self)
-        self.filter_edit.setPlaceholderText("Filtern nach Ticket, Betreff, Kunde, Melder oder Status")
+        self.filter_edit.setPlaceholderText("Filtern nach Ticket, Betreff, Kunde, Melder, Art oder Status")
         self.filter_edit.setAccessibleName("Tickets filtern")
         self.filter_edit.setClearButtonEnabled(True)
         self.filter_edit.textChanged.connect(self.apply_filter)
@@ -40,6 +40,7 @@ class MyTicketsDialog(QDialog):
         self.status = QLabel(self)
         self.status.setWordWrap(True)
         self.status.setObjectName("hint")
+        self.status.installEventFilter(self)  # Höhe bei Breitenänderung nachziehen (_fit_status)
         layout.addWidget(self.status)
         buttons = QDialogButtonBox(QDialogButtonBox.Close, self)
         buttons.button(QDialogButtonBox.Close).setText("Fertig")
@@ -74,6 +75,8 @@ class MyTicketsDialog(QDialog):
         self.filter_edit.setFocus()
 
     def eventFilter(self, obj, event):
+        if obj is self.status and event.type() == QEvent.Resize:
+            self._fit_status()
         # Pfeil runter im Filterfeld: in die Tabelle
         if obj is self.filter_edit and event.type() == QEvent.KeyPress and event.key() == Qt.Key_Down:
             self.table.setFocus()
@@ -87,6 +90,7 @@ class MyTicketsDialog(QDialog):
     def refresh(self):
         self.refresh_button.setEnabled(False)
         self.status.setText("Lese meine Tickets aus Matrix42 …")
+        self._fit_status()
         self.reader.load_my_tickets()
 
     def show_result(self, result):
@@ -125,6 +129,16 @@ class MyTicketsDialog(QDialog):
         if self._error:
             text = (text + "\n" if text else "") + f"⚠ {self._error}"
         self.status.setText("\n".join(t for t in (self._note, text) if t))
+        self._fit_status()
+
+    def _fit_status(self):
+        """Umbrechendes Label im Kartenrahmen: der Inhaltsbereich gibt ihm sonst die Höhe für eine
+        geschätzte Breite, Zeilen wären abgeschnitten. Daher feste Höhe für die echte Breite."""
+        width = self.status.width()
+        if width > 1 and self.status.isVisible():  # vorher misst es mit einer Platzhalterbreite
+            self.status.setMinimumHeight(0)  # heightForWidth zählt gesetzte Grenzen mit
+            self.status.setMaximumHeight(16777215)
+            self.status.setFixedHeight(self.status.heightForWidth(width))
 
     def _selected(self):
         on = self.current_row() is not None

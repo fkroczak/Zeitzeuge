@@ -663,7 +663,7 @@ class M42Reader(BrowserReader):
 
     def ticket_task(self, kind, **args):
         """Im Hintergrund: "users" (text), "user_details" (user), "categories", "create" (request),
-        "load" (id), "edit" (request), "close" (request).
+        "load" (id), "edit" (request), "close_info" (id, type), "close" (request).
         Ergebnis über ticket_task_done. False, wenn gerade ein Anmeldefenster offen ist."""
         if self._login_open:
             return False
@@ -696,6 +696,8 @@ class M42Reader(BrowserReader):
                     result["data"] = mt.ticket_view(mt.loaded_entity(data))
                 elif kind == "edit":
                     result["data"] = self._edit_ticket(args["request"], ids, state)
+                elif kind == "close_info":
+                    result["data"] = self._close_info(args["id"], args.get("type"), ids)
                 elif kind == "close":
                     result["data"] = self._close_ticket(args["request"], state)
                 else:
@@ -768,6 +770,18 @@ class M42Reader(BrowserReader):
                                             mt.wrap(body)), ticket_id)
         self._set_status(f"Matrix42: {saved['ticket'] or name} gespeichert")
         return dict(saved, subject=body["SPSActivityClassBase"]["Subject"])
+
+    def _close_info(self, ticket_id, kind, ids):
+        """Vor dem Schließen: Lösungstext, den das Ticket schon hat (wieder eröffnet). -> {"solution"}"""
+        import m42_tickets as mt
+        api = "/m42Services/api"
+        kind = kind or "SPSActivityTypeTicket"
+        initial = self._fetch("POST", f"{api}/ticket/CloseWizardInitialData/?ticketType={kind}", [ticket_id]) or {}
+        solution = mt.previous_solution(initial)
+        if not solution:
+            entity = mt.loaded_entity(self._fetch("GET", mt.edit_data_path(ids["ticket_edit_dialog"], ticket_id)))
+            solution = mt.previous_solution(initial, entity)
+        return {"solution": solution}
 
     def _close_ticket(self, request, state):
         """Ticket mit Lösungstext schließen. Nur mit gehaltenem _browser_lock."""
