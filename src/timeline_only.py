@@ -1008,6 +1008,17 @@ class TimelineView(QGraphicsView):
         if not self.loading and not self._closing:  # beim Lesen zeichnet _on_logs_loaded
             self.draw_timeline(self.current_date)
 
+    def draw_soon(self):
+        """Neue Daten aus einem Leser (3CX, ITM, Matrix42, Outlook): einmal gebündelt zeichnen.
+
+        Melden mehrere Leser kurz nacheinander, wird nur einmal gezeichnet. Ist das Fenster
+        versteckt oder minimiert, holt showEvent/changeEvent das Zeichnen beim Öffnen nach."""
+        window = self.window()
+        if not window.isVisible() or window.isMinimized():
+            self.draw_stale = True
+            return
+        self._source_timer.start()
+
     def _start_first_load(self):
         self.loading = False
         self.refresh()

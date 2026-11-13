@@ -100,9 +100,7 @@ class ReadersMixin:
         self.pbx_reader.status_changed.connect(self.calls_label.setText)
         self.pbx_reader.status_changed.connect(lambda _t: self.update_source_indicators())
         self.pbx_reader.busy_changed.connect(self.update_busy_bar)
-        self.pbx_reader.calls_added.connect(
-            lambda _n: self.timeline.draw_timeline(self.current_date)
-        )
+        self.pbx_reader.calls_added.connect(lambda _n: self.timeline.draw_soon())
         self.pbx_reader.login_required.connect(self.on_pbx_login_required)
         self.pbx_reader.recording_done.connect(self.on_recording_done)
         self.pbx_reader.check_done.connect(self.on_pbx_check_done)
@@ -538,8 +536,7 @@ class ReadersMixin:
         self.itm_reader.status_changed.connect(lambda _t: self.update_source_indicators())
         self.itm_reader.busy_changed.connect(self.update_busy_bar)
         self.itm_reader.day_read.connect(
-            lambda d: self.timeline.draw_timeline(self.current_date)
-            if d == self.current_date.toString("yyyy-MM-dd") else None
+            lambda d: self.timeline.draw_soon() if d == self.current_date.toString("yyyy-MM-dd") else None
         )
         self.itm_reader.login_required.connect(
             lambda: self.notify("ITM-Anmeldung nötig", "Zeitzeuge kann die Personalzeiten nicht lesen.",
@@ -611,8 +608,7 @@ class ReadersMixin:
         self.m42_reader.status_changed.connect(lambda _t: self.update_source_indicators())
         self.m42_reader.busy_changed.connect(self.update_busy_bar)
         self.m42_reader.day_read.connect(
-            lambda d: self.timeline.draw_timeline(self.current_date)
-            if d == self.current_date.toString("yyyy-MM-dd") else None
+            lambda d: self.timeline.draw_soon() if d == self.current_date.toString("yyyy-MM-dd") else None
         )
         self.m42_reader.login_required.connect(
             lambda: self.notify("Matrix42-Anmeldung nötig", "Zeitzeuge kann die gebuchten Zeiten nicht lesen.",

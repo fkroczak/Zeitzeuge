@@ -13,7 +13,53 @@ from PySide6.QtWidgets import QHBoxLayout, QLabel, QSizePolicy, QWidget
 from theme import SPACE_XS, SPACE_S
 
 
-class _Stripe(QWidget):
+class _Animated(QWidget):
+    """Gemeinsame Animation von Streifen und Kreis: läuft nur, solange sie zu sehen ist.
+
+    Liegt das Fenster im Infobereich, hält der Zeitgeber an (kein Wecken mit 33 Hz im
+    Hintergrund) und läuft beim Wiedereinblenden weiter."""
+
+    STEP_MS = 30
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.color = QColor("#0067C0")
+        self._running = False
+        self._timer = QTimer(self)
+        self._timer.timeout.connect(self._step)
+
+    def start(self):
+        self._running = True
+        self._sync()
+
+    def stop(self):
+        self._running = False
+        self._timer.stop()
+
+    def _sync(self):
+        if self._running and self.isVisible():
+            if not self._timer.isActive():
+                self._timer.start(self.STEP_MS)
+        else:
+            self._timer.stop()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._sync()
+
+    def hideEvent(self, event):
+        super().hideEvent(event)
+        self._timer.stop()
+
+    def _step(self):
+        self.advance()
+        self.update()
+
+    def advance(self):
+        raise NotImplementedError
+
+
+class _Stripe(_Animated):
     """Schmaler Balken mit wanderndem Abschnitt (unbestimmter Fortschritt).
 
     Liegt über dem Fensterinhalt und nimmt keine Mausklicks an."""
@@ -22,22 +68,11 @@ class _Stripe(QWidget):
         super().__init__(parent)
         self.setFixedHeight(3)
         self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
-        self.color = QColor("#0067C0")
         self._pos = 0.0
-        self._timer = QTimer(self)
-        self._timer.timeout.connect(self._step)
         self.hide()
 
-    def start(self):
-        if not self._timer.isActive():
-            self._timer.start(30)
-
-    def stop(self):
-        self._timer.stop()
-
-    def _step(self):
+    def advance(self):
         self._pos = (self._pos + 0.012) % 1.4
-        self.update()
 
     def paintEvent(self, _event):
         p = QPainter(self)
@@ -50,27 +85,16 @@ class _Stripe(QWidget):
         p.end()
 
 
-class _Spinner(QWidget):
+class _Spinner(_Animated):
     """Drehender Ring (Donut) mit einem Bogen in der Akzentfarbe."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setFixedSize(16, 16)
-        self.color = QColor("#0067C0")
         self._angle = 0
-        self._timer = QTimer(self)
-        self._timer.timeout.connect(self._step)
 
-    def start(self):
-        if not self._timer.isActive():
-            self._timer.start(30)
-
-    def stop(self):
-        self._timer.stop()
-
-    def _step(self):
+    def advance(self):
         self._angle = (self._angle + 12) % 360
-        self.update()
 
     def paintEvent(self, _event):
         p = QPainter(self)

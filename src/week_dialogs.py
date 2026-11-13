@@ -217,9 +217,9 @@ class WeekDialog(QDialog):
         self.table.setAccessibleName("Tage der Woche")
         self.table.setAccessibleDescription("Enter oder Doppelklick zeigt den Tag im Hauptfenster.")
         header = self.table.horizontalHeader()
-        for col in range(len(self.COLUMNS)):
-            header.setSectionResizeMode(col, QHeaderView.ResizeToContents)
-        header.setStretchLastSection(True)
+        header.setSectionResizeMode(QHeaderView.ResizeToContents)
+        # Letzte Spalte füllt den Rest: Inhaltsbreite plus Strecken ergab 1 px zu breit (Scrollleiste)
+        header.setSectionResizeMode(len(self.COLUMNS) - 1, QHeaderView.Stretch)
         self.table.cellDoubleClicked.connect(lambda row, _c: self.open_day(row))
         enter = QAction("&Tag zeigen", self.table)
         enter.setShortcuts([QKeySequence(Qt.Key_Return), QKeySequence(Qt.Key_Enter)])
