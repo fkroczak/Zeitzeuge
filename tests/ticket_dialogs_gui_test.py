@@ -62,7 +62,8 @@ def gui_test():
                     "close": {"ticket": ROW["ticket"]},
                     "close_info": {"solution": self.solution},
                     "load": {"id": "t2", "ticket": ROW["ticket"], "type": ROW["type"], "subject": "Drucker",
-                             "description": "Druckt nicht", "stamp": "s1"},
+                             "description": "Druckt nicht", "category": "cat-in", "rich": False,
+                             "stamp": "s1"},
                     "edit": {"ticket": ROW["ticket"], "id": "t2", "type": ROW["type"],
                              "subject": "Drucker Empfang"},
                     "user_details": {"OrgUnit": "WiRoPa GmbH", "Phone": "02542 1", "Email": "info@example.com"}}[kind]
@@ -120,17 +121,26 @@ def gui_test():
     # ---- Bearbeiten: erst nach dem Laden änderbar, Speichern nur mit Änderung
     edit = EditTicketDialog(reader, ROW)
     assert not edit.subject_edit.isEnabled() and not edit.ok_button.isEnabled()
-    assert wait_for(lambda: edit.loaded is not None, 3000)
-    assert edit.current_edit.toPlainText() == "Druckt nicht" and edit.subject_edit.isEnabled()
+    assert wait_for(lambda: edit.loaded is not None and edit.categories, 3000)
+    assert edit.description_edit.toPlainText() == "Druckt nicht" and edit.subject_edit.isEnabled()
+    assert edit.category() == "cat-in" and not edit.rich_hint.isVisibleTo(edit)
     assert not edit.ok_button.isEnabled()  # nichts geändert
-    edit.addition_edit.setPlainText("Toner getauscht")
+    edit.description_edit.setPlainText("Druckt nicht\nToner getauscht")
     assert edit.ok_button.isEnabled()
+    edit.description_edit.setPlainText("Druckt nicht")
+    assert not edit.ok_button.isEnabled()
+    edit.category_edit.setCurrentIndex(edit.category_edit.findData("cat-fs"))
+    assert edit.ok_button.isEnabled()
+    edit.category_edit.setEditText("gibt es nicht")
+    assert not edit.ok_button.isEnabled()  # getippter Text ist keine Kategorie
     edit.reject()
 
     def fill_edit():
         dlg = next(w for w in app.topLevelWidgets() if isinstance(w, EditTicketDialog) and w.isVisible())
-        wait_for(lambda: dlg.loaded is not None, 3000)
+        wait_for(lambda: dlg.loaded is not None and dlg.categories, 3000)
         dlg.subject_edit.setText("Drucker Empfang")
+        dlg.description_edit.setPlainText("Drucker am Empfang druckt nicht")
+        dlg.category_edit.setCurrentIndex(dlg.category_edit.findData("cat-fs"))
         dlg.ok_button.click()
     QTimer.singleShot(0, fill_edit)
     mine.table.select_first()
@@ -138,7 +148,8 @@ def gui_test():
     mine.edit_button.click()
     kind, args = reader.tasks[-1]
     assert kind == "edit" and args["request"] == {"id": "t2", "ticket": "TCK0000000002", "stamp": "s1",
-                                                  "subject": "Drucker Empfang", "addition": ""}, args
+                                                  "subject": "Drucker Empfang", "category": "cat-fs",
+                                                  "description": "Drucker am Empfang druckt nicht"}, args
     assert "TCK0000000002 gespeichert" in mine.status.text(), mine.status.text()
     assert mine.visible_rows()[0]["subject"] == "Drucker Empfang"
 

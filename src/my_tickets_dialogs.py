@@ -52,7 +52,7 @@ class MyTicketsDialog(QDialog):
         self.new_button = QPushButton("&Neues Ticket …", self)
         self.new_button.clicked.connect(self.new_ticket)
         self.edit_button = QPushButton("&Bearbeiten …", self)
-        self.edit_button.setToolTip("Betreff des markierten Tickets ändern oder die Beschreibung ergänzen")
+        self.edit_button.setToolTip("Betreff, Kategorie oder Beschreibung des markierten Tickets ändern")
         self.edit_button.clicked.connect(self.edit_ticket)
         self.close_button = QPushButton("&Schließen …", self)
         self.close_button.setToolTip("Markiertes Ticket mit Lösungstext schließen")

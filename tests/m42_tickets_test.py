@@ -246,14 +246,14 @@ def test_ticket_bearbeiten_felder():
     view = mt.ticket_view(mt.loaded_entity({"Entity": LOADED}))
     assert view == {"id": "ticket-1", "ticket": "TCK0000050866", "type": "SPSActivityTypeServiceRequest",
                     "subject": "Rückmeldung", "description": "- Anpassungen an ZRO Ordnern\nx",
-                    "stamp": "00000000DC09AE2F/00000000DC09AEE9"}
+                    "category": CAT, "rich": True, "stamp": "00000000DC09AE2F/00000000DC09AEE9"}
     assert mt.loaded_entity(LOADED) is LOADED  # auch ohne Hülle
     with pytest.raises(BookingError):
         mt.loaded_entity({"Entity": {"ID": "x"}})
 
-    e = mt.edited_entity(LOADED, " Rückmeldung ZRO ", "Neu: <Ordner>\nZeile 2")
+    # nur hinten ergänzt: alte Beschreibung bleibt Zeichen für Zeichen, Ergänzung hinten dran
+    e = mt.edited_entity(LOADED, " Rückmeldung ZRO ", view["description"] + "\nNeu: <Ordner>\nZeile 2")
     base = e["SPSActivityClassBase"]
-    # alte Beschreibung bleibt Zeichen für Zeichen, Ergänzung hinten dran
     assert base["DescriptionHTML"] == LOADED["SPSActivityClassBase"]["DescriptionHTML"] + \
         "<p>Neu: &lt;Ordner&gt;</p><p>Zeile 2</p>"
     assert base["Subject"] == "Rückmeldung ZRO" and base["Category"] == CAT and base["Initiator"] == MELDER
@@ -266,13 +266,25 @@ def test_ticket_bearbeiten_felder():
         ("SPSActivityTypeServiceRequest", "00000000DC09AE2F", LOADED["InitialData"])
     assert LOADED["SPSActivityClassBase"]["Subject"] == "Rückmeldung"  # Vorlage unverändert
 
-    # nur Betreff: Beschreibung unverändert
-    assert mt.edited_entity(LOADED, "Anders", "  ")["SPSActivityClassBase"]["DescriptionHTML"] == \
-        LOADED["SPSActivityClassBase"]["DescriptionHTML"]
+    # Beschreibung umgeschrieben: Klartext ersetzt sie
+    e = mt.edited_entity(LOADED, "Rückmeldung", "Ganz neu\n\nzweiter Absatz")
+    assert e["SPSActivityClassBase"]["DescriptionHTML"] == "<p>Ganz neu</p><p>&nbsp;</p><p>zweiter Absatz</p>"
+    # nur Betreff: Beschreibung unverändert (gleicher Text oder None)
+    for same in (view["description"] + "  \n", None):
+        assert mt.edited_entity(LOADED, "Anders", same)["SPSActivityClassBase"]["DescriptionHTML"] == \
+            LOADED["SPSActivityClassBase"]["DescriptionHTML"]
     with pytest.raises(BookingError, match="Nichts"):
-        mt.edited_entity(LOADED, "Rückmeldung", "")
+        mt.edited_entity(LOADED, "Rückmeldung", view["description"], CAT)
     with pytest.raises(BookingError, match="Betreff"):
         mt.edited_entity(LOADED, " ", "mehr")
+
+    # Kategorie: neue Kategorie mit neuem SLA, gleiche Kategorie ändert nichts
+    e = mt.edited_entity(LOADED, "Rückmeldung", None, "cat-neu", "sla-neu")
+    assert (e["SPSActivityClassBase"]["Category"], e["SPSActivityClassBase"]["SLA"]) == ("cat-neu", "sla-neu")
+    assert mt.category_sla_path(LOADED, CAT) is None and mt.category_sla_path(LOADED, None) is None
+    path = mt.category_sla_path(LOADED, "cat-neu")
+    assert "Category=cat-neu" in path and f"User={MELDER}" in path and "TicketType=6" in path
+
     assert mt.saved_ticket({"Entity": {"ID": "ticket-1", "Sys-Name": "TCK1"}}, "ticket-1")["ticket"] == "TCK1"
     with pytest.raises(BookingError):
         mt.saved_ticket({"Entity": {"ID": "anderes"}}, "ticket-1")
@@ -288,7 +300,8 @@ def test_leser_ticket_bearbeiten(tmp_path):
     assert calls[-1][:2] == ("GET", f"/m42Services/api/WidgetCommon/GetData/{EDIT_DIALOG}/ticket-1")
 
     req = {"id": "ticket-1", "ticket": "TCK0000050866", "stamp": got[-1]["data"]["stamp"],
-           "subject": "Rückmeldung", "addition": "Ordner angelegt"}
+           "subject": "Rückmeldung", "description": got[-1]["data"]["description"] + "\nOrdner angelegt",
+           "category": CAT}
     calls.clear()
     reader._ticket_task("edit", {"request": req})
     assert got[-1]["ok"], got[-1]
@@ -297,6 +310,16 @@ def test_leser_ticket_bearbeiten(tmp_path):
         ("GET", f"WidgetCommon/GetData/{EDIT_DIALOG}/ticket-1"), ("POST", f"WidgetDialog/UpdateData/{EDIT_DIALOG}")]
     saved = json.loads(calls[1][2][1:-1])
     assert saved["SPSActivityClassBase"]["DescriptionHTML"].endswith("<p>Ordner angelegt</p>")
+
+    # neue Kategorie: SLA wie im Dialog neu holen (Mitschnitt 13.11.2026)
+    reader, calls, got = _reader(tmp_path, dict(answers, suitableSLAsForTicket={"TightestItem": "sla-neu"}))
+    reader._ticket_task("edit", {"request": dict(req, category="cat-neu")})
+    assert got[-1]["ok"], got[-1]
+    assert [p.split("/api/")[1] for _m, p, _b in calls] == [
+        f"WidgetCommon/GetData/{EDIT_DIALOG}/ticket-1", "activity/suitableSLAsForTicket/",
+        f"WidgetDialog/UpdateData/{EDIT_DIALOG}"]
+    base = json.loads(calls[2][2][1:-1])["SPSActivityClassBase"]
+    assert (base["Category"], base["SLA"]) == ("cat-neu", "sla-neu")
 
     # inzwischen von jemand anderem gespeichert: nichts schicken
     reader, calls, got = _reader(tmp_path, answers)

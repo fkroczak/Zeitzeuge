@@ -22,9 +22,12 @@ Anlegen (Dialog „Ticket“, Widget DEFAULT_IDS["ticket_dialog"]):
 Bearbeiten (Dialog des bestehenden Tickets, DEFAULT_IDS["ticket_edit_dialog"]):
 1. Laden: GET /WidgetCommon/GetData/<Dialog>/<Ticket-Id>?archived=false -> ganzes Ticket mit Sys-TimeStamp.
 2. Speichern: POST /WidgetDialog/UpdateData/<Dialog> mit dem geladenen Ticket, Sys-EntityState 202,
-   Beziehungen leer (AddedRelations/RemovedRelations), geändert nur Betreff und Beschreibung.
-   Die Beschreibung wird ergänzt (neue Absätze hinten dran), nie ersetzt: so bleiben Bilder,
-   Tabellen und Formatierungen aus Matrix42 erhalten.
+   Beziehungen leer (AddedRelations/RemovedRelations), geändert nur Betreff, Beschreibung und
+   Kategorie (Mitschnitt vom 13.11.2026: Betreff geändert, Rest Zeichen für Zeichen wie geladen).
+   Beschreibung: Kommt nur Text hinten dazu, wird er als neue Absätze angehängt (Bilder, Tabellen
+   und Formatierungen aus Matrix42 bleiben). Sonst ersetzt der Klartext die Beschreibung.
+   Kategorie: Der Dialog fragt dazu /activity/suitableSLAsForTicket (wie beim Anlegen) und nimmt
+   TightestItem als SLA (ServiceDesk-Einstellung AutoApplyingTightestSLA = 1).
 Art ändern (Serviceanfrage -> Störung) und Journaleinträge fehlen noch im Mitschnitt.
 
 Schließen: POST /ticket/CloseWizardInitialData/?ticketType=<Typ> [Id] -> Kategorie, dann
@@ -273,26 +276,64 @@ def stamp(entity):
     return f"{entity.get('Sys-TimeStamp', '')}/{base.get('Sys-TimeStamp', '')}"
 
 
+RICH_HTML = re.compile(r"(?i)<(img|table|ul|ol|a|b|strong|i|em|u|span|font|h[1-6])\b")
+
+
 def ticket_view(entity):
-    """Geladenes Ticket -> was das Fenster zeigt."""
+    """Geladenes Ticket -> was das Fenster zeigt. rich: Beschreibung hat Bilder, Tabellen o. Ä.,
+    die beim Ersetzen durch Klartext verloren gingen."""
     base = entity["SPSActivityClassBase"]
+    description = base.get("DescriptionHTML") or ""
     return {"id": entity["ID"], "ticket": entity.get("Sys-Name", ""), "type": entity.get("Sys-Entity", ""),
-            "subject": (base.get("Subject") or "").strip(), "description": html_text(base.get("DescriptionHTML")),
+            "subject": (base.get("Subject") or "").strip(), "description": html_text(description),
+            "category": base.get("Category"), "rich": bool(RICH_HTML.search(description)),
             "stamp": stamp(entity)}
 
 
-def edited_entity(entity, subject, addition):
-    """Ticket zum Speichern: Betreff neu, Beschreibung um addition ergänzt, sonst wie geladen."""
+def ticket_kind(entity):
+    """Art des geladenen Tickets für die SLA-Abfrage (0 Störung, 6 Serviceanfrage)."""
+    config = ((entity.get("InitialData") or {}).get("Configuration") or {})
+    if config.get("TicketType") is not None:
+        return int(config["TicketType"])
+    return SERVICE_REQUEST if entity.get("Sys-Entity") == ENTITY_OF_TYPE[SERVICE_REQUEST] else INCIDENT
+
+
+def category_sla_path(entity, category):
+    """SLA-Abfrage für eine neue Kategorie des geladenen Tickets; None, wenn sie gleich bleibt."""
+    base = entity["SPSActivityClassBase"]
+    if not category or category == base.get("Category"):
+        return None
+    return sla_path(category, base.get("Initiator"), ticket_kind(entity), base.get("Impact"))
+
+
+def _new_description(old_html, text):
+    """Neue DescriptionHTML oder None (unverändert). Nur hinten ergänzt: alte HTML bleibt."""
+    old_text, text = html_text(old_html), (text or "").strip()
+    if text == old_text:
+        return None
+    if old_text and text.startswith(old_text):
+        return (old_html or "") + (description_html(text[len(old_text):]) or "")
+    return description_html(text) or ""
+
+
+def edited_entity(entity, subject, description, category=None, sla=None):
+    """Ticket zum Speichern: Betreff, Beschreibung (ganzer Klartext) und Kategorie neu, sonst wie geladen.
+    description None: Beschreibung bleibt. sla: SLA zur neuen Kategorie (TightestItem)."""
     base = dict(entity["SPSActivityClassBase"])
     subject = (subject or "").strip()
     if not subject:
         raise BookingError("Bitte einen Betreff eingeben.")
-    extra = description_html(addition)
-    if subject == (base.get("Subject") or "").strip() and not extra:
+    new_html = None if description is None else _new_description(base.get("DescriptionHTML"), description)
+    new_category = category if category and category != base.get("Category") else None
+    if subject == (base.get("Subject") or "").strip() and new_html is None and not new_category:
         raise BookingError("Nichts geändert.")
     base["Subject"] = subject
-    if extra:
-        base["DescriptionHTML"] = (base.get("DescriptionHTML") or "") + extra
+    if new_html is not None:
+        base["DescriptionHTML"] = new_html
+    if new_category:
+        base["Category"] = new_category
+        if sla:
+            base["SLA"] = sla
     for name in TICKET_RELATIONS:
         base[name] = dict(EMPTY)
     base.update({"NewJournalEntryAdded": False, "isReadonly": False})
@@ -303,7 +344,8 @@ def edited_entity(entity, subject, addition):
         common[name] = dict(EMPTY)
     out = dict(entity)
     out.update({"SPSActivityClassBase": base, "SPSActivityClassIncident": incident, "SPSCommonClassBase": common,
-                "ITMTimeEntryClassTarget": {"ITMTimeEntryTarget": dict(EMPTY)},
+                "ITMTimeEntryClassTarget": dict(entity.get("ITMTimeEntryClassTarget") or {},
+                                                ITMTimeEntryTarget=dict(EMPTY)),
                 "Sys-EntityState": ENTITY_STATE_CHANGED, "_type": entity.get("Sys-Entity", "SPSActivityTypeTicket"),
                 "_id": entity["ID"], "IsNew": False})
     return out
