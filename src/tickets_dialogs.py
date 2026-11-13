@@ -160,6 +160,8 @@ class TicketsDialog(QDialog):
         self.table.sort_by(len(COLUMNS) - 1, Qt.DescendingOrder)  # neueste zuerst
         self.table.activated.connect(lambda _row: self.view_ticket())
         self.table.itemSelectionChanged.connect(self._selected)
+        self.table.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(self._context_menu)
         self.table.set_page(0, self.page_size)
         # Mitte: Seitenleiste (Anordnung 3) und Tabelle
         self.sidebar = QListWidget(self)
@@ -234,6 +236,8 @@ class TicketsDialog(QDialog):
         self._build_selector()
         self._selected()
         reader.my_tickets_loaded.connect(self._mine_loaded, Qt.QueuedConnection)
+        if hasattr(reader, "ticket_task_done"):
+            reader.ticket_task_done.connect(self._task_done, Qt.QueuedConnection)
         if hasattr(reader, "tickets_loaded"):
             reader.tickets_loaded.connect(self._category_loaded, Qt.QueuedConnection)
         if hasattr(reader, "ticket_filters_loaded"):
@@ -563,6 +567,7 @@ class TicketsDialog(QDialog):
         self.refresh_button.setEnabled(False)
         self._loading.add(self.category)
         self._set_status(f"Lese {self.title()} aus Matrix42 …")
+        self.table.set_loading(not self._rows)
         if self.category == MINE:
             self.reader.load_my_tickets()
         else:
@@ -615,6 +620,7 @@ class TicketsDialog(QDialog):
         self.page_label.setText(f"Seite {page + 1} von {pages}")
         self.prev_button.setEnabled(page > 0)
         self.next_button.setEnabled(page < pages - 1)
+        self.table.set_loading(self.category in self._loading and not n)
         closed = self.closed()
         text = ""
         if self.category in self._loading:
@@ -713,6 +719,62 @@ class TicketsDialog(QDialog):
             self.show_category()
         dialog.deleteLater()
 
+    def _context_menu(self, pos):
+        """Rechte Maustaste auf einem Ticket: Ansehen, Bearbeiten, Übernehmen, Schließen, Nummer kopieren."""
+        index = self.table.indexAt(pos)
+        if not index.isValid():
+            return
+        self.table.selectRow(index.row())
+        row = self.current_row()
+        if not row:
+            return
+        menu = QMenu(self.table)
+        view = menu.addAction("Ans&ehen …", self.view_ticket)
+        menu.setDefaultAction(view)  # fett: wie Doppelklick
+        menu.addAction("&Bearbeiten …", self.edit_ticket)
+        if self.can_take_over(row):
+            menu.addAction("Über&nehmen", self.take_over)
+        if not mb.is_closed(row):
+            menu.addAction("Ticket &schließen …", self.close_ticket)
+        menu.addSeparator()
+        menu.addAction("Nummer &kopieren", self.copy_number)
+        menu.exec(self.table.viewport().mapToGlobal(pos))
+
+    def can_take_over(self, row):
+        """Übernehmen nur bei offenen Tickets, die noch nicht meine sind (wie im Fenster „Ticket ansehen“)."""
+        me = getattr(self.reader, "user_id", "") or ""
+        return (hasattr(self.reader, "ticket_task") and not mb.is_closed(row)
+                and not (me and row.get("recipient_id") == me))
+
+    def take_over(self, row=None):
+        """Markiertes Ticket in Matrix42 übernehmen (du wirst Bearbeiter), ohne Fenster."""
+        row = row or self.current_row()
+        if not row or not self.can_take_over(row):
+            return
+        if self.reader.ticket_task("take_over", owner=id(self), id=row["id"], type=row.get("type", ""),
+                                   ticket=row["ticket"]):
+            self._note = f"Übernehme {row['ticket']} …"
+        else:
+            self._note = "⚠ Matrix42-Anmeldefenster ist offen. Bitte erst anmelden."
+        self._update_status()
+
+    def _task_done(self, result):
+        args = result.get("args", {})
+        if result.get("kind") != "take_over" or args.get("owner") != id(self):
+            return
+        ticket = args.get("ticket", "")
+        if not result.get("ok"):
+            self._note = f"⚠ {ticket} übernehmen fehlgeschlagen: {result.get('error', '')}"
+            self._update_status()
+            return
+        self._note = f"{ticket} übernommen."
+        changed = self._changed.setdefault(args.get("id"), {})
+        changed["recipient"] = ((result.get("data") or {}).get("user") or getattr(self.reader, "user_name", "")
+                                or "ich")
+        if getattr(self.reader, "user_id", ""):
+            changed["recipient_id"] = self.reader.user_id
+        self.show_category()
+
     def copy_number(self):
         row = self.current_row()
         if not row:
@@ -723,7 +785,7 @@ class TicketsDialog(QDialog):
 
     def done(self, result):
         for signal, slot in (("my_tickets_loaded", self._mine_loaded), ("tickets_loaded", self._category_loaded),
-                             ("ticket_filters_loaded", self.show_filters)):
+                             ("ticket_filters_loaded", self.show_filters), ("ticket_task_done", self._task_done)):
             try:
                 getattr(self.reader, signal).disconnect(slot)
             except (AttributeError, RuntimeError, TypeError):

@@ -340,14 +340,16 @@ class RdpReader:
 
     # ------------------------------------------------------------ Aufzeichnung
 
-    def sample(self, now=None):
-        """Laufende mstsc prüfen und sofort speichern. True, wenn sich etwas geändert hat."""
+    def sample(self, now=None, procs=None):
+        """Laufende mstsc prüfen und sofort speichern. True, wenn sich etwas geändert hat.
+        procs: schon gelesene Prozessliste (proc_func im Hintergrund, siehe background.py)."""
         now = now or datetime.now()
-        try:
-            procs = self.proc_func()
-        except Exception as e:
-            print(f"mstsc-Prozesse nicht lesbar: {e}")
-            return False
+        if procs is None:
+            try:
+                procs = self.proc_func()
+            except Exception as e:
+                print(f"mstsc-Prozesse nicht lesbar: {e}")
+                return False
         titles = {}
         if procs:
             try:

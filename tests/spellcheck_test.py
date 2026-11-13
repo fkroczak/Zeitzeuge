@@ -80,3 +80,26 @@ def test_aus_oder_nicht_verfuegbar():
 def test_utf16_positionen():
     # Windows und Qt zählen UTF-16: ein Emoji davor verschiebt um 2
     assert spellcheck._utf16_slice("😀 Druker", 3, 6) == "Druker"
+
+
+def test_com_aufruf_typisiert_alle_argumente():
+    """Jedes Argument bekommt einen Typ – sonst lehnt ctypes stdcall-Aufrufe mit mehr als
+    einem Argument ab und die Windows-Prüfung startet nie."""
+    import ctypes
+    got = {}
+
+    @ctypes.CFUNCTYPE(ctypes.c_long, ctypes.c_void_p, ctypes.c_wchar_p, ctypes.POINTER(ctypes.c_int),
+                      ctypes.c_ulong)
+    def method(this, text, out, n):
+        got["text"], got["n"] = text, n
+        out[0] = 7
+        return 0
+
+    vtbl = (ctypes.c_void_p * 1)(ctypes.cast(method, ctypes.c_void_p))
+    obj = ctypes.pointer(ctypes.pointer(vtbl))  # Objekt -> Vtable-Zeiger -> Vtable
+    out = ctypes.c_int()
+    types = spellcheck._argtypes([ctypes.c_wchar_p("x"), ctypes.byref(out), ctypes.c_ulong(3)])
+    assert types == [ctypes.c_wchar_p, ctypes.c_void_p, ctypes.c_ulong]
+    hr = spellcheck._Com.call(ctypes.cast(obj, ctypes.c_void_p), 0, ctypes.c_long,
+                              ctypes.c_wchar_p("Druker"), ctypes.byref(out), ctypes.c_ulong(3))
+    assert hr == 0 and out.value == 7 and got == {"text": "Druker", "n": 3}

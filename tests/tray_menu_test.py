@@ -23,3 +23,21 @@ def test_taskbar_on_top():
 
 def test_unknown_icon_position_leaves_it_to_qt():
     assert tray_menu_pos(QRect(), MENU, AVAIL) is None
+
+
+def test_aufnahme_punkt_pulsiert_ruhig():
+    """Roter Punkt „Aufzeichnung aktiv“: weich zwischen schwach und voll, ein Atemzug ≈ 2,4 s
+    (vorher hartes An/Aus alle 0,6 s)."""
+    import icons
+    period = icons.BREATH_PERIOD
+    assert period >= 2.0
+    assert icons.breath(0) == 1.0  # Start: voll
+    assert icons.breath(period / 2) == icons.BREATH_LOW  # Mitte: am schwächsten
+    values = [icons.breath(period * i / 40) for i in range(41)]
+    assert min(values) >= icons.BREATH_LOW and max(values) <= 1.0
+    # weich: von einem Takt (80 ms) zum nächsten höchstens ein kleiner Schritt
+    import app_tray
+    steps = [abs(icons.breath(t * app_tray.PULSE_MS / 1000) - icons.breath((t + 1) * app_tray.PULSE_MS / 1000))
+             for t in range(60)]
+    assert max(steps) <= 0.1 + 1e-9, steps
+    assert len({round(v, 2) for v in values}) <= 21  # wenige Stufen: Icons bleiben im Zwischenspeicher

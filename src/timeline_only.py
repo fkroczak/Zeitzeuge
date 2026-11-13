@@ -12,7 +12,7 @@ from PySide6.QtGui import (QBrush, QColor, QContextMenuEvent, QFontMetrics, QPai
 from PySide6.QtWidgets import (QApplication, QDialog, QDialogButtonBox, QFormLayout, QFrame,
                                QGraphicsDropShadowEffect, QGraphicsRectItem,
                                QGraphicsScene, QGraphicsView, QLabel, QLineEdit, QMenu,
-                               QPlainTextEdit, QScrollArea, QVBoxLayout)
+                               QHBoxLayout, QPlainTextEdit, QScrollArea, QTextBrowser, QVBoxLayout)
 
 from activity_tracker import app_label, merge_segments, read_segments
 import call_import
@@ -458,8 +458,33 @@ def _config_of(widget):
     return {}
 
 
+def _ticket_link_html(text):
+    """Text mit Ticketnummern als Links (href ticket:<Nummer>), sonst None."""
+    import m42_booking
+    parts, pos = [], 0
+    for m in m42_booking.TICKET_RE.finditer(text or ""):
+        number = m.group(0).upper()
+        parts.append(escape(text[pos:m.start()]))
+        parts.append(f'<a href="ticket:{number}">{escape(m.group(0))}</a>')
+        pos = m.end()
+    if not parts:
+        return None
+    return "".join(parts) + escape(text[pos:])
+
+
+def open_ticket_from(widget, number):
+    """Kreuzverweis: Ticket in Zeitzeuge ansehen (Hauptfenster in der Eltern-Kette)."""
+    window = widget
+    while window is not None and not hasattr(window, "open_ticket_number"):
+        window = window.parent()
+    if window is not None:
+        window.open_ticket_number(number, widget)
+
+
 class ActivityViewDialog(QDialog):
-    """Nur-Anzeigen-Dialog zum Kopieren von Aktivitätsdaten."""
+    """Nur-Anzeigen-Dialog zum Kopieren von Aktivitätsdaten. Datum und Uhrzeit stehen wie bei
+    „Tätigkeit nachtragen“ in der grauen Zeile im Kopf (ohne Stift: hier ändert man nichts),
+    Ticketnummern im Typ öffnen das Ticket in Zeitzeuge."""
 
     def __init__(self, activity, parent=None):
         super().__init__(parent)
@@ -474,15 +499,33 @@ class ActivityViewDialog(QDialog):
         form.setLabelAlignment(Qt.AlignLeft)
 
         # Einstellungen → Ansicht → „Aktivitätsdetails als Textfelder“: Werte in schreibgeschützten
-        # Feldern, dort reicht Klick + Strg+A + Strg+C zum Kopieren
+        # (grauen) Feldern, dort reicht Klick + Strg+A + Strg+C zum Kopieren
         fields = bool(_config_of(parent).get("detail_text_fields", False))
 
         def row(key, text):
-            """Nur anzeigen: Name grau, Wert als markierbarer Text oder als schreibgeschütztes Feld."""
+            """Nur anzeigen: Name grau, Wert als markierbarer Text oder als schreibgeschütztes Feld.
+            Ticketnummern werden zu Links, die das Ticket in Zeitzeuge öffnen."""
             label = QLabel(key)
             label.setObjectName("detail_key")
-            if fields:
+            html = _ticket_link_html(text)
+            if html is not None:
+                value = QLabel(html)
+                value.setTextFormat(Qt.RichText)
+                value.setTextInteractionFlags(Qt.TextBrowserInteraction)
+                value.setOpenExternalLinks(False)
+                value.setToolTip("Ticket in Zeitzeuge ansehen")
+                value.linkActivated.connect(lambda href: open_ticket_from(self, href.split(":", 1)[1]))
+                value.setObjectName("detail_value")
+                if fields:  # gleiche graue Fläche wie die Textfelder
+                    box = QFrame()
+                    box.setObjectName("detail_field")
+                    inner = QHBoxLayout(box)
+                    inner.setContentsMargins(9, 6, 9, 6)
+                    inner.addWidget(value)
+                    value = box
+            elif fields:
                 value = QLineEdit(text or "")
+                value.setObjectName("detail_field")
                 value.setReadOnly(True)
                 value.setCursorPosition(0)
             else:
@@ -495,14 +538,14 @@ class ActivityViewDialog(QDialog):
             start = parse_time(activity["start"])
             end = parse_time(activity["end"])
             zeit = f"{start:%d.%m.%Y}, {start:%H:%M} – {end:%H:%M}"
-            dauer = format_duration((end - start).total_seconds())
+            minutes = int((end - start).total_seconds() // 60)
+            time_row = self._time_row(f"{WEEKDAYS[start.weekday()]}. {start:%d.%m.%Y}",
+                                      f"{start:%H:%M}", f"{end:%H:%M}", f"{minutes // 60}:{minutes % 60:02d} h")
         except (KeyError, ValueError):
-            zeit = dauer = ""
+            zeit, time_row = "", None
 
         row("Typ", type_label(activity))
         row("Kunde", activity.get("customer_name", ""))
-        row("Zeit", zeit)
-        row("Dauer", dauer)
         layout.addLayout(form)
 
         text = activity.get("details", "")
@@ -515,9 +558,25 @@ class ActivityViewDialog(QDialog):
         if activity.get("ai"):
             text = activity.get("description", "")
             row("Sicherheit", f"{round(activity.get('confidence', 0) * 100)} %")
+        # Ticketnummern auch in den Details als Links (öffnen das Ticket in Zeitzeuge)
+        linked = _ticket_link_html(text) if text else None
+        rich = (f'<span style="white-space:pre-wrap">{linked.replace(chr(10), "<br>")}</span>'
+                if linked is not None else None)
+
+        def open_link(href):
+            open_ticket_from(self, str(href).split(":", 1)[1])
+
         if text and fields:
-            details = QPlainTextEdit(text)
-            details.setReadOnly(True)
+            if rich is not None:
+                details = QTextBrowser()
+                details.setOpenLinks(False)
+                details.setHtml(rich)
+                details.anchorClicked.connect(lambda url: open_link(url.toString()))
+                details.setToolTip("Ticketnummer anklicken: Ticket in Zeitzeuge ansehen")
+            else:
+                details = QPlainTextEdit(text)
+                details.setReadOnly(True)
+            details.setObjectName("detail_field")
             details.setMaximumHeight(240 if parts else 110)
             label = QLabel("Details")
             label.setObjectName("detail_key")
@@ -532,6 +591,13 @@ class ActivityViewDialog(QDialog):
             details = QLabel(text)
             details.setWordWrap(True)
             details.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            if rich is not None:
+                details.setTextFormat(Qt.RichText)
+                details.setText(rich)
+                details.setTextInteractionFlags(Qt.TextBrowserInteraction)
+                details.setOpenExternalLinks(False)
+                details.linkActivated.connect(open_link)
+                details.setToolTip("Ticketnummer anklicken: Ticket in Zeitzeuge ansehen")
             details.setAlignment(Qt.AlignLeft | Qt.AlignTop)
             scroll = QScrollArea()  # lange Listen (Arbeitsblöcke) scrollen statt das Fenster zu sprengen
             scroll.setWidget(details)
@@ -549,7 +615,44 @@ class ActivityViewDialog(QDialog):
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
         from card_dialog import modernize  # Rahmen wie „Tätigkeit nachtragen“
-        modernize(self, type_label(activity) or "Aktivitätsdetails", zeit, "details", intro=False)
+        modernize(self, type_label(activity) or "Aktivitätsdetails", "" if time_row else zeit, "details",
+                  intro=False, below_head=[time_row] if time_row else ())
+
+    def _time_row(self, date_text, start_text, end_text, duration):
+        """Graue Zeitzeile wie bei „Tätigkeit nachtragen“, nur zum Ansehen (ohne Stift)."""
+        muted = self.palette().color(self.palette().ColorRole.PlaceholderText).name()
+        time_row = QFrame()
+        time_row.setObjectName("prompt_time")
+        time_row.setProperty("editing", False)
+        box = QHBoxLayout(time_row)
+        box.setContentsMargins(10, 6, 10, 6)
+        box.setSpacing(6)
+
+        def icon(name):
+            label = QLabel()
+            label.setObjectName("prompt_icon")
+            label.setPixmap(icons.icon(name, muted).pixmap(14, 14))
+            label.setFixedSize(14, 14)
+            return label
+
+        def text(value, hint=False):
+            label = QLabel(value)
+            label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            if hint:
+                label.setObjectName("hint")
+            return label
+
+        box.addWidget(icon("calendar"))
+        box.addWidget(text(date_text))
+        box.addSpacing(10)
+        box.addWidget(icon("clock"))
+        box.addWidget(text(start_text))
+        box.addWidget(text("–", hint=True))
+        box.addWidget(text(end_text))
+        box.addSpacing(10)
+        box.addWidget(text(duration, hint=True), 1)
+        time_row.setAccessibleName(f"{date_text}, {start_text} bis {end_text}, {duration}")
+        return time_row
 
 
 # Hervorhebung unter der Maus (Einstellungen → Darstellung, Menü Ansicht): Nebel in % (0 = keiner),

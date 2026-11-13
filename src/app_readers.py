@@ -10,7 +10,7 @@ from datetime import datetime
 
 from PySide6.QtCore import Qt, QTimer, QUrl
 from PySide6.QtGui import QDesktopServices
-from PySide6.QtWidgets import (QCheckBox, QDialog, QDialogButtonBox, QFormLayout, QHBoxLayout, QInputDialog, QLabel,
+from PySide6.QtWidgets import (QApplication, QCheckBox, QDialog, QDialogButtonBox, QFormLayout, QHBoxLayout, QInputDialog, QLabel,
                                QLineEdit, QMessageBox, QPushButton, QSpinBox,
                                QToolButton, QVBoxLayout)
 
@@ -455,6 +455,57 @@ class ReadersMixin:
         dialog.show()
         dialog.raise_()
         dialog.activateWindow()
+
+    def open_ticket_number(self, number, parent=None):
+        """Kreuzverweis (z. B. Typ in den Aktivitätsdetails): Ticket nach Nummer im Fenster
+        „Ticket ansehen“ öffnen. Erst aus schon gelesenen Listen, sonst über die Ticketsuche."""
+        parent = parent or self
+        reader = self.m42_reader
+        if not reader:
+            QMessageBox.information(parent, "Ticket ansehen",
+                                    f"{number}: Matrix42 ist nicht eingerichtet (Einstellungen → Datenquellen).")
+            return
+        number = number.upper()
+        known = [*((reader.my_tickets or {}).get("all") or [])]
+        for view in (getattr(reader, "ticket_views", None) or {}).values():
+            known.extend(view.get("rows") or [])
+        row = next((r for r in known if (r.get("ticket") or "").upper() == number), None)
+        if row:
+            self._view_ticket(row, parent)
+            return
+
+        def found(result):
+            if (result.get("text") or "").upper() != number:
+                return  # Antwort auf eine andere Suche
+            reader.tickets_found.disconnect(found)
+            QApplication.restoreOverrideCursor()
+            hit = next((r for r in result.get("rows") or [] if r.get("ticket") == number), None)
+            try:
+                owner = parent if parent.isVisible() else self
+            except RuntimeError:  # Fenster inzwischen zu
+                owner = self
+            if hit:
+                self._view_ticket(hit, owner)
+            else:
+                error = result.get("error")
+                QMessageBox.information(owner, "Ticket ansehen", f"{number} wurde in Matrix42 nicht gefunden."
+                                        + (f"\n\n{error}" if error else ""))
+
+        QApplication.setOverrideCursor(Qt.BusyCursor)
+        reader.tickets_found.connect(found, Qt.QueuedConnection)
+        reader.search_tickets(number, getattr(reader, "ticket_list", None))
+
+    def _view_ticket(self, row, parent):
+        """„Ticket ansehen“, danach auf Wunsch gleich „Bearbeiten“ oder „Schließen“."""
+        from ticket_dialogs import CloseTicketDialog, EditTicketDialog, ViewTicketDialog
+        dialog = ViewTicketDialog(self.m42_reader, row, parent)
+        action = dialog.action if dialog.exec() == QDialog.Accepted else None
+        dialog.deleteLater()
+        follow = {"edit": EditTicketDialog, "close": CloseTicketDialog}.get(action)
+        if follow:
+            dialog = follow(self.m42_reader, row, parent)
+            dialog.exec()
+            dialog.deleteLater()
 
     def choose_ticket_layout(self, no):
         """Anordnung der Kategorien im Fenster „Tickets“ (1–5) merken und anwenden
