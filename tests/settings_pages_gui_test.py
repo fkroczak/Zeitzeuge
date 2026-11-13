@@ -91,6 +91,14 @@ def gui_test():
         for tile in row.tiles.values():
             assert tile.accessibleName() and not tile.icon().isNull(), row.spec[3]
 
+    # Fenster „Tickets“: Anordnung als Kacheln unter Darstellung, Klick speichert sofort
+    ticket_row = next(r for r in settings.rows if r.spec[5] == "ticket_layout")
+    assert ticket_row.spec[0] == "view/Tickets" and len(ticket_row.tiles) == 5
+    ticket_row.tiles[3].click()
+    assert window.config["ticket_layout"] == 3 and ticket_row.tiles[3].isChecked()
+    ticket_row.tiles[1].click()
+    assert window.config["ticket_layout"] == 1
+
     # Alt-Buchstaben je Seite eindeutig (Seite Nachfragen hat die meisten)
     for key, *_r in PAGES:
         settings.show_page(key)

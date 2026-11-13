@@ -4,8 +4,8 @@ Kategorien schalten um (immer genau eine): „Meine Tickets“ (vorausgewählt),
 und die gespeicherten Filter der Ticketliste in Matrix42. „Geschlossene“ wirkt bei jeder
 Kategorie: an zeigt sie auch gelöste/geschlossene Tickets, aus nur offene und angehaltene.
 
-Wie die Kategorien angeboten werden, wählt das Menü „Anordnung“ im Fenster (oder Ansicht →
-Ticketfenster), gespeichert in der Einstellung ticket_layout:
+Wie die Kategorien angeboten werden, wählt Einstellungen → Darstellung → Tickets (Kacheln mit
+Skelett-Bild), gespeichert in der Einstellung ticket_layout:
   1 Zwei beschriftete Zeilen „Ansicht“ und „Pools“, Schalter „Geschlossene zeigen“ (Standard)
   2 Kompakt: Hauptkategorien als Pillen, TK/Pools/Weitere als Menü-Pillen
   3 Seitenleiste mit Überschriften wie in Matrix42
@@ -23,7 +23,7 @@ sofort. „Neues Ticket …“, „Bearbeiten …“ und „Schließen …“ ö
 import time
 
 from PySide6.QtCore import QEvent, Qt, Signal
-from PySide6.QtGui import QAction, QActionGroup, QFont
+from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QHBoxLayout, QLabel,
                                QLineEdit, QListWidget, QListWidgetItem, QMenu, QPushButton, QSizePolicy, QToolButton,
                                QVBoxLayout, QWidget)
@@ -64,7 +64,7 @@ def pill_rank(title):
 
 GROUP_NAMES = ["Meine", "Allgemein", "TK", "Pools", "Weitere"]  # zu PILL_GROUPS, „Weitere“ = Rest
 
-# Anordnungen (Einstellung ticket_layout), Nummer -> Name im Menü
+# Anordnungen (Einstellung ticket_layout), Nummer -> Name
 LAYOUTS = {1: "Zwei beschriftete Zeilen", 2: "Kompakt mit Menüs", 3: "Seitenleiste wie in Matrix42",
            4: "Bereich und Unterfilter", 5: "Favoriten"}
 DEFAULT_LAYOUT = 1
@@ -101,7 +101,6 @@ def _gap(parent, width):
 
 class TicketsDialog(QDialog):
     page_size = PAGE_SIZES[0]
-    layout_chosen = Signal(int)       # Anordnung im Fenster gewählt (zum Speichern)
     favorites_changed = Signal(list)  # Favoriten (Anordnung 5) geändert (zum Speichern)
 
     def __init__(self, reader, parent=None, layout=DEFAULT_LAYOUT, favorites=None):
@@ -147,30 +146,12 @@ class TicketsDialog(QDialog):
         self.filter_edit.setClearButtonEnabled(True)
         self.filter_edit.textChanged.connect(self.apply_filter)
         self.filter_edit.installEventFilter(self)
-        self.layout_button = QToolButton(self)
-        self.layout_button.setObjectName("chip_add")
-        self.layout_button.setText("Anordnung")
-        self.layout_button.setToolTip("Wie die Kategorien angeordnet sind")
-        self.layout_button.setAccessibleName("Anordnung der Kategorien wählen")
-        self.layout_button.setPopupMode(QToolButton.InstantPopup)
-        self.layout_menu = QMenu(self.layout_button)
-        group = QActionGroup(self.layout_menu)
-        self.layout_actions = {}
-        for no, name in LAYOUTS.items():
-            action = QAction(f"&{no} {name}", self.layout_menu)
-            action.setCheckable(True)
-            group.addAction(action)
-            action.triggered.connect(lambda _c=False, n=no: self.choose_layout(n))
-            self.layout_menu.addAction(action)
-            self.layout_actions[no] = action
-        self.layout_button.setMenu(self.layout_menu)
         self.search_row = QWidget(self)
         search = self._search_layout = QHBoxLayout(self.search_row)
         search.setContentsMargins(0, 0, 0, 0)
         search.addWidget(self.filter_edit, 1)
         search.addWidget(self.closed_switch)
         search.addWidget(self.closed_chip)
-        search.addWidget(self.layout_button)
         layout.addWidget(self.search_row)
 
         self.table = TicketTable("Tickets", self)
@@ -310,14 +291,12 @@ class TicketsDialog(QDialog):
                 self.categories[key] = (f["title"], f["id"])
         self._build_selector()
 
-    def choose_layout(self, no, save=True):
-        """Anordnung wechseln (Menü im Fenster oder Ansicht → Ticketfenster)."""
+    def choose_layout(self, no):
+        """Anordnung wechseln (Einstellungen → Darstellung → Tickets)."""
         if no not in LAYOUTS:
             return
         self.layout_no = no
         self._build_selector()
-        if save:
-            self.layout_chosen.emit(no)
 
     def _pill(self, key, parent, text=None):
         title = self.categories[key][0]
@@ -351,7 +330,6 @@ class TicketsDialog(QDialog):
                 w.hide()
                 w.deleteLater()
         self.category_buttons = {}
-        self.layout_actions[self.layout_no].setChecked(True)
         no = self.layout_no
         self.sidebar.setVisible(no == 3)
         self.closed_switch.setVisible(no in (1, 2, 4))
