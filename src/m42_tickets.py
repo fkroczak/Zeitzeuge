@@ -9,10 +9,11 @@ Anlegen (Dialog „Ticket“, Widget DEFAULT_IDS["ticket_dialog"]):
 2. Kategorie: GET /activity/category/<Id> -> Impact, Urgency.
 3. SLA: GET /activity/suitableSLAsForTicket/?Category&User=<Melder>&TicketType&Priority=-1&Impact
    -> TightestItem.
-4. Melder: GET /activity/UserDetails/<Id> -> Telefon (Rückruf); OU, Kostenstelle und Standort des
-   Melders (initiator_common: OrgUnitId, CostCenterId, LocationId). Die
-   Vorlage aus 1. hat die eigenen (z. B. Systems); der Dialog setzt sie beim Wählen des Melders
-   um. Ohne das gehört das Ticket intern zu Systems, und Zeiterfassungen darauf ebenso.
+4. Melder: GET /activity/UserDetails/<Id> -> Telefon (Rückruf), OrgUnitId, CostCenterId, LocationId.
+   Kunde (OU), Kostenstelle und Standort: Die Vorlage aus 1. hat die eigenen vorbelegt (Systems).
+   Der Dialog schickt beim Speichern null, und Matrix42 setzt sie vom Melder (Mitschnitt vom
+   13.11.2026: danach OU = OrgUnitId aus UserDetails). Zeitzeuge schickt die Werte aus UserDetails,
+   sonst null wie der Dialog, nie die der Vorlage: sonst gehört das Ticket intern zu Systems.
 5. Speichern: POST /WidgetDialog/UpdateData/<Dialog> mit dem Ticket. Die Art steht in
    InitialData.Configuration.TicketType (0 = Störung, 6 = Serviceanfrage); Matrix42 macht daraus
    SPSActivityTypeIncident bzw. SPSActivityTypeServiceRequest. Antwort: Sys-Name (TCK…).
@@ -186,7 +187,8 @@ def field_overview(data, depth=1):
 def ticket_entity(template, ticket_type, subject, description, category, initiator, creator,
                   sla=None, impact=None, urgency=None, callback=None, initiator_ou=None):
     """Ticket zum Speichern (UpdateData), Felder wie im Mitschnitt. template: Entity aus GetNewData.
-    initiator_ou: initiator_common() des Melders; ersetzt OU, Kostenstelle und Standort der Vorlage."""
+    initiator_ou: initiator_common() des Melders. OU, Kostenstelle und Standort kommen von dort, sonst
+    null wie im Dialog (Matrix42 setzt sie dann vom Melder), nie aus der Vorlage (eigene OU)."""
     if not isinstance(template, dict) or not template.get("ID"):
         raise BookingError("Matrix42 liefert keine Vorlage für ein neues Ticket.")
     if int(ticket_type) not in ENTITY_OF_TYPE:
@@ -215,7 +217,7 @@ def ticket_entity(template, ticket_type, subject, description, category, initiat
     if callback:
         incident["Callback"] = callback
     common = dict(template.get("SPSCommonClassBase") or {})
-    common.update({k: v for k, v in (initiator_ou or {}).items() if k in COMMON_FIELDS and v})
+    common.update({k: (initiator_ou or {}).get(k) or None for k in COMMON_FIELDS})
     for name in EMPTY_RELATIONS:
         common[name] = dict(EMPTY)
     initial = dict(template.get("InitialData") or {})

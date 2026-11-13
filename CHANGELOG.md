@@ -18,7 +18,7 @@ Testversionen aus Branches tragen die Version ihres main-Stands plus Buildnummer
 26.10.2026 können sie nicht mehr lesen.
 
 ### Wichtiger Fix
-- **Tickets aus Zeitzeuge landeten bei Systems statt beim Kunden:** Bei Tickets, die über Zeitzeuge angelegt wurden, stand intern Systems (999830) statt des Kunden. Gemeint ist die Organisationseinheit, zusammen mit Kostenstelle und Standort. Darum zeigten auch alle Zeiterfassungen darauf „Systems“ als Kunden. Jetzt kommen diese Angaben vom Melder, wie im Matrix42-Dialog, und eine Buchung übernimmt den Kunden des Tickets. Findet Zeitzeuge den Kunden des Melders nicht, weist es nach dem Anlegen darauf hin. **Erst ab 4.1.81 wirksam:** Bis 4.1.80 kannte Zeitzeuge das Feld nicht, unter dem Matrix42 den Kunden des Melders liefert (`OrgUnitId`), und Tickets landeten weiter bei Systems.
+- **Tickets aus Zeitzeuge landeten bei Systems statt beim Kunden:** Bei Tickets, die über Zeitzeuge angelegt wurden, stand intern Systems (999830) statt des Kunden. Gemeint ist die Organisationseinheit, zusammen mit Kostenstelle und Standort. Darum zeigten auch alle Zeiterfassungen darauf „Systems“ als Kunden. Jetzt kommen diese Angaben vom Melder, wie im Matrix42-Dialog, und eine Buchung übernimmt den Kunden des Tickets. Findet Zeitzeuge den Kunden des Melders nicht, lässt es die Felder wie der Matrix42-Dialog leer, und Matrix42 setzt sie selbst vom Melder (Mitschnitt vom 13.11.2026). **Erst ab 4.1.81 wirksam:** Bis 4.1.80 kannte Zeitzeuge das Feld nicht, unter dem Matrix42 den Kunden des Melders liefert (`OrgUnitId`), und Tickets landeten weiter bei Systems.
   **Schon angelegte Tickets:** In Matrix42 das Ticket öffnen, den Kunden neu auswählen und speichern. Damit stimmen auch die Zeiterfassungen darauf.
 
 ### Neu

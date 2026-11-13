@@ -318,13 +318,17 @@ def test_kunde_des_melders():
     assert mt.initiator_common({"OrgUnit": {"ObjectId": OU_KOCH, "DisplayString": "Koch"}}) == {"OU": OU_KOCH}
     assert mt.field_overview({"Phone": "1", "OU": {"ID": "x"}}) == {"Phone": "str", "OU": {"ID": "str"}}
     e = mt.ticket_entity(TEMPLATE, mt.INCIDENT, "x", "", CAT, MELDER, ME, initiator_ou={"OU": OU_KOCH})
-    assert (e["SPSCommonClassBase"]["OU"], e["SPSCommonClassBase"]["CostCenter"]) == (OU_KOCH, "cc")
-    assert mt.ticket_entity(TEMPLATE, mt.INCIDENT, "x", "", CAT, MELDER, ME)["SPSCommonClassBase"]["OU"] == "ou"
+    assert (e["SPSCommonClassBase"]["OU"], e["SPSCommonClassBase"]["CostCenter"]) == (OU_KOCH, None)
+    # ohne Kunde des Melders: null wie im Dialog (Mitschnitt 13.11.2026), nie die eigene OU der Vorlage
+    common = mt.ticket_entity(TEMPLATE, mt.INCIDENT, "x", "", CAT, MELDER, ME)["SPSCommonClassBase"]
+    assert (common["OU"], common["CostCenter"], common["Location"]) == (None, None, None)
 
 
 def test_leser_ticket_anlegen_ohne_kunde(tmp_path):
-    # UserDetails ohne OrgUnitId: angelegt, aber mit Hinweis; Personenobjekt wird nicht gelesen (403)
+    # UserDetails ohne OrgUnitId: OU null, Matrix42 setzt sie vom Melder; Personenobjekt nicht lesen (403)
     reader, calls, got = _reader(tmp_path, dict(ANSWERS, UserDetails={"Phone": "1", "OrgUnit": "Systems"}))
     reader._ticket_task("create", {"request": REQUEST})
-    assert got[-1]["ok"] and "Kunden" in got[-1]["data"]["warning"]
+    assert got[-1]["ok"] and got[-1]["data"]["warning"] == "", got[-1]
+    saved = next(json.loads(b[1:-1]) for _m, p, b in calls if "UpdateData" in p)
+    assert saved["SPSCommonClassBase"]["OU"] is None
     assert not any("data/objects" in p for _m, p, _b in calls)
