@@ -200,6 +200,27 @@ def gui_test():
     view.ok_button.click()
     assert view.action == "edit"
 
+    # kein Knopf blitzt beim Öffnen als eigenes Fenster auf (Übernehmen/Schließen erst einfügen, dann zeigen)
+    from PySide6.QtCore import QEvent
+
+    class ShowSpy(QObject):
+        def __init__(self):
+            super().__init__()
+            self.windows = []
+
+        def eventFilter(self, obj, event):
+            if event.type() == QEvent.Show and obj.isWidgetType() and obj.isWindow():
+                self.windows.append(type(obj).__name__)
+            return False
+    spy = ShowSpy()
+    app.installEventFilter(spy)
+    other = dict(ROW, recipient="Kollege", recipient_id="other")
+    view = ViewTicketDialog(reader, other)
+    app.removeEventFilter(spy)
+    assert spy.windows == [], spy.windows
+    assert view.take_over_button.isVisibleTo(view) and view.close_ticket_button.isVisibleTo(view)
+    view.reject()
+
     # Ticket nicht ladbar (z. B. E-Mail, die Matrix42 nicht entschlüsseln kann): Telefon trotzdem
     reader.fail.add("load")
     view = ViewTicketDialog(reader, ROW)
@@ -310,6 +331,29 @@ def gui_test():
     assert opened == ["TCK0000000003"], opened
     table_dialog.copy_button.click()
     assert app.clipboard().text() == "TCK0000000003"
+
+    # rechte Maustaste: Kontextmenü mit Ansehen, Bearbeiten, Übernehmen, Schließen, Nummer kopieren
+    menus = []
+
+    def read_menu():
+        menu = app.activePopupWidget()
+        if menu is None:
+            QTimer.singleShot(10, read_menu)
+            return
+        menus.append([a.text() for a in menu.actions() if not a.isSeparator()])
+        menu.close()
+    QTimer.singleShot(10, read_menu)
+    table = table_dialog.table
+    table.customContextMenuRequested.emit(table.visualRect(table.model().index(1, 0)).center())
+    assert menus == [["Ans&ehen …", "&Bearbeiten …", "Über&nehmen", "Ticket &schließen …", "Nummer &kopieren"]], menus
+    picked = table_dialog.current_row()
+    assert picked["id"] == table_dialog.visible_rows()[1]["id"]  # Rechtsklick markiert die Zeile
+    table_dialog.take_over()
+    assert ("take_over", {"owner": id(table_dialog), "id": picked["id"], "type": picked.get("type", ""),
+                          "ticket": picked["ticket"]}) in reader.tasks
+    assert wait_for(lambda: "übernommen" in table_dialog.status.text(), 3000), table_dialog.status.text()
+    taken = next(r for r in table_dialog.visible_rows() if r["id"] == picked["id"])
+    assert taken["recipient"] == "Kroczak, Filip", taken
     table_dialog.close()
 
     # ---- Pillen: Kategorien schalten um, „Geschlossene“ wirkt bei jeder, Filter sucht nur darin

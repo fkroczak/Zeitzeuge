@@ -167,10 +167,11 @@ class _CardDialog(QDialog):
         self.take_over_button = QPushButton("Über&nehmen")
         self.take_over_button.setAutoDefault(False)
         self.take_over_button.setToolTip("Ticket in Matrix42 übernehmen: du wirst Bearbeiter")
+        self.take_over_button.clicked.connect(self._take_over)
+        # erst einfügen, dann zeigen: ein Knopf ohne Eltern würde sonst kurz als eigenes Fenster aufblitzen
+        self.cancel_button.parentWidget().layout().insertWidget(1, self.take_over_button)
         me = getattr(self.reader, "user_id", "") or ""
         self.take_over_button.setVisible(not mb.is_closed(row) and not (me and row.get("recipient_id") == me))
-        self.take_over_button.clicked.connect(self._take_over)
-        self.cancel_button.parentWidget().layout().insertWidget(1, self.take_over_button)
 
     def _take_over(self):
         self.take_over_button.setEnabled(False)
@@ -739,9 +740,9 @@ class ViewTicketDialog(_CardDialog):
         self.ok_button.clicked.connect(lambda: self._leave("edit"))
         self.close_ticket_button = QPushButton("Ticket &schließen …")
         self.close_ticket_button.setAutoDefault(False)
-        self.close_ticket_button.setVisible(not mb.is_closed(row))
         self.close_ticket_button.clicked.connect(lambda: self._leave("close"))
         self.cancel_button.parentWidget().layout().insertWidget(1, self.close_ticket_button)
+        self.close_ticket_button.setVisible(not mb.is_closed(row))  # erst nach dem Einfügen (s. o.)
         self._add_take_over(row)
 
         cards = QHBoxLayout()
