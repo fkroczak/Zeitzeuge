@@ -13,7 +13,7 @@ import html
 
 from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtGui import QFont, QFontMetrics
-from PySide6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QProgressBar, QSizePolicy,
+from PySide6.QtWidgets import (QFrame, QGridLayout, QHBoxLayout, QLabel, QProgressBar, QSizePolicy,
                                QToolButton, QVBoxLayout, QWidget)
 
 from flow_layout import FlowLayout
@@ -279,8 +279,16 @@ class _CustomerChips(QWidget):
             self._relayout()
 
 
+FOOT_H = 24  # untere Zeile der Zahlen-Kacheln: so hoch wie ein Kunden-Chip
+
+
 class _Kpi(QFrame):
-    """Kennzahl als Karte: Name, Wert, Zusatz und optional ein Knopf."""
+    """Kennzahl als Karte, zweizeilig wie die Kunden-Chips daneben:
+
+        Erfasst                      Offen
+        3:41 h  von 8:34 h           4  Einträge        <- Höhe der ersten Chip-Reihe
+        ████░░░░░░░░░░  43 %         [Jetzt eintragen]  <- unten, Höhe der zweiten Chip-Reihe
+    """
 
     def __init__(self, label, parent=None, action=None, customers=False):
         super().__init__(parent)
@@ -306,15 +314,26 @@ class _Kpi(QFrame):
         self.extra.setObjectName("kpi_label")
         row.addWidget(self.extra, 0 if customers else 1)
         self.button = None
+        layout.addLayout(row)
+        # Fußzeile unten: keine leere Fläche, wenn „Nach Kunde“ zwei Reihen Chips hat
+        self.foot = QHBoxLayout()
+        self.foot.setSpacing(SPACE_S)
         if action:
             self.button = QToolButton(self)
             self.button.setObjectName("link")
             self.button.setText(action)
             self.button.setCursor(Qt.PointingHandCursor)
-            row.addWidget(self.button)
-        layout.addLayout(row)
-        layout.addStretch(1)  # Inhalt oben: Überschriften aller Kacheln auf einer Höhe
+            self.foot.addWidget(self.button)
+            self.foot.addStretch(1)
+        layout.addStretch(1)  # Überschriften oben auf einer Höhe, Fußzeile unten
+        if not customers:
+            holder = QWidget(self)
+            holder.setFixedHeight(FOOT_H)
+            holder.setLayout(self.foot)
+            self.foot.setContentsMargins(0, 0, 0, 0)
+            layout.addWidget(holder)
         self.bar = None
+        self.percent = None
 
     def loaded(self):
         """Zahlen sind da: Umriss weg, Wert zeigen."""
@@ -326,12 +345,16 @@ class _Kpi(QFrame):
             self.value.show()
 
     def add_progress(self):
+        """Fortschritt in der Fußzeile: Balken und Anteil in Prozent."""
         self.bar = QProgressBar(self)
         self.bar.setTextVisible(False)
-        self.bar.setFixedHeight(4)
+        self.bar.setFixedHeight(6)
         self.bar.setRange(0, 100)
         self.bar.setAccessibleName("Anteil erfasst")
-        self.layout().insertWidget(self.layout().count() - 1, self.bar)
+        self.percent = QLabel("", self)
+        self.percent.setObjectName("kpi_label")
+        self.foot.addWidget(self.bar, 1)
+        self.foot.addWidget(self.percent)
 
 
 class RateKpi(QFrame):
@@ -356,27 +379,31 @@ class RateKpi(QFrame):
         title = QLabel("Buchungsquote", self)  # Überschrift wie bei den anderen Kacheln
         title.setObjectName("kpi_label")
         layout.addWidget(title)
-        row = QHBoxLayout()
-        row.setSpacing(SPACE_S)
+        # Zwei Spalten: Zahl oben (Höhe der Werte in den anderen Kacheln), „heute“ / „7 Tage“
+        # unten in der Fußzeile (wie „Jetzt eintragen“), dazwischen ein Strich über beide Zeilen
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(SPACE_M)
+        grid.setVerticalSpacing(0)
+        grid.setRowStretch(1, 1)
         self.columns = {}
         for i, key in enumerate(("today", "seven")):
+            col = 2 * i
             if i:
                 line = QFrame(self)
                 line.setObjectName("divider")
                 line.setFixedWidth(1)
-                row.addSpacing(SPACE_S)
-                row.addWidget(line)
-                row.addSpacing(SPACE_S)
+                grid.addWidget(line, 0, col - 1, 3, 1)
             value = QLabel("–", self)
             value.setObjectName("rate_value_none")
-            head = QLabel("heute" if key == "today" else "7 Tage", self)  # klein neben der Zahl
+            head = QLabel("heute" if key == "today" else "7 Tage", self)
             head.setObjectName("kpi_label")
-            row.addWidget(value)
-            row.addWidget(head)  # mittig wie „Einträge“ und „von … Arbeitszeit“
+            head.setFixedHeight(FOOT_H)
+            head.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+            grid.addWidget(value, 0, col)
+            grid.addWidget(head, 2, col)
             self.columns[key] = (head, value)
-        row.addStretch(1)
-        layout.addLayout(row)
-        layout.addStretch(1)  # Inhalt oben wie bei _Kpi: Überschriften aller Kacheln auf einer Höhe
+        grid.setColumnStretch(4, 1)
+        layout.addLayout(grid, 1)
 
     def show_rate(self, info):
         """info: week_dialogs.rate_info (label, today, today_level, seven, seven_level, text, tip)."""
@@ -463,7 +490,9 @@ class DaySummary(QWidget):
         self.booked.value.setText(hm(booked))
         basis = data.get("target_basis", "")  # „gestempelt“/„bis jetzt“ (ITM-Personalzeit) oder „Arbeitszeit“
         self.booked.extra.setText(f"von {hm(target)} {basis}".strip() if target else "")
-        self.booked.bar.setValue(int(min(100, 100 * booked / target)) if target else 0)
+        share = int(min(100, 100 * booked / target)) if target else 0
+        self.booked.bar.setValue(share)
+        self.booked.percent.setText(f"{round(100 * booked / target)} %" if target else "")
         tips = {"gestempelt": " im Verhältnis zur gestempelten Personalzeit (ITM)",
                 "bis jetzt": " im Verhältnis zur Personalzeit bis jetzt (noch eingestempelt, läuft live)",
                 "Arbeitszeit": " im Verhältnis zur eingestellten Arbeitszeit"}
