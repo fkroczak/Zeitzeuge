@@ -254,6 +254,18 @@ def edit_data_path(dialog, ticket_id):
     return f"{API}/WidgetCommon/GetData/{dialog}/{ticket_id}?archived=false"
 
 
+def load_error(error, kind=""):
+    """Fehler beim Laden über den Dialog des bestehenden Tickets lesbar machen. Matrix42 meldet
+    ObjectIsDeleted („The object you try to open is deleted“), wenn das Ticket gelöscht oder
+    archiviert ist oder der Dialog die Art des Tickets nicht öffnen kann."""
+    if "ObjectIsDeleted" not in str(error):
+        return error
+    art = {"SPSActivityTypeIncident": "Störung", "SPSActivityTypeServiceRequest": "Serviceanfrage",
+           "SPSActivityTypeTicket": "Ticket"}.get(kind, kind.replace("SPSActivityType", ""))
+    return BookingError("Matrix42 kann dieses Ticket hier nicht öffnen (meldet es als gelöscht"
+                        + (f", Art: {art}" if art else "") + "). Bitte in Matrix42 bearbeiten.")
+
+
 def loaded_entity(data):
     """Antwort von WidgetCommon/GetData -> Ticket (mit oder ohne Hülle "Entity")."""
     entity = data.get("Entity") if isinstance(data, dict) and isinstance(data.get("Entity"), dict) else data

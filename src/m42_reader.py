@@ -751,7 +751,10 @@ class M42Reader(BrowserReader):
                 elif kind == "create":
                     result["data"] = self._create_ticket(args["request"], ids, state)
                 elif kind == "load":
-                    data = self._fetch("GET", mt.edit_data_path(ids["ticket_edit_dialog"], args["id"]))
+                    try:
+                        data = self._fetch("GET", mt.edit_data_path(ids["ticket_edit_dialog"], args["id"]))
+                    except mt.BookingError as e:
+                        raise mt.load_error(e, args.get("type") or "") from e
                     result["data"] = mt.ticket_view(mt.loaded_entity(data))
                 elif kind == "edit":
                     result["data"] = self._edit_ticket(args["request"], ids, state)
