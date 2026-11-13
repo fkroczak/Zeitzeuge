@@ -166,10 +166,26 @@ def tray_icon(logo_svg, active):
     return _render(logo_svg, (16, 20, 24, 32, 48, 64))
 
 
-def state_dot(active):
-    """Kleiner Zustandspunkt für Statuszeile und Menü, in den Farben des Logos."""
+BREATH_PERIOD = 2.4  # Sekunden für einmal ein- und ausatmen (ruhig, wie die Aufnahme-Lampe einer Kamera)
+BREATH_LOW = 0.35    # schwächste Deckkraft des Punkts
+
+
+def breath(now=None):
+    """Deckkraft des pulsierenden Aufnahme-Punkts: weich zwischen BREATH_LOW und 1, auf 0,05 gerundet
+    (so bleiben es wenige, zwischengespeicherte Icons)."""
+    import math
+    import time
+    t = time.monotonic() if now is None else now
+    level = 0.5 + 0.5 * math.cos(t / BREATH_PERIOD * 2 * math.pi)  # 1 → 0 → 1
+    return round((BREATH_LOW + (1 - BREATH_LOW) * level) * 20) / 20
+
+
+def state_dot(active, opacity=1.0):
+    """Kleiner Zustandspunkt für Statuszeile und Menü, in den Farben des Logos.
+    opacity: Deckkraft des roten Punkts (pulsieren, siehe breath)."""
     if active:
-        svg = f'<circle cx="128" cy="128" r="80" fill="{ACTIVE_COLOR}"/>'
+        svg = (f'<circle cx="128" cy="128" r="80" fill="{ACTIVE_COLOR}"'
+               + (f' fill-opacity="{opacity:.2f}"' if opacity < 1 else "") + '/>')
     else:
         svg = (f'<circle cx="128" cy="128" r="110" fill="{PAUSED_COLOR}"/>'
                + PAUSE_BARS.format(c="#FFFFFF"))

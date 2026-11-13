@@ -39,20 +39,23 @@ def tray_menu_pos(icon, size, avail):
 
 
 
+PULSE_MS = 80  # Takt fürs Pulsieren des Aufnahme-Punkts (weich genug, kaum Last)
+
+
 class _RecDot(QWidget):
-    """Roter Punkt „nimmt auf“, blinkt solange das Menü offen ist."""
+    """Roter Punkt „nimmt auf“, pulsiert ruhig solange das Menü offen ist (icons.breath)."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setFixedSize(10, 10)
         self.color = QColor("#DC2626")
-        self.on = True
+        self.opacity = 1.0
 
     def paintEvent(self, _event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         color = QColor(self.color)
-        color.setAlphaF(1.0 if self.on else 0.25)
+        color.setAlphaF(self.opacity)
         painter.setBrush(color)
         painter.setPen(Qt.NoPen)
         painter.drawEllipse(1, 1, 8, 8)
@@ -60,7 +63,7 @@ class _RecDot(QWidget):
 
 class RecordingRow(QWidgetAction):
     """Eintrag Aufzeichnung im Infobereich: links Icon und Text der Aktion (pausieren/fortsetzen),
-    rechts der Zustand – blinkender roter Punkt „läuft“ oder grau „pausiert“."""
+    rechts der Zustand – pulsierender roter Punkt „läuft“ oder grau „pausiert“."""
 
     def __init__(self, menu, toggle):
         super().__init__(menu)
@@ -94,7 +97,7 @@ class RecordingRow(QWidgetAction):
         self.setText("Aufzeichnung")
         self.row.installEventFilter(self)
         self._blink = QTimer(self)
-        self._blink.setInterval(600)
+        self._blink.setInterval(PULSE_MS)
         self._blink.timeout.connect(self._step)
         menu.aboutToShow.connect(self._start)
         menu.aboutToHide.connect(self._blink.stop)
@@ -109,7 +112,7 @@ class RecordingRow(QWidgetAction):
         self.row.setAccessibleName(("Aufzeichnung läuft. Klicken zum Pausieren" if recording
                                     else "Aufzeichnung pausiert. Klicken zum Fortsetzen"))
         self.dot.color = QColor(theme["now"])
-        self.dot.on = True
+        self.dot.opacity = 1.0
         self.dot.setVisible(recording)
         self.pause.setPixmap(icons.icon("pause", theme["muted"]).pixmap(11, 11))
         self.pause.setVisible(not recording)
@@ -117,14 +120,16 @@ class RecordingRow(QWidgetAction):
         self.dot.update()
 
     def _start(self):
-        self.dot.on = True
+        self.dot.opacity = icons.breath()
         self.dot.update()
         if self.recording and animations_enabled():
             self._blink.start()
 
     def _step(self):
-        self.dot.on = not self.dot.on
-        self.dot.update()
+        opacity = icons.breath()
+        if opacity != self.dot.opacity:
+            self.dot.opacity = opacity
+            self.dot.update()
 
     def _activate(self):
         menu = self.parent()
@@ -218,6 +223,7 @@ class TrayMixin:
         text = "Aufzeichnung aktiv" if on else "Aufzeichnung pausiert"
         self.tracking_button.setText(text)
         self.tracking_button.setIcon(icons.state_dot(on))
+        self._pulse_recording(on)
         self.tracking_button.setToolTip(
             "Aktive Fenster werden aufgezeichnet. Klicken zum Pausieren." if on
             else "Die Aufzeichnung der aktiven Fenster ist pausiert. Klicken zum Fortsetzen.")
@@ -226,6 +232,29 @@ class TrayMixin:
                               else self.windowIcon())
             self.tray.setToolTip(f"Zeitzeuge – {text}")
             self.tray_record.set_state(on, theme_for(self.config))
+
+    def _pulse_recording(self, on):
+        """Roter Punkt „Aufzeichnung aktiv“ in der Statuszeile pulsiert ruhig, wie eine Kamera, die aufnimmt.
+        Ohne Animationen (Windows-Barrierefreiheit) bleibt er ruhig."""
+        timer = getattr(self, "_rec_pulse", None)
+        if timer is None:
+            timer = self._rec_pulse = QTimer(self)
+            timer.setInterval(PULSE_MS)
+            timer.timeout.connect(self._pulse_step)
+            self._rec_opacity = 1.0
+        if on and animations_enabled():
+            timer.start()
+        else:
+            timer.stop()
+            self._rec_opacity = 1.0
+
+    def _pulse_step(self):
+        if not self.isVisible() or self.isMinimized():
+            return  # im Infobereich: nichts zu zeichnen
+        opacity = icons.breath()
+        if opacity != self._rec_opacity:
+            self._rec_opacity = opacity
+            self.tracking_button.setIcon(icons.state_dot(True, opacity))
 
     def toggle_pc_list(self, enabled):
         self.config["show_pc_in_list"] = enabled

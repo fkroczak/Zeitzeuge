@@ -103,6 +103,10 @@ def test_script_runs_with_progress(tk_root):
     tk_root.tk.call("set", "status_text", "60|Später …")
     assert float(tk_root.tk.eval("set zz_goal")) == 84
 
+    # „!“ davor: Startbild in den Vordergrund, Text und Balken bleiben (step_on_top)
+    tk_root.tk.call("set", "status_text", "!97|Fenster zeichnen …")
+    assert text() == "Fenster aufbauen …" and float(tk_root.tk.eval("set zz_goal")) == 84
+
 
 def test_bild_je_skalierung(tk_root):
     """Bei 150 % nimmt das Startbild das größere Bild, mittig, Balken und Text wachsen mit."""
@@ -134,3 +138,38 @@ def test_manifest_dpi_bewusst():
     xml = winmanifest.create_application_manifest(splash_screen.manifest()).decode()
     assert "PerMonitorV2" in xml and "true/pm" in xml and "longPathAware" in xml
     assert "Microsoft.Windows.Common-Controls" in xml
+
+
+def test_startbild_bis_das_fenster_gezeichnet_ist(monkeypatch):
+    """close_when_painted: Fenster durchsichtig, bis es gemalt hat und Qt wieder flüssig läuft;
+    dann sichtbar und Startbild zu (statt weißem Fenster „Keine Rückmeldung“)."""
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    widgets = pytest.importorskip("PySide6.QtWidgets")
+    from PySide6.QtTest import QTest
+    app = widgets.QApplication.instance() or widgets.QApplication([])
+    calls = []
+
+    class FakeSplash:
+        alive = True
+
+        def is_alive(self):
+            return self.alive
+
+        def update_text(self, text):
+            calls.append(text)
+
+        def close(self):
+            calls.append("close")
+            self.alive = False
+    monkeypatch.setitem(sys.modules, "pyi_splash", FakeSplash())
+    window = widgets.QMainWindow()
+    window.setCentralWidget(widgets.QLabel("Zeitzeuge"))
+    splash_screen.close_when_painted(window, calm_ms=200, fallback_ms=5000)
+    assert window.isVisible() and window.windowOpacity() == 0.0
+    assert "!97|Fenster zeichnen …" in calls and "close" not in calls
+    for _ in range(300):
+        if "close" in calls:
+            break
+        QTest.qWait(10)
+    assert calls[-1] == "close" and window.windowOpacity() == 1.0
+    window.close()

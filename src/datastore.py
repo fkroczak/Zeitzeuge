@@ -100,6 +100,7 @@ class Store:
         self.changes = 0  # Zähler für Sicherung und Zwischenspeicher
         self._opened = 0  # wie oft geöffnet (neue Verbindung: Zwischenspeicher ungültig)
         self._retry_at = {}  # gesperrte alte Dateien: nicht vor diesem Zeitpunkt erneut
+        self._absent_until = {}  # alte Datei fehlte: bis dahin nicht erneut auf der Platte nachsehen
         self._hit_lock = False
         self.migrated = []  # Meldungen der Migration (für Statuszeile/Log)
 
@@ -806,9 +807,16 @@ class Store:
 
     def migrate_if_present(self, name, path, kind):
         """Bei jedem Zugriff: Liegt (wieder) eine alte Datei da, übernehmen. Kostet sonst
-        nur ein os.path.exists. War sie gesperrt, erst nach einer Minute erneut versuchen."""
-        if not os.path.exists(path):
+        nur ein os.path.exists, und auch das höchstens alle ABSENT_SECONDS je Pfad: Im oft mit
+        OneDrive synchronisierten Datenordner stand das Fenster dabei laut haenger.log sekundenlang.
+        War sie gesperrt, erst nach einer Minute erneut versuchen."""
+        now = time.time()
+        if now < self._absent_until.get(path, 0):
             return
+        if not os.path.exists(path):
+            self._absent_until[path] = now + ABSENT_SECONDS
+            return
+        self._absent_until.pop(path, None)
         if time.time() < self._retry_at.get(path, 0):
             return
         with self._lock:
@@ -878,6 +886,8 @@ def _read_legacy(path, kind, day=None):
 
 # Bekannte alte Ablagen: Name -> Art. Unbekannte Namen (z. B. in Tests) nehmen die Art,
 # die der Aufrufer angibt.
+ABSENT_SECONDS = 60  # fehlende alte Datei so lange nicht erneut suchen (migrate_if_present)
+
 LEGACY = {
     "anrufe": "calls", "anrufe_stand": "single", "vpn_verbindungen": "single",
     "personalzeiten": "days", "m42_buchungen": "m42", "uebernommen": "single",

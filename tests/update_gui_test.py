@@ -93,6 +93,7 @@ check(not started and not quits, "noch nichts gestartet oder beendet")
 
 gate["go"] = True
 check(spin(lambda: started), "Setup gestartet")
+spin(lambda: "beendet" in win.step.text())  # Setup startet im Hintergrund, dann der Schritt
 check("beendet" in win.step.text() and not win.cancel_button.isVisible(),
       f"Schritt „Zeitzeuge wird beendet“ ohne Abbrechen: {win.step.text()!r}")
 check(win.isVisible() and not quits, "Fenster bleibt, bis Zeitzeuge beendet")

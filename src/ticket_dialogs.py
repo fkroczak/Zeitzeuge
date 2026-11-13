@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (QApplication, QButtonGroup, QCheckBox, QComboBox,
 import icons
 import m42_booking as mb
 import m42_tickets as mt
+import skeleton
 from flow_layout import FlowLayout
 from prompt_card import _ElidedLabel, _icon_label, source_tile
 import spellcheck
@@ -167,10 +168,11 @@ class _CardDialog(QDialog):
         self.take_over_button = QPushButton("Über&nehmen")
         self.take_over_button.setAutoDefault(False)
         self.take_over_button.setToolTip("Ticket in Matrix42 übernehmen: du wirst Bearbeiter")
+        self.take_over_button.clicked.connect(self._take_over)
+        # erst einfügen, dann zeigen: ein Knopf ohne Eltern würde sonst kurz als eigenes Fenster aufblitzen
+        self.cancel_button.parentWidget().layout().insertWidget(1, self.take_over_button)
         me = getattr(self.reader, "user_id", "") or ""
         self.take_over_button.setVisible(not mb.is_closed(row) and not (me and row.get("recipient_id") == me))
-        self.take_over_button.clicked.connect(self._take_over)
-        self.cancel_button.parentWidget().layout().insertWidget(1, self.take_over_button)
 
     def _take_over(self):
         self.take_over_button.setEnabled(False)
@@ -589,13 +591,13 @@ class EditTicketDialog(_MelderSearch, _CardDialog):
         box.addWidget(self.category_edit)
         self.description_edit = QPlainTextEdit()
         self.description_edit.setAccessibleName("Beschreibung")
-        self.description_edit.setPlaceholderText("Beschreibung wird geladen …")
         self.description_edit.setTabChangesFocus(True)
         self.description_edit.setMinimumHeight(140)
         self.description_edit.textChanged.connect(self.validate)
         spellcheck.attach(self.description_edit)
         box.addWidget(_label("B&eschreibung", self.description_edit))
         box.addWidget(self.description_edit)
+        self.description_skeleton = skeleton.Lines(self.description_edit, lines=4)
         self.rich_hint = QLabel("Die Beschreibung hat Bilder, Tabellen oder Formatierungen. Text hinten anfügen "
                                 "behält sie, jede andere Änderung ersetzt sie durch reinen Text.")
         self.rich_hint.setWordWrap(True)
@@ -610,6 +612,8 @@ class EditTicketDialog(_MelderSearch, _CardDialog):
         self.status.setText(f"Lade {row['ticket']} aus Matrix42 …")
         if not self._run("load", id=row["id"], type=row.get("type", "")):
             self.status.setText("⚠ Matrix42-Anmeldefenster ist offen. Bitte erst anmelden.")
+            self.description_skeleton.done()
+            self.description_skeleton = None
         else:
             self._run("categories")
 
@@ -641,8 +645,10 @@ class EditTicketDialog(_MelderSearch, _CardDialog):
             super().keyPressEvent(event)
 
     def _on_load(self, result):
+        if self.description_skeleton is not None:
+            self.description_skeleton.done()
+            self.description_skeleton = None
         if not result.get("ok"):
-            self.description_edit.setPlaceholderText("")
             self.status.setText(f"⚠ Laden fehlgeschlagen: {result.get('error', '')}")
             return
         self.loaded = result["data"]
@@ -739,9 +745,9 @@ class ViewTicketDialog(_CardDialog):
         self.ok_button.clicked.connect(lambda: self._leave("edit"))
         self.close_ticket_button = QPushButton("Ticket &schließen …")
         self.close_ticket_button.setAutoDefault(False)
-        self.close_ticket_button.setVisible(not mb.is_closed(row))
         self.close_ticket_button.clicked.connect(lambda: self._leave("close"))
         self.cancel_button.parentWidget().layout().insertWidget(1, self.close_ticket_button)
+        self.close_ticket_button.setVisible(not mb.is_closed(row))  # erst nach dem Einfügen (s. o.)
         self._add_take_over(row)
 
         cards = QHBoxLayout()
@@ -751,6 +757,9 @@ class ViewTicketDialog(_CardDialog):
         self._fill_rows(ticket_rows, self._ticket_pairs(row.get("recipient", "")))
         contact_card, self.contact_rows = self._info_card("phone", "Kontakt")
         self._show_contact([])
+        self._contact_loading = True  # bis der Kontakt da ist: Umrisse für Telefon und E-Mail
+        for _ in range(2):
+            self.contact_rows.addRow(skeleton.Bar(56, 14), skeleton.Bar(150, 14))
         cards.addWidget(ticket_card, 1)
         cards.addWidget(contact_card, 1)
         box.addLayout(cards)
@@ -758,9 +767,9 @@ class ViewTicketDialog(_CardDialog):
         self.description_view = QPlainTextEdit()
         self.description_view.setReadOnly(True)
         self.description_view.setAccessibleName("Beschreibung")
-        self.description_view.setPlaceholderText("Beschreibung wird geladen …")
         self.description_view.setTabChangesFocus(True)
         self.description_view.setMinimumHeight(260)
+        self.description_skeleton = skeleton.Lines(self.description_view, lines=6)
         box.addWidget(_label("B&eschreibung", self.description_view))
         box.addWidget(self.description_view)
 
@@ -768,6 +777,13 @@ class ViewTicketDialog(_CardDialog):
         self.status.setText(f"Lade {row['ticket']} aus Matrix42 …")
         if not self._run("load", id=row["id"], type=row.get("type", "")):
             self.status.setText("⚠ Matrix42-Anmeldefenster ist offen. Bitte erst anmelden.")
+            self._description_done()
+            self._show_contact([])
+
+    def _description_done(self):
+        if self.description_skeleton is not None:
+            self.description_skeleton.done()
+            self.description_skeleton = None
 
     def validate(self, *_):
         return self.ok_button.isEnabled()
@@ -788,6 +804,7 @@ class ViewTicketDialog(_CardDialog):
     def _show_contact(self, rows):
         """Kontaktzeilen (Name, Wert, Link); Links öffnen Telefon-App bzw. E-Mail-Programm."""
         rows = rows or [("Melder", self.row.get("initiator") or "–", "")]
+        self._contact_loading = False
         while self.contact_rows.rowCount():
             self.contact_rows.removeRow(0)
         for name, text, link in rows:
@@ -809,11 +826,12 @@ class ViewTicketDialog(_CardDialog):
             self.contact_rows.addRow(key, value)
 
     def _on_load(self, result):
+        self._description_done()
         if not result.get("ok"):
-            self.description_view.setPlaceholderText("")
             self.status.setText(f"⚠ Laden fehlgeschlagen: {result.get('error', '')}")
             self.ok_button.setEnabled(True)  # Bearbeiten zeigt den Fehler genauso, schadet nicht
-            self._find_melder()  # Kontakt trotzdem: Melder über den Namen suchen
+            if not self._find_melder():  # Kontakt trotzdem: Melder über den Namen suchen
+                self._show_contact([])
             return
         self.loaded = result["data"]
         if self.loaded.get("subject"):
@@ -831,13 +849,14 @@ class ViewTicketDialog(_CardDialog):
 
     def _find_melder(self):
         """Ohne Id des Melders (Ticket nicht ladbar): Melder aus der Liste per Name suchen."""
-        if self.row.get("initiator"):
-            self._run("melder", name=self.row["initiator"])
+        return bool(self.row.get("initiator")) and self._run("melder", name=self.row["initiator"])
 
     def _on_melder(self, result):
         data = (result.get("data") or {}) if result.get("ok") else {}
-        if not data.get("user"):
-            return  # nicht gefunden oder nicht eindeutig: lieber keine falsche Nummer zeigen
+        if not data.get("user"):  # nicht gefunden oder nicht eindeutig: lieber keine falsche Nummer zeigen
+            if self._contact_loading:
+                self._show_contact([])
+            return
         self._show_contact(mt.contact_rows(data.get("details"), self.row.get("initiator", ""),
                                            (self.loaded or {}).get("callback", "")))
 

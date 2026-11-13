@@ -17,6 +17,7 @@ from journal import describe, ticket_line
 from grouping import format_tv_id, work_blocks
 from timeline_only import (ActivityViewDialog, ai_copy_text, entry_color, exec_entry_menu,
                            format_duration, parse_time, type_label)
+import background
 import booking_rate as br
 import customers
 import day_summary
@@ -488,8 +489,20 @@ class DayListMixin:
             self.local_timer.stop()
 
     def local_sample(self):
+        """Spuren vom PC; die Prozessliste (SSH, PowerShell) liest ein Hintergrund-Thread."""
+        reader = self.timeline.local_reader
+        if not reader.on("shell_enabled"):
+            self._local_sampled(True, None)
+        elif not getattr(self, "_local_busy", False):
+            self._local_busy = True
+            background.run(reader.process_func, self._local_sampled, "Prozesse (Sitzungen)")
+
+    def _local_sampled(self, ok, procs):
+        self._local_busy = False
+        if getattr(self, "_quitting", False):
+            return
         try:
-            changed = self.timeline.local_reader.sample()
+            changed = self.timeline.local_reader.sample(procs=procs if ok else [])
         except Exception as e:  # Aufzeichnung darf das Programm nie stören
             print(f"Fehler bei den Spuren vom PC: {e}")
             return
@@ -500,8 +513,22 @@ class DayListMixin:
         return self.current_date == QDate.currentDate() and self.isVisible()
 
     def mstsc_sample(self):
+        """mstsc-Sitzungen; die Prozessliste liest ein Hintergrund-Thread (laut haenger.log
+        stand das Fenster dabei nach Updates bis zu 7 s)."""
+        if getattr(self, "_mstsc_busy", False):
+            return
+        self._mstsc_busy = True
+        background.run(self.timeline.rdp_reader.proc_func, self._mstsc_sampled, "Prozesse (mstsc)")
+
+    def _mstsc_sampled(self, ok, procs):
+        self._mstsc_busy = False
+        if getattr(self, "_quitting", False):
+            return
+        if not ok:
+            print(f"mstsc-Prozesse nicht lesbar: {procs}")
+            return
         try:
-            changed = self.timeline.rdp_reader.sample()
+            changed = self.timeline.rdp_reader.sample(procs=procs)
         except Exception as e:  # Aufzeichnung darf das Programm nie stören
             print(f"Fehler bei der mstsc-Aufzeichnung: {e}")
             return

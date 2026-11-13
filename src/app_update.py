@@ -236,13 +236,21 @@ class UpdateMixin:
         if self._quitting:
             return
         minimized = not self.isVisible() or self.isMinimized()
+        if self._update_window is not None:
+            self._update_window.set_step("Setup wird gestartet …")
+        # Im Hintergrund: Windows prüft das Setup vor dem Start, das Fenster stand dabei sonst Sekunden still
+        import background
+        background.run(lambda: updater.start_setup(path, minimized=minimized), self._setup_started, "Setup starten")
+
+    def _setup_started(self, ok, error):
         info = self.update_info
-        try:
-            updater.start_setup(path, minimized=minimized)
-        except OSError as e:
+        if not ok:
+            e = error
             self._close_update_window()
             safe_io.log(f"Setup nicht gestartet: {e}")
             QMessageBox.warning(self._update_parent(), "Update", f"Setup ließ sich nicht starten:\n{e}")
+            return
+        if self._quitting:
             return
         safe_io.log(f"Update auf {info['version']} gestartet (von {version.version_details()})")
         # Nach dem Neustart bestätigen (oder melden, dass es nicht geklappt hat)
