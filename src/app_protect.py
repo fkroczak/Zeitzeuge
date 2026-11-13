@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (QDialog, QDialogButtonBox, QGridLayout, QLabel, Q
 
 from card_dialog import modernize
 from theme import fit_bold, prose, SPACE_M
+import background
 import datakey
 import datastore
 import protect_dialogs
@@ -37,7 +38,7 @@ def _de(stamp):
 class ProtectMixin:
     def _init_protection(self):
         self.backup_timer = QTimer(self)
-        self.backup_timer.timeout.connect(lambda: mt.backup_store())
+        self.backup_timer.timeout.connect(self._backup_in_background)
         self.backup_timer.start(BACKUP_INTERVAL)
         self.recovery_button = QToolButton(self)
         # Als Link: ruhig, aber in Akzentfarbe sichtbar
@@ -315,6 +316,21 @@ class ProtectMixin:
                   intro=intro)
         refresh()
         return dialog
+
+    def _backup_in_background(self):
+        """Regelmäßige Sicherung (alle 2 h) außerhalb des Fensters: bei 40 MB rund 0,1 s, auf
+        langsamen Platten mehr. Die Datenbank sperrt dabei weiter selbst (Store-Sperre)."""
+        if getattr(self, "_backup_running", False):
+            return
+        self._backup_running = True
+
+        def done(ok, value):
+            self._backup_running = False
+            if not ok:
+                safe_io.log(f"Sicherung fehlgeschlagen: {value}")
+        # Beim Beenden sichert close_store selbst; danach die geschlossene Datenbank nicht neu öffnen
+        background.run(lambda: None if getattr(self, "_quitting", False) else mt.backup_store(),
+                       done, name="Sicherung")
 
     def close_store(self):
         """Beim Beenden: Sicherung schreiben, Datenbank schließen."""

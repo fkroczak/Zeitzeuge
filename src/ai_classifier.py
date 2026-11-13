@@ -26,6 +26,7 @@ from PySide6.QtCore import QObject, Signal
 
 import net
 import datastore
+import itm_auth
 import safe_io
 import storage
 
@@ -109,9 +110,17 @@ def api_key():
         return os.environ["ANTHROPIC_API_KEY"].strip()
     try:
         with open(os.path.join(storage.local_dir(), KEY_FILE), encoding="utf-8") as f:
-            return f.read().strip()
+            stored = f.read().strip()
     except OSError:
         return ""
+    if stored.startswith(("dpapi:", "plain:")):
+        return itm_auth.unprotect(stored)
+    if stored:  # ältere Version: Klartext, jetzt geschützt ablegen
+        try:
+            save_api_key(stored)
+        except OSError:
+            pass
+    return stored
 
 
 def key_from_env():
@@ -119,6 +128,8 @@ def key_from_env():
 
 
 def save_api_key(key):
+    """Schlüssel unter Windows mit DPAPI geschützt ablegen (nur dieser Benutzer auf diesem PC
+    kann ihn lesen), wie das ITM-Token; leer = Datei löschen."""
     path = os.path.join(storage.local_dir(), KEY_FILE)
     if not key:
         try:
@@ -128,7 +139,7 @@ def save_api_key(key):
         return
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
-        f.write(key.strip())
+        f.write(itm_auth.protect(key.strip()))
 
 
 def model_price(model):
@@ -378,7 +389,7 @@ class AiClassifier(QObject):
         return importlib.util.find_spec("anthropic") is not None  # ohne das Paket zu laden
 
     def input_text(self, entries, pc_entries):
-        send_pc = self.config.get("ai_send_window_titles", True)
+        send_pc = self.config.get("ai_send_window_titles", False)
         return build_day_text(entries, pc_entries if send_pc else None)
 
     def input_hash(self, text):

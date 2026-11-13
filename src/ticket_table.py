@@ -13,6 +13,10 @@ import skeleton
 COLUMNS = [("Ticket", "ticket"), ("Betreff", "subject"), ("Kunde", "customer"), ("Melder", "initiator"),
            ("Art", "type"), ("Status", "state"), ("Bearbeiter", "recipient"), ("Angelegt", "created")]
 SUBJECT_COL = 1
+PEOPLE_KEYS = ("customer", "initiator", "recipient")
+# Kunde, Melder, Bearbeiter: Anteil an der Tabellenbreite, in Grenzen. Fest 150 px ließen dem
+# Betreff bei 1280 px Fensterbreite nur 160 px („Meldung ploppt …“)
+PEOPLE_SHARE, PEOPLE_MIN, PEOPLE_MAX = 0.09, 70, 130
 
 
 class _Item(QTableWidgetItem):
@@ -40,14 +44,15 @@ class TicketTable(QTableWidget):
         self.setWordWrap(False)
         self.setTextElideMode(Qt.ElideRight)
         self.setAccessibleName(name)
-        # Betreff bekommt den Platz; Kunde und Melder dürfen nicht alles fressen (lange Firmennamen)
+        # Betreff bekommt den Platz; Kunde, Melder und Bearbeiter wachsen nur mäßig mit
+        # (lange Firmennamen mit …, ganz im Hinweis), siehe resizeEvent
         header = self.horizontalHeader()
         for col, (_name, key) in enumerate(COLUMNS):
             if col == SUBJECT_COL:
                 header.setSectionResizeMode(col, QHeaderView.Stretch)
-            elif key in ("customer", "initiator", "recipient"):
+            elif key in PEOPLE_KEYS:
                 header.setSectionResizeMode(col, QHeaderView.Interactive)
-                header.resizeSection(col, 150)
+                header.resizeSection(col, PEOPLE_MAX)
             else:
                 header.setSectionResizeMode(col, QHeaderView.ResizeToContents)
         # Sortieren erst auf Klick: bis dahin bleibt die Reihenfolge der Daten (Suche: offene zuerst)
@@ -66,6 +71,14 @@ class TicketTable(QTableWidget):
         enter.setShortcutContext(Qt.WidgetShortcut)
         enter.triggered.connect(self._activate)
         self.addAction(enter)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        width = max(PEOPLE_MIN, min(PEOPLE_MAX, int(self.viewport().width() * PEOPLE_SHARE)))
+        header = self.horizontalHeader()
+        for col, (_name, key) in enumerate(COLUMNS):
+            if key in PEOPLE_KEYS:
+                header.resizeSection(col, width)
 
     def set_loading(self, on):
         """Wird gelesen: solange keine Zeile da ist, pulsierende Umrisse von Zeilen zeigen."""

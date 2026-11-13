@@ -217,9 +217,9 @@ class WeekDialog(QDialog):
         self.table.setAccessibleName("Tage der Woche")
         self.table.setAccessibleDescription("Enter oder Doppelklick zeigt den Tag im Hauptfenster.")
         header = self.table.horizontalHeader()
-        for col in range(len(self.COLUMNS)):
-            header.setSectionResizeMode(col, QHeaderView.ResizeToContents)
-        header.setStretchLastSection(True)
+        header.setSectionResizeMode(QHeaderView.ResizeToContents)
+        # Letzte Spalte füllt den Rest: Inhaltsbreite plus Strecken ergab 1 px zu breit (Scrollleiste)
+        header.setSectionResizeMode(len(self.COLUMNS) - 1, QHeaderView.Stretch)
         self.table.cellDoubleClicked.connect(lambda row, _c: self.open_day(row))
         enter = QAction("&Tag zeigen", self.table)
         enter.setShortcuts([QKeySequence(Qt.Key_Return), QKeySequence(Qt.Key_Enter)])
@@ -227,7 +227,9 @@ class WeekDialog(QDialog):
         enter.triggered.connect(lambda: self.open_day(self.table.currentRow()))
         self.table.addAction(enter)
         self.table.verticalHeader().setDefaultSectionSize(28)
-        self.table.setMinimumHeight(28 * 7 + 40)  # die ganze Woche ohne Blättern
+        # Mo–Fr ohne Blättern (Sa/So nur, wenn gestempelt); größer wird die Tabelle mit dem Fenster.
+        # Mit 7 Zeilen passte der Dialog nicht auf 960 × 540 (Full HD bei 200 %)
+        self.table.setMinimumHeight(28 * 5 + 40)
         layout.addWidget(self.table, 2)
 
         self.seven_label = QLabel(self)
@@ -240,7 +242,7 @@ class WeekDialog(QDialog):
         hints_label.setBuddy(self.hints)
         self.hints.itemActivated.connect(self.open_hint)
         layout.addWidget(hints_label)
-        self.hints.setMinimumHeight(80)  # mit Rändern der Token-Skala passt der Dialog noch auf 960 × 540
+        self.hints.setMinimumHeight(72)  # mit Rändern der Token-Skala passt der Dialog noch auf 960 × 540
         layout.addWidget(self.hints, 1)
 
         form = QFormLayout()

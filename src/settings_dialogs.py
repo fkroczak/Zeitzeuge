@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QButtonGroup, QCheckBox, QColo
                                QTableWidgetItem, QTimeEdit, QToolButton, QVBoxLayout, QWidget)
 
 from card_dialog import modernize
+from flow_layout import FlowLayout
 from theme import prose, SPACE_3XL, SPACE_M, SPACE_S, SPACE_XL
 def scrolling_body(dialog):
     """Inhalt eines hohen Dialogs in einen Scrollbereich, die Knöpfe bleiben unten stehen.
@@ -532,7 +533,7 @@ class AiSettingsDialog(QDialog):
         form.addRow("Modell:", self.model_combo)
 
         self.titles_check = QCheckBox("Fenstertitel mitsenden (genauere Vorschläge)")
-        self.titles_check.setChecked(config.get("ai_send_window_titles", True))
+        self.titles_check.setChecked(config.get("ai_send_window_titles", False))
         form.addRow("", self.titles_check)
         self.auto_check = QCheckBox("Vergangene Tage beim Anzeigen automatisch einordnen")
         self.auto_check.setChecked(config.get("ai_auto", False))
@@ -769,7 +770,12 @@ class RulesDialog(QDialog):
         self.table.verticalHeader().setVisible(False)
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(3, QHeaderView.Stretch)
+        # Spalten nach Inhalt, aber höchstens 200 px (sehr lange Namen mit …, ganz im Formular
+        # darunter); Muster und Kunde teilen sich den Rest. Vorher war die Tabelle bei langen
+        # Namen breiter als der Dialog (waagerechte Scrollleiste).
+        header.setMaximumSectionSize(200)
+        for col in (3, 5):
+            header.setSectionResizeMode(col, QHeaderView.Stretch)
         self.table.setMinimumHeight(220)
         self.table.currentCellChanged.connect(lambda row, *_: self.load_form(row))
         self.table.itemChanged.connect(self.on_item_changed)
@@ -780,7 +786,9 @@ class RulesDialog(QDialog):
         self.table_error.setVisible(False)
         layout.addWidget(self.table_error)
 
-        row = QHBoxLayout()
+        # Knöpfe brechen in schmalen Fenstern (150/200 %) um, statt abgeschnitten zu werden
+        buttons_host = QWidget()
+        row = FlowLayout(buttons_host, spacing=SPACE_S)
         self.add_btn = QPushButton("&Hinzufügen")
         self.remove_btn = QPushButton("&Entfernen")
         self.up_btn = QPushButton("Nach &oben")
@@ -791,8 +799,7 @@ class RulesDialog(QDialog):
                           (self.reset_btn, self.reset_rules)]:
             btn.clicked.connect(slot)
             row.addWidget(btn)
-        row.insertStretch(4)
-        layout.addLayout(row)
+        layout.addWidget(buttons_host)
 
         self.form_box = QGroupBox("Ausgewählte Regel")
         form = QFormLayout(self.form_box)

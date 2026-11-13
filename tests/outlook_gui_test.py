@@ -69,7 +69,7 @@ def gui_test():
     teams_calls.store_sessions(main_timeline.TEAMS_CALLS_FILE, [
         {"start": t(60), "end": t(40), "source": "mikrofon", "app": "Teams", "running": False}])
     window.on_outlook_day(day)
-    QTest.qWait(50)
+    QTest.qWait(300)  # Zeichnen wird gebündelt (draw_soon, 150 ms)
 
     types = sorted(e["type"] for e in window.timeline.activities_for(window.current_date))
     assert types == ["Mail gesendet", "Teams-Anruf", "Teams-Besprechung"], types

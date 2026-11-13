@@ -51,7 +51,7 @@ class OutlookMixin:
     def on_outlook_day(self, date_str):
         self._outlook_cache.pop(date_str, None)
         if date_str == self.current_date.toString("yyyy-MM-dd"):
-            self.timeline.draw_timeline(self.current_date)
+            self.timeline.draw_soon()
 
     def on_outlook_status(self, text):
         """Probleme (Outlook zu, nicht gefunden …) einmal in der Statuszeile zeigen."""

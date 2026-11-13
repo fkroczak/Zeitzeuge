@@ -510,7 +510,7 @@ Die Vorschläge liegen pro Tag in der Datenbank.
 |---|---|---|
 | `ai_model` | `claude-opus-5-5` | Modell: `claude-opus-5-5`, `claude-sonnet-5-5` oder `claude-haiku-5-5` |
 | `ai_effort` | `low` | Wie gründlich Claude nachdenkt: `low`, `medium` oder `high` (höher = teurer) |
-| `ai_send_window_titles` | `true` | Fenstertitel aus dem Aktivitätsprotokoll mitsenden |
+| `ai_send_window_titles` | `false` | Fenstertitel aus dem Aktivitätsprotokoll mitsenden |
 | `ai_auto` | `false` | Vergangene Tage ohne Vorschläge beim Anzeigen automatisch einordnen |
 | `ai_categories` | Fernwartung, Telefonsupport, … | Kategorien, aus denen Claude wählt |
 

@@ -24,7 +24,7 @@ sofort. „Neues Ticket …“, „Ansehen …“ (auch Enter/Doppelklick), „B
 import time
 
 from PySide6.QtCore import QEvent, Qt, Signal
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QFont, QGuiApplication
 from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QHBoxLayout, QLabel,
                                QLineEdit, QListWidget, QListWidgetItem, QMenu, QPushButton, QSizePolicy, QToolButton,
                                QVBoxLayout, QWidget)
@@ -108,6 +108,12 @@ class TicketsDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Tickets")
         self.setMinimumSize(1040, 520)
+        # Start größer als die Mindestgröße, damit der Betreff Platz hat (Full HD: 1440 × 860)
+        screen = (parent.screen() if parent is not None else None) or QGuiApplication.primaryScreen()
+        if screen is not None:
+            free = screen.availableGeometry()
+            self.resize(max(1040, min(1440, int(free.width() * 0.9))),
+                        max(520, min(860, int(free.height() * 0.85))))
         self.reader = reader
         self._note = ""  # letzte Meldung (angelegt/geschlossen/kopiert), bleibt beim Neuladen stehen
         self._changed = {}  # Ticket-ID -> geänderte Felder (bis die Liste neu gelesen ist)
