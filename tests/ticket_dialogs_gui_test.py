@@ -68,7 +68,9 @@ def gui_test():
                     "edit": {"ticket": ROW["ticket"], "id": "t2", "type": ROW["type"],
                              "subject": "Drucker Empfang"},
                     "user_details": {"OrgUnit": "WiRoPa GmbH", "Phone": "02542 1", "Email": "info@example.com"},
-                    "take_over": {"ticket": ROW["ticket"], "id": "t2", "user": "Kroczak, Filip"}}[kind]
+                    "take_over": {"ticket": ROW["ticket"], "id": "t2", "user": "Kroczak, Filip"},
+                    "melder": {"user": {"id": "melder-1", "name": ROW["initiator"]},
+                               "details": {"OrgUnit": "WiRoPa GmbH", "Phone": "02542 1"}}}[kind]
             result = {"kind": kind, "args": args, "ok": kind not in self.fail, "data": data}
             if kind in self.fail:
                 result.update(error="Zeitüberschreitung", unclear=True)
@@ -194,8 +196,22 @@ def gui_test():
     assert 'href="tel:01715"' in contact["Rückruf"], contact
     assert ("user_details", {"owner": id(view), "user": "melder-1"}) in reader.tasks
     assert not any(k in ("edit", "close") for k, _ in reader.tasks[-2:])
+    assert not view.cancel_button.isVisibleTo(view), "kein „Fertig“: schließen über ✕"
     view.ok_button.click()
     assert view.action == "edit"
+
+    # Ticket nicht ladbar (z. B. E-Mail, die Matrix42 nicht entschlüsseln kann): Telefon trotzdem
+    reader.fail.add("load")
+    view = ViewTicketDialog(reader, ROW)
+    assert wait_for(lambda: view.contact_rows.rowCount() > 2, 3000), view.status.text()
+    assert ("melder", {"owner": id(view), "name": ROW["initiator"]}) in reader.tasks
+    assert "Laden fehlgeschlagen" in view.status.text()
+    phone = next(view.contact_rows.itemAt(i, QFormLayout.FieldRole).widget().text()
+                 for i in range(view.contact_rows.rowCount())
+                 if view.contact_rows.itemAt(i, QFormLayout.LabelRole).widget().text() == "Telefon")
+    assert 'href="tel:025421"' in phone
+    view.reject()
+    reader.fail.clear()
 
     # aus der Liste: Enter öffnet das Ticket, „Bearbeiten …“ dort führt ins Bearbeiten-Fenster
     def view_then_edit():

@@ -734,7 +734,7 @@ class ViewTicketDialog(_CardDialog):
         self.setFixedWidth(720)
         self._ticket_line(row)
         box = self.body_box
-        self.cancel_button.setText("Fertig")
+        self.cancel_button.hide()  # kein „Fertig“: schließen über ✕ oder Esc
         self.ok_button.setToolTip("Betreff, Kategorie oder Beschreibung ändern (Strg+Enter)")
         self.ok_button.clicked.connect(lambda: self._leave("edit"))
         self.close_ticket_button = QPushButton("Ticket &schließen …")
@@ -813,6 +813,7 @@ class ViewTicketDialog(_CardDialog):
             self.description_view.setPlaceholderText("")
             self.status.setText(f"⚠ Laden fehlgeschlagen: {result.get('error', '')}")
             self.ok_button.setEnabled(True)  # Bearbeiten zeigt den Fehler genauso, schadet nicht
+            self._find_melder()  # Kontakt trotzdem: Melder über den Namen suchen
             return
         self.loaded = result["data"]
         if self.loaded.get("subject"):
@@ -826,6 +827,19 @@ class ViewTicketDialog(_CardDialog):
             self._run("user_details", user=self.loaded["initiator"])
         else:
             self._show_contact(mt.contact_rows({}, self.row.get("initiator", ""), self.loaded.get("callback", "")))
+            self._find_melder()
+
+    def _find_melder(self):
+        """Ohne Id des Melders (Ticket nicht ladbar): Melder aus der Liste per Name suchen."""
+        if self.row.get("initiator"):
+            self._run("melder", name=self.row["initiator"])
+
+    def _on_melder(self, result):
+        data = (result.get("data") or {}) if result.get("ok") else {}
+        if not data.get("user"):
+            return  # nicht gefunden oder nicht eindeutig: lieber keine falsche Nummer zeigen
+        self._show_contact(mt.contact_rows(data.get("details"), self.row.get("initiator", ""),
+                                           (self.loaded or {}).get("callback", "")))
 
     def _on_user_details(self, result):
         if not self.loaded or result["args"].get("user") != self.loaded.get("initiator"):

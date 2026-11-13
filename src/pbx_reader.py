@@ -372,7 +372,8 @@ class BrowserReader(QObject):
     def record(self, out_file, mode="login", max_seconds=30 * 60, full_writes=False):
         """Mitschnitt: Edge-Fenster öffnen und aufzeichnen, welche Abfragen die Seite
         an ihren Server schickt, bis du das Fenster schließt. Ergebnis über recording_done.
-        full_writes: Abfragen, die etwas speichern, ungekürzt (Buchungs-Mitschnitt)."""
+        full_writes: Abfragen, die etwas speichern, ungekürzt (Buchungs-Mitschnitt);
+        "all": alle Antworten ungekürzt (Ticket ansehen)."""
         if self._login_open:
             return False
         self._login_open = True

@@ -205,8 +205,7 @@ class TicketsDialog(QDialog):
         for w in (self.prev_button, self.page_label, self.next_button, self.size_combo):
             foot.addWidget(w)
         layout.addLayout(foot)
-        buttons = QDialogButtonBox(QDialogButtonBox.Close, self)
-        buttons.button(QDialogButtonBox.Close).setText("Fertig")
+        buttons = QDialogButtonBox(self)  # kein „Fertig“: schließen über ✕ oder Esc
         self.copy_button = QPushButton("Nummer &kopieren", self)
         self.copy_button.clicked.connect(self.copy_number)
         self.refresh_button = QPushButton("&Aktualisieren", self)

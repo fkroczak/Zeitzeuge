@@ -38,3 +38,15 @@ def test_nur_speichernde_abfragen_ungekuerzt():
 def test_saml_anmeldung_geschwaerzt():
     out = rr.redact_query("SAMLResponse=PHNhbWw%3D&wresult=abc&RelayState=x")
     assert "PHNhbWw" not in out and "abc" not in out and "RelayState" in out
+
+
+def test_ticket_ansehen_alles_ungekuerzt():
+    rec = rr.Recorder.__new__(rr.Recorder)
+    rec.full_writes = "all"
+    assert rec._full({"methode": "GET"}) == "all"
+    mail = "<html><body>" + "Meldung ploppte auf " * 3000 + "</body></html>"
+    out = rr.summarize_body(json.dumps({"DescriptionHTML": mail, "Phone": "02542 1", "Password": "x"}),
+                            full=rec._full({"methode": "GET"}))["json"]
+    assert out["DescriptionHTML"] == mail and out["Phone"] == "02542 1"
+    assert out["Password"]["geschwaerzt"]
+    assert "Kundendaten" in rec._hint()
