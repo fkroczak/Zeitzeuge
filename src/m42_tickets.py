@@ -256,14 +256,15 @@ def edit_data_path(dialog, ticket_id):
 
 def load_error(error, kind=""):
     """Fehler beim Laden über den Dialog des bestehenden Tickets lesbar machen. Matrix42 meldet
-    ObjectIsDeleted („The object you try to open is deleted“), wenn das Ticket gelöscht oder
-    archiviert ist oder der Dialog die Art des Tickets nicht öffnen kann."""
+    ObjectIsDeleted („The object you try to open is deleted“), wenn das Ticket gelöscht ist oder
+    etwas darin nicht lesbar ist, z. B. eine E-Mail im Ticket, die Matrix42 nicht entschlüsseln kann
+    (TCK0000050915, 13.11.2026). Das Ticket selbst gibt es dann noch."""
     if "ObjectIsDeleted" not in str(error):
         return error
     art = {"SPSActivityTypeIncident": "Störung", "SPSActivityTypeServiceRequest": "Serviceanfrage",
            "SPSActivityTypeTicket": "Ticket"}.get(kind, kind.replace("SPSActivityType", ""))
-    return BookingError("Matrix42 kann dieses Ticket hier nicht öffnen (meldet es als gelöscht"
-                        + (f", Art: {art}" if art else "") + "). Bitte in Matrix42 bearbeiten.")
+    return BookingError("Matrix42 kann dieses Ticket nicht laden" + (f" ({art})" if art else "")
+                        + ". Meist steckt eine E-Mail darin, die Matrix42 nicht entschlüsseln kann.")
 
 
 def loaded_entity(data):
