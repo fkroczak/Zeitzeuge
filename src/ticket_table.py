@@ -17,6 +17,9 @@ PEOPLE_KEYS = ("customer", "initiator", "recipient")
 # Kunde, Melder, Bearbeiter: Anteil an der Tabellenbreite, in Grenzen. Fest 150 px ließen dem
 # Betreff bei 1280 px Fensterbreite nur 160 px („Meldung ploppt …“)
 PEOPLE_SHARE, PEOPLE_MIN, PEOPLE_MAX = 0.09, 70, 130
+# Art, Status, Angelegt: nach Inhalt, aber nur so breit, dass dem Betreff gut ein Drittel bleibt
+# (unter Windows sind sie fast doppelt so breit wie unter Linux); nie schmaler als SMALL_MIN
+SUBJECT_SHARE, SMALL_MIN = 0.35, 50
 
 
 class _Item(QTableWidgetItem):
@@ -50,11 +53,8 @@ class TicketTable(QTableWidget):
         for col, (_name, key) in enumerate(COLUMNS):
             if col == SUBJECT_COL:
                 header.setSectionResizeMode(col, QHeaderView.Stretch)
-            elif key in PEOPLE_KEYS:
+            else:  # Breiten setzt _fit_columns (bei Größe und Inhalt), ziehen geht trotzdem
                 header.setSectionResizeMode(col, QHeaderView.Interactive)
-                header.resizeSection(col, PEOPLE_MAX)
-            else:
-                header.setSectionResizeMode(col, QHeaderView.ResizeToContents)
         # Sortieren erst auf Klick: bis dahin bleibt die Reihenfolge der Daten (Suche: offene zuerst)
         self._sort = None
         self._filter = ""
@@ -74,11 +74,31 @@ class TicketTable(QTableWidget):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        width = max(PEOPLE_MIN, min(PEOPLE_MAX, int(self.viewport().width() * PEOPLE_SHARE)))
+        self._fit_columns()
+
+    def _fit_columns(self):
+        """Spaltenbreiten so, dass der Betreff (gestreckt) den meisten Platz bekommt:
+        Ticketnummer ganz, Kunde/Melder/Bearbeiter mit Anteil an der Breite, Art/Status/Angelegt
+        nach Inhalt, bei Platzmangel gekürzt (…, ganz im Hinweis)."""
         header = self.horizontalHeader()
+        width = self.viewport().width()
+        people = max(PEOPLE_MIN, min(PEOPLE_MAX, int(width * PEOPLE_SHARE)))
+
+        def content(col):
+            return max(self.sizeHintForColumn(col), header.sectionSizeHint(col))
+        small = {}
         for col, (_name, key) in enumerate(COLUMNS):
-            if key in PEOPLE_KEYS:
-                header.resizeSection(col, width)
+            if key == "ticket":
+                ticket = content(col)
+                header.resizeSection(col, ticket)
+            elif key in PEOPLE_KEYS:
+                header.resizeSection(col, people)
+            elif col != SUBJECT_COL:
+                small[col] = content(col)
+        budget = width * (1 - SUBJECT_SHARE) - ticket - people * len(PEOPLE_KEYS)
+        scale = min(1.0, max(budget, 0) / max(sum(small.values()), 1))
+        for col, want in small.items():
+            header.resizeSection(col, max(SMALL_MIN, min(want, int(want * scale))))
 
     def set_loading(self, on):
         """Wird gelesen: solange keine Zeile da ist, pulsierende Umrisse von Zeilen zeigen."""
@@ -201,3 +221,4 @@ class TicketTable(QTableWidget):
             self.setRowHidden(r, hide)
             if hide and self.selectionModel().isRowSelected(r):
                 self.clearSelection()
+        self._fit_columns()  # Inhalt geändert: Breiten nach den gezeigten Zeilen

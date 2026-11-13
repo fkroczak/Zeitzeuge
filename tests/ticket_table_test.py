@@ -8,10 +8,16 @@ import pytest  # noqa: E402
 widgets = pytest.importorskip("PySide6.QtWidgets")
 
 
-def _widths(width):
+def _widths(width, font_scale=1.0):
+    """font_scale > 1 stellt Windows nach: dort sind Art, Status und Ticket fast doppelt so breit."""
     from ticket_table import COLUMNS, TicketTable
     app = widgets.QApplication.instance() or widgets.QApplication([])
     table = TicketTable("Tickets")
+    if font_scale != 1.0:
+        font = table.font()
+        font.setPointSizeF(font.pointSizeF() * font_scale)
+        table.setFont(font)
+        table.horizontalHeader().setFont(font)
     table.set_rows([{"ticket": "TCK0000050902", "subject": "Meldung ploppt beim Start auf",
                      "customer": "Ärzte - Dienstleistungs GmbH", "initiator": "Max Mustermann",
                      "type": "Serviceanfrage", "state": "In Bearbeitung", "recipient": "Filip Beispiel",
@@ -26,13 +32,17 @@ def _widths(width):
     return sizes, viewport
 
 
-def test_betreff_ist_die_breiteste_spalte():
-    sizes, _ = _widths(1000)
-    assert sizes["subject"] >= 250, sizes
+@pytest.mark.parametrize("font_scale", [1.0, 1.6])
+def test_betreff_ist_die_breiteste_spalte(font_scale):
+    sizes, viewport = _widths(1000, font_scale)
+    assert sizes["subject"] >= 0.33 * viewport, (sizes, viewport)
     assert sizes["subject"] > 2 * sizes["customer"], sizes
+    assert sum(sizes.values()) <= viewport, (sizes, viewport)
 
 
-def test_schmal_ohne_waagerechte_scrollleiste():
-    sizes, viewport = _widths(760)
+@pytest.mark.parametrize("font_scale", [1.0, 1.6])
+def test_schmal_ohne_waagerechte_scrollleiste(font_scale):
+    sizes, viewport = _widths(760, font_scale)
     assert sum(sizes.values()) <= viewport, (sizes, viewport)
     assert min(sizes[k] for k in ("customer", "initiator", "recipient")) >= 70, sizes
+    assert sizes["subject"] >= 150, sizes
