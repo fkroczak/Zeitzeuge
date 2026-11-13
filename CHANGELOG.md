@@ -17,6 +17,10 @@ Testversionen aus Branches tragen die Version ihres main-Stands plus Buildnummer
 **Achtung:** Die Daten liegen jetzt verschlüsselt in einer Datenbank. Versionen vor dem
 26.10.2026 können sie nicht mehr lesen.
 
+### Wichtiger Fix
+- **Tickets aus Zeitzeuge landeten bei Systems statt beim Kunden:** Bei Tickets, die über Zeitzeuge angelegt wurden, stand intern Systems (999830) statt des Kunden. Gemeint ist die Organisationseinheit, zusammen mit Kostenstelle und Standort. Darum zeigten auch alle Zeiterfassungen darauf „Systems“ als Kunden. Jetzt kommen diese Angaben vom Melder, wie im Matrix42-Dialog, und eine Buchung übernimmt den Kunden des Tickets. Findet Zeitzeuge den Kunden des Melders nicht, weist es nach dem Anlegen darauf hin.
+  **Schon angelegte Tickets:** In Matrix42 das Ticket öffnen, den Kunden neu auswählen und speichern. Damit stimmen auch die Zeiterfassungen darauf.
+
 ### Neu
 - **Kacheln ohne leere Fläche:** „Erfasst“, „Buchungsquote“ und „Offen“ sind jetzt zweizeilig wie die Kunden-Chips daneben. Oben steht die Zahl, unten auf Höhe der zweiten Chip-Reihe der Fortschrittsbalken mit Prozent, „heute“ / „7 Tage“ bzw. „Jetzt eintragen“. Die Kacheln werden dadurch schmaler, „Nach Kunde“ hat mehr Platz.
 - **Kunden-Chips bündig:** In der Kachel „Nach Kunde“ laufen beide Chip-Reihen jetzt auf volle Breite und enden rechts auf einer Linie (Blocksatz statt Flattersatz), der Text steht mittig im Chip. Eine Reihe mit viel Luft (z. B. nur ein Chip in der zweiten Reihe) bleibt links, damit die Chips nicht riesig werden.
