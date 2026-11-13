@@ -44,6 +44,21 @@ M42_TICKET_RECORD_TEXT = (
     "Zeitzeuge speichert die Mitschnitt-Datei (mitschnitt_m42_ticket_…) im Datenordner. "
     "Abfragen, die etwas speichern, stehen darin vollständig, Passwörter und Token geschwärzt.")
 
+# Anleitung für den Mitschnitt „Ticket ansehen“ (Fehleranalyse: Beschreibung aus E-Mails,
+# Telefon des Melders, Tickets, die Zeitzeuge nicht laden kann)
+M42_TICKET_VIEW_RECORD_TEXT = (
+    "Ein Edge-Fenster mit Matrix42 öffnet sich.\n\n"
+    "1. Falls nötig anmelden und in den Service Desk wechseln.\n"
+    "2. Das Ticket öffnen, das in Zeitzeuge nicht richtig angezeigt wird (z. B. über die Suche "
+    "nach der Ticketnummer).\n"
+    "3. Die Beschreibung bzw. die E-Mail im Verlauf (Journal) öffnen, so dass der Text zu sehen ist.\n"
+    "4. Den Melder anklicken oder überfahren, so dass seine Telefonnummer zu sehen ist.\n"
+    "5. Nichts speichern. Das Fenster schließen.\n\n"
+    "Zeitzeuge speichert die Mitschnitt-Datei (mitschnitt_m42_ticket_ansehen_…) im Datenordner. "
+    "Antworten stehen darin ungekürzt, nur Passwörter und Token sind geschwärzt. Die Datei enthält "
+    "also Kundendaten (Namen, Telefonnummern, E-Mail-Texte): nur zur Fehleranalyse verwenden und "
+    "danach löschen. Screenshots der gleichen Schritte helfen zusätzlich.")
+
 
 class ReadersMixin:
     def is_paw(self):
@@ -368,17 +383,19 @@ class ReadersMixin:
                  "m42": self.start_m42_reader}[kind]()
         return getattr(self, spec["attr"])
 
-    def record_source(self, kind, booking=False, ticket=False):
+    def record_source(self, kind, booking=False, ticket=False, view=False):
         """Mitschnitt: aufzeichnen, welche Abfragen die Seite an ihren Server schickt.
         booking: Buchung in Matrix42 mitschneiden, ticket: Ticket anlegen und schließen
-        (beide: speichernde Abfragen ungekürzt)."""
+        (beide: speichernde Abfragen ungekürzt), view: Ticket ansehen (alle Antworten ungekürzt)."""
         reader = self._debug_reader(kind)
         if not reader:
             return
-        name = f"{kind}_ticket" if ticket else f"{kind}_buchung" if booking else kind
+        name = (f"{kind}_ticket_ansehen" if view else f"{kind}_ticket" if ticket
+                else f"{kind}_buchung" if booking else kind)
         path = os.path.join(mt.DATA_DIR, f"mitschnitt_{name}_{datetime.now():%Y-%m-%d_%H%M}.json")
-        if reader.record(path, full_writes=booking or ticket):
-            title, text = (("Ticket mitschneiden", M42_TICKET_RECORD_TEXT) if ticket
+        if reader.record(path, full_writes="all" if view else booking or ticket):
+            title, text = (("Ticket ansehen mitschneiden", M42_TICKET_VIEW_RECORD_TEXT) if view
+                           else ("Ticket mitschneiden", M42_TICKET_RECORD_TEXT) if ticket
                            else ("Buchung mitschneiden", M42_BOOKING_RECORD_TEXT) if booking
                            else ("Abfragen mitschneiden", self.READER_DIALOGS[kind]["record_text"]))
             QMessageBox.information(self, title, text)

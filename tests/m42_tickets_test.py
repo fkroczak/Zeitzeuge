@@ -420,3 +420,17 @@ def test_leser_uebernehmen(tmp_path):
     reader, calls, got = _reader(tmp_path, dict(ANSWERS), fail="/activity/TakeOver")
     reader._ticket_task("take_over", {"id": "ticket-1", "type": "SPSActivityTypeIncident"})
     assert not got[-1]["ok"] and got[-1]["unclear"]
+
+
+def test_melder_per_name_finden():
+    users = [{"id": "a", "name": "Kersting, Cornelia - Ärzte - Dienst Scharf GmbH & Co. KG, Rosendahl"},
+             {"id": "b", "name": "Kersting, Anna - Andere GmbH"}]
+    name = "Kersting, Cornelia - Ärzte - Dienst  Scharf GmbH & Co. KG, Rosendahl"
+    assert mt.melder_search_text(name) == "Kersting, Cornelia"
+    assert mt.match_user(users, name)["id"] == "a"
+    # Firma anders geschrieben: der einzige Treffer mit gleichem Namen
+    assert mt.match_user(users, "Kersting, Cornelia - Ärztedienst")["id"] == "a"
+    # nicht eindeutig: lieber keiner als eine falsche Nummer
+    twice = users + [{"id": "c", "name": "Kersting, Cornelia - Praxis Nord"}]
+    assert mt.match_user(twice, "Kersting, Cornelia - Ärztedienst") is None
+    assert mt.match_user(users, "") is None

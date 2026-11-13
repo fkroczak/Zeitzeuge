@@ -35,6 +35,9 @@ MAX_ITEMS = 3
 FULL_ITEMS = 500
 FULL_TEXT = 20000
 WRITE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+# Ticket-Ansicht-Mitschnitt (full_writes="all"): alle Antworten ungekürzt, auch HTML aus Abfragen
+# (E-Mails im Ticket), damit Beschreibung und Kontaktdaten vollständig zu sehen sind
+ALL_TEXT = 500000
 MAX_PROTO_ITEMS = 200  # Protobuf-Texte sind maskiert, ganze Listen helfen beim Zuordnen der Felder
 
 
@@ -79,10 +82,17 @@ def _short(text, limit=MAX_TEXT):
     return text if len(text) <= limit else text[:limit] + f" … ({len(text)} Zeichen)"
 
 
+def _limits(full):
+    """(Listeneinträge, Zeichen) je Modus: gekürzt, ungekürzt, ungekürzt mit langen Texten."""
+    if full == "all":
+        return FULL_ITEMS, ALL_TEXT
+    return (FULL_ITEMS, FULL_TEXT) if full else (MAX_ITEMS, MAX_TEXT)
+
+
 def redact_json(value, depth=0, full=False):
     """JSON verkleinern und Geheimnisse schwärzen. Die Struktur bleibt erkennbar.
-    full: (fast) ungekürzt, z. B. für die Speicher-Abfrage einer Buchung."""
-    items, text = (FULL_ITEMS, FULL_TEXT) if full else (MAX_ITEMS, MAX_TEXT)
+    full: (fast) ungekürzt, z. B. für die Speicher-Abfrage einer Buchung ("all": noch längere Texte)."""
+    items, text = _limits(full)
     if isinstance(value, dict):
         out = {}
         for key, item in value.items():
@@ -162,7 +172,7 @@ def summarize_body(body, mime="", full=False):
     if "x-www-form-urlencoded" in mime or (re.fullmatch(r"[\w.%+\-]+=[^\s]*(&[\w.%+\-]+=[^\s]*)*", text)
                                           and len(text) < 5000):
         return {"formular": redact_query(text)}
-    return {"text": _short(text, FULL_TEXT if full else MAX_TEXT)}
+    return {"text": _short(text, _limits(full)[1])}
 
 
 def mask_text(text):
@@ -277,7 +287,8 @@ class Recorder:
         self.ws = websocket.create_connection(ws_url, timeout=15, suppress_origin=True)
         self.start_url = start_url
         self.name = name
-        # Buchungs-Mitschnitt: Abfragen, die etwas speichern, ungekürzt aufzeichnen
+        # True: Abfragen, die etwas speichern, ungekürzt (Buchung, Ticket anlegen);
+        # "all": alle Antworten ungekürzt (Ticket ansehen: Beschreibung, E-Mails, Kontakt)
         self.full_writes = full_writes
         self.entries = {}       # requestId -> Eintrag (laufend)
         self.done = []          # fertige Einträge in Reihenfolge
@@ -363,6 +374,8 @@ class Recorder:
                 entry["antwort"] = summarize_binary(base64.b64decode(body))
             elif body and ("octet-stream" in mime or "protobuf" in mime):
                 entry["antwort"] = summarize_binary(body.encode("latin-1", "replace"))
+            elif body and "html" in mime and self.full_writes == "all":  # z. B. E-Mail im Ticket
+                entry["antwort"] = {"text": _short(body, ALL_TEXT)}
             elif body and ("html" in mime or "javascript" in mime):  # Seiten und Code nicht speichern
                 entry["antwort"] = {"text": f"<{mime}, {len(body)} Zeichen>"}
             else:
@@ -407,6 +420,8 @@ class Recorder:
         return entry
 
     def _full(self, entry):
+        if self.full_writes == "all":
+            return "all"
         return self.full_writes and (entry.get("methode") or "").upper() in WRITE_METHODS
 
     def _finish(self, rid, extra=None):
@@ -476,9 +491,7 @@ class Recorder:
             "dauer_sekunden": round(time.time() - self._started),
             "browser": browser,
             "start_adresse": redact_url(self.start_url),
-            "hinweis": "Passwörter, Token und Cookie-Werte sind geschwärzt. Antworten sind gekürzt"
-                       + (", Abfragen zum Speichern (POST/PUT/PATCH/DELETE) nicht." if self.full_writes
-                          else "."),
+            "hinweis": self._hint(),
             "aufgerufene_seiten": self.pages,
             "abfragen": self.done,
             "websockets": self.websockets,
@@ -486,6 +499,15 @@ class Recorder:
             "cookies": self.cookies,
             "seitenspeicher": self.storage,
         }
+
+
+    def _hint(self):
+        text = "Passwörter, Token und Cookie-Werte sind geschwärzt. "
+        if self.full_writes == "all":
+            return text + ("Antworten sind ungekürzt und enthalten Kundendaten (Namen, Telefonnummern, "
+                           "E-Mail-Texte). Nur zur Fehleranalyse verwenden und danach löschen.")
+        return text + "Antworten sind gekürzt" + (
+            ", Abfragen zum Speichern (POST/PUT/PATCH/DELETE) nicht." if self.full_writes else ".")
 
 
 def cookie_shape(value):
