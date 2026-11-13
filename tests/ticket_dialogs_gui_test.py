@@ -186,7 +186,9 @@ def gui_test():
 
     # ---- Ansehen: Beschreibung und Kontakt (Telefon/E-Mail als Link), nichts wird geändert
     view = ViewTicketDialog(reader, ROW)
-    assert wait_for(lambda: view.contact_rows.rowCount() > 2, 3000), view.status.text()
+    assert view._contact_loading and view.description_skeleton is not None  # Umrisse, bis Daten da sind
+    assert wait_for(lambda: not view._contact_loading and view.contact_rows.rowCount() > 2, 3000), view.status.text()
+    assert view.description_skeleton is None
     assert view.description_view.toPlainText() == "Druckt nicht" and view.description_view.isReadOnly()
     contact = {view.contact_rows.itemAt(i, QFormLayout.LabelRole).widget().text():
                view.contact_rows.itemAt(i, QFormLayout.FieldRole).widget().text()
@@ -224,7 +226,7 @@ def gui_test():
     # Ticket nicht ladbar (z. B. E-Mail, die Matrix42 nicht entschlüsseln kann): Telefon trotzdem
     reader.fail.add("load")
     view = ViewTicketDialog(reader, ROW)
-    assert wait_for(lambda: view.contact_rows.rowCount() > 2, 3000), view.status.text()
+    assert wait_for(lambda: not view._contact_loading and view.contact_rows.rowCount() > 2, 3000), view.status.text()
     assert ("melder", {"owner": id(view), "name": ROW["initiator"]}) in reader.tasks
     assert "Laden fehlgeschlagen" in view.status.text()
     phone = next(view.contact_rows.itemAt(i, QFormLayout.FieldRole).widget().text()
@@ -331,6 +333,12 @@ def gui_test():
     assert opened == ["TCK0000000003"], opened
     table_dialog.copy_button.click()
     assert app.clipboard().text() == "TCK0000000003"
+
+    # Lesen ohne Zeilen: Umrisse in der Tabelle, mit Zeilen nicht
+    table_dialog.table.set_loading(True)
+    assert table_dialog.table._loading
+    table_dialog.table.viewport().repaint()  # malt trotz Zeilen ohne Fehler
+    table_dialog.table.set_loading(False)
 
     # rechte Maustaste: Kontextmenü mit Ansehen, Bearbeiten, Übernehmen, Schließen, Nummer kopieren
     menus = []

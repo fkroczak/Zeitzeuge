@@ -836,9 +836,9 @@ if __name__ == "__main__":
     if "--minimized" in sys.argv or window.config.get("start_minimized", False):
         if not window.tray:
             window.showMinimized()
+        splash_screen.close()
     else:
-        window.show()
-    splash_screen.close()
+        splash_screen.close_when_painted(window)  # Startbild bis das Fenster steht, kein weißes Fenster
     import autostart
     autostart.refresh()  # EXE umgezogen oder ersetzt: Autostart zeigt auf diese
     code = app.exec()

@@ -567,6 +567,7 @@ class TicketsDialog(QDialog):
         self.refresh_button.setEnabled(False)
         self._loading.add(self.category)
         self._set_status(f"Lese {self.title()} aus Matrix42 …")
+        self.table.set_loading(not self._rows)
         if self.category == MINE:
             self.reader.load_my_tickets()
         else:
@@ -619,6 +620,7 @@ class TicketsDialog(QDialog):
         self.page_label.setText(f"Seite {page + 1} von {pages}")
         self.prev_button.setEnabled(page > 0)
         self.next_button.setEnabled(page < pages - 1)
+        self.table.set_loading(self.category in self._loading and not n)
         closed = self.closed()
         text = ""
         if self.category in self._loading:

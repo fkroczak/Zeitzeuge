@@ -3,10 +3,11 @@ Art (Störung/Serviceanfrage), Status, Bearbeiter, Angelegt; nach jeder Spalte s
 der Ticketsuche), erledigte Tickets grau. Enter oder Doppelklick: Signal activated(row).
 """
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QAction, QKeySequence, QPalette
+from PySide6.QtGui import QAction, QKeySequence, QPainter, QPalette
 from PySide6.QtWidgets import QAbstractItemView, QHeaderView, QTableWidget, QTableWidgetItem
 
 import m42_booking as mb
+import skeleton
 
 # Spalte -> Feld der Ticketzeile (m42_booking.ticket_row)
 COLUMNS = [("Ticket", "ticket"), ("Betreff", "subject"), ("Kunde", "customer"), ("Melder", "initiator"),
@@ -54,6 +55,7 @@ class TicketTable(QTableWidget):
         self._filter = ""
         self.page_size = 0  # Tickets je Seite, 0 = alle auf einer Seite
         self.page = 0
+        self._loading = False
         header.setSectionsClickable(True)
         header.setSortIndicatorShown(True)
         header.setSortIndicator(-1, Qt.AscendingOrder)
@@ -64,6 +66,23 @@ class TicketTable(QTableWidget):
         enter.setShortcutContext(Qt.WidgetShortcut)
         enter.triggered.connect(self._activate)
         self.addAction(enter)
+
+    def set_loading(self, on):
+        """Wird gelesen: solange keine Zeile da ist, pulsierende Umrisse von Zeilen zeigen."""
+        on = bool(on)
+        if on == self._loading:
+            return
+        self._loading = on
+        (skeleton.pulse().watch if on else skeleton.pulse().unwatch)(self.viewport())
+        self.viewport().update()
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        if self._loading and not any(not self.isRowHidden(r) for r in range(self.rowCount())):
+            painter = QPainter(self.viewport())
+            painter.setRenderHint(QPainter.Antialiasing)
+            skeleton.table_rows(painter, self, row_height=self.verticalHeader().defaultSectionSize())
+            painter.end()
 
     def _activate(self):
         row = self.current_row()
