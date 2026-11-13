@@ -154,7 +154,7 @@ def gui_test():
     assert kind == "edit" and args["request"] == {"id": "t2", "ticket": "TCK0000000002", "stamp": "s1",
                                                   "subject": "Drucker Empfang", "category": "cat-fs",
                                                   "description": "Drucker am Empfang druckt nicht",
-                                                  "initiator": None}, args
+                                                  "initiator": None, "type": "SPSActivityTypeIncident"}, args
     assert "TCK0000000002 gespeichert" in mine.status.text(), mine.status.text()
     assert mine.visible_rows()[0]["subject"] == "Drucker Empfang"
 
@@ -202,6 +202,28 @@ def gui_test():
     view.ok_button.click()
     assert view.action == "edit"
 
+    # HTML-Mail mit Bild: wie in Matrix42 mit Bild, auf die Breite verkleinert
+    import base64
+    from PySide6.QtCore import QBuffer, QIODevice
+    from PySide6.QtGui import QColor, QImage
+    picture = QImage(1900, 300, QImage.Format_RGB32)
+    picture.fill(QColor("red"))
+    buf = QBuffer()
+    buf.open(QIODevice.WriteOnly)
+    picture.save(buf, "PNG")
+    src = "data:image/png;base64," + base64.b64encode(bytes(buf.data())).decode()
+    view = ViewTicketDialog(reader, ROW)
+    view.show()
+    assert wait_for(lambda: view.loaded is not None, 3000)
+    view._on_load({"ok": True, "kind": "load", "args": {}, "data": dict(
+        view.loaded, html=f'<p><b>Hallo</b></p><img width="1900" src="{src}"><p>Ende</p>', contact={})})
+    QTest.qWait(20)
+    doc = view.description_view.document()
+    assert "Hallo" in view.description_view.toPlainText() and "<img" in doc.toHtml()
+    assert 100 < doc.size().width() <= view.description_view.viewport().width() + 2, doc.size()
+    assert doc.size().height() > 60, "Bild ist zu sehen"
+    view.reject()
+
     # kein Knopf blitzt beim Öffnen als eigenes Fenster auf (Übernehmen/Schließen erst einfügen, dann zeigen)
     from PySide6.QtCore import QEvent
 
@@ -223,7 +245,7 @@ def gui_test():
     assert view.take_over_button.isVisibleTo(view) and view.close_ticket_button.isVisibleTo(view)
     view.reject()
 
-    # Ticket nicht ladbar (z. B. E-Mail, die Matrix42 nicht entschlüsseln kann): Telefon trotzdem
+    # Ticket nicht ladbar (z. B. gelöscht): Telefon trotzdem
     reader.fail.add("load")
     view = ViewTicketDialog(reader, ROW)
     assert wait_for(lambda: not view._contact_loading and view.contact_rows.rowCount() > 2, 3000), view.status.text()
