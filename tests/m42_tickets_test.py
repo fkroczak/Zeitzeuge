@@ -364,3 +364,12 @@ def test_load_error_macht_object_is_deleted_lesbar():
     assert "Störung" in str(err) and "{" not in str(err)
     other = mt.BookingError("Matrix42 antwortet mit Fehler 500")
     assert mt.load_error(other) is other
+
+
+def test_html_text_liest_outlook_html_mail():
+    mail = ('<html><head><meta charset="utf-8"><style><!-- p.MsoNormal {margin:0cm} --></style>'
+            '<!--[if gte mso 9]><xml><o:shapedefaults/></xml><![endif]--></head><body>'
+            '<p class="MsoNormal">Hallo zusammen,<o:p></o:p></p><p><o:p>&nbsp;</o:p></p>'
+            '<p>kann es sein?<br>Gr&uuml;&szlig;e</p><table><tr><td>Name</td><td>M&uuml;ller</td></tr></table>'
+            '</body></html>')
+    assert mt.html_text(mail) == "Hallo zusammen,\n\nkann es sein?\nGrüße\nName\tMüller"
