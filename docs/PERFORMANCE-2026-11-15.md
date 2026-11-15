@@ -93,3 +93,11 @@ Gefunden vom Tester (separater Agent) und behoben:
 Untere Grenze: Ein Windows-Job braucht ~35 s zum Einrichten, PyInstaller für die Einzel-EXE
 ~1:40 min. Unter ~2:30 min für den ganzen Lauf geht es nur mit größeren (kostenpflichtigen)
 Runnern oder ohne eine der beiden EXE-Varianten.
+
+### Actions-Minuten (Nachtrag)
+
+- Ein Merge in main baut keine EXE mehr, nur die Tests auf Windows laufen (~3 Min., abgerechnet 6).
+  Release: „Run workflow“ auf main oder Tag `v*`.
+- Einzel-EXE und Ordner-Variante entstehen aus einer PyInstaller-Analyse in einem Job
+  (`ZEITZEUGE_ONEDIR=beide`); der Job legt auch den Release-Entwurf an (kein eigener Job mehr).
+- Abgerechnet je Lauf (Windows ×2, aufgerundet): Merge ~6 statt ~20, Release ~10–12 statt ~20.

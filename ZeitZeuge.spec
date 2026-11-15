@@ -92,7 +92,11 @@ splash = Splash(
 # - ZEITZEUGE_ONEDIR=1: Ordner mit ZeitZeuge.exe und _internal (nichts wird entpackt).
 #   Für Rechner mit EDR/Virenscanner wie Cortex XDR (z. B. PAW): Programme, die beim Start
 #   DLLs nach %TEMP% schreiben und laden, gelten dort schnell als verdächtig.
-ONEDIR = os.environ.get("ZEITZEUGE_ONEDIR") == "1"
+# - ZEITZEUGE_ONEDIR=beide: beide aus einer Analyse (CI: spart einen zweiten PyInstaller-Lauf).
+#   Die Einzel-EXE entsteht in dist/, die Ordner-EXE erst in build/ und dann in dist/ZeitZeuge-Ordner.
+VARIANT = os.environ.get("ZEITZEUGE_ONEDIR", "")
+ONEFILE = VARIANT in ("", "0", "beide")
+ONEDIR = VARIANT in ("1", "beide")
 
 options = dict(
     name='ZeitZeuge',
@@ -115,11 +119,11 @@ options = dict(
 )
 # Kein UPX (upx=False oben): mit UPX gepackte EXE-Dateien melden Virenscanner besonders oft fälschlich.
 
-if ONEDIR:
-    exe = EXE(pyz, a.scripts, splash, [], exclude_binaries=True, **options)
-    coll = COLLECT(exe, a.binaries, a.datas, splash.binaries, strip=False, upx=False,
-                   name='ZeitZeuge-Ordner')
-else:
+if ONEFILE:
     exe = EXE(pyz, a.scripts, splash, splash.binaries, a.binaries, a.datas, [], **options)
+if ONEDIR:
+    exe_dir = EXE(pyz, a.scripts, splash, [], exclude_binaries=True, **options)
+    coll = COLLECT(exe_dir, a.binaries, a.datas, splash.binaries, strip=False, upx=False,
+                   name='ZeitZeuge-Ordner')
 
 os.remove(BUILD_INFO_FILE)  # sonst zeigte der Start aus dem Quelltext die Angaben dieses Builds
