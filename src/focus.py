@@ -198,10 +198,9 @@ def _absorb_short(blocks, min_block_seconds, max_gap_seconds):
 
     def absorb(target, other):  # wie _absorb, Sekunden mitführen
         _absorb(target.block, other.block)
-        if other.s < target.s:
-            target.s = other.s
-        if other.e > target.e:
-            target.e = other.e
+        # Aus dem Text wie früher (min/max der Zeitstempel als Text), nicht aus den Zahlen:
+        # gleich auch bei ungewöhnlich geschriebenen Zeiten, deren Textfolge abweicht
+        target.s, target.e = _sec(target.block["start"]), _sec(target.block["end"])
 
     def push(node):
         node.version += 1

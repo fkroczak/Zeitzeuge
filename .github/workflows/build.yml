@@ -124,12 +124,46 @@ jobs:
         # 4 Worker auf 2 Kernen: die Browser-Tests warten meist auf den Browser, nicht auf die CPU
         run: python -m pytest -n 4 -rs --durations=15
 
+  # main oder Tag: Release-Entwurf vorab anlegen. Die Build-Jobs laden ihre Dateien direkt hinein
+  # (Release-Dateien zählen nicht zum Artefakt-Speicher, der oft voll ist).
+  draft:
+    name: Release-Entwurf anlegen
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0  # version.py zählt die Merges in main
+
+      - name: Versionsnummer bestimmen und Entwurf anlegen
+        id: version
+        shell: pwsh
+        run: |
+          $v = python src/version.py
+          if ($LASTEXITCODE -ne 0) { Write-Host "::error::$v"; exit 1 }
+          "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          # Entwurf aus einem früheren Versuch desselben Stands entfernen
+          $alt = gh release view "v$v" --repo $env:GITHUB_REPOSITORY --json isDraft 2>$null | ConvertFrom-Json
+          if ($alt -and $alt.isDraft) { gh release delete "v$v" --repo $env:GITHUB_REPOSITORY --yes }
+          gh release create "v$v" --repo $env:GITHUB_REPOSITORY --draft `
+            --target $env:GITHUB_SHA --title "Zeitzeuge $v" --generate-notes
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
   # Einzel-EXE (entpackt sich beim Start nach %TEMP%)
   exe:
     name: EXE bauen
+    needs: draft  # nur auf main/Tag nötig; sonst übersprungen, dann trotzdem bauen
     if: >-
+      !cancelled() && (needs.draft.result == 'success' || needs.draft.result == 'skipped') && (
       github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' ||
-      startsWith(github.ref, 'refs/tags/v')
+      startsWith(github.ref, 'refs/tags/v'))
     runs-on: windows-latest
     timeout-minutes: 20
     outputs:
@@ -227,15 +261,15 @@ jobs:
             if ($code -ne 0) { exit $code }
           }
 
-      # Artefakte zählen zum Speicher des Kontos. Ältere als 1 Tag löschen, sonst scheitert
+      # Artefakte zählen zum Speicher des Kontos. Ältere als 2 Tage löschen, sonst scheitert
       # der Upload ("Artifact storage quota has been hit").
-      - name: Alte Artefakte löschen (älter als 1 Tag)
+      - name: Alte Artefakte löschen (älter als 2 Tage)
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         shell: pwsh
         run: |
-          $grenze = (Get-Date).ToUniversalTime().AddDays(-1)
+          $grenze = (Get-Date).ToUniversalTime().AddDays(-2)
           $alle = gh api "repos/$env:GITHUB_REPOSITORY/actions/artifacts?per_page=100" --paginate --jq '.artifacts[] | [.id, .created_at] | @tsv'
           foreach ($zeile in $alle) {
             $id, $am = $zeile -split "`t"
@@ -245,21 +279,39 @@ jobs:
           }
 
       - name: EXE bereitstellen
+        # Branch/„Run workflow“: als Download (main und Tags gehen ins Release, siehe unten).
+        # Ist der Speicher voll, darf das den Build nicht scheitern lassen.
+        if: github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/v')
+        continue-on-error: true
         uses: actions/upload-artifact@v6
         with:
           name: ZeitZeuge-${{ env.ZZ_VERSION }}
           path: dist/ZeitZeuge.exe
-          # main/Tag: nur bis zum Release-Job (1 Tag), Branch: als Test-Download 5 Tage
-          retention-days: ${{ (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) && 1 || 5 }}
+          retention-days: 5
           compression-level: 0  # EXE und ZIP sind schon gepackt: nicht noch einmal packen
+
+      - name: In den Release-Entwurf laden (main oder Tag v*)
+        if: needs.draft.result == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DRAFT_VERSION: ${{ needs.draft.outputs.version }}
+        shell: pwsh
+        run: |
+          if ($env:ZZ_VERSION -ne $env:DRAFT_VERSION) {
+            Write-Host "::error title=Version::Build $env:ZZ_VERSION, Entwurf $env:DRAFT_VERSION"; exit 1
+          }
+          gh release upload "v$env:ZZ_VERSION" --repo $env:GITHUB_REPOSITORY --clobber dist/ZeitZeuge.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
   # Ordner-Variante für Rechner mit EDR (z. B. Cortex XDR auf der PAW): entpackt nichts nach %TEMP%.
   # Daraus der Installationsassistent. Läuft gleichzeitig mit „EXE bauen“.
   ordner:
     name: Ordner und Setup bauen
+    needs: draft  # nur auf main/Tag nötig; sonst übersprungen, dann trotzdem bauen
     if: >-
+      !cancelled() && (needs.draft.result == 'success' || needs.draft.result == 'skipped') && (
       github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' ||
-      startsWith(github.ref, 'refs/tags/v')
+      startsWith(github.ref, 'refs/tags/v'))
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
@@ -378,59 +430,71 @@ jobs:
           }
 
       - name: Installationsassistent bereitstellen
+        # Branch/„Run workflow“: als Download (main und Tags gehen ins Release, siehe unten).
+        # Ist der Speicher voll, darf das den Build nicht scheitern lassen.
+        if: github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/v')
+        continue-on-error: true
         uses: actions/upload-artifact@v6
         with:
           name: Zeitzeuge-Setup-${{ env.ZZ_VERSION }}
           path: dist/Zeitzeuge-Setup.exe
-          # main/Tag: nur bis zum Release-Job (1 Tag), Branch: als Test-Download 5 Tage
-          retention-days: ${{ (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) && 1 || 5 }}
+          retention-days: 5
           compression-level: 0  # EXE und ZIP sind schon gepackt: nicht noch einmal packen
 
       - name: Ordner-Variante bereitstellen
+        # Branch/„Run workflow“: als Download (main und Tags gehen ins Release, siehe unten).
+        # Ist der Speicher voll, darf das den Build nicht scheitern lassen.
+        if: github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/v')
+        continue-on-error: true
         uses: actions/upload-artifact@v6
         with:
           name: ZeitZeuge-Ordner-${{ env.ZZ_VERSION }}
           path: dist/ZeitZeuge-Ordner.zip
-          # main/Tag: nur bis zum Release-Job (1 Tag), Branch: als Test-Download 5 Tage
-          retention-days: ${{ (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) && 1 || 5 }}
+          retention-days: 5
           compression-level: 0  # EXE und ZIP sind schon gepackt: nicht noch einmal packen
 
-  # main oder Tag: Release erst, wenn alle Tests und beide Builds grün sind. Release-Dateien zählen
-  # nicht zum Artefakt-Speicher (der oft voll ist); die Artefakte verfallen nach einem Tag.
+      - name: In den Release-Entwurf laden (main oder Tag v*)
+        if: needs.draft.result == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DRAFT_VERSION: ${{ needs.draft.outputs.version }}
+        shell: pwsh
+        run: |
+          if ($env:ZZ_VERSION -ne $env:DRAFT_VERSION) {
+            Write-Host "::error title=Version::Build $env:ZZ_VERSION, Entwurf $env:DRAFT_VERSION"; exit 1
+          }
+          # Prüfsumme für das Update aus Zeitzeuge (src/updater.py)
+          $sha = (Get-FileHash dist/Zeitzeuge-Setup.exe -Algorithm SHA256).Hash.ToLower()
+          "$sha  Zeitzeuge-Setup.exe" | Out-File -FilePath dist/Zeitzeuge-Setup.exe.sha256 -Encoding ascii -NoNewline
+          gh release upload "v$env:ZZ_VERSION" --repo $env:GITHUB_REPOSITORY --clobber dist/Zeitzeuge-Setup.exe dist/Zeitzeuge-Setup.exe.sha256 dist/ZeitZeuge-Ordner.zip
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+  # main oder Tag: Entwurf veröffentlichen, wenn alle Tests und beide Builds grün sind; sonst löschen.
   release:
-    needs: [test, exe, ordner]
-    if: >-
-      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-      startsWith(github.ref, 'refs/tags/v')
+    needs: [draft, test, exe, ordner]
+    if: always() && needs.draft.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      ZZ_VERSION: ${{ needs.exe.outputs.version }}
+      ZZ_VERSION: ${{ needs.draft.outputs.version }}
       GH_TOKEN: ${{ github.token }}
     steps:
-      - name: Dateien der Builds holen
-        uses: actions/download-artifact@v7
-        with:
-          path: dist
-          merge-multiple: true
-
       # Jeder Stand von main wird ein Release v<Version> (der Tag entsteht beim Veröffentlichen).
       # Der feste Link .../releases/latest/download/ZeitZeuge.exe zeigt immer auf das neueste.
       - name: Release veröffentlichen
         shell: pwsh
         run: |
-          foreach ($f in "Zeitzeuge-Setup.exe", "ZeitZeuge.exe", "ZeitZeuge-Ordner.zip") {
-            if (-not (Test-Path "dist/$f")) { Write-Host "::error title=Release::dist/$f fehlt"; exit 1 }
+          $ok = "${{ needs.test.result }}|${{ needs.exe.result }}|${{ needs.ordner.result }}"
+          if ($ok -ne "success|success|success") {
+            Write-Host "::error title=Release::Tests oder Build nicht grün ($ok), Entwurf v$env:ZZ_VERSION wird gelöscht"
+            gh release delete "v$env:ZZ_VERSION" --repo $env:GITHUB_REPOSITORY --yes
+            exit 1
           }
-          # Prüfsumme für das Update aus Zeitzeuge (src/updater.py)
-          $sha = (Get-FileHash dist/Zeitzeuge-Setup.exe -Algorithm SHA256).Hash.ToLower()
-          "$sha  Zeitzeuge-Setup.exe" | Out-File -FilePath dist/Zeitzeuge-Setup.exe.sha256 -Encoding ascii -NoNewline
-          # Release aus einem früheren Versuch desselben Stands (Entwurf) entfernen
-          $alt = gh release view "v$env:ZZ_VERSION" --repo $env:GITHUB_REPOSITORY --json isDraft 2>$null | ConvertFrom-Json
-          if ($alt -and $alt.isDraft) { gh release delete "v$env:ZZ_VERSION" --repo $env:GITHUB_REPOSITORY --yes }
-          gh release create "v$env:ZZ_VERSION" --repo $env:GITHUB_REPOSITORY --latest `
-            --target $env:GITHUB_SHA --title "Zeitzeuge $env:ZZ_VERSION" --generate-notes `
-            dist/Zeitzeuge-Setup.exe dist/Zeitzeuge-Setup.exe.sha256 dist/ZeitZeuge.exe dist/ZeitZeuge-Ordner.zip
+          $files = (gh release view "v$env:ZZ_VERSION" --repo $env:GITHUB_REPOSITORY --json assets | ConvertFrom-Json).assets.name
+          foreach ($f in "Zeitzeuge-Setup.exe", "Zeitzeuge-Setup.exe.sha256", "ZeitZeuge.exe", "ZeitZeuge-Ordner.zip") {
+            if ($files -notcontains $f) { Write-Host "::error title=Release::$f fehlt im Entwurf"; exit 1 }
+          }
+          gh release edit "v$env:ZZ_VERSION" --repo $env:GITHUB_REPOSITORY --draft=false --latest
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       # Nur die 10 neuesten Releases behalten; ältere samt Tag löschen.

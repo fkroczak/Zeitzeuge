@@ -26,7 +26,11 @@ now = int(time.time())
 claims = base64.urlsafe_b64encode(json.dumps({"sub": "fk", "iat": now, "exp": now + 3600}).encode())
 JWT = "eyJhbGciOiJIUzI1NiJ9." + claims.decode().rstrip("=") + ".c2lnbmF0dXJlLXNpZw"
 
+# Die Seite meldet sich erst kurz nach dem Laden an (wie ein Mensch, der das Passwort tippt).
+# Sofort beim Laden fiele die Anmeldung unter Last in den Moment, in dem Chromium für die neue
+# Adresse einen neuen Renderer startet und der Mitschnitt sich neu anhängt (dann fehlt sie).
 PAGE = """<!doctype html><html><body><div id="app">Lädt …</div><script>
+window.addEventListener("load", () => setTimeout(() =>
 fetch("/api/login", {method: "POST", headers: {"Content-Type": "application/json"},
   body: JSON.stringify({user: "fk", password: "%s"})})
   .then((r) => r.json()).then((d) => {
@@ -38,7 +42,7 @@ fetch("/api/login", {method: "POST", headers: {"Content-Type": "application/json
     return fetch("/MyPhone/MPWebService.asmx", {method: "POST",
       headers: {"Content-Type": "application/octet-stream"},
       body: new Uint8Array([0x08, 0x6a, 0xd2, 0x06, 0x05, 0x12, 0x03, 0x37, 0x36, 0x39])});
-  }).then((r) => r.arrayBuffer()).then(() => fetch("/api/anrufe?fertig=1"));
+  }).then((r) => r.arrayBuffer()).then(() => fetch("/api/anrufe?fertig=1")), 1000));
 </script></body></html>""" % PASSWORD
 
 

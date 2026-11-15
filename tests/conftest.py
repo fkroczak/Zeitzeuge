@@ -11,6 +11,7 @@ Zwei Arten von Tests:
   Endet das Skript nicht mit Code 0, schlägt der Test fehl und zeigt die ganze Ausgabe
   (auch die ::error-Zeilen für GitHub).
 """
+import itertools
 import os
 import re
 import subprocess
@@ -83,8 +84,8 @@ def pytest_collection_modifyitems(config, items):
         load[k] += SLOW[item.path.name]
     rest = iter(rest)
     ordered = []
-    for block, size in zip(blocks, sizes):
-        ordered += block + [next(rest) for _ in range(max(0, size - len(block)))]
+    for block, size in zip(blocks, sizes):  # Block zu voll mit langsamen: dann eben länger
+        ordered += block + list(itertools.islice(rest, max(0, size - len(block))))
     ordered += list(rest)
     assert sorted(map(id, ordered)) == sorted(map(id, items)), "Umsortieren darf nichts verlieren"
     items[:] = ordered
