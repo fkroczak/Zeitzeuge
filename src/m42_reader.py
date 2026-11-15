@@ -182,6 +182,7 @@ READ_JS = r"""
 
 # Gemeinsame Helfer für API_JS und FETCH_JS (im Rumpf der async-Funktion): Anmeldung wie die
 # Seite selbst, Köpfe ihrer eigenen Abfragen, Erkennen der Anmeldeseite
+_SLEEP_JS = "const sleep = ms => new Promise(r => setTimeout(r, ms));"  # siehe M42Reader.JS_TIME_SCALE
 _JS_HELPERS = r"""  const sleep = ms => new Promise(r => setTimeout(r, ms));
   const isLogin = () => !!document.querySelector("input[type=password]") || /\/(wm\/)?login\b/i.test(location.pathname);
   // Anmeldung: wie die Seite selbst (gemerkte Köpfe), sonst das Token aus dem localStorage
@@ -338,6 +339,10 @@ class M42Reader(BrowserReader):
     NAVIGATION_RETRIES = 3
     # Abfragen, die etwas speichern: nie wiederholen (könnte doppelt buchen/anlegen/schließen)
     NO_RETRY = ("UpdateData", "/ticket/Close", "/activity/TakeOver")
+    # Wartezeiten der Skripte in der Seite (Anmeldung, Kalender, Token abwarten) mal diesem
+    # Faktor. 1 für die echte Seite; Tests mit dem lokalen Nachbau kürzen nur die Wartezeit,
+    # Abläufe und Zählschleifen bleiben gleich.
+    JS_TIME_SCALE = 1
 
     def __init__(self, url, data_file, profile_dir, parent=None, weeks_back=4, use_api=True,
                  widget_id="", own_name=""):
@@ -378,6 +383,12 @@ class M42Reader(BrowserReader):
         self._tools.call("Page.enable")
         self._tools.call("Page.addScriptToEvaluateOnNewDocument", source=PENDING_JS)
         self._tools.call("Page.navigate", url=self.start_url())
+
+    def _evaluate(self, js, timeout=15, retries=0):
+        if self.JS_TIME_SCALE != 1:
+            js = js.replace(_SLEEP_JS, "const sleep = ms => new Promise(r => setTimeout(r, ms * %r));"
+                            % float(self.JS_TIME_SCALE))
+        return super()._evaluate(js, timeout, retries)
 
     def _browser_args(self, mode, debug=True, url=None):
         """Windows-Anmeldung (Kerberos/NTLM) auch im unsichtbaren Edge erlauben."""

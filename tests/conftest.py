@@ -51,6 +51,20 @@ def pytest_pycollect_makemodule(module_path, parent):
     return None
 
 
+# Die längsten Tests (Sekunden auf Windows-CI) zuerst starten: Parallel (pytest-xdist) liefe
+# sonst am Ende einer allein weiter, während die anderen Worker schon fertig sind.
+SLOW_FIRST = ["pbx_test.py", "m42_test.py", "itm_test.py", "recorder_test.py", "settings_window_test.py",
+              "robustness_test.py", "prompt_card_gui_test.py", "ui_audit_test.py", "card_dialogs_gui_test.py",
+              "ai_test.py", "m42_booking_gui_test.py", "busy_rows_test.py", "customers_gui_test.py",
+              "journal_gui_test.py"]
+
+
+def pytest_collection_modifyitems(config, items):
+    """Nur die Reihenfolge ändern (nichts auslassen): langsame Skripte nach vorn."""
+    rank = {name: i for i, name in enumerate(SLOW_FIRST)}
+    items.sort(key=lambda item: rank.get(item.path.name, len(rank)))  # stabil: sonst wie gesammelt
+
+
 class ScriptFile(pytest.File):
     def collect(self):
         item = ScriptItem.from_parent(self, name="skript")

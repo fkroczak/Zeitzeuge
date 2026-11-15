@@ -1,9 +1,10 @@
 name: EXE bauen
 
-# Sparsam mit Actions-Minuten (Windows zählt doppelt, jeder Job wird auf volle Minuten aufgerundet):
+# Schnell und sparsam (Windows zählt doppelt, jeder Job wird auf volle Minuten aufgerundet):
 # - Branch-Push: nur ein Test-Job auf Linux (ohne Browser-Tests), keine EXE.
 # - main, Tag v* oder „Run workflow“ (auch auf einem Branch, z. B. für eine Test-EXE):
-#   alle Tests in einem Windows-Job, EXE, Setup und bei main/Tag das Release.
+#   drei Windows-Jobs gleichzeitig – alle Tests (parallel auf allen Kernen, pytest-xdist),
+#   Einzel-EXE, Ordner-Variante mit Setup – danach bei main/Tag das Release.
 # - Nur Doku geändert (*.md, docs/): kein Lauf.
 on:
   push:
@@ -36,28 +37,41 @@ jobs:
       github.event_name == 'push' && github.ref != 'refs/heads/main' &&
       !startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
         with:
-          fetch-depth: 0  # version_test liest die git-Geschichte
+          fetch-depth: 0  # version.py und version_test lesen die git-Geschichte
 
       # 3.13 statt 3.11: PySide6 unter Linux mit Python 3.11 stürzt in GUI-Tests ab
       # („none_dealloc“, Zählfehler bei None). Ab 3.12 ist None unsterblich, der Fehler tritt nicht auf.
       - uses: actions/setup-python@v6
+        id: python
         with:
           python-version: "3.13"
-          cache: pip
+
+      # Installierte Pakete zwischenspeichern statt bei jedem Lauf ~35 s pip install
+      # (PySide6 entpacken). Neu installiert wird nur, wenn sich die Anforderungen ändern.
+      - name: Installierte Pakete aus dem Cache holen
+        id: site-cache
+        uses: actions/cache@v5
+        with:
+          path: ${{ env.pythonLocation }}/lib/python3.13/site-packages
+          key: site-linux-${{ runner.os }}-${{ steps.python.outputs.python-version }}-${{ hashFiles('requirements.txt', 'requirements-dev.txt') }}
+
+      - name: Systembibliotheken für Qt
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends libegl1 libgl1 libxkbcommon0 libfontconfig1 libdbus-1-3 > /dev/null
 
       - name: Abhängigkeiten installieren
+        if: steps.site-cache.outputs.cache-hit != 'true'
         run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends libegl1 libgl1 libxkbcommon0 libfontconfig1 libdbus-1-3 > /dev/null
           grep -v -i '^pyinstaller' requirements.txt > req-test.txt
           pip install -r req-test.txt -r requirements-dev.txt
 
       - name: Lesbarkeit (nur Hinweis)
         run: python tests/readability_check.py
 
+      # Parallel auf allen Kernen (pytest.ini: -n auto --dist worksteal)
       - name: Tests (pytest)
         env:
           QT_QPA_PLATFORM: offscreen
@@ -66,26 +80,36 @@ jobs:
           python -m pytest -rs --durations=10 --ignore=tests/pbx_test.py --ignore=tests/m42_test.py
           --ignore=tests/itm_test.py --ignore=tests/recorder_test.py
 
-  # main, Tag oder „Run workflow“: alle Tests auf Windows in einem Job (ein Job statt drei spart
-  # das dreifache Einrichten und Aufrunden; läuft parallel zum Bau, dauert etwa 8 Minuten).
+  # main, Tag oder „Run workflow“: alle Tests auf Windows, parallel auf allen Kernen
+  # (pytest.ini, tests/conftest.py: die langsamen Browser-Tests starten zuerst).
   test:
     name: Tests (Windows)
     if: >-
       github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' ||
       startsWith(github.ref, 'refs/tags/v')
     runs-on: windows-latest
-    timeout-minutes: 25
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
         with:
-          fetch-depth: 0  # version_test liest die git-Geschichte
+          fetch-depth: 0  # version.py und version_test lesen die git-Geschichte
 
       - uses: actions/setup-python@v6
+        id: python
         with:
           python-version: "3.11"
-          cache: pip
+
+      # Installierte Pakete zwischenspeichern statt bei jedem Lauf ~35 s pip install
+      # (PySide6 entpacken). Neu installiert wird nur, wenn sich die Anforderungen ändern.
+      - name: Installierte Pakete aus dem Cache holen
+        id: site-cache
+        uses: actions/cache@v5
+        with:
+          path: ${{ env.pythonLocation }}\Lib\site-packages
+          key: site-test-${{ runner.os }}-${{ steps.python.outputs.python-version }}-${{ hashFiles('requirements.txt', 'requirements-dev.txt') }}
 
       - name: Abhängigkeiten installieren
+        if: steps.site-cache.outputs.cache-hit != 'true'
         run: pip install -r requirements.txt -r requirements-dev.txt
 
       - name: Lesbarkeit (nur Hinweis)
@@ -97,34 +121,45 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
           PYTHONUTF8: "1"
-        run: python -m pytest -v -rs --durations=10
+        run: python -m pytest -rs --durations=15
 
-  build:
+  # Einzel-EXE (entpackt sich beim Start nach %TEMP%)
+  exe:
+    name: EXE bauen
     if: >-
       github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' ||
       startsWith(github.ref, 'refs/tags/v')
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v5
         with:
-          fetch-depth: 0  # ganze Geschichte: version.py zählt die Merges in main
+          fetch-depth: 0  # version.py und version_test lesen die git-Geschichte
 
       - uses: actions/setup-python@v6
+        id: python
         with:
           python-version: "3.11"
-          cache: pip
+
+      # Installierte Pakete zwischenspeichern statt bei jedem Lauf ~35 s pip install
+      # (PySide6 entpacken). Neu installiert wird nur, wenn sich die Anforderungen ändern.
+      - name: Installierte Pakete aus dem Cache holen
+        id: site-cache
+        uses: actions/cache@v5
+        with:
+          path: ${{ env.pythonLocation }}\Lib\site-packages
+          key: site-build-${{ runner.os }}-${{ steps.python.outputs.python-version }}-${{ hashFiles('requirements.txt', 'requirements-dev.txt') }}
 
       - name: Abhängigkeiten installieren
+        if: steps.site-cache.outputs.cache-hit != 'true'
         run: pip install -r requirements.txt -r requirements-dev.txt
 
       # Der fertige Bootloader aus dem PyInstaller-Paket steckt auch in vielen Schadprogrammen,
       # Defender (und damit Chrome) meldet EXE-Dateien damit oft fälschlich als Virus.
       # Selbst kompiliert ist er einzigartig und fällt deutlich seltener auf.
-      # Das fertig gebaute Paket wird je PyInstaller-Version zwischengespeichert (spart knapp
-      # eine Minute); der Bootloader bleibt selbst kompiliert, nur nicht bei jedem Lauf neu.
+      # Das fertig gebaute Paket wird je PyInstaller-Version zwischengespeichert.
       - name: Selbst kompilierten Bootloader aus dem Cache holen
         id: bootloader-cache
         uses: actions/cache@v5
@@ -167,7 +202,7 @@ jobs:
         env:
           ZEITZEUGE_UPDATE_TOKEN: ${{ secrets.UPDATE_READ_TOKEN }}
           ZEITZEUGE_UPDATE_REPO: ${{ github.repository }}
-        run: pyinstaller --noconfirm --clean ZeitZeuge.spec
+        run: python -m PyInstaller --noconfirm --clean ZeitZeuge.spec
 
       - name: EXE signieren (nur wenn ein Zertifikat hinterlegt ist)
         env:
@@ -179,18 +214,116 @@ jobs:
             Write-Host "::notice title=Signatur::Kein Zertifikat hinterlegt (Secrets SIGN_PFX_BASE64, SIGN_PFX_PASSWORD), EXE bleibt unsigniert."
             exit 0
           }
-          $pfx = Join-Path $env:RUNNER_TEMP "signatur.pfx"
-          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:SIGN_PFX_BASE64))
-          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" |
-            Sort-Object FullName -Descending | Select-Object -First 1
-          & $signtool.FullName sign /f $pfx /p $env:SIGN_PFX_PASSWORD /fd SHA256 `
-            /tr http://timestamp.digicert.com /td SHA256 /d "Zeitzeuge" dist\ZeitZeuge.exe
-          $code = $LASTEXITCODE
-          Remove-Item $pfx -Force
-          if ($code -ne 0) { exit $code }
-          & $signtool.FullName verify /pa dist\ZeitZeuge.exe
+          if ($env:SIGN_PFX_BASE64) {
+            $pfx = Join-Path $env:RUNNER_TEMP "signatur.pfx"
+            [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:SIGN_PFX_BASE64))
+            $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" |
+              Sort-Object FullName -Descending | Select-Object -First 1
+            & $signtool.FullName sign /f $pfx /p $env:SIGN_PFX_PASSWORD /fd SHA256 `
+              /tr http://timestamp.digicert.com /td SHA256 /d "Zeitzeuge" dist\ZeitZeuge.exe
+            $code = $LASTEXITCODE
+            Remove-Item $pfx -Force
+            if ($code -ne 0) { exit $code }
+          }
 
-      # Ordner-Variante für Rechner mit EDR (z. B. Cortex XDR auf der PAW): entpackt nichts nach %TEMP%
+      # Artefakte zählen zum Speicher des Kontos. Ältere als 1 Tag löschen, sonst scheitert
+      # der Upload ("Artifact storage quota has been hit").
+      - name: Alte Artefakte löschen (älter als 1 Tag)
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $grenze = (Get-Date).ToUniversalTime().AddDays(-1)
+          $alle = gh api "repos/$env:GITHUB_REPOSITORY/actions/artifacts?per_page=100" --paginate --jq '.artifacts[] | [.id, .created_at] | @tsv'
+          foreach ($zeile in $alle) {
+            $id, $am = $zeile -split "`t"
+            if ([datetime]::Parse($am).ToUniversalTime() -lt $grenze) {
+              gh api -X DELETE "repos/$env:GITHUB_REPOSITORY/actions/artifacts/$id" | Out-Null
+            }
+          }
+
+      - name: EXE bereitstellen
+        uses: actions/upload-artifact@v6
+        with:
+          name: ZeitZeuge-${{ env.ZZ_VERSION }}
+          path: dist/ZeitZeuge.exe
+          # main/Tag: nur bis zum Release-Job (1 Tag), Branch: als Test-Download 5 Tage
+          retention-days: ${{ (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) && 1 || 5 }}
+          compression-level: 0  # EXE und ZIP sind schon gepackt: nicht noch einmal packen
+
+  # Ordner-Variante für Rechner mit EDR (z. B. Cortex XDR auf der PAW): entpackt nichts nach %TEMP%.
+  # Daraus der Installationsassistent. Läuft gleichzeitig mit „EXE bauen“.
+  ordner:
+    name: Ordner und Setup bauen
+    if: >-
+      github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' ||
+      startsWith(github.ref, 'refs/tags/v')
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0  # version.py und version_test lesen die git-Geschichte
+
+      - uses: actions/setup-python@v6
+        id: python
+        with:
+          python-version: "3.11"
+
+      # Installierte Pakete zwischenspeichern statt bei jedem Lauf ~35 s pip install
+      # (PySide6 entpacken). Neu installiert wird nur, wenn sich die Anforderungen ändern.
+      - name: Installierte Pakete aus dem Cache holen
+        id: site-cache
+        uses: actions/cache@v5
+        with:
+          path: ${{ env.pythonLocation }}\Lib\site-packages
+          key: site-build-${{ runner.os }}-${{ steps.python.outputs.python-version }}-${{ hashFiles('requirements.txt', 'requirements-dev.txt') }}
+
+      - name: Abhängigkeiten installieren
+        if: steps.site-cache.outputs.cache-hit != 'true'
+        run: pip install -r requirements.txt -r requirements-dev.txt
+
+      # Der fertige Bootloader aus dem PyInstaller-Paket steckt auch in vielen Schadprogrammen,
+      # Defender (und damit Chrome) meldet EXE-Dateien damit oft fälschlich als Virus.
+      # Selbst kompiliert ist er einzigartig und fällt deutlich seltener auf.
+      # Das fertig gebaute Paket wird je PyInstaller-Version zwischengespeichert.
+      - name: Selbst kompilierten Bootloader aus dem Cache holen
+        id: bootloader-cache
+        uses: actions/cache@v5
+        with:
+          path: bootloader-wheel
+          key: bootloader-${{ runner.os }}-py3.11-${{ hashFiles('requirements.txt') }}
+
+      - name: PyInstaller-Bootloader selbst kompilieren
+        if: steps.bootloader-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        env:
+          PYINSTALLER_COMPILE_BOOTLOADER: "1"
+        run: |
+          $pin = (Select-String -Path requirements.txt -Pattern '^pyinstaller==').Line
+          pip wheel --no-deps --no-cache-dir --no-binary pyinstaller -w bootloader-wheel $pin
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: PyInstaller mit eigenem Bootloader installieren
+        shell: pwsh
+        run: |
+          $whl = Get-ChildItem bootloader-wheel\pyinstaller-*.whl | Select-Object -First 1
+          pip install --force-reinstall --no-deps $whl.FullName
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      # Version MAJOR.MINOR.PATCH, gezählt aus der git-Geschichte von main (siehe src/version.py),
+      # z. B. 4.1.3; nicht auf main: 4.1.3-test186. Ein Tag muss genau zur Version passen.
+      - name: Versionsnummer bestimmen
+        id: version
+        shell: pwsh
+        run: |
+          $v = python src/version.py
+          if ($LASTEXITCODE -ne 0) { Write-Host "::error::$v"; exit 1 }
+          "ZZ_VERSION=$v" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          Write-Host "::notice title=Version::Zeitzeuge $v"
+
       - name: Ordner-Variante bauen (PAW)
         shell: pwsh
         env:
@@ -200,7 +333,7 @@ jobs:
           SIGN_PFX_BASE64: ${{ secrets.SIGN_PFX_BASE64 }}
           SIGN_PFX_PASSWORD: ${{ secrets.SIGN_PFX_PASSWORD }}
         run: |
-          pyinstaller --noconfirm ZeitZeuge.spec
+          python -m PyInstaller --noconfirm --clean ZeitZeuge.spec
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           if ($env:SIGN_PFX_BASE64) {
             $pfx = Join-Path $env:RUNNER_TEMP "signatur.pfx"
@@ -243,110 +376,64 @@ jobs:
             if ($code -ne 0) { exit $code }
           }
 
-      # Artefakte zählen zum Speicher des Kontos. Ältere als 2 Tage löschen, sonst scheitert
-      # der Upload ("Artifact storage quota has been hit").
-      - name: Alte Artefakte löschen (älter als 2 Tage)
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: pwsh
-        run: |
-          $grenze = (Get-Date).ToUniversalTime().AddDays(-2)
-          $alle = gh api "repos/$env:GITHUB_REPOSITORY/actions/artifacts?per_page=100" --paginate --jq '.artifacts[] | [.id, .created_at] | @tsv'
-          foreach ($zeile in $alle) {
-            $id, $am = $zeile -split "`t"
-            if ([datetime]::Parse($am).ToUniversalTime() -lt $grenze) {
-              gh api -X DELETE "repos/$env:GITHUB_REPOSITORY/actions/artifacts/$id" | Out-Null
-            }
-          }
-
-      - name: Installationsassistent als Download bereitstellen
-        # main bekommt ein Release, Artefakte nur für Branches/PRs. Ist der Speicher voll,
-        # darf das den Build nicht scheitern lassen.
-        if: github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/v')
-        continue-on-error: true
+      - name: Installationsassistent bereitstellen
         uses: actions/upload-artifact@v6
         with:
           name: Zeitzeuge-Setup-${{ env.ZZ_VERSION }}
           path: dist/Zeitzeuge-Setup.exe
-          retention-days: 5
+          # main/Tag: nur bis zum Release-Job (1 Tag), Branch: als Test-Download 5 Tage
+          retention-days: ${{ (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) && 1 || 5 }}
+          compression-level: 0  # EXE und ZIP sind schon gepackt: nicht noch einmal packen
 
-      - name: Ordner-Variante als Download bereitstellen
-        # main bekommt ein Release, Artefakte nur für Branches/PRs. Ist der Speicher voll,
-        # darf das den Build nicht scheitern lassen.
-        if: github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/v')
-        continue-on-error: true
+      - name: Ordner-Variante bereitstellen
         uses: actions/upload-artifact@v6
         with:
           name: ZeitZeuge-Ordner-${{ env.ZZ_VERSION }}
           path: dist/ZeitZeuge-Ordner.zip
-          retention-days: 5
+          # main/Tag: nur bis zum Release-Job (1 Tag), Branch: als Test-Download 5 Tage
+          retention-days: ${{ (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) && 1 || 5 }}
+          compression-level: 0  # EXE und ZIP sind schon gepackt: nicht noch einmal packen
 
-      - name: EXE als Download bereitstellen
-        # main bekommt ein Release, Artefakte nur für Branches/PRs. Ist der Speicher voll,
-        # darf das den Build nicht scheitern lassen.
-        if: github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/v')
-        continue-on-error: true
-        uses: actions/upload-artifact@v6
-        with:
-          name: ZeitZeuge-${{ env.ZZ_VERSION }}
-          path: dist/ZeitZeuge.exe
-          retention-days: 5
-
-      # Release als Entwurf anlegen; veröffentlicht wird es erst im Job „release“, wenn alle Tests
-      # grün sind. Release-Dateien zählen nicht zum Artefakt-Speicher (der oft voll ist).
-      - name: Release-Entwurf anlegen (main oder Tag v*)
-        if: >-
-          (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-          startsWith(github.ref, 'refs/tags/v')
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: pwsh
-        run: |
-          # Entwurf aus einem früheren Versuch desselben Stands entfernen
-          $alt = gh release view "v$env:ZZ_VERSION" --repo $env:GITHUB_REPOSITORY --json isDraft 2>$null | ConvertFrom-Json
-          if ($alt -and $alt.isDraft) { gh release delete "v$env:ZZ_VERSION" --repo $env:GITHUB_REPOSITORY --yes }
-          # Prüfsumme für das Update aus Zeitzeuge (src/updater.py)
-          $sha = (Get-FileHash dist/Zeitzeuge-Setup.exe -Algorithm SHA256).Hash.ToLower()
-          "$sha  Zeitzeuge-Setup.exe" | Out-File -FilePath dist/Zeitzeuge-Setup.exe.sha256 -Encoding ascii -NoNewline
-          gh release create "v$env:ZZ_VERSION" --repo $env:GITHUB_REPOSITORY --draft `
-            --target $env:GITHUB_SHA --title "Zeitzeuge $env:ZZ_VERSION" --generate-notes `
-            dist/Zeitzeuge-Setup.exe dist/Zeitzeuge-Setup.exe.sha256 dist/ZeitZeuge.exe dist/ZeitZeuge-Ordner.zip
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-  # Veröffentlicht den Entwurf, wenn Bau und alle Tests grün sind; sonst wird er gelöscht.
+  # main oder Tag: Release erst, wenn alle Tests und beide Builds grün sind. Release-Dateien zählen
+  # nicht zum Artefakt-Speicher (der oft voll ist); die Artefakte verfallen nach einem Tag.
   release:
-    needs: [test, build]
+    needs: [test, exe, ordner]
     if: >-
-      always() && needs.build.result == 'success' && (
       (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-      startsWith(github.ref, 'refs/tags/v'))
+      startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      ZZ_VERSION: ${{ needs.build.outputs.version }}
+      ZZ_VERSION: ${{ needs.exe.outputs.version }}
       GH_TOKEN: ${{ github.token }}
     steps:
+      - name: Dateien der Builds holen
+        uses: actions/download-artifact@v7
+        with:
+          path: dist
+          merge-multiple: true
+
       # Jeder Stand von main wird ein Release v<Version> (der Tag entsteht beim Veröffentlichen).
       # Der feste Link .../releases/latest/download/ZeitZeuge.exe zeigt immer auf das neueste.
       - name: Release veröffentlichen
         shell: pwsh
         run: |
-          if ("${{ needs.test.result }}" -ne "success") {
-            Write-Host "::error title=Release::Tests nicht grün, Entwurf v$env:ZZ_VERSION wird gelöscht"
-            gh release delete "v$env:ZZ_VERSION" --repo $env:GITHUB_REPOSITORY --yes
-            exit 1
+          foreach ($f in "Zeitzeuge-Setup.exe", "ZeitZeuge.exe", "ZeitZeuge-Ordner.zip") {
+            if (-not (Test-Path "dist/$f")) { Write-Host "::error title=Release::dist/$f fehlt"; exit 1 }
           }
-          gh release edit "v$env:ZZ_VERSION" --repo $env:GITHUB_REPOSITORY --draft=false --latest
+          # Prüfsumme für das Update aus Zeitzeuge (src/updater.py)
+          $sha = (Get-FileHash dist/Zeitzeuge-Setup.exe -Algorithm SHA256).Hash.ToLower()
+          "$sha  Zeitzeuge-Setup.exe" | Out-File -FilePath dist/Zeitzeuge-Setup.exe.sha256 -Encoding ascii -NoNewline
+          # Release aus einem früheren Versuch desselben Stands (Entwurf) entfernen
+          $alt = gh release view "v$env:ZZ_VERSION" --repo $env:GITHUB_REPOSITORY --json isDraft 2>$null | ConvertFrom-Json
+          if ($alt -and $alt.isDraft) { gh release delete "v$env:ZZ_VERSION" --repo $env:GITHUB_REPOSITORY --yes }
+          gh release create "v$env:ZZ_VERSION" --repo $env:GITHUB_REPOSITORY --latest `
+            --target $env:GITHUB_SHA --title "Zeitzeuge $env:ZZ_VERSION" --generate-notes `
+            dist/Zeitzeuge-Setup.exe dist/Zeitzeuge-Setup.exe.sha256 dist/ZeitZeuge.exe dist/ZeitZeuge-Ordner.zip
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       # Nur die 10 neuesten Releases behalten; ältere samt Tag löschen.
       - name: Alte Releases löschen (10 bleiben)
-        if: >-
-          (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-          startsWith(github.ref, 'refs/tags/v')
-        env:
-          GH_TOKEN: ${{ github.token }}
         shell: pwsh
         run: |
           $alt = gh release list --repo $env:GITHUB_REPOSITORY --limit 1000 --exclude-drafts --json tagName,createdAt |

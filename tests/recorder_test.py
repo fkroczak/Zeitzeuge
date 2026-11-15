@@ -98,7 +98,7 @@ if '"abc"' in body or "47 weitere" not in body:
 print("ok: Schwärzen ohne Browser")
 
 # 2. Echter Mitschnitt im unsichtbaren Browser
-server = http.server.ThreadingHTTPServer(("127.0.0.1", 8814), Handler)
+server = http.server.ThreadingHTTPServer(("127.0.0.1", 8816), Handler)
 threading.Thread(target=server.serve_forever, daemon=True).start()
 app = QCoreApplication(sys.argv)
 print("Browser:", find_browser())
@@ -108,7 +108,7 @@ class Page(BrowserReader):
     NAME = "Test"
 
     def start_url(self):
-        return "http://127.0.0.1:8814/"
+        return "http://127.0.0.1:8816/"
 
     def _tick(self):
         pass
@@ -116,7 +116,7 @@ class Page(BrowserReader):
 
 tmp = tempfile.mkdtemp()
 out = os.path.join(tmp, "mitschnitt.json")
-reader = Page("http://127.0.0.1:8814", os.path.join(tmp, "profil"))
+reader = Page("http://127.0.0.1:8816", os.path.join(tmp, "profil"))
 results = []
 reader.recording_done.connect(results.append)
 reader.record(out, mode="headless", max_seconds=60)
