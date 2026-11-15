@@ -47,3 +47,49 @@ Arbeitsblöcke und zusammengefasste Fenster von 25 Tagen mit mehreren Einstellun
 - **Heiße Schleifen kompiliert** (Cython/Rust für `focus`, `merge_segments`): Rechnen −80 % und
   mehr, aber neuer Build-Schritt für die EXE und den Installer.
 - Qt-Zeichnen (~20 ms je Tag) bleibt in jedem Fall.
+
+## Tests und Build (CI)
+
+Gemessen auf GitHub Actions, gleiche Tests (499, keiner übersprungen; vorher 495 + 4 neue).
+
+| | vorher (main, 13.11.) | nachher (Branch, 15.11.) |
+|---|---:|---:|
+| **Ganzer Lauf (Tests + EXE + Setup)** | 9:20 min | **2:41 min** |
+| Tests Windows (Job) | 9:06 min | 2:03 min |
+| davon pytest | 8:15 min | 1:33 min |
+| EXE / Ordner+Setup | 4:40 min nacheinander | 2:33 / 2:36 min gleichzeitig |
+| Tests Linux (Branch-Push) | ~2 min | ~1 min |
+
+Was es gebracht hat:
+
+- **Browser-Tests warteten fest.** 3CX: nach jedem Browserstart 10 s „Seite laden lassen“
+  (`PbxReader.LOAD_WAIT`, im Test 3 s); Matrix42: die Seiten-Skripte warten bis zu 30 s auf
+  Anmeldung/Kalender (`M42Reader.JS_TIME_SCALE`, im Test 0,1). In der App unverändert 10 s
+  bzw. Faktor 1. pbx 171 → 82 s, m42 153 → 45 s.
+- **Parallel** mit pytest-xdist (`pytest.ini`: `-n auto --dist worksteal`; auf dem
+  2-Kern-Windows-Runner 4 Worker, die Browser-Tests warten meist). Einzeln/Debuggen: `pytest -n 0`
+  (`-p no:xdist` geht wegen `addopts` nicht mehr).
+- **Langsame Tests zuerst, auf die Worker verteilt** (`tests/conftest.py`): worksteal gibt jedem
+  Worker anfangs einen zusammenhängenden Block; ohne Verteilung liefen alle Browser-Tests
+  nacheinander auf einem Worker.
+- **Build in zwei gleichzeitigen Jobs** (Einzel-EXE; Ordner + Setup) statt nacheinander.
+  Installierte Pakete im Cache statt `pip install`.
+- **Release:** ein kleiner Job legt auf main/Tag den Entwurf an, beide Builds laden direkt hinein
+  (nicht über den Artefakt-Speicher), veröffentlicht wird nur, wenn Tests und Builds grün sind.
+  Der Weg über main ist erst mit dem nächsten Merge echt geprüft.
+
+Gefunden vom Tester (separater Agent) und behoben:
+
+- `recorder_test` flackerte parallel (2 von 12 Läufen): Die nachgebaute Seite meldete sich sofort
+  beim Laden an, unter Last genau während Chromium für die neue Adresse den Renderer wechselt und
+  der Mitschnitt sich neu anhängt. Der Nachbau meldet sich jetzt 1 s nach dem Laden an (wie ein
+  Mensch). Unter Volllast 10 von 10 grün. In der App betrifft das höchstens Abfragen, die eine
+  Seite in den ersten Millisekunden selbst schickt.
+- Umsortieren brach bei Teilmengen mit `StopIteration` ab (z. B. nur vier langsame Tests mit
+  `-n 2`).
+- `focus_blocks` wich bei ungewöhnlich geschriebenen Zeitstempeln (z. B. „7:00:00“ statt
+  „07:00:00“) ab; jetzt auch dort gleich wie vorher (12008 Vergleiche, 0 Abweichungen).
+
+Untere Grenze: Ein Windows-Job braucht ~35 s zum Einrichten, PyInstaller für die Einzel-EXE
+~1:40 min. Unter ~2:30 min für den ganzen Lauf geht es nur mit größeren (kostenpflichtigen)
+Runnern oder ohne eine der beiden EXE-Varianten.
