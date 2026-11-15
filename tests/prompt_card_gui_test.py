@@ -11,6 +11,7 @@ import faulthandler
 import os
 import sys
 import tempfile
+import time
 import traceback
 from datetime import datetime, timedelta
 
@@ -125,6 +126,11 @@ def gui_test():
     strip = window._prompt_window
     assert isinstance(strip, PromptStrip) and strip.badge.text() == "2", strip
     strip.close_btn.click()
+    # Die nächste Leiste kommt per Zeitgeber nach 400 ms (app_docs): darauf warten (höchstens 5 s)
+    # statt fest 500 ms, unter Last (Tests parallel) reicht der feste Puffer nicht
+    end = time.monotonic() + 5
+    while not isinstance(window._prompt_window, PromptStrip) and time.monotonic() < end:
+        QTest.qWait(50)
     settle()
     strip = window._prompt_window
     assert isinstance(strip, PromptStrip) and len(window._prompt_queue) == 1, window._prompt_queue
