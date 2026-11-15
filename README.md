@@ -250,7 +250,7 @@ Lade **[Zeitzeuge-Setup.exe](https://github.com/fkroczak/Zeitzeuge/releases/late
 
 ### EXE herunterladen
 
-Die fertige EXE liegt unter **[Releases](https://github.com/fkroczak/Zeitzeuge/releases)** (rechts auf der Startseite des Repositorys). Jeder Merge in main wird automatisch ein Release `v<Version>` mit Installationsassistent, EXE und Ordner-Variante.
+Die fertige EXE liegt unter **[Releases](https://github.com/fkroczak/Zeitzeuge/releases)** (rechts auf der Startseite des Repositorys). Ein Release `v<Version>` mit Installationsassistent, EXE und Ordner-Variante entsteht auf Knopfdruck (siehe unten), nicht mehr bei jedem Merge.
 
 - **Immer die neueste Version (direkter Link):** [ZeitZeuge.exe](https://github.com/fkroczak/Zeitzeuge/releases/latest/download/ZeitZeuge.exe) · [ZeitZeuge-Ordner.zip](https://github.com/fkroczak/Zeitzeuge/releases/latest/download/ZeitZeuge-Ordner.zip)
 - **Ältere Versionen:** in der Liste unter Releases, jede mit ihrer Versionsnummer. Es bleiben die 10 neuesten, ältere löscht der Build samt Tag.
@@ -283,7 +283,7 @@ Die Nummer steht im Fenstertitel, unter **Info**, in `fehler.log`, in den Dateie
 | `build.bat` | Zeitzeuge 4.1.3-local |
 | aus dem Quelltext | Zeitzeuge 4.1.3-dev |
 
-Release veröffentlichen: passiert von selbst mit jedem Merge in main (Tag `v<Version>` legt GitHub an). Von Hand geht es weiterhin mit einem Tag `v<Version>` auf den Stand von main, z. B. `v4.1.3`; passt der Tag nicht zur gezählten Version, bricht der Build ab.
+Release veröffentlichen (spart Actions-Minuten: ein Merge in main lässt nur die Tests laufen): unter **Actions → EXE bauen → Run workflow** den Branch `main` wählen. Tests und Build laufen gleichzeitig; sind beide grün, wird `v<Version>` veröffentlicht (den Tag legt GitHub an), und Zeitzeuge bietet das Update an. Alternativ ein Tag `v<Version>` auf den Stand von main, z. B. `v4.1.3`; passt der Tag nicht zur gezählten Version, bricht der Build ab. „Run workflow“ auf einem anderen Branch baut eine Test-EXE zum Download (Artifacts), ohne Release.
 
 #### Updates einrichten
 
@@ -291,7 +291,7 @@ Zeitzeuge holt Updates aus den Releases dieses (privaten) Repositorys. Die EXE b
 
 1. Unter **Settings → Developer settings → Personal access tokens → Fine-grained tokens** ein Token anlegen: **Repository access: Only select repositories → Zeitzeuge**, Permissions → Contents: **Read-only**.
 2. Im Repository unter **Settings → Secrets and variables → Actions** als Secret `UPDATE_READ_TOKEN` hinterlegen.
-3. Fertig: Ab dem nächsten Merge in main enthält die EXE den Zugang. Jedes Release hat zusätzlich `Zeitzeuge-Setup.exe.sha256` (Prüfsumme). Erst Versionen ab diesem Merge können sich selbst aktualisieren; ältere einmal von Hand. Ohne Secret baut die CI wie bisher, nur ohne Updates.
+3. Fertig: Ab dem nächsten Release enthält die EXE den Zugang. Jedes Release hat zusätzlich `Zeitzeuge-Setup.exe.sha256` (Prüfsumme). Erst Versionen ab diesem Release können sich selbst aktualisieren; ältere einmal von Hand. Ohne Secret baut die CI wie bisher, nur ohne Updates.
 
 **Ablauf des Tokens:** Fine-grained Tokens laufen nach der eingestellten Zeit ab (höchstens etwa ein Jahr). Rechtzeitig vorher ein neues Lese-Token anlegen, `UPDATE_READ_TOKEN` ersetzen und ein Release bauen; die Versionen mit dem alten Token aktualisieren sich dann noch einmal auf die neue. Zeitzeuge schreibt 30 Tage vor Ablauf einen Hinweis in `fehler.log`. Ist das Token abgelaufen, meldet „Nach Updates suchen“ das, und das Setup muss einmal von Hand installiert werden. Ein ausgelesenes oder missbrauchtes Token sperrst du jederzeit auf GitHub; neue Versionen bekommen dann ein neues.
 

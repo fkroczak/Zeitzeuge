@@ -26,6 +26,9 @@ handler.log_message = lambda *a: None
 server = http.server.ThreadingHTTPServer(("127.0.0.1", 8812), handler)
 threading.Thread(target=server.serve_forever, daemon=True).start()
 
+# Der Nachbau liegt lokal und ist sofort geladen: nicht die 10 s wie bei der echten 3CX warten
+PbxReader.LOAD_WAIT = 3
+
 app = QCoreApplication(sys.argv)
 print("Browser:", find_browser())
 tmp = tempfile.mkdtemp()
@@ -57,7 +60,10 @@ def run(url, until, what, days=14):
     if login_window_open(profile):
         fail("Unsichtbarer Browser wird als Anmeldefenster erkannt", reader)
     reader.stop()
-    time.sleep(2)  # Browser sauber beenden lassen (Profil freigeben)
+    # Browser sauber beenden lassen (Profil freigeben): höchstens 2 s, wie bisher
+    end = time.time() + 2
+    while profile_in_use(profile) and time.time() < end:
+        time.sleep(0.1)
     if profile_in_use(profile):
         fail("Profil nach dem Beenden noch gesperrt", reader)
 

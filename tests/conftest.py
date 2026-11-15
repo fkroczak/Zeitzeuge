@@ -11,6 +11,7 @@ Zwei Arten von Tests:
   Endet das Skript nicht mit Code 0, schlägt der Test fehl und zeigt die ganze Ausgabe
   (auch die ::error-Zeilen für GitHub).
 """
+import itertools
 import os
 import re
 import subprocess
@@ -49,6 +50,45 @@ def pytest_pycollect_makemodule(module_path, parent):
     if is_script(module_path):
         return ScriptFile.from_parent(parent, path=module_path)
     return None
+
+
+# Die längsten Tests (Sekunden auf Windows-CI, 15.11.2026) zuerst starten und auf die Worker
+# verteilen: Parallel (pytest-xdist) liefe sonst am Ende einer allein weiter.
+SLOW = {"pbx_test.py": 80, "m42_test.py": 44, "itm_test.py": 40, "settings_window_test.py": 12,
+        "recorder_test.py": 10, "prompt_card_gui_test.py": 7, "robustness_test.py": 6, "ui_audit_test.py": 6,
+        "notices_gui_test.py": 5, "card_dialogs_gui_test.py": 5, "ai_test.py": 4, "busy_rows_test.py": 4,
+        "customers_gui_test.py": 4, "m42_booking_gui_test.py": 4}
+
+
+def pytest_collection_modifyitems(config, items):
+    """Nur die Reihenfolge ändern, nichts auslassen.
+
+    --dist worksteal gibt jedem Worker anfangs einen zusammenhängenden Block der Liste (wie
+    xdist/scheduler/worksteal.py: Block i = Rest // (Worker - i)) und verschiebt später nur
+    noch Tests vom Ende eines Blocks. Darum beginnt jeder Block mit langsamen Tests, gleichmäßig
+    nach Dauer verteilt (längster zuerst in den Block mit der wenigsten Arbeit)."""
+    slow = sorted((i for i in items if i.path.name in SLOW), key=lambda i: -SLOW[i.path.name])
+    rest = [i for i in items if i.path.name not in SLOW]
+    workers = int(os.environ.get("PYTEST_XDIST_WORKER_COUNT", "1") or 1)
+    if workers <= 1 or len(items) < 2 * workers:
+        items[:] = slow + rest
+        return
+    sizes, left = [], len(items)
+    for k in range(workers):
+        sizes.append(left // (workers - k))
+        left -= sizes[-1]
+    blocks, load = [[] for _ in sizes], [0] * workers
+    for item in slow:
+        k = min(range(workers), key=lambda j: (load[j], j))
+        blocks[k].append(item)
+        load[k] += SLOW[item.path.name]
+    rest = iter(rest)
+    ordered = []
+    for block, size in zip(blocks, sizes):  # Block zu voll mit langsamen: dann eben länger
+        ordered += block + list(itertools.islice(rest, max(0, size - len(block))))
+    ordered += list(rest)
+    assert sorted(map(id, ordered)) == sorted(map(id, items)), "Umsortieren darf nichts verlieren"
+    items[:] = ordered
 
 
 class ScriptFile(pytest.File):

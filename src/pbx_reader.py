@@ -806,6 +806,7 @@ class PbxReader(BrowserReader):
     # 3CX aktualisiert die Anrufliste im unsichtbaren Edge nicht zuverlässig von selbst,
     # darum die Seite regelmäßig neu laden (und sofort bei Aktualisieren, siehe refresh)
     RELOAD_INTERVAL = 2 * 60
+    LOAD_WAIT = 10  # Sekunden: Seite nach Start/Neuladen laden lassen (Tests mit Nachbau: kürzer)
     NAME = "3CX"
     STATE_VERSION = 2
     def __init__(self, base_url, calls_file, profile_dir, userscript_text, parent=None,
@@ -920,7 +921,7 @@ class PbxReader(BrowserReader):
         return bool(data and not data["login"] and data["calls"])
 
     def _wait_load(self):
-        time.sleep(10)  # Seite laden lassen
+        time.sleep(self.LOAD_WAIT)  # Seite laden lassen
 
     def _read_once(self):
         """Sichtbare Anrufliste lesen. True, wenn Anrufe gelesen wurden."""

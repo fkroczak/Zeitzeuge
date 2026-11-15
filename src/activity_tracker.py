@@ -241,9 +241,10 @@ class ActivityTracker:
         del self.pending[:len(lines)]
         return True
 
-    def segments_for(self, date_str):
-        """Alle Abschnitte eines Tages, auch der laufende und noch nicht gespeicherte."""
-        result = read_segments(self.folder, date_str)
+    def segments_for(self, date_str, copy=True):
+        """Alle Abschnitte eines Tages, auch der laufende und noch nicht gespeicherte.
+        copy=False: gespeicherte Abschnitte nicht kopieren (nur lesen, nicht ändern!)."""
+        result = list(read_segments(self.folder, date_str, copy=copy))
         result += [dict(p) for p in self.pending if p["start"].startswith(date_str)]
         cur = self.current
         if cur:  # laufender Abschnitt, über Mitternacht auf den Tag zugeschnitten
@@ -280,9 +281,10 @@ _segment_cache = {}  # (Speicher, Ablage, Tag) -> (Stand der Datenbank, Abschnit
 _segment_lock = threading.Lock()  # der Lese-Thread der Timeline liest beim Start vorab
 
 
-def read_segments(folder, date_str):
+def read_segments(folder, date_str, copy=True):
     """Gespeicherte Abschnitte eines Tages, auch wenn die Aufzeichnung gerade pausiert ist.
-    Kaputte Zeilen werden übersprungen."""
+    Kaputte Zeilen werden übersprungen. copy=False: die gemerkten Abschnitte selbst (schneller,
+    der Aufrufer darf weder die Liste noch die Abschnitte ändern)."""
     if not os.path.isdir(os.path.dirname(os.path.abspath(folder))):
         return []  # Datenordner fehlt: nichts anlegen
     try:
@@ -303,6 +305,8 @@ def read_segments(folder, date_str):
             _segment_cache[key] = hit  # zuletzt benutzt ans Ende
             while len(_segment_cache) > SEGMENT_CACHE_DAYS:
                 del _segment_cache[next(iter(_segment_cache))]
+        if not copy:
+            return hit[1]
         return [dict(seg) for seg in hit[1]]  # Kopien: Aufrufer dürfen sie ändern
     except (datastore.Busy, datastore.Locked, OSError):  # gerade nicht lesbar
         return []
@@ -350,14 +354,20 @@ def _seconds(a, b):
 
 def merge_segments(segments, min_seconds=30, max_gap=60):
     """Gleiche Fenster mit kurzen Lücken zusammenfassen, sehr kurze weglassen."""
-    merged = []
+    sec = timefmt.seconds  # wie _seconds, ohne datetime-Rechnung (Tausende Stücke je Tag)
+    merged, ends = [], []  # ends: Ende des jeweiligen Stücks in Sekunden
+    last = None
     for s in sorted(segments, key=lambda s: s["start"]):
-        if (merged and merged[-1]["app"] == s["app"] and merged[-1]["title"] == s["title"]
-                and _seconds(merged[-1]["end"], s["start"]) <= max_gap):
-            merged[-1]["end"] = max(merged[-1]["end"], s["end"])
+        if (last is not None and last["app"] == s["app"] and last["title"] == s["title"]
+                and sec(s["start"]) - ends[-1] <= max_gap):
+            if s["end"] > last["end"]:
+                last["end"] = s["end"]
+                ends[-1] = sec(s["end"])
         else:
-            merged.append(dict(s))
-    return [m for m in merged if _seconds(m["start"], m["end"]) >= min_seconds]
+            last = dict(s)
+            merged.append(last)
+            ends.append(sec(s["end"]))
+    return [m for m, end in zip(merged, ends) if end - sec(m["start"]) >= min_seconds]
 
 
 @lru_cache(maxsize=1024)

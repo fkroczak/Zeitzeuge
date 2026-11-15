@@ -28,6 +28,10 @@ from PySide6.QtCore import QCoreApplication  # noqa: E402
 
 from m42_reader import M42Reader, load_store, week_start  # noqa: E402
 
+# Der Nachbau läuft lokal und antwortet sofort: Wartezeiten der Seiten-Skripte auf ein Zehntel
+# (z. B. „ohne Kalender nach 30 s das Token nehmen“ nach 3 s). Abläufe bleiben dieselben.
+M42Reader.JS_TIME_SCALE = 0.1
+
 MOCK = os.path.join(ROOT, "tests", "mock_m42")
 LOGIN = [True]  # erster Aufruf: Anmeldeseite
 monday = date.fromisoformat(week_start(date.today().isoformat()))

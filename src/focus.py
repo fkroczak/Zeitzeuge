@@ -18,8 +18,6 @@ So geht es:
 Rein funktional, ohne Qt; Zeiten als Text "JJJJ-MM-TT hh:mm:ss".
 """
 from bisect import bisect_right
-from functools import lru_cache
-
 import rules as rule_engine
 import timefmt
 from activity_tracker import app_label
@@ -36,12 +34,7 @@ def _t(text):
     return timefmt.parse(text)
 
 
-@lru_cache(maxsize=65536)
-def _sec(text):
-    """Zeitstempel als Sekundenzahl (ganzzahlig, als float): Differenzen genau wie
-    timedelta.total_seconds(), aber ohne datetime-Rechnung (hier Zehntausende Male je Tag)."""
-    d = timefmt.parse(text)
-    return float(d.toordinal() * 86400 + d.hour * 3600 + d.minute * 60 + d.second)
+_sec = timefmt.seconds  # Zeitstempel als Sekundenzahl (float), hier Zehntausende Male je Tag
 
 
 def _seconds(a, b):
@@ -56,9 +49,13 @@ MEMO_MAX = 50000
 
 def _known_for(rules, keywords):
     sig = repr(rules)
-    if _memo["rules"] != sig or _memo["keywords"] is not keywords or len(_memo["known"]) > MEMO_MAX:
+    if _memo["rules"] != sig or _memo["keywords"] is not keywords:
         _memo.update(rules=sig, keywords=keywords, known={})
-    return _memo["known"]
+    known = _memo["known"]
+    if len(known) > MEMO_MAX:  # voll: die älteste Hälfte vergessen statt alles (Fenster von heute bleiben)
+        for old in list(known)[:len(known) // 2]:
+            del known[old]
+    return known
 
 
 # Felder, die bei einem Fenster immer gleich sind (rules._fields mit is_pc=True)
@@ -98,9 +95,9 @@ def focus_blocks(segments, rules=None, jump_seconds=JUMP_SECONDS, max_gap_second
         key = known.get((app, title))
         if key is None:
             key = known[(app, title)] = activity_of(s, compiled, keywords)
+        a, b = _sec(s["start"]), _sec(s["end"])
         pieces.append({"start": s["start"], "end": s["end"], "app": app,
-                       "title": title, "key": key,
-                       "seconds": _seconds(s["start"], s["end"])})
+                       "title": title, "key": key, "seconds": b - a, "_s": a, "_e": b})
     if not pieces:
         return []
 
@@ -109,13 +106,18 @@ def focus_blocks(segments, rules=None, jump_seconds=JUMP_SECONDS, max_gap_second
 
     # 3. Blöcke derselben Tätigkeit
     blocks = []
+    last = None
+    last_end = 0.0  # Ende von last in Sekunden
     for p in pieces:
-        last = blocks[-1] if blocks else None
-        if last and last["key"] == p["key"] and _seconds(last["end"], p["start"]) <= max_gap_seconds:
-            last["end"] = max(last["end"], p["end"])
+        if last is not None and last["key"] == p["key"] and p["_s"] - last_end <= max_gap_seconds:
+            if p["end"] > last["end"]:
+                last["end"], last_end = p["end"], p["_e"]
             last["pieces"].append(p)
+            last["_e"] = last_end
         else:
-            blocks.append({"start": p["start"], "end": p["end"], "key": p["key"], "pieces": [p]})
+            last = {"start": p["start"], "end": p["end"], "key": p["key"], "pieces": [p], "_s": p["_s"]}
+            last["_e"] = last_end = p["_e"]
+            blocks.append(last)
 
     # 4. Splitter in den Nachbarn: erst den kürzesten, dann neu prüfen
     blocks = _absorb_short(blocks, min_block_seconds, max_gap_seconds)
@@ -131,40 +133,47 @@ def _attach_jumps(pieces, jump_seconds, max_gap_seconds):
     Tätigkeit), statt für jeden Sprung den Rest der Liste abzusuchen. Die Stücke hinter der
     aktuellen Stelle sind dabei noch unverändert, darum ist das Ergebnis dasselbe."""
     n = len(pieces)
+    # Zeiten einmal als Sekunden (focus_blocks hat sie schon ausgerechnet)
+    starts = [p["_s"] if "_s" in p else _sec(p["start"]) for p in pieces]
+    ends = [p["_e"] if "_e" in p else _sec(p["end"]) for p in pieces]
+    keys = [p["key"] for p in pieces]
+    short = [p["seconds"] < jump_seconds for p in pieces]
     next_long = [n] * (n + 1)  # nächstes Stück ab j, das kein Sprung ist
     for j in range(n - 1, -1, -1):
-        next_long[j] = j if pieces[j]["seconds"] >= jump_seconds else next_long[j + 1]
+        next_long[j] = next_long[j + 1] if short[j] else j
     positions = {}  # Tätigkeit -> Stellen (aufsteigend)
-    for j, p in enumerate(pieces):
-        positions.setdefault(p["key"], []).append(j)
+    for j, key in enumerate(keys):
+        positions.setdefault(key, []).append(j)
     for i in range(1, n):
-        p, prev = pieces[i], pieces[i - 1]
-        if p["seconds"] >= jump_seconds or p["key"] == prev["key"]:
+        key, prev_key = keys[i], keys[i - 1]
+        if not short[i] or key == prev_key:
             continue
-        if _seconds(prev["end"], p["start"]) > max_gap_seconds:
+        if starts[i] - ends[i - 1] > max_gap_seconds:
             continue
         k = next_long[i + 1]
-        same = positions.get(prev["key"])
+        same = positions.get(prev_key)
         if same:
             m = bisect_right(same, i)
             if m < len(same) and same[m] < k:
                 k = same[m]
-        nxt = pieces[k] if k < n else None
-        returns = (nxt is not None and nxt["key"] == prev["key"]
-                   and _seconds(p["end"], nxt["start"]) <= max_gap_seconds)
-        same_customer = bool(p["key"][1]) and p["key"][1] == prev["key"][1]
-        if returns or same_customer:
-            p["key"] = prev["key"]
+        # keys[k] ist noch unverändert (nur Stücke vor i wurden umgehängt)
+        returns = k < n and keys[k] == prev_key and starts[k] - ends[i] <= max_gap_seconds
+        if returns or (bool(key[1]) and key[1] == prev_key[1]):
+            p = pieces[i]
+            p["key"] = keys[i] = prev_key
             p["jump"] = True
 
 
 class _Node:
     """Block in einer verketteten Liste (Schritt 4): Nachbarn ohne Suchen in der Liste."""
-    __slots__ = ("block", "prev", "next", "order", "version", "alive")
+    __slots__ = ("block", "prev", "next", "order", "version", "alive", "s", "e")
 
     def __init__(self, block, order):
         self.block, self.order, self.version, self.alive = block, order, 0, True
         self.prev = self.next = None
+        # Beginn und Ende in Sekunden (focus_blocks gibt sie mit)
+        self.s = block["_s"] if "_s" in block else _sec(block["start"])
+        self.e = block["_e"] if "_e" in block else _sec(block["end"])
 
 
 def _absorb_short(blocks, min_block_seconds, max_gap_seconds):
@@ -185,7 +194,13 @@ def _absorb_short(blocks, min_block_seconds, max_gap_seconds):
     heap = []
 
     def duration(node):
-        return _seconds(node.block["start"], node.block["end"])
+        return node.e - node.s
+
+    def absorb(target, other):  # wie _absorb, Sekunden mitführen
+        _absorb(target.block, other.block)
+        # Aus dem Text wie früher (min/max der Zeitstempel als Text), nicht aus den Zahlen:
+        # gleich auch bei ungewöhnlich geschriebenen Zeiten, deren Textfolge abweicht
+        target.s, target.e = _sec(target.block["start"]), _sec(target.block["end"])
 
     def push(node):
         node.version += 1
@@ -211,18 +226,18 @@ def _absorb_short(blocks, min_block_seconds, max_gap_seconds):
             continue  # veralteter Eintrag
         b = node.block
         candidates = []
-        if node.prev and _seconds(node.prev.block["end"], b["start"]) <= max_gap_seconds:
+        if node.prev and node.s - node.prev.e <= max_gap_seconds:
             candidates.append(node.prev)
-        if node.next and _seconds(b["end"], node.next.block["start"]) <= max_gap_seconds:
+        if node.next and node.next.s - node.e <= max_gap_seconds:
             candidates.append(node.next)
         if not candidates:
-            if _seconds(b["start"], b["end"]) < 60:  # allein und unter einer Minute: Rauschen
+            if node.e - node.s < 60:  # allein und unter einer Minute: Rauschen
                 remove(node)
             else:
                 b["keep"] = True  # allein stehender kurzer Block bleibt
             continue
         target = max(candidates, key=duration)
-        _absorb(target.block, b)
+        absorb(target, node)
         remove(node)
         push(target)
         # Gleiche Nachbarn verbinden (wie _join_same über die ganze Liste): ab dem Block vor
@@ -230,9 +245,8 @@ def _absorb_short(blocks, min_block_seconds, max_gap_seconds):
         cur = target.prev or target
         while cur.next:
             nxt = cur.next
-            if cur.block["key"] == nxt.block["key"] \
-                    and _seconds(cur.block["end"], nxt.block["start"]) <= max_gap_seconds:
-                _absorb(cur.block, nxt.block)
+            if cur.block["key"] == nxt.block["key"] and nxt.s - cur.e <= max_gap_seconds:
+                absorb(cur, nxt)
                 remove(nxt)
                 push(cur)
                 continue
@@ -249,7 +263,15 @@ def _absorb_short(blocks, min_block_seconds, max_gap_seconds):
 def _absorb(target, other):
     target["start"] = min(target["start"], other["start"])
     target["end"] = max(target["end"], other["end"])
-    target["pieces"] = sorted(target["pieces"] + other["pieces"], key=lambda p: p["start"])
+    mine, theirs = target["pieces"], other["pieces"]
+    # Beide Listen sind nach Beginn sortiert: meist hängt die eine glatt an die andere
+    # (gleiches Ergebnis wie das stabile sorted, ohne jedes Stück anzufassen)
+    if not theirs or (mine and theirs[0]["start"] >= mine[-1]["start"]):
+        target["pieces"] = mine + theirs
+    elif not mine or theirs[-1]["start"] < mine[0]["start"]:
+        target["pieces"] = theirs + mine
+    else:
+        target["pieces"] = sorted(mine + theirs, key=lambda p: p["start"])
 
 
 def _join_same(blocks, max_gap_seconds):
