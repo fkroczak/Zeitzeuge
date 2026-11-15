@@ -514,7 +514,12 @@ class DaySummary(QWidget):
         basis = data.get("target_basis", "")  # „gestempelt“/„bis jetzt“ (ITM-Personalzeit) oder „Arbeitszeit“
         self.booked.extra.setText(f"von {hm(target)} {basis}".strip() if target else "")
         share = int(min(100, 100 * booked / target)) if target else 0
-        self.booked.bar.setValue(share)
+        bar = self.booked.bar
+        if bar.value() != share:
+            # setValue zeichnet den Balken sofort (synchron); so kommt er mit dem nächsten Bild
+            bar.setUpdatesEnabled(False)
+            bar.setValue(share)
+            bar.setUpdatesEnabled(True)
         self.booked.percent.setText(f"{round(100 * booked / target)} %" if target else "")
         tips = {"gestempelt": " im Verhältnis zur gestempelten Personalzeit (ITM)",
                 "bis jetzt": " im Verhältnis zur Personalzeit bis jetzt (noch eingestempelt, läuft live)",

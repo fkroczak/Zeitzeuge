@@ -4,6 +4,7 @@ import threading
 import time
 from datetime import datetime
 from functools import lru_cache
+from operator import itemgetter
 from html import escape
 
 from PySide6.QtCore import QDate, QDateTime, QPoint, QPointF, QRectF, Qt, QTimer, Signal
@@ -14,7 +15,7 @@ from PySide6.QtWidgets import (QApplication, QDialog, QDialogButtonBox, QFormLay
                                QGraphicsScene, QGraphicsView, QLabel, QLineEdit, QMenu,
                                QHBoxLayout, QPlainTextEdit, QScrollArea, QTextBrowser, QVBoxLayout)
 
-from activity_tracker import app_label, merge_segments, read_segments
+from activity_tracker import ActivityTracker, app_label, merge_segments, read_segments
 import call_import
 from call_import import load_call_suggestions
 import focus
@@ -31,6 +32,9 @@ import skeleton
 from vpn_reader import VpnReader, drop_unnamed_twins, vpn_sources
 
 TIME_FMT = "%Y-%m-%d %H:%M:%S"
+
+# Kennung eines Fensterstücks für den Vergleich mit dem Zwischenspeicher (pc_entries_for)
+_SEGMENT_SIG = itemgetter("start", "end", "app", "title")
 
 
 def _parse_time(text):
@@ -1351,10 +1355,15 @@ class TimelineView(QGraphicsView):
 
     def _pc_entries_for(self, date: QDate, min_seconds, max_gap):
         date_str = date.toString("yyyy-MM-dd")
+        # Fensterstücke nur lesen (merge_segments kopiert selbst): ohne Kopie der gemerkten Stücke
         if self.tracker:
-            segments = self.tracker.segments_for(date_str)
+            segments_for = self.tracker.segments_for
+            if getattr(segments_for, "__func__", None) is ActivityTracker.segments_for:
+                segments = segments_for(date_str, copy=False)
+            else:
+                segments = segments_for(date_str)
         elif self.activity_dir:  # pausiert: bisher Aufgezeichnetes trotzdem zeigen
-            segments = read_segments(self.activity_dir, date_str)
+            segments = read_segments(self.activity_dir, date_str, copy=False)
         else:
             segments = []
         if self.imported:  # aktive Fenster des anderen PCs
@@ -1364,7 +1373,7 @@ class TimelineView(QGraphicsView):
         # Timeline, Tagesliste, Dokumentation und Statuszeile fragen beim Zeichnen mehrmals
         # nach demselben Tag: Ergebnis merken, solange die Fensterstücke gleich sind
         key = (date_str, min_seconds, max_gap)
-        sig = tuple((s["start"], s["end"], s["app"], s["title"]) for s in segments)
+        sig = tuple(map(_SEGMENT_SIG, segments))
         cache = self._pc_cache
         with self._cache_lock:
             hit = cache.pop(key, None)

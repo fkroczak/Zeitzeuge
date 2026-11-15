@@ -40,7 +40,7 @@ CUSTOMERS = [f"Kunde {i}" for i in range(40)]
 def workdays(n):
     for d in range(n, -1, -1):
         day = today - timedelta(days=d)
-        if day.weekday() < 5:
+        if day.weekday() < 5 or day == today:  # heute immer, auch am Wochenende
             yield day
 
 
