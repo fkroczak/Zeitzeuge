@@ -121,7 +121,8 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
           PYTHONUTF8: "1"
-        run: python -m pytest -rs --durations=15
+        # 4 Worker auf 2 Kernen: die Browser-Tests warten meist auf den Browser, nicht auf die CPU
+        run: python -m pytest -n 4 -rs --durations=15
 
   # Einzel-EXE (entpackt sich beim Start nach %TEMP%)
   exe:
