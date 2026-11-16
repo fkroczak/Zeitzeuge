@@ -11,11 +11,12 @@ from PySide6.QtCore import QDate, QEvent, QLocale, QObject, Qt, QTime, QTimer, S
 from PySide6.QtGui import QPalette
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QDateEdit, QDialog, QDialogButtonBox, QFormLayout, QHBoxLayout,
                                QLabel, QLineEdit, QListWidget, QListWidgetItem, QPlainTextEdit,
-                               QPushButton, QTimeEdit, QToolButton, QVBoxLayout)
+                               QPushButton, QSpinBox, QTimeEdit, QToolButton, QVBoxLayout)
 
 import spellcheck
 from theme import fit_bold, prose
 from prompt_card import CardParts, _theme_colors
+import billing
 import m42_booking as mb
 
 
@@ -136,7 +137,7 @@ class BookingDialog(_TicketSearch, CardParts, QDialog):
         flags = QHBoxLayout()
         self.goodwill_box = QCheckBox("K&ulanz")
         self.goodwill_box.setChecked(bool(plan.get("goodwill")))
-        self.goodwill_box.setToolTip("Die Zeit wird als Kulanz gebucht (nicht berechnet).")
+        self.goodwill_box.setToolTip("Die Kulanzzeit wird nicht berechnet.")
         self.travel_box = QCheckBox("&Reise")
         self.travel_box.setChecked(bool(plan.get("travel")))
         self.travel_box.setToolTip("Die Zeit wird als Reise (Anfahrt) gebucht.")
@@ -150,10 +151,26 @@ class BookingDialog(_TicketSearch, CardParts, QDialog):
         self.surcharge_box.setText("Kein &Zuschlag")
         flags.addStretch(1)
         form.addRow("", flags)
-        self.goodwill_minutes = int(plan.get("goodwill_minutes") or 0)  # beim Eintragen angegeben
         self.travel_km = (int(plan.get("travel_km_there") or 0), int(plan.get("travel_km_back") or 0))
         if any(self.travel_km):  # beim Eintragen angegeben: im Haken zeigen, geht mit nach Matrix42
             self.travel_box.setText(f"&Reise (An {self.travel_km[0]} km, Ab {self.travel_km[1]} km)")
+        # Kulanzzeit: vorbelegt aus der Tätigkeit (sonst die ganze Zeit), gerundet wie die gebuchte Zeit
+        self.billing_rule = tuple(plan.get("billing_rule") or (0, "off"))
+        self.goodwill_spin = QSpinBox()
+        self.goodwill_spin.setSuffix(" min")
+        self.goodwill_spin.setAccessibleName("Kulanzzeit in Minuten")
+        self.goodwill_spin.setToolTip("So viel der Zeit wird nicht berechnet. Wird wie die gebuchte "
+                                      "Zeit im Abrechnungstakt aufgerundet (höchstens die ganze Zeit).")
+        step, mode = self.billing_rule
+        self.goodwill_spin.setSingleStep(step if mode != "off" and step > 0 else 1)
+        self.goodwill_spin.setRange(1, max(1, int(plan.get("minutes") or 1)))
+        self._goodwill_set = bool(plan.get("goodwill_minutes"))  # sonst folgt sie der ganzen Zeit
+        self.goodwill_spin.setValue(int(plan.get("goodwill_minutes") or 0) or self.goodwill_spin.maximum())
+        self.goodwill_spin.valueChanged.connect(self._goodwill_changed)
+        self.goodwill_spin.editingFinished.connect(self._round_goodwill)
+        self.goodwill_time_label = QLabel("Kulanzzei&t:")
+        self.goodwill_time_label.setBuddy(self.goodwill_spin)
+        form.addRow(self.goodwill_time_label, self.goodwill_spin)
         self.goodwill_reason = QLineEdit((plan.get("goodwill_reason") or "Kulanz") if plan.get("goodwill") else "")
         self.goodwill_reason.setPlaceholderText("Grund für die Kulanz")
         self.goodwill_reason.setAccessibleName("Kulanzgrund")
@@ -222,10 +239,37 @@ class BookingDialog(_TicketSearch, CardParts, QDialog):
         self.type_edit.setCurrentIndex(max(index, 0))
 
     def _goodwill_toggled(self, on):
-        self.goodwill_reason.setVisible(on)
-        self.goodwill_label.setVisible(on)
+        for widget in (self.goodwill_reason, self.goodwill_label, self.goodwill_spin, self.goodwill_time_label):
+            widget.setVisible(on)
         if on and not self.goodwill_reason.text().strip():
             self.goodwill_reason.setText("Kulanz")
+
+    def _goodwill_changed(self, _value):
+        if not self._syncing_goodwill:
+            self._goodwill_set = True
+
+    _syncing_goodwill = False
+
+    def _set_goodwill(self, minutes):
+        self._syncing_goodwill = True
+        self.goodwill_spin.setValue(minutes)
+        self._syncing_goodwill = False
+
+    def _round_goodwill(self):
+        """Kulanzzeit wie die gebuchte Zeit runden (Abrechnungstakt), höchstens die ganze Zeit."""
+        rounded = billing.billed_minutes(self.goodwill_spin.value() * 60, *self.billing_rule)
+        self._set_goodwill(min(rounded, self.goodwill_spin.maximum()))
+        return self.goodwill_spin.value()
+
+    def _sync_goodwill(self, minutes):
+        """Gebuchte Zeit geändert: Höchstwert anpassen; nicht verändert = die ganze Zeit."""
+        if minutes <= 0:
+            return
+        self._syncing_goodwill = True
+        self.goodwill_spin.setMaximum(minutes)
+        if not self._goodwill_set:
+            self.goodwill_spin.setValue(minutes)
+        self._syncing_goodwill = False
 
     def _surcharge_toggled(self, on):
         self.surcharge_reason.setVisible(on)
@@ -257,6 +301,8 @@ class BookingDialog(_TicketSearch, CardParts, QDialog):
         ticket = mb.normalize_ticket(self.ticket_edit.text())
         minutes = int((end - start).total_seconds() // 60)
         self.duration.setText(_hm(minutes) if minutes > 0 else "")
+        if hasattr(self, "goodwill_spin"):
+            self._sync_goodwill(minutes)
         problem = ("⚠ Fehler: „Bis“ muss nach „Von“ liegen." if minutes <= 0 else
                    "⚠ Bitte eine Ticketnummer (TCK…) angeben." if not ticket else "")
         if not (self.reader is not None and self.reader.booking):
@@ -305,7 +351,7 @@ class BookingDialog(_TicketSearch, CardParts, QDialog):
                 "activity_type": self.type_edit.currentData(), "ids": self.ids,
                 "goodwill": self.goodwill_box.isChecked(), "travel": self.travel_box.isChecked(),
                 "goodwill_reason": self.goodwill_reason.text().strip(),
-                "goodwill_minutes": self.goodwill_minutes,
+                "goodwill_minutes": self._round_goodwill() if self.goodwill_box.isChecked() else 0,
                 "travel_km_there": self.travel_km[0], "travel_km_back": self.travel_km[1],
                 "no_surcharge": self.surcharge_box.isChecked(),
                 "surcharge_reason": self.surcharge_reason.text().strip()}
