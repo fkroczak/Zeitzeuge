@@ -1108,11 +1108,12 @@ class SettingsWindow(QDialog):
             return ("ok" if info["level"] in ("ok", "over") else "warn"), text, tip
         if key == "data":
             try:
-                _win, pin, recovery, _transfer, _where = main.protection_state()
+                _win, pin, hello, recovery, _transfer, _where = main.protection_state()
             except Exception:  # Zustand darf die Einstellungen nie blockieren
                 return "warn", "Zustand unbekannt", "Der Schutz der Daten ließ sich gerade nicht prüfen."
             ok = recovery != "fehlt noch"
-            text = f"Verschlüsselt · PIN {pin} · Wiederherstellungsschlüssel {recovery}"
+            text = (f"Verschlüsselt · PIN {pin}" + (" · Windows Hello an" if hello.startswith("an") else "")
+                    + f" · Wiederherstellungsschlüssel {recovery}")
             why = ("Daten verschlüsselt, Wiederherstellungsschlüssel vorhanden." if ok else
                    "Es gibt noch keinen Wiederherstellungsschlüssel. Ohne ihn sind die Daten verloren, "
                    "wenn Windows-Konto oder PIN nicht mehr gehen. Anlegen unter Datenschutz …")
