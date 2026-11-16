@@ -302,6 +302,7 @@ class _Kpi(QFrame):
         layout.setSpacing(SPACE_XS)
         head = QLabel(label, self)
         head.setObjectName("kpi_label")
+        self.head = head
         layout.addWidget(head)
         row = QHBoxLayout()
         row.setSpacing(SPACE_S)
@@ -556,8 +557,10 @@ class DaySummary(QWidget):
         has_m42 = m42 is not None and bool(target)
         kpi.bar_m42.setVisible(has_m42)
         kpi.percent_m42.setVisible(has_m42)
-        # Große Zahl: mit Matrix42 die dort gebuchte Zeit, sonst die selbst erfasste
+        # Große Zahl und Überschrift: mit Matrix42 die dort gebuchte Zeit, sonst die selbst erfasste
         kpi.value.setText(hm(m42 if m42 is not None else booked))
+        title = "In Matrix42 gebucht" if m42 is not None else "Erfasst"
+        kpi.head.setText(title)
         if has_m42:
             kpi.set_bar(kpi.bar_m42, int(min(100, 100 * m42 / target)))
             kpi.percent_m42.setText(f"{round(100 * m42 / target)} %")
@@ -567,7 +570,7 @@ class DaySummary(QWidget):
         # Bezug ist die ITM-Personalzeit: Klick öffnet die ITM-Zeiterfassung im Browser
         itm = bool(target) and basis in ("gestempelt", "bis jetzt")
         self.booked.set_clickable(itm)
-        self.booked.setAccessibleName("Erfasst. ITM-Zeiterfassung im Browser öffnen" if itm else "")
+        self.booked.setAccessibleName(f"{title}. ITM-Zeiterfassung im Browser öffnen" if itm else title)
         what = "In Matrix42 gebuchte Zeit des Tages" if m42 is not None else "Eingetragene Tätigkeiten des Tages"
         self.booked.setToolTip(what + (tips.get(basis, "") if target else "")
                                + (f"\nOberer Balken: selbst erfasst {hm(booked)} · unterer: in Matrix42 gebucht {hm(m42)}"

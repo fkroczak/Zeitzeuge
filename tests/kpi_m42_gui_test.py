@@ -19,12 +19,13 @@ w.show()
 app.processEvents()
 kpi = w.booked
 size = kpi.sizeHint()
-assert not kpi.bar_m42.isVisibleTo(kpi) and kpi.percent.text() == "28 %" and kpi.value.text() == "0:07 h"  # ohne Matrix42 nur grün
+assert not kpi.bar_m42.isVisibleTo(kpi) and kpi.percent.text() == "28 %" and kpi.value.text() == "0:07 h" and kpi.head.text() == "Erfasst"  # ohne Matrix42 nur grün
 
 w.show_numbers(dict(data, m42_s=15 * 60))
 app.processEvents()
 assert kpi.bar_m42.isVisibleTo(kpi) and kpi.bar_m42.value() == 60 and kpi.percent_m42.text() == "60 %"
 assert kpi.bar.value() == 28 and kpi.value.text() == "0:15 h"  # Zahl: Matrix42
+assert kpi.head.text() == "In Matrix42 gebucht"
 assert "Matrix42 gebucht 0:15 h" in kpi.toolTip()
 assert kpi.sizeHint().width() <= size.width() + 4 and kpi.sizeHint().height() == size.height(), \
     (kpi.sizeHint(), size)  # Kachel nicht größer (Ziffern sind verschieden breit)
