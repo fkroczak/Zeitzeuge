@@ -57,7 +57,8 @@ class Locked(Exception):
 
 
 class NeedPin(Locked):
-    """Daten sind mit Windows-Anmeldung und PIN geschützt: PIN abfragen (unlock_with_pin)."""
+    """Daten sind mit Windows-Anmeldung und PIN und/oder Windows Hello geschützt: abfragen
+    (unlock_with_hello, unlock_with_pin)."""
 
 
 class Busy(OSError):
@@ -199,15 +200,15 @@ class Store:
                 self._use_key(key)
                 return self
             for _id, kind, _lbl, _created, data in slots:
-                if kind == RECOVERY or kind.endswith(datakey.PIN_SUFFIX):
+                if kind == RECOVERY or datakey.guarded(kind):
                     continue
                 try:
                     self._use_key(datakey.auto_unwrap(kind, data))
                     return self
                 except datakey.WrongKey:
                     continue
-            if self.pin_required():
-                raise NeedPin("Zum Öffnen brauchst du deine PIN.")
+            if self.pin_required() or self.hello_required():
+                raise NeedPin("Zum Öffnen brauchst du Windows Hello oder deine PIN.")
             raise Locked("Kein Schlüsselfach passt zu diesem Windows-Benutzer.")
 
     # ------------------------------------------------------------ PIN
@@ -268,7 +269,7 @@ class Store:
 
     def enable_pin(self, pin):
         """PIN beim Start einschalten. Ab dann reicht die Windows-Anmeldung allein nicht mehr:
-        alle Fächer ohne PIN (auch die anderer PCs und Konten) werden gelöscht. Nur mit
+        alle Fächer ohne Abfrage (auch die anderer PCs und Konten) werden gelöscht. Nur mit
         Wiederherstellungsschlüssel, sonst wäre eine vergessene PIN das Ende der Daten."""
         self._need_key()
         datakey.check_pin_rules(pin)
@@ -277,7 +278,7 @@ class Store:
         blob = datakey.pin_wrap(self._key, pin)
 
         def tx(c):
-            c.execute("DELETE FROM key_slots WHERE kind != ?", (RECOVERY,))
+            self._drop_plain_slots(c)  # Windows-Hello-Fächer bleiben
             c.execute("INSERT INTO key_slots (kind, label, created, data) VALUES (?, ?, ?, ?)",
                       (datakey.pin_kind(), _label(), _now(), blob))
             c.execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('pin', '1')")
@@ -299,15 +300,97 @@ class Store:
         self._write_tx(tx)
 
     def disable_pin(self):
-        """PIN ausschalten: wieder nur die Windows-Anmeldung (dieses Konto)."""
+        """PIN ausschalten: wieder nur die Windows-Anmeldung (dieses Konto), oder Windows Hello allein,
+        wenn das noch eingeschaltet ist."""
         self._need_key()
-        blob = datakey.auto_wrap(self._key)
+        plain = None if self.hello_required() else datakey.auto_wrap(self._key)
 
         def tx(c):
-            c.execute("DELETE FROM key_slots WHERE kind LIKE ?", ("%" + datakey.PIN_SUFFIX,))
-            c.execute("INSERT INTO key_slots (kind, label, created, data) VALUES (?, ?, ?, ?)",
-                      (datakey.auto_kind(), _label(), _now(), blob))
+            self._drop_slots(c, lambda kind: kind.endswith(datakey.PIN_SUFFIX))
+            if plain:
+                c.execute("INSERT INTO key_slots (kind, label, created, data) VALUES (?, ?, ?, ?)",
+                          (datakey.auto_kind(), _label(), _now(), plain))
             c.execute("DELETE FROM meta WHERE key IN ('pin', 'pin_fehlversuche', 'pin_warten_bis')")
+        self._write_tx(tx)
+
+    def _drop_slots(self, c, match):
+        ids = [(i,) for i, kind in c.execute("SELECT id, kind FROM key_slots").fetchall() if match(kind)]
+        c.executemany("DELETE FROM key_slots WHERE id = ?", ids)
+
+    def _drop_plain_slots(self, c):
+        """Fächer, die ohne Abfrage öffnen (alle PCs und Konten)."""
+        self._drop_slots(c, lambda kind: kind != RECOVERY and not datakey.guarded(kind))
+
+    # ------------------------------------------------------------ Windows Hello
+
+    def hello_required(self):
+        with self._lock:
+            self.open()
+            return self._meta("hello") == "1"
+
+    def _hello_slots(self):
+        return [s for s in self._slots() if s[1].endswith(datakey.HELLO_SUFFIX)]
+
+    def has_own_hello(self):
+        """Gibt es ein Hello-Fach für dieses Windows-Konto? Ohne Hello-Abfrage (nur DPAPI)."""
+        with self._lock:
+            self.open()
+            for _id, kind, _lbl, _created, data in self._hello_slots():
+                try:
+                    datakey.auto_unwrap(kind[:-len(datakey.HELLO_SUFFIX)], data)
+                    return True
+                except datakey.WrongKey:
+                    continue
+            return False
+
+    def unlock_with_hello(self, hwnd=None):
+        """Mit Windows-Anmeldung und Windows Hello öffnen (zeigt die Hello-Abfrage).
+        Locked, wenn dieses Konto kein Hello-Fach hat; winhello.HelloError bei Abbruch oder
+        fehlendem Hello-Schlüssel; WrongKey, wenn der Hello-Schlüssel nicht mehr passt."""
+        with self._lock:
+            self.open()
+            for _id, kind, _lbl, _created, data in self._hello_slots():
+                try:
+                    inner = datakey.auto_unwrap(kind[:-len(datakey.HELLO_SUFFIX)], data)
+                except datakey.WrongKey:
+                    continue  # Fach eines anderen Kontos oder PCs
+                self._use_key(datakey.unwrap_with_hello(inner, lambda d: datakey.hello_decrypt(d, hwnd)))
+                return self
+            raise Locked("Für dieses Windows-Konto ist Windows Hello noch nicht eingerichtet.")
+
+    def enable_hello(self, hwnd=None):
+        """Windows Hello beim Start einschalten oder für dieses Konto neu einrichten. Wie bei der PIN
+        reicht danach die Windows-Anmeldung allein nicht mehr. Nur mit Wiederherstellungsschlüssel:
+        Der Hello-Schlüssel gilt nur auf diesem PC."""
+        self._need_key()
+        if not self.has_recovery():
+            raise ValueError("Lege zuerst einen Wiederherstellungsschlüssel an.")
+        blob = datakey.hello_wrap(self._key, hwnd)  # legt den Hello-Schlüssel an, wenn er fehlt
+        # Gleich prüfen, solange das Fach ohne Abfrage noch da ist (eine Hello-Abfrage)
+        inner = datakey.auto_unwrap(datakey.hello_kind()[:-len(datakey.HELLO_SUFFIX)], blob)
+        if datakey.unwrap_with_hello(inner, lambda d: datakey.hello_decrypt(d, hwnd)) != self._key:
+            raise datakey.WrongKey("Windows Hello liefert nicht den richtigen Schlüssel zurück.")
+        me = _label()
+
+        def tx(c):
+            self._drop_plain_slots(c)
+            c.execute("DELETE FROM key_slots WHERE kind = ? AND label = ?", (datakey.hello_kind(), me))
+            c.execute("INSERT INTO key_slots (kind, label, created, data) VALUES (?, ?, ?, ?)",
+                      (datakey.hello_kind(), me, _now(), blob))
+            c.execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('hello', '1')")
+        self._write_tx(tx)
+
+    def disable_hello(self):
+        """Windows Hello ausschalten: wieder nur die Windows-Anmeldung, oder die PIN allein."""
+        self._need_key()
+        plain = None if self.pin_required() else datakey.auto_wrap(self._key)
+
+        def tx(c):
+            self._drop_slots(c, lambda kind: kind.endswith(datakey.HELLO_SUFFIX))
+            if plain:
+                c.execute("INSERT INTO key_slots (kind, label, created, data) VALUES (?, ?, ?, ?)",
+                          (datakey.auto_kind(), _label(), _now(), plain))
+            c.execute("DELETE FROM meta WHERE key = 'hello'")
         self._write_tx(tx)
 
     def _init_key(self, conn, key):
@@ -333,7 +416,8 @@ class Store:
                     continue
                 self._write_tx(lambda c: c.execute(
                     "DELETE FROM meta WHERE key IN ('pin_fehlversuche', 'pin_warten_bis')"))
-                if not self.pin_required():  # mit PIN legt set_pin das Fach an (Dialog fragt danach)
+                # Mit PIN oder Hello legt set_pin/enable_hello das Fach an (Dialog fragt danach)
+                if not self.pin_required() and not self.hello_required():
                     self._write_tx(lambda c: c.execute(
                         "INSERT INTO key_slots (kind, label, created, data) VALUES (?, ?, ?, ?)",
                         (datakey.auto_kind(), _label(), _now(), datakey.auto_wrap(key))))
@@ -366,6 +450,7 @@ class Store:
             return {"auto": [(s[1], s[2], s[3]) for s in auto],
                     "recovery": rec[0][3] if rec else None,
                     "pin": self._meta("pin") == "1",
+                    "hello": self._meta("hello") == "1",
                     "created": self._meta("angelegt"),
                     "path": self.path}
 

@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QDialog, QDialogButtonBo
 from theme import prose
 import datakey
 import datastore
+import winhello
 
 CLIPBOARD_CLEAR_MS = 2 * 60 * 1000  # kopierten Schlüssel danach aus der Zwischenablage nehmen
 
@@ -231,10 +232,50 @@ def _ask_pin(store, parent):
     return None if dialog.extra_chosen else False
 
 
+def _hwnd(parent):
+    try:
+        return int(parent.window().winId()) if parent else None
+    except (AttributeError, RuntimeError):
+        return None
+
+
+def _ask_hello(store, parent):
+    """Windows Hello beim Start. True = geöffnet, False = beenden, None = weiter (PIN oder
+    Wiederherstellungsschlüssel). Bei Abbruch oder Fehler fragt ein Hinweis, wie es weitergeht."""
+    while True:
+        try:
+            store.unlock_with_hello(_hwnd(parent))
+            return True
+        except winhello.HelloCancelled:
+            text = "Windows Hello wurde abgebrochen."
+        except winhello.HelloMissing:
+            text = ("Der Windows-Hello-Schlüssel von Zeitzeuge fehlt auf diesem PC (z. B. Windows Hello "
+                    "oder das TPM wurde zurückgesetzt).")
+        except (winhello.HelloError, datakey.WrongKey) as e:
+            text = str(e)
+        box = QMessageBox(QMessageBox.Warning, "Zeitzeuge entsperren", text, parent=parent)
+        again = box.addButton("&Nochmal versuchen", QMessageBox.AcceptRole)
+        other = box.addButton("&PIN eingeben …" if store.pin_required() else "&Wiederherstellungsschlüssel …",
+                              QMessageBox.ActionRole)
+        box.addButton("Zeitzeuge &beenden", QMessageBox.RejectRole)
+        box.setDefaultButton(again)
+        box.exec()
+        if box.clickedButton() is other:
+            return None
+        if box.clickedButton() is not again:
+            return False
+
+
 def ask_unlock(store, parent=None):
-    """Daten gesperrt: PIN erfragen (wenn eingeschaltet) oder den Wiederherstellungsschlüssel
-    (anderer PC oder Windows-Konto, PIN vergessen). True, wenn entsperrt.
-    Abbrechen ändert nichts an den Daten."""
+    """Daten gesperrt: Windows Hello bzw. PIN erfragen (wenn eingeschaltet) oder den
+    Wiederherstellungsschlüssel (anderer PC oder Windows-Konto, PIN vergessen, Hello weg).
+    True, wenn entsperrt. Abbrechen ändert nichts an den Daten."""
+    hello = store.hello_required()
+    rdp = winhello.remote_session()
+    if hello and not rdp and store.has_own_hello():
+        answer = _ask_hello(store, parent)
+        if answer is not None:
+            return answer
     if store.pin_required():
         answer = _ask_pin(store, parent)
         if answer is not None:
@@ -247,16 +288,22 @@ def ask_unlock(store, parent=None):
             f"Die Daten bleiben unverändert in\n{store.path}\n\n"
             "Starte Zeitzeuge wieder mit dem Windows-Konto, mit dem du es eingerichtet hast.")
         return False
+    why = ("In einer Remotedesktop-Sitzung geht Windows Hello nicht. Melde dich direkt am PC an "
+           "oder nimm den Wiederherstellungsschlüssel."
+           if hello and rdp and not store.pin_required() else
+           "Zeitzeuge kann deine Daten mit dieser Windows-Anmeldung nicht öffnen (neuer PC, "
+           "anderes Windows-Konto oder Windows Hello zurückgesetzt). Mit dem "
+           "Wiederherstellungsschlüssel geht es.")
     dialog = EnterCodeDialog(
         "Daten sind gesperrt",
         "Daten sind gesperrt – Wiederherstellungsschlüssel aus RDM eingeben.\n\n"
-        "Zeitzeuge kann deine Daten mit dieser Windows-Anmeldung nicht öffnen (neuer PC oder "
-        "anderes Windows-Konto). Mit dem Wiederherstellungsschlüssel geht es. Danach startet "
-        "Zeitzeuge hier wieder ohne Abfrage.\n\nAbbrechen beendet Zeitzeuge, die Daten bleiben unverändert.",
+        f"{why}\n\nAbbrechen beendet Zeitzeuge, die Daten bleiben unverändert.",
         "&Wiederherstellungsschlüssel:", store.unlock_with_code, ok_text="Ö&ffnen",
         cancel_text="Zeitzeuge &beenden", parent=parent)
     if dialog.exec() != QDialog.Accepted:
         return False
+    if hello and not rdp and not store.has_own_hello():
+        _offer_hello(store, parent)
     if store.pin_required():
         pin = ask_new_pin(parent, "Neue PIN für dieses Windows-Konto",
                           "Deine Daten sind offen. Lege für dieses Windows-Konto eine PIN fest; "
@@ -265,6 +312,24 @@ def ask_unlock(store, parent=None):
         if pin:
             store.set_pin(pin)
     return True
+
+
+def _offer_hello(store, parent):
+    """Nach dem Wiederherstellungsschlüssel: Windows Hello für dieses Konto/diesen PC neu einrichten."""
+    answer = QMessageBox.question(
+        parent, "Windows Hello einrichten",
+        "Deine Daten sind offen. Windows Hello für dieses Windows-Konto einrichten? Windows Hello "
+        "fragt dabei einmal nach.\n\nOhne Windows Hello brauchst du beim nächsten Start wieder "
+        "den Wiederherstellungsschlüssel" + (" oder deine PIN." if store.pin_required() else "."),
+        QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+    if answer != QMessageBox.Yes:
+        return
+    try:
+        store.enable_hello(_hwnd(parent))
+    except winhello.HelloCancelled:
+        pass
+    except (winhello.HelloError, datakey.WrongKey, ValueError, datastore.Busy) as e:
+        QMessageBox.warning(parent, "Windows Hello einrichten", f"Ging nicht:\n{e}")
 
 
 RECOVERY_INTRO = (

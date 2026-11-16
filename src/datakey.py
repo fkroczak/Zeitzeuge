@@ -9,6 +9,9 @@ Schlüssel für die verschlüsselte Datenbank (ohne Qt).
     8 Blöcken wie bei BitLocker). Öffnet die Daten auf einem neuen PC oder Konto.
   * "dpapi_pin": Windows-Anmeldung und zusätzlich eine PIN (Argon2id). Dann reicht die
     Windows-Anmeldung allein nicht, auch nicht für Domänen-Admins mit dem DPAPI-Sicherungsschlüssel.
+  * "dpapi_hello": Windows-Anmeldung und zusätzlich Windows Hello (Gesicht, Finger, Hello-PIN).
+    Der Hello-Schlüssel liegt im TPM dieses PCs (winhello.py). Schützt wie die PIN, gilt aber
+    nur auf diesem Gerät. PIN und Hello können beide eingeschaltet sein (je ein Fach).
   * "datei": nur außerhalb von Windows (Entwicklung, Tests, CI). Schlüsseldatei im
     lokalen Ordner, schützt nicht vor Mitlesern.
 - Derselbe Ziffernblock-Typ dient als Übertragungsschlüssel für den PAW-Export.
@@ -262,6 +265,67 @@ def pin_unwrap(kind, blob, pin):
         raise WrongKey("kein PIN-Fach")
     inner = auto_unwrap(kind[:-len(PIN_SUFFIX)], blob)
     return unwrap_with_pin(inner, pin)
+
+
+# ------------------------------------------------------------ Windows Hello (zusätzlich zur Windows-Anmeldung)
+
+HELLO_SUFFIX = "_hello"
+_HELLO_V1 = 1
+# Austauschbar für Tests (außerhalb von Windows gibt es kein Hello): public_key(hwnd), decrypt(data, hwnd)
+hello_backend = None
+
+
+def _hello():
+    if hello_backend is not None:
+        return hello_backend
+    import winhello
+    return winhello
+
+
+def hello_available():
+    return _hello().available()
+
+
+def hello_kind():
+    """Fach Windows-Anmeldung + Windows Hello: erst DPAPI, darin mit dem Hello-Schlüssel verpackt."""
+    return auto_kind() + HELLO_SUFFIX
+
+
+def wrap_with_hello(key, public_key):
+    """Zufälliger Zwischenschlüssel, mit RSA (öffentlicher Hello-Schlüssel) verpackt; damit der
+    Datenschlüssel per AES-GCM. Braucht keine Hello-Abfrage."""
+    from cryptography.hazmat.primitives.asymmetric import padding
+    kek, nonce = secrets.token_bytes(KEY_BYTES), secrets.token_bytes(NONCE_BYTES)
+    wrapped = public_key.encrypt(kek, padding.PKCS1v15())
+    return (bytes([_HELLO_V1]) + len(wrapped).to_bytes(2, "big") + wrapped + nonce
+            + AESGCM(kek).encrypt(nonce, key, b"zeitzeuge-hello"))
+
+
+def unwrap_with_hello(blob, decrypt):
+    """decrypt(rsa_chiffrat) -> Zwischenschlüssel (zeigt die Hello-Abfrage)."""
+    if not blob or blob[0] != _HELLO_V1:
+        raise WrongKey("Unbekanntes Hello-Format")
+    size = int.from_bytes(blob[1:3], "big")
+    wrapped, rest = blob[3:3 + size], blob[3 + size:]
+    kek = decrypt(wrapped)
+    try:
+        return AESGCM(kek).decrypt(rest[:NONCE_BYTES], rest[NONCE_BYTES:], b"zeitzeuge-hello")
+    except (InvalidTag, ValueError) as e:
+        raise WrongKey("Der Windows-Hello-Schlüssel passt nicht zu diesen Daten.") from e
+
+
+def hello_wrap(key, hwnd=None):
+    """Fach anlegen. Fehlt der Hello-Schlüssel, legt Windows ihn an und fragt dabei nach Hello."""
+    return auto_wrap(wrap_with_hello(key, _hello().public_key(hwnd)))
+
+
+def hello_decrypt(data, hwnd=None):
+    return _hello().decrypt(data, hwnd)
+
+
+def guarded(kind):
+    """Fach braucht beim Start eine Abfrage (PIN oder Windows Hello)."""
+    return kind.endswith(PIN_SUFFIX) or kind.endswith(HELLO_SUFFIX)
 
 
 def auto_unwrap(kind, blob):
