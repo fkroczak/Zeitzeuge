@@ -642,15 +642,17 @@ Warum die Datenbank lokal liegt: „Dokumente“ wird oft mit OneDrive synchroni
 
 Zeitzeuge verschlüsselt alle Inhalte mit einem zufälligen Schlüssel (AES-256-GCM). Lesbar sind in der Datei nur technische Angaben: welcher Tag und welche Art von Daten. Kunden, Titel, Texte und Nummern stehen nirgends im Klartext. Personal, Kollegen, OneDrive, Backups, eine kopierte Festplatte oder ein anderes Windows-Konto sehen damit nichts.
 
-Den Schlüssel selbst speichert Zeitzeuge nur verpackt, in zwei „Schlüsselfächern“:
+Den Schlüssel selbst speichert Zeitzeuge nur verpackt, in „Schlüsselfächern“:
 
 1. **Windows-Anmeldung:** Standard. Zeitzeuge startet ohne Abfrage, nur dein Windows-Konto kann das Fach öffnen (DPAPI).
 2. **Windows-Anmeldung und PIN** (wahlweise, siehe unten): Dann fragt Zeitzeuge beim Start nach der PIN.
-3. **Wiederherstellungsschlüssel:** 48 Ziffern in 8 Blöcken, wie bei BitLocker. Zeitzeuge zeigt ihn einmal beim Einrichten. Leg ihn in RDM ab (Eintrag „Zeitzeuge Wiederherstellung“). Damit öffnest du die Daten auf einem neuen PC oder mit einem anderen Windows-Konto; danach startet Zeitzeuge dort wieder ohne Abfrage. Jeder Block ist durch 11 teilbar, so meldet Zeitzeuge einen Tippfehler direkt mit dem Block.
+3. **Windows-Anmeldung und Windows Hello** (wahlweise, siehe unten): Dann fragt Zeitzeuge beim Start nach Gesicht, Fingerabdruck oder der Windows-Hello-PIN.
+4. **Wiederherstellungsschlüssel:** 48 Ziffern in 8 Blöcken, wie bei BitLocker. Zeitzeuge zeigt ihn einmal beim Einrichten. Leg ihn in RDM ab (Eintrag „Zeitzeuge Wiederherstellung“). Damit öffnest du die Daten auf einem neuen PC oder mit einem anderen Windows-Konto; danach startet Zeitzeuge dort wieder ohne Abfrage. Jeder Block ist durch 11 teilbar, so meldet Zeitzeuge einen Tippfehler direkt mit dem Block.
 
 **Einstellungen → Datenschutz → PIN und Wiederherstellungsschlüssel …** zeigt den Stand und hat diese Knöpfe:
 
 - **PIN beim Start → Einschalten …:** Ab dann reicht die Windows-Anmeldung allein nicht mehr. Zeitzeuge löscht alle Fächer ohne PIN, auch die anderer PCs und Konten. Geht nur, wenn es schon einen Wiederherstellungsschlüssel gibt. **Ändern …** setzt eine neue PIN für dieses Windows-Konto, **Ausschalten** geht zurück zur Windows-Anmeldung allein.
+- **Windows Hello → Einschalten …:** wie die PIN, nur mit Windows Hello. Hello fragt dabei einmal zur Probe nach. PIN und Hello können beide an sein. **Einrichten …** legt das Hello-Fach für dieses Windows-Konto neu an (z. B. nach dem Zurücksetzen von Windows Hello), **Ausschalten** entfernt alle Hello-Fächer.
 - **Neu erzeugen …:** neuer Wiederherstellungsschlüssel, der alte wird ungültig. Ersetze dann den Eintrag in RDM.
 - **Prüfen …:** prüft, ob der Schlüssel aus RDM passt. Dabei ändert sich nichts.
 - **Ändern …** beim Übertragungsschlüssel: neu erzeugen oder vom anderen PC eingeben (siehe [Zwei PCs](#zwei-pcs-arbeits-pc-und-paw)).
@@ -666,7 +668,13 @@ Schlüssel gehören nie in eine Befehlszeile oder Verknüpfung: Virenscanner wie
 - Auf einem neuen PC oder mit einem neuen Windows-Konto öffnest du einmal mit dem Wiederherstellungsschlüssel und legst dort eine PIN fest.
 - Leg die PIN **nicht** in RDM ab, sonst kommt ein Admin über RDM daran. Den Wiederherstellungsschlüssel schon: Er öffnet die Daten ohne PIN, also schütze den RDM-Eintrag entsprechend.
 
-Grenzen: Die Wartezeit nach Fehlversuchen bremst nur in Zeitzeuge. Wer eine Kopie der Datei und Admin-Rechte hat, kann eine kurze PIN in Stunden bis Tagen durchprobieren. Nimm darum 10 Zeichen oder mehr, z. B. einen kurzen Satz. Wer Zeitzeuge oder deinen PC beobachtet, während die Daten offen sind (z. B. mit Admin-Rechten auf den laufenden Prozess), kommt trotzdem heran. Windows Hello statt PIN gibt es noch nicht: Dafür bräuchte Zeitzeuge ein weiteres Paket (Windows-Laufzeit), das auf der PAW neu geprüft werden müsste.
+Grenzen: Die Wartezeit nach Fehlversuchen bremst nur in Zeitzeuge. Wer eine Kopie der Datei und Admin-Rechte hat, kann eine kurze PIN in Stunden bis Tagen durchprobieren. Nimm darum 10 Zeichen oder mehr, z. B. einen kurzen Satz. Wer Zeitzeuge oder deinen PC beobachtet, während die Daten offen sind (z. B. mit Admin-Rechten auf den laufenden Prozess), kommt trotzdem heran.
+
+**Windows Hello beim Start:** Schützt wie die PIN vor dem Sicherungsschlüssel der Domäne, ist aber bequemer. Zeitzeuge legt im Windows-Hello-Schlüsselspeicher einen eigenen RSA-Schlüssel an („Microsoft Passport Key Storage Provider“, NCrypt direkt, kein zusätzliches Paket). Sein privater Teil liegt im TPM dieses PCs und lässt sich nicht kopieren; jede Nutzung verlangt Hello. Der Datenschlüssel ist zusätzlich zur Windows-Anmeldung damit verpackt.
+
+- Beim Start erscheint die Windows-Hello-Abfrage. Bei Abbruch oder Fehler: **Nochmal versuchen**, **PIN eingeben …** (wenn die PIN an ist) oder **Wiederherstellungsschlüssel …**.
+- Der Hello-Schlüssel gilt **nur auf diesem PC**. Auf einem neuen PC, nach dem Zurücksetzen von Windows Hello oder des TPM hilft nur der Wiederherstellungsschlüssel (oder die PIN). Danach bietet Zeitzeuge an, Hello neu einzurichten.
+- In **Remotedesktop-Sitzungen** geht Windows Hello nicht. Zeitzeuge fragt dort gleich nach der PIN, ohne PIN nach dem Wiederherstellungsschlüssel. Wer sich oft per RDP anmeldet, schaltet darum zusätzlich die PIN ein.
 
 ### Aktivitätsprotokoll
 
@@ -819,9 +827,10 @@ Module in `src/`:
 | `customer_discovery.py` | Kundenliste aus den Ticketsystem-Buchungen lernen, Umbenennen vorschlagen (ohne Qt) |
 | `storage.py` | Speicherort: Datenordner, Datenbank, Sicherung, Umziehen |
 | `datastore.py` | Verschlüsselte SQLite-Datenbank: Ablagen je Tag, Zeilen, Schlüsselfächer, Migration der alten Dateien, Sicherung (ohne Qt) |
-| `datakey.py` | Schlüssel: AES-256-GCM, Ziffernschlüssel (Wiederherstellung, Übertragung), Windows-Anmeldung (DPAPI), PIN (Argon2id) (ohne Qt) |
-| `app_protect.py` | Hauptfenster: Dialog „Schutz …“, Wiederherstellungs- und Übertragungsschlüssel, Sicherung alle 2 Stunden |
-| `protect_dialogs.py` | Dialoge: Schlüssel einmal zeigen, Schlüssel oder PIN eingeben, PIN festlegen, „Daten sind gesperrt“ |
+| `datakey.py` | Schlüssel: AES-256-GCM, Ziffernschlüssel (Wiederherstellung, Übertragung), Windows-Anmeldung (DPAPI), PIN (Argon2id), Windows-Hello-Fach (ohne Qt) |
+| `winhello.py` | Windows Hello über NCrypt (Passport-Schlüsselspeicher, ctypes): Schlüssel anlegen, öffentlichen Teil lesen, entschlüsseln mit Hello-Abfrage (ohne Qt) |
+| `app_protect.py` | Hauptfenster: Dialog „Schutz …“, PIN und Windows Hello an/aus, Wiederherstellungs- und Übertragungsschlüssel, Sicherung alle 2 Stunden |
+| `protect_dialogs.py` | Dialoge: Schlüssel einmal zeigen, Schlüssel oder PIN eingeben, PIN festlegen, Windows Hello beim Start, „Daten sind gesperrt“ |
 | `safe_io.py` | Dateien sicher lesen und schreiben, kaputte Dateien beiseitelegen, große Logs nur am Ende lesen, `fehler.log` |
 | `net.py` | Prüfen, ob ein Server erreichbar ist, und Wartezeit nach Fehlern |
 | `setup_wizard.py` | Einrichtungsassistent: beim ersten Start alle Datenquellen Schritt für Schritt |

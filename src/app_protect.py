@@ -1,7 +1,8 @@
 """Hauptfenster: Schutz der Daten (Einstellungen → Datenspeicher → Schutz …).
 
-- Stand anzeigen: Windows-Anmeldung, Wiederherstellungsschlüssel, Übertragungsschlüssel,
-  Speicherort von Datenbank und Sicherung.
+- Stand anzeigen: Windows-Anmeldung, PIN, Windows Hello, Wiederherstellungsschlüssel,
+  Übertragungsschlüssel, Speicherort von Datenbank und Sicherung.
+- PIN und Windows Hello beim Start ein- und ausschalten (beide zugleich möglich).
 - Wiederherstellungsschlüssel neu erzeugen (der alte wird ungültig) und prüfen.
 - Übertragungsschlüssel für den Export an die PAW erzeugen oder eingeben.
 - Fehlt der Wiederherstellungsschlüssel, zeigt die Statuszeile einen Knopf zum Einrichten.
@@ -14,7 +15,7 @@ import os
 from datetime import datetime
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtWidgets import (QDialog, QDialogButtonBox, QGridLayout, QLabel, QMessageBox,
+from PySide6.QtWidgets import (QApplication, QDialog, QDialogButtonBox, QGridLayout, QLabel, QMessageBox,
                                QPushButton, QToolButton, QVBoxLayout)
 
 from card_dialog import modernize
@@ -24,6 +25,7 @@ import datakey
 import datastore
 import protect_dialogs
 import safe_io
+import winhello
 import main_timeline as mt
 
 BACKUP_INTERVAL = 2 * 60 * 60 * 1000  # die Sicherung geht über OneDrive: nicht zu oft
@@ -174,8 +176,15 @@ class ProtectMixin:
 
     # ---------------------- Stand ----------------------------------------------
 
+    def hello_state(self):
+        store = self.data_store
+        if store.hello_required():
+            return "an" if store.has_own_hello() else "an, für dieses Windows-Konto noch nicht eingerichtet"
+        return "aus" if datakey.hello_available() else "auf diesem PC nicht verfügbar"
+
     def protection_state(self):
-        """Stand als Texte: (Windows-Anmeldung, Wiederherstellung, Übertragung, Speicherort)."""
+        """Stand als Texte: (Windows-Anmeldung, PIN, Windows Hello, Wiederherstellung, Übertragung,
+        Speicherort)."""
         info = self.data_store.protection()
         me = datastore._label()
         auto = info["auto"]
@@ -193,11 +202,12 @@ class ProtectMixin:
         transfer = "hinterlegt" if self.transfer_code() else "nicht hinterlegt"
         where = f"Datenbank: {info['path']}\nSicherung: " + (
             mt.BACKUP_FILE if mt.BACKUP_FILE else "keine (Datenbank liegt im Datenordner)")
-        return win, pin, recovery, transfer, where
+        return win, pin, self.hello_state(), recovery, transfer, where
 
     def protection_text(self):
-        win, pin, recovery, transfer, where = self.protection_state()
-        return (f"Windows-Anmeldung: {win}\nPIN beim Start: {pin}\nWiederherstellungsschlüssel: {recovery}\n"
+        win, pin, hello, recovery, transfer, where = self.protection_state()
+        return (f"Windows-Anmeldung: {win}\nPIN beim Start: {pin}\nWindows Hello: {hello}\n"
+                f"Wiederherstellungsschlüssel: {recovery}\n"
                 f"Übertragungsschlüssel: {transfer}\n\n{where}")
 
     # ---------------------- PIN ------------------------------------------------
@@ -234,14 +244,85 @@ class ProtectMixin:
         parent = parent or self
         if not self.data_store.pin_required():
             return False
+        text = ("Dann fragt Zeitzeuge beim Start nur noch nach Windows Hello.\n\nPIN ausschalten?"
+                if self.data_store.hello_required() else
+                "Dann öffnet wieder die Windows-Anmeldung allein die Daten, ohne Abfrage. "
+                "Domänen-Admins könnten dann wieder herankommen.\n\nPIN ausschalten?")
         answer = QMessageBox.question(
-            parent, "PIN ausschalten",
-            "Dann öffnet wieder die Windows-Anmeldung allein die Daten, ohne Abfrage. "
-            "Domänen-Admins könnten dann wieder herankommen.\n\nPIN ausschalten?",
+            parent, "PIN ausschalten", text,
             QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
         if answer != QMessageBox.Yes:
             return False
         self.data_store.disable_pin()
+        mt.backup_store(force=True)
+        return True
+
+    # ---------------------- Windows Hello --------------------------------------
+
+    def hello_on(self, parent=None):
+        """Windows Hello beim Start einschalten oder für dieses Konto neu einrichten."""
+        parent = parent or self
+        store = self.data_store
+        title = "Windows Hello"
+        if not datakey.hello_available():
+            QMessageBox.information(parent, title, "Windows Hello ist auf diesem PC nicht verfügbar.")
+            return False
+        if winhello.remote_session():
+            QMessageBox.information(parent, title, "In einer Remotedesktop-Sitzung geht Windows Hello nicht. "
+                                    "Richte es direkt am PC ein.")
+            return False
+        if not store.has_recovery():
+            QMessageBox.information(parent, title,
+                                    "Lege zuerst einen Wiederherstellungsschlüssel an. Windows Hello gilt "
+                                    "nur auf diesem PC: Ohne den Schlüssel wären deine Daten auf einem "
+                                    "neuen PC verloren.")
+            if not self.new_recovery_code(parent):
+                return False
+        if not store.hello_required():
+            rdp = ("Du hast zusätzlich eine PIN: Die geht auch in Remotedesktop-Sitzungen."
+                   if store.pin_required() else
+                   "In Remotedesktop-Sitzungen geht Windows Hello nicht. Dann brauchst du den "
+                   "Wiederherstellungsschlüssel, oder du schaltest zusätzlich die PIN ein.")
+            answer = QMessageBox.question(
+                parent, title,
+                "Mit Windows Hello reicht die Windows-Anmeldung allein nicht: Zeitzeuge fragt beim Start "
+                "nach Gesicht, Fingerabdruck oder deiner Windows-Hello-PIN. So kommen auch Domänen-Admins "
+                "nicht an deine Daten.\n\n"
+                "Der Hello-Schlüssel liegt im TPM dieses PCs. Auf einem neuen PC, nach dem Zurücksetzen "
+                f"von Windows Hello oder des TPM hilft nur der Wiederherstellungsschlüssel. {rdp}\n\n"
+                "Windows Hello fragt gleich zur Probe nach. Einschalten?",
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+            if answer != QMessageBox.Yes:
+                return False
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            store.enable_hello(hwnd=int(parent.window().winId()))
+        except winhello.HelloCancelled:
+            return False
+        except (winhello.HelloError, datakey.WrongKey, ValueError, datastore.Busy, datastore.Locked) as e:
+            QMessageBox.warning(parent, title, f"Windows Hello ließ sich nicht einschalten.\n\n{e}\n\n"
+                                "Ist Windows Hello unter Einstellungen → Konten → Anmeldeoptionen eingerichtet?")
+            return False
+        finally:
+            QApplication.restoreOverrideCursor()
+        mt.backup_store(force=True)  # Sicherung ohne Fach ohne Abfrage
+        self.statusBar().showMessage("Windows Hello eingeschaltet: Zeitzeuge fragt beim nächsten Start danach", 8000)
+        return True
+
+    def hello_off(self, parent=None):
+        parent = parent or self
+        store = self.data_store
+        if not store.hello_required():
+            return False
+        text = ("Dann fragt Zeitzeuge beim Start nur noch nach deiner PIN.\n\nWindows Hello ausschalten?"
+                if store.pin_required() else
+                "Dann öffnet wieder die Windows-Anmeldung allein die Daten, ohne Abfrage. "
+                "Domänen-Admins könnten dann wieder herankommen.\n\nWindows Hello ausschalten?")
+        answer = QMessageBox.question(parent, "Windows Hello ausschalten", text,
+                                      QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if answer != QMessageBox.Yes:
+            return False
+        store.disable_hello()
         mt.backup_store(force=True)
         return True
 
@@ -267,6 +348,9 @@ class ProtectMixin:
                 ("PIN beim Start:", "pin",
                  [("&Einschalten …", "PIN beim Start einschalten oder ändern", lambda: self.pin_on(dialog)),
                   ("&Ausschalten", "PIN beim Start ausschalten", lambda: self.pin_off(dialog))]),
+                ("Windows Hello:", "hello",
+                 [("E&inschalten …", "Windows Hello beim Start einschalten", lambda: self.hello_on(dialog)),
+                  ("A&usschalten", "Windows Hello beim Start ausschalten", lambda: self.hello_off(dialog))]),
                 ("Wiederherstellungsschlüssel:", "recovery",
                  [("&Neu erzeugen …", "Wiederherstellungsschlüssel neu erzeugen",
                    lambda: self.new_recovery_code(dialog)),
@@ -298,12 +382,20 @@ class ProtectMixin:
         layout.addWidget(where)
 
         def refresh():
-            win, pin, recovery, transfer, path = self.protection_state()
+            win, pin, hello, recovery, transfer, path = self.protection_state()
             on = self.data_store.pin_required()
             pin_set, pin_clear = row_buttons["pin"]
             pin_set.setText("&Ändern …" if on else "&Einschalten …")
             pin_clear.setEnabled(on)
             labels["pin"].setText(pin)
+            hello_on = self.data_store.hello_required()
+            hello_set, hello_clear = row_buttons["hello"]
+            hello_set.setText("E&inrichten …" if hello_on else "E&inschalten …")
+            hello_set.setAccessibleName("Windows Hello für dieses Konto neu einrichten" if hello_on
+                                        else "Windows Hello beim Start einschalten")
+            hello_set.setEnabled(hello_on or datakey.hello_available())
+            hello_clear.setEnabled(hello_on)
+            labels["hello"].setText(hello)
             labels["win"].setText(win)
             labels["recovery"].setText(recovery)
             labels["transfer"].setText(transfer)
