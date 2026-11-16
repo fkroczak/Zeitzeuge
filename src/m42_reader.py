@@ -666,6 +666,10 @@ class M42Reader(BrowserReader):
                                f"?orderBy=CreatedDate+desc&pageSize={mb.MY_TICKETS_PAGE_SIZE}&page={page}{params}",
                                body)
             data = data if isinstance(data, list) else []
+            if data and isinstance(data[0], dict) and not getattr(self, "_ticket_keys_logged", False):
+                # Nur Feldnamen (keine Werte): zeigt, in welchem Feld die SLA-Ampel steht
+                self._ticket_keys_logged = True
+                safe_io.log("Matrix42: Felder der Ticketliste: " + ", ".join(sorted(map(str, data[0]))))
             items.extend(data)
             if len(data) < mb.MY_TICKETS_PAGE_SIZE:
                 return items, False

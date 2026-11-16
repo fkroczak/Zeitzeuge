@@ -3,10 +3,13 @@ Art (Störung/Serviceanfrage), Status, Bearbeiter, Angelegt; nach jeder Spalte s
 der Ticketsuche), erledigte Tickets grau. Enter oder Doppelklick: Signal activated(row).
 Spaltenbreiten lassen sich im Kopf ziehen; gezogene Breiten bleiben (je Tabelle gespeichert),
 Rechtsklick auf den Kopf setzt sie zurück. Der Betreff bekommt immer den Rest.
+Rote/gelbe SLA-Ampel: Zeile getönt, Balken am linken Rand. Mit „ticket_state_colors“ auch die
+übrigen Zeilen in der Farbe ihres Status (Einstellungen → Darstellung → Tickets).
 """
 from PySide6.QtCore import QSettings, Qt, Signal
-from PySide6.QtGui import QAction, QKeySequence, QPainter, QPalette
-from PySide6.QtWidgets import QAbstractItemView, QHeaderView, QMenu, QTableWidget, QTableWidgetItem
+from PySide6.QtGui import QAction, QColor, QKeySequence, QPainter, QPalette
+from PySide6.QtWidgets import (QAbstractItemView, QHeaderView, QMenu, QStyle, QStyledItemDelegate, QTableWidget,
+                               QTableWidgetItem)
 
 import m42_booking as mb
 import skeleton
@@ -22,6 +25,52 @@ PEOPLE_SHARE, PEOPLE_MIN, PEOPLE_MAX = 0.09, 70, 130
 # Art, Status, Angelegt: nach Inhalt, aber nur so breit, dass dem Betreff gut ein Drittel bleibt
 # (unter Windows sind sie fast doppelt so breit wie unter Linux); nie schmaler als SMALL_MIN
 SUBJECT_SHARE, SMALL_MIN = 0.35, 50
+
+# Farben: SLA-Ampel (immer) und Status (nur mit config["ticket_state_colors"]); Zeile getönt
+# (Deckkraft 0–255), Balken BAR_WIDTH px am linken Rand der Ticketnummer
+SLA_COLORS = {"red": "#DC2626", "yellow": "#EAB308"}
+STATE_COLORS = {"neu": "#2563EB", "zugewiesen": "#7C3AED", "in bearbeitung": "#16A34A",
+                "angehalten": "#D97706"}
+CLOSED_COLOR = "#9CA3AF"
+SLA_TINT, STATE_TINT, BAR_WIDTH = 36, 20, 6
+MARK_ROLE = Qt.UserRole + 1
+
+
+def row_color(row, all_states=False):
+    """Farbe einer Ticketzeile -> (Farbe, Deckkraft der Tönung) oder None."""
+    if row.get("sla") in SLA_COLORS and not mb.is_closed(row):
+        return SLA_COLORS[row["sla"]], SLA_TINT
+    if not all_states:
+        return None
+    if mb.is_closed(row):
+        return CLOSED_COLOR, STATE_TINT
+    color = STATE_COLORS.get((row.get("state") or "").strip().casefold())
+    return (color, STATE_TINT) if color else None
+
+
+def _config_of(widget):
+    """Einstellungen des Hauptfensters: erstes Fenster in der Eltern-Kette mit config."""
+    while widget is not None:
+        if isinstance(getattr(widget, "config", None), dict):
+            return widget.config
+        widget = widget.parent()
+    return {}
+
+
+class _MarkDelegate(QStyledItemDelegate):
+    """Zeile in der Farbe des Tickets tönen (das Stylesheet übergeht setBackground) und vor der
+    Ticketnummer einen Balken ohne Abstand an den linken Rand setzen."""
+
+    def paint(self, painter, option, index):
+        mark = index.siblingAtColumn(0).data(MARK_ROLE)
+        if mark and not option.state & QStyle.State_Selected:
+            tint = QColor(mark[0])
+            tint.setAlpha(mark[1])
+            painter.fillRect(option.rect, tint)
+        super().paint(painter, option, index)
+        if mark and index.column() == 0:
+            r = option.rect
+            painter.fillRect(r.left(), r.top(), BAR_WIDTH, r.height(), QColor(mark[0]))
 
 
 def settings():
@@ -54,6 +103,7 @@ class TicketTable(QTableWidget):
         self.setWordWrap(False)
         self.setTextElideMode(Qt.ElideRight)
         self.setAccessibleName(name)
+        self.setItemDelegate(_MarkDelegate(self))
         # Betreff bekommt den Platz; Kunde, Melder und Bearbeiter wachsen nur mäßig mit
         # (lange Firmennamen mit …, ganz im Hinweis), siehe resizeEvent
         header = self.horizontalHeader()
@@ -200,10 +250,12 @@ class TicketTable(QTableWidget):
         """Tickets zeigen: in der Reihenfolge der Daten, oder sortiert, wenn eine Spalte gewählt ist."""
         selected = (self.current_row() or {}).get("id")
         grey = self.palette().color(QPalette.PlaceholderText)  # muted (Design), wie Hinweise
+        all_states = bool(_config_of(self).get("ticket_state_colors", False))
         self.clearSelection()
         self.setRowCount(len(rows))
         for r, row in enumerate(rows):
             closed = mb.is_closed(row)
+            mark = row_color(row, all_states)
             for c, (_name, key) in enumerate(COLUMNS):
                 if key == "created":
                     text, sort_key = mb.ticket_date(row), row.get("created") or ""
@@ -221,6 +273,7 @@ class TicketTable(QTableWidget):
                     item.setForeground(grey)
                 if c == 0:
                     item.setData(Qt.UserRole, row)
+                    item.setData(MARK_ROLE, mark)
                 self.setItem(r, c, item)
         if self._sort:
             self.sortItems(*self._sort)

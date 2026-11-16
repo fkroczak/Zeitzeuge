@@ -91,3 +91,32 @@ def test_gezogene_breite_bleibt_und_wird_gemerkt(ini):
     assert again.horizontalHeader().sectionSize(col) != 240
     again.close()
     other.close()
+
+
+def test_farbe_nur_bei_ampel_rot_gelb_ausser_eingeschaltet():
+    from ticket_table import CLOSED_COLOR, SLA_COLORS, STATE_COLORS, row_color
+    assert row_color({"state": "Neu"}) is None  # Standard: ohne Ampel keine Farbe
+    assert row_color({"state": "Neu", "sla": "red"})[0] == SLA_COLORS["red"]
+    assert row_color({"state": "In Bearbeitung", "sla": "yellow"}, True)[0] == SLA_COLORS["yellow"]  # Ampel vor Status
+    assert row_color({"state": "Gelöst", "sla": "red"}) is None  # erledigt: keine Warnung mehr
+    assert row_color({"state": "Neu"}, True)[0] == STATE_COLORS["neu"]
+    assert row_color({"state": "Geschlossen"}, True)[0] == CLOSED_COLOR
+    assert row_color({"state": "Unbekannt"}, True) is None
+
+
+def test_tabelle_merkt_farbe_an_der_ticketnummer():
+    from PySide6.QtWidgets import QWidget
+    from ticket_table import MARK_ROLE, SLA_COLORS, TicketTable
+    widgets.QApplication.instance() or widgets.QApplication([])
+    rows = [{"ticket": f"TCK000000000{i}", "subject": "x", "customer": "", "initiator": "", "recipient": "",
+             "type": "", "state": "Neu", "created": f"2026-11-1{i}", "id": str(i), "sla": sla}
+            for i, sla in enumerate(["", "red"])]
+    host = QWidget()
+    host.config = {}
+    table = TicketTable("Tickets", host)
+    table.set_rows(rows)
+    marks = {table.row_at(r)["id"]: table.item(r, 0).data(MARK_ROLE) for r in range(2)}
+    assert marks["0"] is None and marks["1"][0] == SLA_COLORS["red"]
+    host.config["ticket_state_colors"] = True
+    table.set_rows(rows)
+    assert all(table.item(r, 0).data(MARK_ROLE) for r in range(2))
