@@ -72,6 +72,18 @@ def gui_test():
     first = prompt.entry
     prompt.form.text_edit.setPlainText("Angefangen")
 
+    # Sperrendes Fenster (z. B. „Tätigkeit nachtragen“) geht auf: Karte weg, danach wieder da
+    from PySide6.QtWidgets import QDialog
+    blocker = QDialog(window)
+    blocker.setWindowModality(main_timeline.Qt.ApplicationModal)
+    blocker.show()
+    settle(100)
+    assert not prompt.isVisible() and prompt._blocked, "Karte bleibt unbedienbar vor dem Fenster stehen"
+    blocker.close()
+    settle(100)
+    assert prompt.isVisible() and not prompt._blocked and window._prompt_window is prompt
+    assert prompt.form.text_edit.toPlainText() == "Angefangen"
+
     # Stift: Zeitfelder bearbeitbar, Zeile bleibt an derselben Stelle
     y = prompt.time_row.mapTo(prompt, prompt.time_row.rect().topLeft()).y()
     assert prompt.form.start_edit.isReadOnly()
@@ -111,6 +123,20 @@ def gui_test():
     assert window._prompt_window is None
     window.check_prompts()
     assert window.open_prompt_count() == 2 and window.tray_prompts_action.isEnabled()
+    # Solange ein sperrendes Fenster offen ist, wartet die Nachfrage
+    window._close_prompt_silently()
+    blocker.show()
+    settle(100)
+    window.show_open_prompts()
+    settle()
+    assert window._prompt_window is None, "Nachfrage vor einem sperrenden Fenster gezeigt"
+    blocker.close()
+    for _ in range(40):
+        if window._prompt_window is not None:
+            break
+        settle(100)
+    assert isinstance(window._prompt_window, PromptWindow), "Nachfrage kam nach dem Fenster nicht"
+    window._close_prompt_silently()
     window.show_open_prompts()  # Infobereich: alle wieder zeigen
     settle()
     assert isinstance(window._prompt_window, PromptWindow)

@@ -773,13 +773,37 @@ class DocsMixin(CustomersMixin):
             self.show_next_prompt()
         self.end_of_day_reminder(open_items, now)
 
+    @staticmethod
+    def _modal_open():
+        app = QApplication.instance()
+        return app is not None and app.activeModalWidget() is not None
+
+    def _retry_prompt_after_modal(self):
+        if self._prompt_window is None and self._modal_open():
+            QTimer.singleShot(1500, self._retry_prompt_after_modal)  # Fenster noch offen: weiter warten
+            return
+        self._prompt_waiting = False
+        if self._prompt_window is not None:
+            return
+        force, self._prompt_after_modal = getattr(self, "_prompt_after_modal", False), False
+        if self._prompt_queue:
+            self.show_next_prompt(force=force)
+
     def _prompt_labels(self):
         return [entry_label(e) for e in self._prompt_queue]
 
     def show_next_prompt(self, force=False):
         """Erste Nachfrage der Warteschlange zeigen: als Karte, kompakt oder als Leiste.
-        force: als Karte, auch wenn die Leiste eingestellt ist (Klick auf Leiste, Infobereich)."""
+        force: als Karte, auch wenn die Leiste eingestellt ist (Klick auf Leiste, Infobereich).
+        Ist gerade ein Fenster offen, das alles andere sperrt (z. B. „Tätigkeit nachtragen“), wartet die
+        Nachfrage, bis es zu ist: sonst stünde sie davor und ließe sich nicht bedienen oder wegklicken."""
         window = self._prompt_window
+        if window is None and self._prompt_queue and self._modal_open():
+            self._prompt_after_modal = getattr(self, "_prompt_after_modal", False) or force
+            if not getattr(self, "_prompt_waiting", False):  # nur ein Nachsehen zur Zeit
+                self._prompt_waiting = True
+                QTimer.singleShot(1500, self._retry_prompt_after_modal)
+            return
         if window or not self._prompt_queue:
             if isinstance(window, PromptStrip) and self._prompt_queue:
                 window.set_entry(self._prompt_queue[0], len(self._prompt_queue))
