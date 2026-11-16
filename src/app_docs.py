@@ -778,6 +778,47 @@ class DocsMixin(CustomersMixin):
         app = QApplication.instance()
         return app is not None and app.activeModalWidget() is not None
 
+    def _watch_modal(self):
+        """Einmal anmelden: Fokuswechsel der Anwendung (auch beim Öffnen und Schließen sperrender
+        Fenster). Bewusst kein eigenes event() an der Karte: PySide ruft das noch beim Löschen des
+        Fensters auf, unter Windows stürzt das ab."""
+        if getattr(self, "_modal_watched", False):
+            return
+        app = QApplication.instance()
+        if app is not None:
+            app.focusWindowChanged.connect(self._modal_changed)
+            self._modal_watched = True
+
+    def _modal_changed(self, *_):
+        # erst nach dem Signal prüfen: beim Schließen kommt der Fokuswechsel vor dem Ende der Sperre
+        QTimer.singleShot(0, self._check_modal)
+
+    def _check_modal(self):
+        """Sperrendes Fenster auf (nicht aus der Karte selbst): offene Nachfrage ausblenden, sie wäre
+        davor nicht bedienbar und nicht wegzuklicken. Fenster zu: wieder zeigen. Solange sie
+        versteckt ist, alle 0,5 s nachsehen (nicht jedes Schließen ändert den Fokus)."""
+        from shiboken6 import isValid
+        window = self._prompt_window
+        if window is None or not isValid(window):
+            self._prompt_hidden_for_modal = False
+            return
+        app = QApplication.instance()
+        modal = app.activeModalWidget() if app is not None else None
+        own = modal
+        while own is not None and own is not window:
+            own = own.parentWidget()
+        if modal is not None and own is None:
+            if window.isVisible():
+                window._blocked = True
+                self._prompt_hidden_for_modal = True
+                window.hide()
+            if getattr(self, "_prompt_hidden_for_modal", False):
+                QTimer.singleShot(500, self._check_modal)
+        elif modal is None and getattr(self, "_prompt_hidden_for_modal", False):
+            self._prompt_hidden_for_modal = False
+            window._blocked = False
+            window.show()
+
     def _retry_prompt_after_modal(self):
         if self._prompt_window is None and self._modal_open():
             QTimer.singleShot(1500, self._retry_prompt_after_modal)  # Fenster noch offen: weiter warten
@@ -797,6 +838,7 @@ class DocsMixin(CustomersMixin):
         force: als Karte, auch wenn die Leiste eingestellt ist (Klick auf Leiste, Infobereich).
         Ist gerade ein Fenster offen, das alles andere sperrt (z. B. „Tätigkeit nachtragen“), wartet die
         Nachfrage, bis es zu ist: sonst stünde sie davor und ließe sich nicht bedienen oder wegklicken."""
+        self._watch_modal()
         window = self._prompt_window
         if window is None and self._prompt_queue and self._modal_open():
             self._prompt_after_modal = getattr(self, "_prompt_after_modal", False) or force
