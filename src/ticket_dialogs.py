@@ -146,12 +146,16 @@ class _CardDialog(QDialog):
         line_box = QHBoxLayout(line)
         line_box.setContentsMargins(SPACE_M, SPACE_S, SPACE_M, SPACE_S)
         line_box.setSpacing(SPACE_S)
+        self.state_label = None
         for icon, text in (("tag", row["ticket"]), ("users", row.get("customer", "")),
                            ("clock", row.get("state", ""))):
             if text:
                 line_box.addWidget(_icon_label(icon, self.muted, 16))
-                line_box.addWidget(QLabel(text))
+                label = QLabel(text)
+                line_box.addWidget(label)
                 line_box.addSpacing(SPACE_M)
+                if icon == "clock":
+                    self.state_label = label
         line_box.addStretch(1)
         if pen_tip:
             self.pen_button = QToolButton()
@@ -164,8 +168,9 @@ class _CardDialog(QDialog):
         self.head_box.addWidget(line)
 
     def _add_take_over(self, row):
-        """Knopf „Übernehmen“ (Bearbeiter = ich) links in der Fußleiste; fehlt, wenn das Ticket
-        schon meins oder geschlossen ist. Danach: self.taken_over = Anzeigename (oder "")."""
+        """Knopf „Übernehmen“ (Bearbeiter = ich, Status „In Bearbeitung“) links in der Fußleiste; fehlt,
+        wenn das Ticket geschlossen oder schon meins und in Bearbeitung ist (nur zugewiesen: Knopf da).
+        Danach: self.taken_over = Anzeigename (oder "")."""
         self.taken_over = None
         self.take_over_button = QPushButton("Über&nehmen")
         self.take_over_button.setAutoDefault(False)
@@ -173,8 +178,7 @@ class _CardDialog(QDialog):
         self.take_over_button.clicked.connect(self._take_over)
         # erst einfügen, dann zeigen: ein Knopf ohne Eltern würde sonst kurz als eigenes Fenster aufblitzen
         self.cancel_button.parentWidget().layout().insertWidget(1, self.take_over_button)
-        me = getattr(self.reader, "user_id", "") or ""
-        self.take_over_button.setVisible(not mb.is_closed(row) and not (me and row.get("recipient_id") == me))
+        self.take_over_button.setVisible(mb.can_take_over(row, getattr(self.reader, "user_id", "") or ""))
 
     def _take_over(self):
         self.take_over_button.setEnabled(False)
@@ -190,7 +194,11 @@ class _CardDialog(QDialog):
             return
         self.taken_over = (result.get("data") or {}).get("user") or ""
         self.take_over_button.hide()
-        self.status.setText(f"{self.row['ticket']} übernommen, du bist jetzt Bearbeiter.")
+        self.row = dict(self.row, state=mb.WORKING_STATE, recipient=self.taken_over or self.row.get("recipient", ""),
+                        recipient_id=getattr(self.reader, "user_id", "") or self.row.get("recipient_id", ""))
+        if getattr(self, "state_label", None) is not None:
+            self.state_label.setText(mb.WORKING_STATE)
+        self.status.setText(f"{self.row['ticket']} übernommen, du bist jetzt Bearbeiter ({mb.WORKING_STATE}).")
         self._took_over()
 
     def _took_over(self):
@@ -607,6 +615,15 @@ class EditTicketDialog(_MelderSearch, _CardDialog):
         self.rich_hint.hide()
         box.addWidget(self.rich_hint)
 
+        # Nur zugewiesen: Matrix42 speichert erst nach „Übernehmen“ (Status dann „In Bearbeitung“)
+        self.assigned_hint = QLabel(f"Das Ticket ist {row.get('state') or 'zugewiesen'} und noch nicht übernommen. "
+                                    "Matrix42 speichert Änderungen erst, wenn du es übernimmst "
+                                    f"(Status danach {mb.WORKING_STATE}).")
+        self.assigned_hint.setWordWrap(True)
+        self.assigned_hint.setObjectName("hint")
+        self.assigned_hint.setVisible(self.needs_take_over())
+        box.addWidget(self.assigned_hint)
+
         self.ok_button.clicked.connect(self.save)
         for widget in self._fields():
             widget.setEnabled(False)
@@ -621,6 +638,18 @@ class EditTicketDialog(_MelderSearch, _CardDialog):
 
     def _fields(self):
         return (self.subject_edit, self.category_edit, self.description_edit, self.pen_button)
+
+    def needs_take_over(self):
+        """Zugewiesen, noch nicht übernommen: Speichern erst nach „Übernehmen“."""
+        return mb.is_assigned(self.row) and self.take_over_button.isVisibleTo(self)
+
+    def _took_over(self):
+        """Übernommen: Hinweis weg; Matrix42 hat das Ticket dabei gespeichert (neue Versionsmarke),
+        also die Marke frisch holen, ohne Getipptes zu überschreiben."""
+        self.assigned_hint.hide()
+        if self.loaded and self._run("load", id=self.row["id"], type=self.row.get("type", ""), stamp_only=True):
+            self._stamp_pending = True
+        self.validate()
 
     def edit_melder(self):
         """Stift: Melder-Feld zeigen (Name markiert, gleich überschreibbar)."""
@@ -647,6 +676,15 @@ class EditTicketDialog(_MelderSearch, _CardDialog):
             super().keyPressEvent(event)
 
     def _on_load(self, result):
+        if result.get("args", {}).get("stamp_only"):
+            self._stamp_pending = False
+            if result.get("ok") and self.loaded:
+                self.loaded["stamp"] = result["data"]["stamp"]
+            elif not result.get("ok"):
+                self.status.setText(f"⚠ Ticket nach dem Übernehmen nicht neu geladen: {result.get('error', '')}. "
+                                    "Bitte das Fenster schließen und neu öffnen.")
+            self.validate()
+            return
         if self.description_skeleton is not None:
             self.description_skeleton.done()
             self.description_skeleton = None
@@ -707,7 +745,11 @@ class EditTicketDialog(_MelderSearch, _CardDialog):
         ok = bool(self.loaded and self.subject_edit.text().strip() and self.changed()) and not self._busy
         if self.categories and self.category_edit.currentText().strip() and not self.category():
             ok = False  # getippter Text ist keine Kategorie
+        if self.needs_take_over() or getattr(self, "_stamp_pending", False):
+            ok = False  # erst übernehmen (bzw. warten, bis die neue Versionsmarke da ist)
         self.ok_button.setEnabled(ok)
+        self.ok_button.setToolTip("Erst übernehmen, dann speichern" if self.needs_take_over()
+                                  else "Speichern (Strg+Enter)")
         return ok
 
     def request(self):

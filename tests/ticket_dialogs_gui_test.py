@@ -183,6 +183,18 @@ def gui_test():
     assert edit.taken_over == "Kroczak, Filip" and not edit.take_over_button.isVisibleTo(edit)
     assert ("take_over", {"owner": id(edit), "id": "t2", "type": ROW["type"], "ticket": ROW["ticket"]}) in reader.tasks
     edit.reject()
+    # Mir zugewiesen, aber noch nicht übernommen: Übernehmen da, Speichern erst danach
+    edit = EditTicketDialog(reader, dict(ROW, state="Zugewiesen"))
+    assert wait_for(lambda: edit.loaded is not None, 3000)
+    assert edit.take_over_button.isVisibleTo(edit) and edit.assigned_hint.isVisibleTo(edit)
+    edit.subject_edit.setText("Drucker Empfang")
+    assert not edit.ok_button.isEnabled()
+    edit.take_over_button.click()
+    assert wait_for(lambda: edit.taken_over is not None and not edit._stamp_pending, 3000)
+    assert edit.state_label.text() == mb.WORKING_STATE and not edit.assigned_hint.isVisibleTo(edit)
+    assert edit.ok_button.isEnabled() and edit.subject_edit.text() == "Drucker Empfang"  # Getipptes bleibt
+    assert reader.tasks[-1][0] == "load" and reader.tasks[-1][1].get("stamp_only")
+    edit.reject()
 
     # ---- Ansehen: Beschreibung und Kontakt (Telefon/E-Mail als Link), nichts wird geändert
     view = ViewTicketDialog(reader, ROW)

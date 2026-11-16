@@ -14,8 +14,8 @@ from datetime import datetime
 
 from PySide6.QtCore import QElapsedTimer, QEvent, QRectF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QGuiApplication, QPainter, QPen, QPixmap
-from PySide6.QtWidgets import (QAbstractSpinBox, QDialog, QFrame, QGraphicsDropShadowEffect, QGridLayout,
-                               QHBoxLayout, QLabel, QLayout, QPushButton, QSizePolicy, QToolButton,
+from PySide6.QtWidgets import (QAbstractSpinBox, QApplication, QDialog, QFrame, QGraphicsDropShadowEffect,
+                               QGridLayout, QHBoxLayout, QLabel, QLayout, QPushButton, QSizePolicy, QToolButton,
                                QVBoxLayout, QWidget)
 
 import icons
@@ -289,7 +289,36 @@ class _AutoHide:
         self._bar.setVisible(self._timeout_ms > 0 and not stopped)
 
     def _paused(self):
-        return self._pinned or self._held or (self._keep_while_active and self.underMouse())
+        return (self._pinned or self._held or getattr(self, "_blocked", False)
+                or (self._keep_while_active and self.underMouse()))
+
+    def event(self, event):
+        """Geht ein Fenster auf, das alles andere sperrt (z. B. „Tätigkeit nachtragen“ aus der Timeline),
+        wäre die Nachfrage davor zwar zu sehen, aber nicht bedienbar und nicht wegzuklicken. Dann
+        ausblenden (Countdown hält an) und wieder zeigen, sobald es zu ist. Eigene Unterfenster (z. B.
+        Ticket wählen aus der Karte heraus) sperren die Karte auch: dann bleibt sie stehen."""
+        kind = event.type()
+        if kind == QEvent.WindowBlocked and not self._own_modal():
+            self._blocked = True
+            if self.isVisible():
+                self._hidden_while_blocked = True
+                self.hide()
+        elif kind == QEvent.WindowUnblocked and getattr(self, "_blocked", False):
+            self._blocked = False
+            if getattr(self, "_hidden_while_blocked", False):
+                self._hidden_while_blocked = False
+                self.show()
+        return super().event(event)
+
+    def _own_modal(self):
+        """Ist das sperrende Fenster eines von mir (Kind, Enkel …)?"""
+        app = QApplication.instance()
+        widget = app.activeModalWidget() if app is not None else None
+        while widget is not None:
+            if widget is self:
+                return True
+            widget = widget.parentWidget()
+        return False
 
     def _tick(self):
         # echte vergangene Zeit statt TICK_MS: verspätete Ticks bremsen den Countdown nicht

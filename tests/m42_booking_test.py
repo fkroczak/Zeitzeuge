@@ -272,3 +272,13 @@ def test_tickets_einer_kategorie_lesen(tmp_path):
     reader._fetch = broken
     reader._read_tickets("tk", mb.TK_FILTER)  # Fehler: alte Liste bleibt
     assert len(got[-1]["rows"]) == 1 and "500" in got[-1]["error"] and reader.ticket_views["tk"] is got[-1]
+
+
+def test_uebernehmen_anbieten():
+    mine = {"state": "In Bearbeitung", "recipient_id": "ME"}
+    assert not mb.can_take_over(mine, "me")  # schon meins und in Bearbeitung
+    assert mb.can_take_over(dict(mine, state="Zugewiesen"), "me")  # mir zugewiesen, noch nicht übernommen
+    assert mb.can_take_over(dict(mine, recipient_id="jemand"), "me")
+    assert mb.can_take_over(dict(mine, recipient_id=""), "me")  # nur der Gruppe zugewiesen
+    assert not mb.can_take_over(dict(mine, state="Geschlossen", recipient_id="jemand"), "me")
+    assert mb.is_assigned({"state": " zugewiesen "}) and not mb.is_assigned({"state": "Neu"})
