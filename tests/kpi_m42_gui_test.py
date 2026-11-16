@@ -53,6 +53,7 @@ app.processEvents()
 booked = window.day_summary.booked
 assert "#00FF00" in booked.bar.styleSheet().upper() and "#7C4DCC" in booked.bar_m42.styleSheet().upper(), \
     (booked.bar.styleSheet(), booked.bar_m42.styleSheet())
+window.quit_app()  # Hintergrund-Threads stoppen, sonst bleibt der Prozess unter Windows hängen
 print("Kachel Erfasst/Matrix42: OK")
-sys.stdout.flush()
-os._exit(0)
+import safe_io  # noqa: E402  Ende ohne Qt-Aufräumen (Absturz/Hänger unter Windows)
+safe_io.hard_exit(0)
