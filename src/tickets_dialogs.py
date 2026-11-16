@@ -681,6 +681,7 @@ class TicketsDialog(QDialog):
         action = dialog.action if dialog.exec() == QDialog.Accepted else None
         self._note_taken_over(row, dialog)
         dialog.deleteLater()
+        row = dict(row, **self._changed.get(row["id"], {}))  # übernommen: gleich als „In Bearbeitung“ öffnen
         if action == "edit":
             self.edit_ticket(row)
         elif action == "close":
@@ -705,9 +706,10 @@ class TicketsDialog(QDialog):
         """Im Fenster übernommen: bis zum Neulesen dich als Bearbeiter zeigen."""
         if getattr(dialog, "taken_over", None) is None:
             return
-        self._note = f"{row['ticket']} übernommen."
+        self._note = f"{row['ticket']} übernommen, Status {mb.WORKING_STATE}."
         changed = self._changed.setdefault(row["id"], {})
         changed["recipient"] = dialog.taken_over or getattr(self.reader, "user_name", "") or row.get("recipient", "")
+        changed["state"] = mb.WORKING_STATE
         if getattr(self.reader, "user_id", ""):
             changed["recipient_id"] = self.reader.user_id
         self.show_category()
@@ -747,10 +749,9 @@ class TicketsDialog(QDialog):
         menu.exec(self.table.viewport().mapToGlobal(pos))
 
     def can_take_over(self, row):
-        """Übernehmen nur bei offenen Tickets, die noch nicht meine sind (wie im Fenster „Ticket ansehen“)."""
-        me = getattr(self.reader, "user_id", "") or ""
-        return (hasattr(self.reader, "ticket_task") and not mb.is_closed(row)
-                and not (me and row.get("recipient_id") == me))
+        """Übernehmen bei offenen Tickets, die noch nicht meine oder nur zugewiesen sind (wie im Fenster
+        „Ticket ansehen“)."""
+        return hasattr(self.reader, "ticket_task") and mb.can_take_over(row, getattr(self.reader, "user_id", "") or "")
 
     def take_over(self, row=None):
         """Markiertes Ticket in Matrix42 übernehmen (du wirst Bearbeiter), ohne Fenster."""
@@ -773,10 +774,11 @@ class TicketsDialog(QDialog):
             self._note = f"⚠ {ticket} übernehmen fehlgeschlagen: {result.get('error', '')}"
             self._update_status()
             return
-        self._note = f"{ticket} übernommen."
+        self._note = f"{ticket} übernommen, Status {mb.WORKING_STATE}."
         changed = self._changed.setdefault(args.get("id"), {})
         changed["recipient"] = ((result.get("data") or {}).get("user") or getattr(self.reader, "user_name", "")
                                 or "ich")
+        changed["state"] = mb.WORKING_STATE
         if getattr(self.reader, "user_id", ""):
             changed["recipient_id"] = self.reader.user_id
         self.show_category()

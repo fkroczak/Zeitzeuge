@@ -498,6 +498,7 @@ class ReadersMixin:
         from ticket_dialogs import CloseTicketDialog, EditTicketDialog, ViewTicketDialog
         dialog = ViewTicketDialog(self.m42_reader, row, parent)
         action = dialog.action if dialog.exec() == QDialog.Accepted else None
+        row = dialog.row  # nach „Übernehmen“: In Bearbeitung, Bearbeiter = ich
         dialog.deleteLater()
         follow = {"edit": EditTicketDialog, "close": CloseTicketDialog}.get(action)
         if follow:

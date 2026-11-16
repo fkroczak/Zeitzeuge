@@ -175,6 +175,24 @@ def is_closed(row):
     return (row.get("state") or "").strip().lower() in CLOSED_STATES
 
 
+# Zugewiesen, aber noch nicht übernommen: Matrix42 speichert Änderungen erst nach „Übernehmen“,
+# das den Status auf „In Bearbeitung“ setzt (auch wenn du schon als Bearbeiter eingetragen bist)
+ASSIGNED_STATES = ("zugewiesen", "assigned")
+WORKING_STATE = "In Bearbeitung"
+
+
+def is_assigned(row):
+    return (row.get("state") or "").strip().lower() in ASSIGNED_STATES
+
+
+def can_take_over(row, user_id=""):
+    """Übernehmen anbieten: offen und noch nicht meins, oder nur zugewiesen (noch nicht in Bearbeitung)."""
+    if is_closed(row):
+        return False
+    mine = bool(user_id) and (row.get("recipient_id") or "").lower() == user_id.lower()
+    return not mine or is_assigned(row)
+
+
 def search_plan(text):
     """Suchtext -> (Wort für Matrix42, Felder). Matrix42 sucht „enthält“ nur nach einem Text:
     bei mehreren Wörtern nach dem längsten, die übrigen filtert matches() danach.
