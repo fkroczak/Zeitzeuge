@@ -648,6 +648,9 @@ QFrame#notice { background-color: $chip; border: 1px solid $border; border-radiu
 QFrame#notice QLabel { background: transparent; }
 QProgressBar { background-color: $chip; border: none; border-radius: 2px; }
 QProgressBar::chunk { background-color: $good; border-radius: 2px; }
+QProgressBar#kpi_bar_m42::chunk { background-color: $primary; }
+QLabel#kpi_pct { color: $good; background: transparent; font-size: $fs_smpx; }
+QLabel#kpi_pct_m42 { color: $primary; background: transparent; font-size: $fs_smpx; }
 QWidget#chips, QWidget#band_row, QWidget#flag_details { background: transparent; }
 QWidget#customer_detail { background-color: $surface; }
 QScrollArea { background: transparent; border: none; }

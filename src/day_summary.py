@@ -349,16 +349,42 @@ class _Kpi(QFrame):
             self.value.show()
 
     def add_progress(self):
-        """Fortschritt in der Fußzeile: Balken und Anteil in Prozent."""
+        """Fortschritt in der Fußzeile: Balken und Anteil in Prozent. Darunter ein zweiter, blauer
+        Balken (Matrix42 gebucht), nur sichtbar mit Matrix42. Beide passen in die Fußzeile (FOOT_H),
+        die Kachel wird nicht größer."""
+        bars = QVBoxLayout()
+        bars.setContentsMargins(0, 0, 0, 0)
+        bars.setSpacing(3)
+        bars.addStretch(1)
         self.bar = QProgressBar(self)
-        self.bar.setTextVisible(False)
-        self.bar.setFixedHeight(6)
-        self.bar.setRange(0, 100)
-        self.bar.setAccessibleName("Anteil erfasst")
+        self.bar.setAccessibleName("Anteil selbst erfasst")
+        self.bar_m42 = QProgressBar(self)
+        self.bar_m42.setObjectName("kpi_bar_m42")
+        self.bar_m42.setAccessibleName("Anteil in Matrix42 gebucht")
+        for bar in (self.bar, self.bar_m42):
+            bar.setTextVisible(False)
+            bar.setFixedHeight(6)
+            bar.setRange(0, 100)
+            bar.setMinimumWidth(24)
+            bar.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)  # Breite bestimmt die Zeile darüber
+            bars.addWidget(bar)
+        bars.addStretch(1)
+        self.bar_m42.hide()
         self.percent = QLabel("", self)
-        self.percent.setObjectName("kpi_label")
-        self.foot.addWidget(self.bar, 1)
+        self.percent.setObjectName("kpi_pct")
+        self.percent_m42 = QLabel("", self)
+        self.percent_m42.setObjectName("kpi_pct_m42")
+        self.percent_m42.hide()
+        self.foot.addLayout(bars, 1)
         self.foot.addWidget(self.percent)
+        self.foot.addWidget(self.percent_m42)
+
+    def set_bar(self, bar, share):
+        if bar.value() != share:
+            # setValue zeichnet den Balken sofort (synchron); so kommt er mit dem nächsten Bild
+            bar.setUpdatesEnabled(False)
+            bar.setValue(share)
+            bar.setUpdatesEnabled(True)
 
     def set_clickable(self, on):
         self.clickable = on
@@ -513,14 +539,17 @@ class DaySummary(QWidget):
         self.booked.value.setText(hm(booked))
         basis = data.get("target_basis", "")  # „gestempelt“/„bis jetzt“ (ITM-Personalzeit) oder „Arbeitszeit“
         self.booked.extra.setText(f"von {hm(target)} {basis}".strip() if target else "")
-        share = int(min(100, 100 * booked / target)) if target else 0
-        bar = self.booked.bar
-        if bar.value() != share:
-            # setValue zeichnet den Balken sofort (synchron); so kommt er mit dem nächsten Bild
-            bar.setUpdatesEnabled(False)
-            bar.setValue(share)
-            bar.setUpdatesEnabled(True)
-        self.booked.percent.setText(f"{round(100 * booked / target)} %" if target else "")
+        kpi = self.booked
+        kpi.set_bar(kpi.bar, int(min(100, 100 * booked / target)) if target else 0)
+        kpi.percent.setText(f"{round(100 * booked / target)} %" if target else "")
+        # Blau: in Matrix42 gebucht (gerundet, je Buchung mind. 15 min), nur mit Matrix42
+        m42 = data.get("m42_s")
+        has_m42 = m42 is not None and bool(target)
+        kpi.bar_m42.setVisible(has_m42)
+        kpi.percent_m42.setVisible(has_m42)
+        if has_m42:
+            kpi.set_bar(kpi.bar_m42, int(min(100, 100 * m42 / target)))
+            kpi.percent_m42.setText(f"{round(100 * m42 / target)} %")
         tips = {"gestempelt": " im Verhältnis zur gestempelten Personalzeit (ITM)",
                 "bis jetzt": " im Verhältnis zur Personalzeit bis jetzt (noch eingestempelt, läuft live)",
                 "Arbeitszeit": " im Verhältnis zur eingestellten Arbeitszeit"}
@@ -529,6 +558,8 @@ class DaySummary(QWidget):
         self.booked.set_clickable(itm)
         self.booked.setAccessibleName("Erfasst. ITM-Zeiterfassung im Browser öffnen" if itm else "")
         self.booked.setToolTip("Eingetragene Tätigkeiten des Tages" + (tips.get(basis, "") if target else "")
+                               + (f"\nGrün: selbst erfasst {hm(booked)} · Blau: in Matrix42 gebucht {hm(m42)}"
+                                  " (gerundet wie die Buchungen)" if has_m42 else "")
                                + ("\nKlicken: ITM-Zeiterfassung im Browser öffnen" if itm else ""))
         n = data["open"]
         self.opened.value.setText(str(n))

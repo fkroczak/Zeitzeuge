@@ -17,6 +17,9 @@ Testversionen aus Branches tragen die Version ihres main-Stands plus Buildnummer
 **Achtung:** Die Daten liegen jetzt verschlüsselt in einer Datenbank. Versionen vor dem
 26.10.2026 können sie nicht mehr lesen.
 
+### Neu
+- **Kachel „Erfasst“ zeigt auch Matrix42:** Unter dem grünen Balken (selbst erfasst) steht ein blauer für die in Matrix42 gebuchte Zeit, beide im Verhältnis zur Personalzeit. Viele kurze Sitzungen (z. B. à 5 min) sind eingetragen wenig, in Matrix42 aber je mindestens 15 min gebucht – so sieht man beides. Der blaue Balken erscheint nur mit Matrix42; die Kachel bleibt gleich groß.
+
 ### Wichtiger Fix
 - **Nachfrage ließ sich nicht wegklicken, solange ein anderes Fenster offen war:** Erschien die Nachfrage („Was hast du bei … gemacht?“), während z. B. „Tätigkeit nachtragen“ offen war, stand sie zwar davor, war aber gesperrt: Das Fenster dahinter hatte Vorrang, und weder Speichern noch Später noch ✕ gingen. Jetzt wartet die Nachfrage, bis solche Fenster zu sind. War sie schon offen, blendet sie sich so lange aus (Countdown hält an) und kommt danach mit dem bereits Getippten wieder. Fenster, die du aus der Nachfrage selbst öffnest, sind davon ausgenommen.
 - **Zugewiesene Tickets ließen sich nicht bearbeiten:** War ein Ticket dir schon zugewiesen, aber noch nicht übernommen (Status „Zugewiesen“), fehlte „Übernehmen“, und Matrix42 nahm Änderungen nicht an. Jetzt bieten „Bearbeiten“, „Ansehen“ und das Kontextmenü der Ticketliste „Übernehmen“ auch dafür an (Matrix42 `activity/TakeOver` wie im Mitschnitt). Im Fenster „Ticket bearbeiten“ steht ein Hinweis, „Speichern“ geht erst nach dem Übernehmen; Getipptes bleibt dabei erhalten. Nach dem Übernehmen zeigen Fenster und Liste sofort den Status „In Bearbeitung“ und dich als Bearbeiter.
