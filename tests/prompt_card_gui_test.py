@@ -77,10 +77,16 @@ def gui_test():
     blocker = QDialog(window)
     blocker.setWindowModality(main_timeline.Qt.ApplicationModal)
     blocker.show()
-    settle(100)
+    for _ in range(30):  # Fokuswechsel oder Nachprüfung alle 0,5 s (app_docs._check_modal)
+        if not prompt.isVisible():
+            break
+        settle(100)
     assert not prompt.isVisible() and prompt._blocked, "Karte bleibt unbedienbar vor dem Fenster stehen"
     blocker.close()
-    settle(100)
+    for _ in range(30):  # Nachprüfung alle 0,5 s (app_docs._check_modal)
+        if prompt.isVisible():
+            break
+        settle(100)
     assert prompt.isVisible() and not prompt._blocked and window._prompt_window is prompt
     assert prompt.form.text_edit.toPlainText() == "Angefangen"
 
