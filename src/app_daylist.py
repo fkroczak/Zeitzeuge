@@ -311,6 +311,10 @@ class DayListMixin:
         if bookings is not None:
             until = datetime.now() if date_str == datetime.now().strftime("%Y-%m-%d") else None
             data["m42_s"] = br.booked_seconds(bookings, until)
+        if hasattr(self, "row_color"):  # Balken in den Zeilenfarben der Timeline (Legende)
+            from theme import theme_for
+            self.day_summary.booked.set_colors(self.row_color("doc"), self.row_color("m42"),
+                                               theme_for(self.config).get("surface"))
         self.day_summary.show_numbers(data)
         self.view_chips.show_state(self.config.get("list_view", "grouped"),
                                    {"doc": data["open"], "ai": data["suggestions"]})

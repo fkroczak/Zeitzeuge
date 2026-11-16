@@ -19,14 +19,39 @@ w.show()
 app.processEvents()
 kpi = w.booked
 size = kpi.sizeHint()
-assert not kpi.bar_m42.isVisibleTo(kpi) and kpi.percent.text() == "28 %"  # ohne Matrix42 nur grün
+assert not kpi.bar_m42.isVisibleTo(kpi) and kpi.percent.text() == "28 %" and kpi.value.text() == "0:07 h"  # ohne Matrix42 nur grün
 
 w.show_numbers(dict(data, m42_s=15 * 60))
 app.processEvents()
 assert kpi.bar_m42.isVisibleTo(kpi) and kpi.bar_m42.value() == 60 and kpi.percent_m42.text() == "60 %"
-assert kpi.bar.value() == 28 and kpi.value.text() == "0:07 h"
+assert kpi.bar.value() == 28 and kpi.value.text() == "0:15 h"  # Zahl: Matrix42
 assert "Matrix42 gebucht 0:15 h" in kpi.toolTip()
-assert kpi.sizeHint() == size, (kpi.sizeHint(), size)  # Kachel nicht größer
+assert kpi.sizeHint().width() <= size.width() + 4 and kpi.sizeHint().height() == size.height(), \
+    (kpi.sizeHint(), size)  # Kachel nicht größer (Ziffern sind verschieden breit)
+# Farben wie die Zeilen der Timeline: Neongrün ist als Schrift auf Weiß nicht lesbar
+kpi.set_colors("#00FF00", "#2272AD", "#FFFFFF")
+assert "#00FF00" in kpi.bar.styleSheet() and "#2272AD" in kpi.bar_m42.styleSheet()
+assert "#00FF00" not in kpi.percent.styleSheet() and "#2272AD" in kpi.percent_m42.styleSheet()
+assert kpi.sizeHint().height() == size.height()
+
+# Im Hauptfenster: Zeilenfarbe ändern färbt die Kachel mit
+import tempfile  # noqa: E402
+os.environ["ZEITZEUGE_DATA"] = tempfile.mkdtemp()
+import main_timeline  # noqa: E402
+from PySide6.QtWidgets import QSystemTrayIcon  # noqa: E402
+QSystemTrayIcon.isSystemTrayAvailable = staticmethod(lambda: True)
+window = main_timeline.TimelineApp()
+window.tray.showMessage = lambda *a: None
+window.show()
+app.processEvents()
+window.set_row_color("doc", "#00FF00")
+window.set_row_color("m42", "#7C4DCC")
+for _ in range(20):
+    app.processEvents()
+app.processEvents()
+booked = window.day_summary.booked
+assert "#00FF00" in booked.bar.styleSheet().upper() and "#7C4DCC" in booked.bar_m42.styleSheet().upper(), \
+    (booked.bar.styleSheet(), booked.bar_m42.styleSheet())
 print("Kachel Erfasst/Matrix42: OK")
 sys.stdout.flush()
 os._exit(0)
