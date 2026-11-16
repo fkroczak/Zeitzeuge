@@ -195,7 +195,15 @@ def test_kulanz_mit_zeit_und_grund():
     item = {"start": "2026-11-02 10:00:00", "end": "2026-11-02 11:00:00", "goodwill": True,
             "goodwill_minutes": 20, "goodwill_reason": "Nacharbeit"}
     p = mb.plan(item, Billing())
-    assert p["goodwill_minutes"] == 20 and p["goodwill_reason"] == "Nacharbeit"
+    # Kulanzzeit wird wie die gebuchte Zeit im Takt aufgerundet (20 min -> 30 min im 15er-Takt)
+    assert p["goodwill_minutes"] == 30 and p["goodwill_reason"] == "Nacharbeit"
+    assert p["billing_rule"] == (15, "up")
+    assert mb.plan(item, Billing(mode="off"))["goodwill_minutes"] == 20, "ohne Takt bleibt sie"
+    assert mb.plan(dict(item, goodwill_minutes=50), Billing())["goodwill_minutes"] == 60
+    # höchstens die gebuchte Zeit (12 min -> gebucht 15 min, Kulanz 14 min -> 15 min)
+    short = dict(item, end="2026-11-02 10:12:00", goodwill_minutes=14)
+    assert mb.plan(short, Billing(step=30))["goodwill_minutes"] == 30
+    assert mb.plan(short, Billing())["goodwill_minutes"] == 15
     start, end = datetime(2026, 11, 2, 10, 0), datetime(2026, 11, 2, 11, 0)
     base = mb.time_entry(TEMPLATE, "t", "s", "u", start, end, 60, "x", goodwill=True,
                          goodwill_reason="Nacharbeit", goodwill_minutes=20)["ITMTimeEntryClassBase"]
@@ -282,3 +290,31 @@ def test_uebernehmen_anbieten():
     assert mb.can_take_over(dict(mine, recipient_id=""), "me")  # nur der Gruppe zugewiesen
     assert not mb.can_take_over(dict(mine, state="Geschlossen", recipient_id="jemand"), "me")
     assert mb.is_assigned({"state": " zugewiesen "}) and not mb.is_assigned({"state": "Neu"})
+
+
+def test_kulanzzeit_im_buchen_fenster():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+    from m42_booking_dialogs import BookingDialog
+    app = QApplication.instance() or QApplication([])
+    item = {"start": "2026-11-02 10:00:00", "end": "2026-11-02 11:00:00", "goodwill": True,
+            "ticket": "TCK0000049374"}
+    dialog = BookingDialog(mb.plan(item, Billing()))
+    assert dialog.goodwill_spin.isVisibleTo(dialog) and dialog.goodwill_spin.value() == 60
+    dialog.goodwill_spin.setValue(20)  # wie getippt: aufrunden wie die gebuchte Zeit
+    dialog.goodwill_spin.editingFinished.emit()
+    assert dialog.goodwill_spin.value() == 30
+    assert dialog.request()["goodwill_minutes"] == 30
+    dialog.goodwill_spin.setValue(7)
+    assert dialog.request()["goodwill_minutes"] == 15, "auch ohne Verlassen des Felds gerundet"
+    # kürzere Buchung: Kulanz höchstens die ganze Zeit
+    dialog.end_edit.setTime(dialog.end_edit.time().addSecs(-50 * 60))
+    dialog.goodwill_spin.setValue(9)
+    assert dialog.request()["goodwill_minutes"] == 10
+    dialog.goodwill_box.setChecked(False)
+    assert not dialog.goodwill_spin.isVisibleTo(dialog) and dialog.request()["goodwill_minutes"] == 0
+    # ohne Angabe beim Eintragen folgt die Kulanz der ganzen Zeit
+    dialog = BookingDialog(mb.plan(item, Billing()))
+    dialog.end_edit.setTime(dialog.end_edit.time().addSecs(-15 * 60))
+    assert dialog.request()["goodwill_minutes"] == 45
+    del app

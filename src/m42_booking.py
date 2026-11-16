@@ -70,21 +70,28 @@ def plan(item, bill=None, ticket_format=""):
     """Vorschlag für die Buchung einer Tätigkeit aus dem Journal.
 
     Beginn und Ende im Abrechnungstakt (billing.booking_span: Beginn bleibt, Ende = Beginn +
-    abgerechnete Dauer), Text wie beim Kopieren als Ticket-Doku. -> dict
-    {ticket, start, end (datetime), minutes, text, customer}"""
+    abgerechnete Dauer), Text wie beim Kopieren als Ticket-Doku. Die Kulanzzeit wird im selben
+    Takt gerundet (höchstens die gebuchte Zeit). -> dict
+    {ticket, start, end (datetime), minutes, text, customer, goodwill_minutes, billing_rule, …}"""
     from tickets import format_ticket_text  # erst hier: hält das Modul leicht
 
     start, end = billing.booking_span(item, bill)
+    minutes = max(1, int((end - start).total_seconds() // 60))
+    rule = bill.rule(item.get("customer", "")) if bill else (0, "off")
+    goodwill = int(item.get("goodwill_minutes") or 0) if item.get("goodwill") else 0
+    if goodwill:  # Kulanzzeit im selben Takt wie die gebuchte Zeit, höchstens die ganze Zeit
+        goodwill = min(billing.billed_minutes(goodwill * 60, *rule), minutes)
     return {
         "ticket": normalize_ticket(item.get("ticket") or ""),
         "start": start, "end": end,
-        "minutes": max(1, int((end - start).total_seconds() // 60)),
+        "minutes": minutes,
         "text": format_ticket_text(item.get("text", ""), ticket_format) or item.get("text", ""),
         "goodwill": bool(item.get("goodwill")), "travel": bool(item.get("travel")),
         "no_surcharge": bool(item.get("no_surcharge")),
         "customer": item.get("customer", ""),
         # beim Eintragen angegeben (Kulanzzeit 0 = die ganze Zeit)
-        "goodwill_minutes": int(item.get("goodwill_minutes") or 0) if item.get("goodwill") else 0,
+        "goodwill_minutes": goodwill,
+        "billing_rule": rule,  # (Takt, Modus): die Kulanzzeit im Buchen-Fenster rundet genauso
         "goodwill_reason": (item.get("goodwill_reason") or "") if item.get("goodwill") else "",
         "travel_km_there": int(item.get("travel_km_there") or 0) if item.get("travel") else 0,
         "travel_km_back": int(item.get("travel_km_back") or 0) if item.get("travel") else 0,
