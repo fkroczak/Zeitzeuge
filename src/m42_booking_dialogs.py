@@ -164,7 +164,8 @@ class BookingDialog(_TicketSearch, CardParts, QDialog):
         step, mode = self.billing_rule
         self.goodwill_spin.setSingleStep(step if mode != "off" and step > 0 else 1)
         self.goodwill_spin.setRange(1, max(1, int(plan.get("minutes") or 1)))
-        self._goodwill_set = bool(plan.get("goodwill_minutes"))  # sonst folgt sie der ganzen Zeit
+        # ganze Zeit Kulanz (oder keine Angabe): folgt der gebuchten Zeit, wenn du Von/Bis änderst
+        self._goodwill_set = bool(plan.get("goodwill_minutes")) and not plan.get("goodwill_all")
         self.goodwill_spin.setValue(int(plan.get("goodwill_minutes") or 0) or self.goodwill_spin.maximum())
         self.goodwill_spin.valueChanged.connect(self._goodwill_changed)
         self.goodwill_spin.editingFinished.connect(self._round_goodwill)

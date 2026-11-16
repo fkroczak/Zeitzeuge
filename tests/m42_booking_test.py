@@ -204,6 +204,12 @@ def test_kulanz_mit_zeit_und_grund():
     short = dict(item, end="2026-11-02 10:12:00", goodwill_minutes=14)
     assert mb.plan(short, Billing(step=30))["goodwill_minutes"] == 30
     assert mb.plan(short, Billing())["goodwill_minutes"] == 15
+    # 10 min erfasst, 10 min Kulanz: gebucht 15 min, Kulanz die vollen 15 min
+    whole = dict(item, end="2026-11-02 10:10:00", goodwill_minutes=10)
+    p = mb.plan(whole, Billing())
+    assert p["minutes"] == 15 and p["goodwill_minutes"] == 15 and p["goodwill_all"]
+    assert mb.plan(whole, Billing(step=30))["goodwill_minutes"] == 30
+    assert not mb.plan(item, Billing())["goodwill_all"], "20 von 60 min ist nicht die ganze Zeit"
     start, end = datetime(2026, 11, 2, 10, 0), datetime(2026, 11, 2, 11, 0)
     base = mb.time_entry(TEMPLATE, "t", "s", "u", start, end, 60, "x", goodwill=True,
                          goodwill_reason="Nacharbeit", goodwill_minutes=20)["ITMTimeEntryClassBase"]
@@ -317,4 +323,10 @@ def test_kulanzzeit_im_buchen_fenster():
     dialog = BookingDialog(mb.plan(item, Billing()))
     dialog.end_edit.setTime(dialog.end_edit.time().addSecs(-15 * 60))
     assert dialog.request()["goodwill_minutes"] == 45
+    # ganze Zeit Kulanz beim Eintragen (10 von 10 min): folgt auch einem geänderten „Bis“
+    whole = dict(item, end="2026-11-02 10:10:00", goodwill_minutes=10)
+    dialog = BookingDialog(mb.plan(whole, Billing()))
+    assert dialog.goodwill_spin.value() == 15
+    dialog.end_edit.setTime(dialog.end_edit.time().addSecs(15 * 60))
+    assert dialog.request()["goodwill_minutes"] == 30
     del app
