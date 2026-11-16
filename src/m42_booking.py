@@ -166,7 +166,30 @@ def ticket_row(item):
             "customer": _clean(item.get("Customer")), "state": (item.get("State") or "").strip(),
             "initiator": _clean(item.get("Initiator")), "recipient": _clean(item.get("Recipient")),
             "recipient_id": item.get("Recipient_Value") or "", "type": item.get("Sys-Entity") or "",
-            "created": item.get("CreatedDate") or ""}
+            "created": item.get("CreatedDate") or "", "sla": sla_level(item)}
+
+
+# SLA-Ampel der Ticketliste (in Matrix42 die Balken vor der Nummer): Felder, deren Name nach
+# Eskalation/Ampel klingt. Das genaue Feld ist noch nicht mitgeschnitten; erkannt wird
+# „rot“ (eskaliert, überschritten) und „gelb“ (Eskalationsgefahr), alles andere bleibt ohne.
+SLA_KEY = re.compile(r"escalat|eskal|ampel|traffic|sla.?(state|status|level)", re.I)
+SLA_RED = ("rot", "red", "eskaliert", "escalated", "überschritten", "overdue", "breached")
+SLA_YELLOW = ("gelb", "yellow", "gefahr", "warning", "risk")
+
+
+def sla_level(item):
+    """Ampel eines Eintrags der Ticketliste: "red", "yellow" oder "" (grün/unbekannt)."""
+    for key, value in item.items():
+        if not SLA_KEY.search(str(key)) or isinstance(value, (dict, list, bool)) or value in (None, ""):
+            continue
+        text = str(value).strip().casefold()
+        if text.startswith(("kein", "no ", "not ")):
+            continue
+        if any(w in text for w in SLA_RED):
+            return "red"
+        if any(w in text for w in SLA_YELLOW):
+            return "yellow"
+    return ""
 
 
 # Art des Tickets (Sys-Entity) für die Tabelle

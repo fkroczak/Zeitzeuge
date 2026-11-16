@@ -330,3 +330,12 @@ def test_kulanzzeit_im_buchen_fenster():
     dialog.end_edit.setTime(dialog.end_edit.time().addSecs(15 * 60))
     assert dialog.request()["goodwill_minutes"] == 30
     del app
+
+
+def test_sla_ampel_aus_der_ticketliste():
+    assert mb.sla_level({"EscalationState": "Eskaliert"}) == "red"
+    assert mb.sla_level({"SLAStatus": "Eskalationsgefahr"}) == "yellow"
+    assert mb.sla_level({"EscalationState": "Keine Eskalationsgefahr"}) == ""
+    assert mb.sla_level({"Subject": "Rot eskaliert", "State": "Neu"}) == ""  # nur Ampel-Felder zählen
+    row = mb.ticket_row({"TicketNumber": "TCK0000000001", "Id": "1", "EscalationState": "red"})
+    assert row["sla"] == "red"

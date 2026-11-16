@@ -149,6 +149,8 @@ def default_config():
         "ticket_layout": 1,
         # Fenster „Tickets“, Anordnung 5: angeheftete Kategorien ("mine", "tk", "all", "f:<Filter-ID>")
         "ticket_favorites": ["mine", "tk", "all"],
+        # Tickettabelle: alle Zeilen nach Status einfärben (rote/gelbe SLA-Ampel immer)
+        "ticket_state_colors": False,
         # Aktivitätsdetails: Werte in schreibgeschützten Textfeldern statt als Text (zum Kopieren)
         "detail_text_fields": False,
         # Eigene Farben (Menü Ansicht → Design, theme.custom_theme): Grundlage und Grundfarben
