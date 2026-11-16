@@ -787,6 +787,12 @@ class DocsMixin(CustomersMixin):
         app = QApplication.instance()
         if app is not None:
             app.focusWindowChanged.connect(self._modal_changed)
+            # Nicht jedes Öffnen oder Schließen ändert den Fokus (z. B. ohne Bildschirm): zusätzlich
+            # alle 0,5 s nachsehen, solange eine Nachfrage offen ist (sonst sofort zurück)
+            self._modal_timer = QTimer(self)
+            self._modal_timer.setInterval(500)
+            self._modal_timer.timeout.connect(self._check_modal)
+            self._modal_timer.start()
             self._modal_watched = True
 
     def _modal_changed(self, *_):
@@ -795,8 +801,7 @@ class DocsMixin(CustomersMixin):
 
     def _check_modal(self):
         """Sperrendes Fenster auf (nicht aus der Karte selbst): offene Nachfrage ausblenden, sie wäre
-        davor nicht bedienbar und nicht wegzuklicken. Fenster zu: wieder zeigen. Solange sie
-        versteckt ist, alle 0,5 s nachsehen (nicht jedes Schließen ändert den Fokus)."""
+        davor nicht bedienbar und nicht wegzuklicken. Fenster zu: wieder zeigen."""
         from shiboken6 import isValid
         window = self._prompt_window
         if window is None or not isValid(window):
@@ -812,8 +817,6 @@ class DocsMixin(CustomersMixin):
                 window._blocked = True
                 self._prompt_hidden_for_modal = True
                 window.hide()
-            if getattr(self, "_prompt_hidden_for_modal", False):
-                QTimer.singleShot(500, self._check_modal)
         elif modal is None and getattr(self, "_prompt_hidden_for_modal", False):
             self._prompt_hidden_for_modal = False
             window._blocked = False
