@@ -53,7 +53,7 @@ M42_TICKET_VIEW_RECORD_TEXT = (
     "nach der Ticketnummer).\n"
     "3. Die Beschreibung bzw. die E-Mail im Verlauf (Journal) öffnen, so dass der Text zu sehen ist.\n"
     "4. Den Melder anklicken oder überfahren, so dass seine Telefonnummer zu sehen ist.\n"
-    "5. Falls das Ticket Anhänge hat: im Verlauf einen Anhang anklicken und herunterladen.\n"
+    "5. Falls das Ticket Anhänge hat: einen Anhang im Verlauf und einen unter „Anhänge“ öffnen.\n"
     "6. Nichts speichern. Das Fenster schließen.\n\n"
     "Zeitzeuge speichert die Mitschnitt-Datei (mitschnitt_m42_ticket_ansehen_…) im Datenordner. "
     "Antworten stehen darin ungekürzt, nur Passwörter und Token sind geschwärzt. Die Datei enthält "

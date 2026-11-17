@@ -71,6 +71,12 @@ def gui_test():
                     "take_over": {"ticket": ROW["ticket"], "id": "t2", "user": "Kroczak, Filip"},
                     "melder": {"user": {"id": "melder-1", "name": ROW["initiator"]},
                                "details": {"OrgUnit": "WiRoPa GmbH", "Phone": "02542 1"}},
+                    "comment": {"ticket": ROW["ticket"]}, "mail": {"ticket": ROW["ticket"]},
+                    "pause": {"ticket": ROW["ticket"]}, "forward": {"ticket": ROW["ticket"]},
+                    "mail_info": {"signature": "sig", "me": "Kroczak, Filip"},
+                    "pause_reasons": [(421, "Warten auf Kunde"), (20000, "Termin")],
+                    "roles": [{"id": "r1", "name": "SD.ITM.Team Helpdesk"}],
+                    "forward_users": [{"id": "u7", "name": "Birkholz, Kai - Systems"}],
                     "journal": {"complete": True, "entries": [
                         {"id": "j1", "time": None, "header": "E-Mail empfangen von Huber, Max", "creator": "",
                          "html": "<p>Geht wieder nicht</p><p>Gruß</p>", "message": True},
@@ -562,6 +568,51 @@ def gui_test():
     assert "60 passen zum Filter" in paged.status.text(), paged.status.text()
     paged.close()
     assert TicketsDialog(creader).size_combo.currentData() == 100  # Wahl gilt fürs nächste Fenster
+    # ---- Aktionen: Kommentieren, E-Mail senden, Pausieren, Weiterleiten
+    from ticket_action_dialog import TicketActionDialog
+    view = ViewTicketDialog(reader, ROW)
+    assert view.actions_button.isVisibleTo(view)
+    assert [a.text() for a in view.actions_button.menu().actions()] == [
+        "&Kommentieren …", "&E-Mail senden …", "&Pausieren …", "&Weiterleiten …"]
+    assert wait_for(lambda: view.melder_mail == "info@example.com", 3000), view.melder_mail
+    view.reject()
+
+    def last(kind):
+        return [a for k, a in reader.tasks if k == kind][-1]["request"]
+
+    act = TicketActionDialog(reader, ROW, "comment")
+    assert not act.ok_button.isEnabled()
+    act.text_edit.setPlainText("Mit Kunde telefoniert")
+    act.ok_button.click()
+    assert wait_for(lambda: act.result() == QDialog.Accepted, 3000)
+    assert last("comment")["text"] == "Mit Kunde telefoniert" and last("comment")["public"] is True
+
+    act = TicketActionDialog(reader, ROW, "mail", contact={"email": "info@example.com", "initiator_id": "melder-1"})
+    assert act.to_edit.text() == "info@example.com" and act.subject_edit.text() == "#TCK0000000002 - Drucker"
+    act.text_edit.setPlainText("Hallo")
+    act.ok_button.click()
+    assert wait_for(lambda: act.result() == QDialog.Accepted, 3000)
+    assert last("mail")["known_users"] == {"info@example.com": "melder-1"}
+
+    act = TicketActionDialog(reader, ROW, "pause")
+    assert wait_for(lambda: act.reason_combo.count() == 2, 3000)
+    assert act.reason_combo.currentData() == 421
+    act.text_edit.setPlainText("Warten auf Rückruf")
+    act.ok_button.click()
+    assert wait_for(lambda: act.result() == QDialog.Accepted, 3000)
+    assert last("pause")["reason"] == 421 and last("pause")["until"] > "2026"
+    assert act.done_text.startswith("Pausiert bis")
+
+    act = TicketActionDialog(reader, ROW, "forward")
+    assert wait_for(lambda: act.role_combo.count() == 2, 3000) and not act.ok_button.isEnabled()
+    QTest.keyClicks(act.user_edit, "bir")
+    assert wait_for(lambda: act.users.count() == 1, 3000)
+    act.users.itemClicked.emit(act.users.item(0))
+    assert act.ok_button.isEnabled()
+    act.ok_button.click()
+    assert wait_for(lambda: act.result() == QDialog.Accepted, 3000)
+    assert last("forward")["user"] == "u7" and last("forward")["role"] is None
+
     assert QDialog  # (Import für Typen oben)
     mine.close()
     print("Ticket-Fenster ok")

@@ -626,6 +626,9 @@ PREVIEW_CHARS = 180
 _MAIL_META = re.compile(r"(?i)^(an|cc|bcc|von|from|to|betreff|subject)\s*:")
 _MAIL_INTRO = re.compile(r"(?i)^die folgende (nachricht|e-mail) wurde")
 _ATTACHMENT = re.compile(r"(?i)mx-journal-attachment-link")
+# Anhang-Link der Mail im Verlauf: /SPS/Forms/AttachmentDownload.aspx?FileID=…&ObjectID=… gibt es auf
+# dem Server nicht (404), die Weboberfläche lädt Anhänge anders. Das Fenster bekommt „zz:attachment:<FileID>“.
+_ATTACHMENT_HREF = re.compile(r"""(?i)(\shref\s*=\s*["'])[^"']*AttachmentDownload\.aspx\?[^"']*?FileID=([0-9a-f-]+)[^"']*""")
 
 
 def _kind(entry):
@@ -720,7 +723,7 @@ LINK = "color:#005FB8; text-decoration:none; font-size:small;"
 
 
 def _body_html(raw, origin):
-    body = _DOCUMENT_TAGS.sub("", raw)
+    body = _ATTACHMENT_HREF.sub(lambda m: m.group(1) + "zz:attachment:" + m.group(2), _DOCUMENT_TAGS.sub("", raw))
     if origin:
         body = _HREF.sub(lambda m: m.group(1) + origin.rstrip("/") + m.group(2), body)
     return view_html(body)

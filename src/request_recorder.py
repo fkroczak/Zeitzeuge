@@ -296,6 +296,7 @@ class Recorder:
         self.extra_resp = {}    # requestId -> echte Antwort-Köpfe (mit Set-Cookie)
         self.others = {}        # Anzahl übriger Dateien je Typ
         self.websockets = []
+        self.opened = []        # neue Fenster und Downloads (Page.windowOpen, Page.downloadWillBegin)
         self.cookies = []
         self.storage = {}
         self.pages = []
@@ -477,6 +478,13 @@ class Recorder:
         elif method == "Network.webSocketCreated":
             self.websockets.append({"zeit": datetime.now().isoformat(timespec="seconds"),
                                     "adresse": redact_url(params.get("url", ""))})
+        elif method in ("Page.windowOpen", "Page.downloadWillBegin"):
+            # Neuer Tab oder Download (z. B. Anhang im Ticket): läuft nicht über diese Seite,
+            # darum wenigstens die Adresse festhalten
+            self.opened.append({"zeit": datetime.now().isoformat(timespec="seconds"),
+                                "art": "Download" if method == "Page.downloadWillBegin" else "neues Fenster",
+                                "adresse": redact_url(params.get("url", "")),
+                                **({"datei": params["suggestedFilename"]} if params.get("suggestedFilename") else {})})
         elif method == "Page.frameNavigated" and not (params.get("frame") or {}).get("parentId"):
             self.pages.append(redact_url((params.get("frame") or {}).get("url", "")))
 
@@ -495,6 +503,7 @@ class Recorder:
             "aufgerufene_seiten": self.pages,
             "abfragen": self.done,
             "websockets": self.websockets,
+            "neue_fenster_und_downloads": self.opened,
             "andere_dateien": self.others,
             "cookies": self.cookies,
             "seitenspeicher": self.storage,
