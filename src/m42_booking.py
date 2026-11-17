@@ -171,34 +171,31 @@ def ticket_row(item):
 
 
 def new_message(item):
-    """Neue Nachricht im Ticket (z. B. Antwort per E-Mail): Matrix42 setzt NewJournalEntryAdded,
-    bis jemand das Ticket speichert. Die Liste liefert es auch als „true“/1 oder unter einem Präfix."""
-    for key, value in item.items():
-        if str(key).rsplit(".", 1)[-1].rsplit("-", 1)[-1] == "NewJournalEntryAdded":
-            return value is True or str(value).strip().casefold() in ("true", "1", "ja", "yes")
-    return False
+    """Neue Information im Ticket (z. B. Antwort per E-Mail): in der Ticketliste
+    NewInformationReceived_Value 1 (Symbol „email“, Mitschnitt 17.11.2026)."""
+    value = item.get("NewInformationReceived_Value")
+    return value is True or str(value).strip() in ("1", "true", "True")
 
 
-# SLA-Ampel der Ticketliste (in Matrix42 die Balken vor der Nummer): Felder, deren Name nach
-# Eskalation/Ampel klingt. Das genaue Feld ist noch nicht mitgeschnitten; erkannt wird
-# „rot“ (eskaliert, überschritten) und „gelb“ (Eskalationsgefahr), alles andere bleibt ohne.
-SLA_KEY = re.compile(r"escalat|eskal|ampel|traffic|sla.?(state|status|level)", re.I)
-SLA_RED = ("rot", "red", "eskaliert", "escalated", "überschritten", "overdue", "breached")
-SLA_YELLOW = ("gelb", "yellow", "gefahr", "warning", "risk")
+# SLA-Ampel der Ticketliste wie die Balken in Matrix42: Fragt man die Liste mit den Schnellfiltern
+# „Eskaliert“, „Kurz vor Eskalation“ und „Keine Eskalationsgefahr“ ab (redFilter/yellowFilter/
+# greenFilter), setzt Matrix42 je Ticket Sys-Flags: Bit 1 rot, 2 gelb, 4 grün (Mitschnitt 17.11.2026)
+TRAFFIC_FILTERS = {"redFilter": "ddb13479-3859-bcd2-b5be-581595dd80be",
+                   "yellowFilter": "23bdba81-e144-5eea-a5fe-2b6f42fd080d",
+                   "greenFilter": "f8ba3806-382c-38f6-ab57-123b117750aa"}
+TRAFFIC_PARAMS = "".join(f"&{k}={v}" for k, v in TRAFFIC_FILTERS.items())
 
 
 def sla_level(item):
     """Ampel eines Eintrags der Ticketliste: "red", "yellow" oder "" (grün/unbekannt)."""
-    for key, value in item.items():
-        if not SLA_KEY.search(str(key)) or isinstance(value, (dict, list, bool)) or value in (None, ""):
-            continue
-        text = str(value).strip().casefold()
-        if text.startswith(("kein", "no ", "not ")):
-            continue
-        if any(w in text for w in SLA_RED):
+    flags = item.get("Sys-Flags")
+    if isinstance(flags, int) and not isinstance(flags, bool):
+        if flags & 1:
             return "red"
-        if any(w in text for w in SLA_YELLOW):
+        if flags & 2:
             return "yellow"
+    if item.get("ReactionTimeEscalated") is True or item.get("SolutionTimeEscalated") is True:
+        return "red"
     return ""
 
 

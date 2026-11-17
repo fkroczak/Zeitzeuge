@@ -806,8 +806,15 @@ class _DescriptionView(QTextBrowser):
         self.setHtml(mt.view_html(text))  # Bilder ohne feste Größe, damit loadResource sie einpasst
 
 
+# „Ticket ansehen“: was das große Feld zeigt (Schlüssel, Chip, Hinweis)
+VIEW_CHIPS = [("description", "B&eschreibung", "Beschreibung des Tickets"),
+              ("journal", "&Verlauf", "Alles, was im Ticket passiert ist, das Neueste oben"),
+              ("messages", "Nachrich&ten", "E-Mails und Kommentare"),
+              ("changes", "Än&derungen", "Status, Bearbeiter, Kategorie, SLA, Zeiteinträge …")]
+
+
 class ViewTicketDialog(_CardDialog):
-    """Ticket ansehen: Eckdaten, Beschreibung (HTML als Klartext) und Kontakt des Melders
+    """Ticket ansehen: Eckdaten, Beschreibung oder Verlauf (E-Mails, Kommentare, Änderungen) und Kontakt des Melders
     (Telefon und E-Mail anklickbar). Ändert nichts. Nach dem Schließen sagt self.action, ob
     gleich „Bearbeiten“ ("edit") oder „Schließen“ ("close") folgen soll, sonst None.
     „Übernehmen“ macht dich zum Bearbeiter (self.taken_over, siehe _CardDialog._add_take_over)."""
@@ -850,7 +857,26 @@ class ViewTicketDialog(_CardDialog):
         self.description_view.setTabChangesFocus(True)
         self.description_view.setMinimumHeight(260)
         self.description_skeleton = skeleton.Lines(self.description_view, lines=6)
-        box.addWidget(_label("B&eschreibung", self.description_view))
+        # Was im Feld steht: Beschreibung oder Verlauf (alles, nur Nachrichten, nur Änderungen)
+        chips_host = QWidget()
+        chips_host.setObjectName("chips")
+        chips = FlowLayout(chips_host, spacing=6)
+        self.view_group = QButtonGroup(self)
+        self.view_group.setExclusive(True)
+        self.view_chips = {}
+        for key, text, tip in VIEW_CHIPS:
+            chip = QCheckBox(text)
+            chip.setObjectName("chip_check")
+            chip.setToolTip(tip)
+            self.view_group.addButton(chip)
+            self.view_chips[key] = chip
+            chips.addWidget(chip)
+            chip.toggled.connect(lambda on, k=key: on and self._show_view(k))
+        self.journal = None  # Verlauf, sobald geladen (erst beim ersten Anklicken)
+        self._journal_loading = False
+        self._description_html = None  # was unter „Beschreibung“ steht (zum Zurückschalten)
+        self.view_chips["description"].setChecked(True)
+        box.addWidget(chips_host)
         box.addWidget(self.description_view)
 
         self.ok_button.setEnabled(False)
@@ -859,6 +885,60 @@ class ViewTicketDialog(_CardDialog):
             self.status.setText("⚠ Matrix42-Anmeldefenster ist offen. Bitte erst anmelden.")
             self._description_done()
             self._show_contact([])
+
+    def _show_view(self, key):
+        """Beschreibung oder Verlauf ins Feld; den Verlauf beim ersten Mal aus Matrix42 laden."""
+        view = self.description_view
+        view.setAccessibleName(dict((k, t.replace("&", "")) for k, t, _tip in VIEW_CHIPS)[key])
+        if key == "description":
+            if self._description_html is not None:
+                self._fill_description()
+            return
+        if self.journal is None:
+            view.setStyleSheet("")
+            view.setPlainText("")
+            view.setPlaceholderText("Lade Verlauf aus Matrix42 …")
+            if not self._journal_loading:
+                self._journal_loading = True
+                if not self._run("journal", id=self.row["id"]):
+                    self._journal_loading = False
+                    view.setPlaceholderText("⚠ Matrix42-Anmeldefenster ist offen. Bitte erst anmelden.")
+            return
+        origin = "/".join((getattr(self.reader, "page_url", "") or "").split("/")[:3])
+        text = mt.journal_html(self.journal["entries"], {"journal": "all"}.get(key, key), origin)
+        if text:
+            view.show_html(text)
+        else:
+            view.setStyleSheet("")
+            view.setPlainText("")
+            view.setPlaceholderText("(keine Einträge)")
+        view.moveCursor(QTextCursor.Start)
+
+    def _on_journal(self, result):
+        self._journal_loading = False
+        if not result.get("ok"):
+            self.description_view.setPlaceholderText(f"⚠ Verlauf nicht gelesen: {result.get('error', '')}")
+            return
+        self.journal = result["data"]
+        entries = self.journal["entries"]
+        counts = {"journal": len(entries), "messages": sum(e["message"] for e in entries)}
+        counts["changes"] = counts["journal"] - counts["messages"]
+        for key, text, _tip in VIEW_CHIPS:
+            if key in counts:
+                self.view_chips[key].setText(f"{text} ({counts[key]})")
+        if not self.journal.get("complete"):
+            self.status.setText(f"Verlauf: die neuesten {len(entries)} Einträge, ältere in Matrix42.")
+        current = next((k for k, chip in self.view_chips.items() if chip.isChecked()), "description")
+        if current != "description":
+            self._show_view(current)
+
+    def _fill_description(self):
+        if self._description_html:
+            self.description_view.show_html(self._description_html)
+        else:
+            self.description_view.setStyleSheet("")
+            self.description_view.setPlainText((self.loaded or {}).get("description") or "")
+        self.description_view.setPlaceholderText("(keine Beschreibung)")
 
     def _description_done(self):
         if self.description_skeleton is not None:
@@ -916,11 +996,9 @@ class ViewTicketDialog(_CardDialog):
         self.loaded = result["data"]
         if self.loaded.get("subject"):
             self.subtitle.setText(self.loaded["subject"])
-        if self.loaded.get("html"):  # Bilder, Tabellen, Formatierung wie in Matrix42
-            self.description_view.show_html(self.loaded["html"])
-        else:
-            self.description_view.setPlainText(self.loaded.get("description") or "")
-        self.description_view.setPlaceholderText("(keine Beschreibung)")
+        self._description_html = self.loaded.get("html") or ""  # Bilder, Tabellen, Formatierung wie in Matrix42
+        if self.view_chips["description"].isChecked():
+            self._fill_description()
         self.ok_button.setEnabled(True)
         self.status.clear()
         contact = self.loaded.get("contact") or {}

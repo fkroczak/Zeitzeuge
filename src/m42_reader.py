@@ -603,7 +603,7 @@ class M42Reader(BrowserReader):
             with self._browser_lock:
                 for field in fields:
                     path = (f"{mb.API}/WidgetList/GetData/{ticket_list or mb.DEFAULT_IDS['ticket_list']}"
-                            f"?orderBy=CreatedDate+desc&pageSize={mb.SEARCH_LIMIT}&page=0")
+                            f"?orderBy=CreatedDate+desc&pageSize={mb.SEARCH_LIMIT}&page=0{mb.TRAFFIC_PARAMS}")
                     try:
                         data = self._fetch("POST", path, mb.search_query(field, word))
                         found.append(data if isinstance(data, list) else [])
@@ -663,13 +663,10 @@ class M42Reader(BrowserReader):
         for page in range(mb.MY_TICKETS_PAGES):
             data = self._fetch("POST", f"{mb.API}/WidgetList/GetData/"
                                f"{self.ticket_list or mb.DEFAULT_IDS['ticket_list']}"
-                               f"?orderBy=CreatedDate+desc&pageSize={mb.MY_TICKETS_PAGE_SIZE}&page={page}{params}",
+                               f"?orderBy=CreatedDate+desc&pageSize={mb.MY_TICKETS_PAGE_SIZE}&page={page}"
+                               f"{mb.TRAFFIC_PARAMS}{params}",
                                body)
             data = data if isinstance(data, list) else []
-            if data and isinstance(data[0], dict) and not getattr(self, "_ticket_keys_logged", False):
-                # Nur Feldnamen (keine Werte): zeigt, in welchem Feld die SLA-Ampel steht
-                self._ticket_keys_logged = True
-                safe_io.log("Matrix42: Felder der Ticketliste: " + ", ".join(sorted(map(str, data[0]))))
             items.extend(data)
             if len(data) < mb.MY_TICKETS_PAGE_SIZE:
                 return items, False
@@ -737,7 +734,7 @@ class M42Reader(BrowserReader):
 
     def ticket_task(self, kind, **args):
         """Im Hintergrund: "users" (text), "user_details" (user), "melder" (name), "categories", "create" (request),
-        "load" (id), "edit" (request), "take_over" (id, type, ticket), "close_info" (id, type), "close" (request).
+        "load" (id), "journal" (id), "edit" (request), "take_over" (id, type, ticket), "close_info" (id, type), "close" (request).
         Ergebnis über ticket_task_done. False, wenn gerade ein Anmeldefenster offen ist."""
         if self._login_open:
             return False
@@ -780,6 +777,8 @@ class M42Reader(BrowserReader):
                     except mt.BookingError as e:
                         raise mt.load_error(e, args.get("type") or "") from e
                     result["data"] = mt.ticket_view(mt.loaded_entity(data))
+                elif kind == "journal":
+                    result["data"] = self._journal(args["id"])
                 elif kind == "edit":
                     result["data"] = self._edit_ticket(args["request"], ids, state)
                 elif kind == "take_over":
@@ -808,6 +807,20 @@ class M42Reader(BrowserReader):
                 view["time"] = 0  # Kategorien beim nächsten Anzeigen neu lesen
             threading.Thread(target=self.load_my_tickets, daemon=True).start()
         self.ticket_task_done.emit(result)
+
+    def _journal(self, ticket_id):
+        """Verlauf des Tickets, alle Seiten (neueste zuerst). Nur mit gehaltenem _browser_lock.
+        -> {"entries": [...], "complete": False, wenn es mehr als JOURNAL_MAX_PAGES Seiten gibt}"""
+        import m42_tickets as mt
+        offset = -int(datetime.now().astimezone().utcoffset().total_seconds() // 60)  # wie JS getTimezoneOffset
+        pages = []
+        for n in range(mt.JOURNAL_MAX_PAGES):
+            page = self._fetch("GET", mt.journal_path(ticket_id, n * mt.JOURNAL_PAGE, offset))
+            page = page if isinstance(page, list) else []
+            pages.append(page)
+            if len(page) <= mt.JOURNAL_PAGE:
+                return {"entries": mt.journal_entries(pages), "complete": True}
+        return {"entries": mt.journal_entries(pages), "complete": False}
 
     def _edit_dialog(self, ids, ticket_id, kind=""):
         """Dialog für ein bestehendes Ticket je Art. Ohne Art fragt Zeitzeuge sie ab wie Matrix42.

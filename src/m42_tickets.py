@@ -33,7 +33,13 @@ GET /ticket/GetTicketEntityType/<Id> -> "SPSActivityTypeIncident".
    und Formatierungen aus Matrix42 bleiben). Sonst ersetzt der Klartext die Beschreibung.
    Kategorie: Der Dialog fragt dazu /activity/suitableSLAsForTicket (wie beim Anlegen) und nimmt
    TightestItem als SLA (ServiceDesk-Einstellung AutoApplyingTightestSLA = 1).
-Art ändern (Serviceanfrage -> Störung) und Journaleinträge fehlen noch im Mitschnitt.
+Art ändern (Serviceanfrage -> Störung) fehlt noch im Mitschnitt.
+
+Verlauf (Journal, Mitschnitt „Ticket ansehen“ vom 17.11.2026): GET /Journal?objectId=<Ticket-Id>
+&start=<n>&count=6&objectLinkTemplate=…&timeOffset=<min>, neueste zuerst. Matrix42 blättert in
+Fünferschritten und fragt je einen mehr ab (sechster = erster der nächsten Seite). Einträge:
+Id, CreatedDate (UTC), Header („E-Mail empfangen von …“, „Kommentiert von …“, „Angehalten von …“),
+Text (HTML, E-Mails mit eingebetteten Bildern, Anhänge als Links), Creator.
 
 Schließen: POST /ticket/CloseWizardInitialData/?ticketType=<Typ> [Id] -> Kategorie, dann
 POST /ticket/Close mit Lösungstext (Comments, HTML). Beim Öffnen des Fensters holt „close_info“
@@ -45,6 +51,7 @@ Kategorien: POST /entity/tree (ganzer Kategoriebaum).
 import html
 import re
 from html.parser import HTMLParser
+from datetime import datetime
 from urllib.parse import urlencode
 
 from m42_booking import API, BookingError, EMPTY_RELATIONS, wrap
@@ -564,3 +571,63 @@ def close_body(ticket_id, solution, category, notify_initiator=True, close_relat
             "WorkflowInstanceId": None, "CategoryId": category, "KBArticle": None, "InformFurtherUsers": None,
             "SendMailToRelatedResponsibleUsers": False, "SkipFailIfAlreadyClosed": False,
             "ClosureAttachmentFileIDs": None}
+
+
+# ------------------------------------------------------------------ Verlauf (Journal)
+
+JOURNAL_PAGE = 5      # Matrix42 blättert in Fünferschritten (count 6: einer mehr zum Erkennen)
+JOURNAL_MAX_PAGES = 40  # höchstens 200 Einträge
+JOURNAL_LINK = '<a href="#" class="mx-object-journal--link {0} {1}">{2}</a>'  # wie Matrix42
+# Nachrichten: E-Mails, Kommentare und das Anlegen aus einer E-Mail; alles andere sind Änderungen
+_MESSAGE_HEADERS = ("e-mail", "kommentiert", "kommentar", "das ticket wurde aus der e-mail")
+
+
+def journal_path(ticket_id, start, offset_minutes=0):
+    query = urlencode({"objectId": ticket_id, "start": start, "count": JOURNAL_PAGE + 1,
+                       "objectLinkTemplate": JOURNAL_LINK, "timeOffset": offset_minutes})
+    return f"{API}/Journal?{query}"
+
+
+def journal_entries(pages):
+    """Antworten der Journal-Seiten -> Einträge (jeder einmal, neueste zuerst):
+    {"id", "time" (datetime lokal oder None), "header", "html", "creator", "message"}."""
+    out, seen = [], set()
+    for page in pages:
+        for item in page if isinstance(page, list) else []:
+            if not isinstance(item, dict) or item.get("Id") in seen:
+                continue
+            seen.add(item.get("Id"))
+            header = (item.get("Header") or "").strip()
+            out.append({"id": item.get("Id") or "", "time": _utc_local(item.get("CreatedDate")),
+                        "header": header, "html": item.get("Text") or "", "creator": item.get("Creator") or "",
+                        "message": header.casefold().startswith(_MESSAGE_HEADERS)})
+    out.sort(key=lambda e: e["time"] or datetime.min, reverse=True)
+    return out
+
+
+def _utc_local(value):
+    try:
+        return datetime.fromisoformat((value or "").replace("Z", "+00:00")).astimezone().replace(tzinfo=None)
+    except ValueError:
+        return None
+
+
+_DOCUMENT_TAGS = re.compile(r"(?is)<head\b.*?</head\s*>|<style\b.*?</style\s*>|<!--.*?-->|</?(html|body)\b[^>]*>")
+_HREF = re.compile(r"""(?i)(\shref\s*=\s*["'])(/[^/"'][^"']*)""")
+
+
+def journal_html(entries, which="all", origin=""):
+    """Verlauf als ein HTML-Dokument zum Ansehen. which: "all", "messages" oder "changes".
+    origin („https://host“) macht Anhang-Links von Matrix42 klickbar."""
+    parts = []
+    for e in entries:
+        if which == "messages" and not e["message"] or which == "changes" and e["message"]:
+            continue
+        when = e["time"].strftime("%d.%m.%y %H:%M") if e["time"] else ""
+        body = _DOCUMENT_TAGS.sub("", e["html"])
+        if origin:
+            body = _HREF.sub(lambda m: m.group(1) + origin.rstrip("/") + m.group(2), body)
+        color = "#1d4ed8" if e["message"] else "#555555"
+        parts.append(f'<p style="margin:12px 0 4px 0; color:{color};"><b>{html.escape(e["header"])}</b>'
+                     f' &nbsp;·&nbsp; {when}</p><div>{view_html(body)}</div><hr>')
+    return "".join(parts)

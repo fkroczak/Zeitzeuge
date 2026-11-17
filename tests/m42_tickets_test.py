@@ -482,3 +482,54 @@ def test_html_zum_ansehen():
     assert "script" not in out and "iframe" not in out and "input" not in out and "alert" not in out
     assert '<img src="data:image/png;base64,AAAA">' in out and "<p>Hallo</p>" in out
     assert mt.ticket_view(mt.loaded_entity(LOADED))["html"].startswith("<p>- Anpassungen")  # Tabelle: rich
+
+
+# Journal wie im Mitschnitt „Ticket ansehen“ vom 17.11.2026 (Feldnamen echt, Werte erfunden)
+def _entry(i, header, minute, text="x"):
+    return {"Id": f"j{i}", "CreatedDate": f"2026-11-17T09:{minute:02d}:00.000Z", "Header": header,
+            "Text": text, "CreatorFragmentId": "u", "CreatorPhoto": "", "Creator": "Muster, Max - Systems",
+            "Color": "0xff808080"}
+
+
+def test_journal_seiten_und_arten():
+    page1 = [_entry(1, "E-Mail empfangen von Kunde, Karl", 50,
+                    '<html><head><style>p{color:red}</style></head><body><p>Hallo</p>'
+                    '<a href="/SPS/Forms/AttachmentDownload.aspx?FileID=1">a.txt</a></body></html>'),
+             _entry(2, "Angehalten von Muster, Max - Systems", 40),
+             _entry(3, "Kommentiert von Muster, Max - Systems", 30),
+             _entry(4, "SLA geändert von Muster, Max - Systems", 20),
+             _entry(5, "Zeiteintrag erstellt von Muster, Max - Systems", 10),
+             _entry(6, "Das Ticket wurde aus der E-Mail erstellt, die von Kunde, Karl gesendet wurde", 5)]
+    page2 = [page1[-1]]  # Matrix42 fragt einen mehr ab: der sechste kommt auf der nächsten Seite wieder
+    entries = mt.journal_entries([page1, page2])
+    assert [e["id"] for e in entries] == ["j1", "j2", "j3", "j4", "j5", "j6"]
+    assert [e["message"] for e in entries] == [True, False, True, False, False, True]
+    assert entries[0]["time"].year == 2026
+    messages = mt.journal_html(entries, "messages", "https://m42.example")
+    assert "E-Mail empfangen" in messages and "Kommentiert" in messages and "SLA geändert" not in messages
+    assert "<style" not in messages and "<html" not in messages  # Stil der Mail färbt nicht alles ein
+    assert 'href="https://m42.example/SPS/Forms/AttachmentDownload.aspx?FileID=1"' in messages
+    changes = mt.journal_html(entries, "changes")
+    assert "SLA geändert" in changes and "E-Mail" not in changes
+    assert "start=5" in mt.journal_path("t-1", 5) and "count=6" in mt.journal_path("t-1", 5)
+
+
+def test_leser_verlauf_blaettert(tmp_path):
+    from m42_reader import M42Reader
+    reader = M42Reader("https://m42.example/wm/", str(tmp_path / "m42.json"), str(tmp_path / "p"))
+    pages = {0: [_entry(i, "Kommentiert von A", 59 - i) for i in range(6)],
+             5: [_entry(i, "Status geändert von A", 59 - i) for i in range(5, 8)]}
+    starts = []
+
+    def fetch(method, path, body=None, content_type=None):
+        start = int(re.search(r"start=(\d+)", path).group(1))
+        starts.append(start)
+        return pages[start]
+    reader._fetch = fetch
+    got = []
+    reader.ticket_task_done.connect(got.append)
+    reader._ticket_task("journal", {"id": "t-1"})
+    assert got[-1]["ok"], got[-1]
+    assert starts == [0, 5]  # Seite 2 hat weniger als sechs: fertig
+    assert [e["id"] for e in got[-1]["data"]["entries"]] == [f"j{i}" for i in range(8)]
+    assert got[-1]["data"]["complete"]
