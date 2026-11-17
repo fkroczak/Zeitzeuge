@@ -71,6 +71,7 @@ def gui_test():
                     "take_over": {"ticket": ROW["ticket"], "id": "t2", "user": "Kroczak, Filip"},
                     "melder": {"user": {"id": "melder-1", "name": ROW["initiator"]},
                                "details": {"OrgUnit": "WiRoPa GmbH", "Phone": "02542 1"}},
+                    "mark_read": {"id": args.get("id"), "entity": True},
                     "comment": {"ticket": ROW["ticket"]}, "mail": {"ticket": ROW["ticket"]},
                     "pause": {"ticket": ROW["ticket"]}, "forward": {"ticket": ROW["ticket"]},
                     "mail_info": {"signature": "sig", "me": "Kroczak, Filip"},

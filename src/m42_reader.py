@@ -748,7 +748,7 @@ class M42Reader(BrowserReader):
         """Im Hintergrund: "users" (text), "user_details" (user), "melder" (name), "categories", "create" (request),
         "load" (id), "journal" (id), "edit" (request), "take_over" (id, type, ticket), "close_info" (id, type), "close" (request),
         Aktionen (ACTION_TASKS): "comment", "mail", "pause", "forward" (request), "mail_info", "pause_reasons", "roles",
-        "forward_users" (text, role).
+        "forward_users" (text, role), "mark_read" (id, type).
         Ergebnis über ticket_task_done. False, wenn gerade ein Anmeldefenster offen ist."""
         if self._login_open:
             return False
@@ -806,6 +806,8 @@ class M42Reader(BrowserReader):
                     result["data"] = self._close_info(args["id"], args.get("type"), ids)
                 elif kind == "close":
                     result["data"] = self._close_ticket(args["request"], state)
+                elif kind == "mark_read":
+                    result["data"] = self._mark_read(args["id"], args.get("type"))
                 elif kind in ACTION_TASKS:
                     result["data"] = self._ticket_action(kind, args, state)
                 else:
@@ -871,6 +873,18 @@ class M42Reader(BrowserReader):
             self._fetch("POST", f"{api}/activity/Forward", body)
         self._set_status(f"Matrix42: {name} {ACTION_DONE[kind]}")
         return {"ticket": name}
+
+    def _mark_read(self, ticket_id, kind=""):
+        """Neue Nachricht als gelesen: Ticket in der Vorschau öffnen und den Verlauf lesen wie Matrix42,
+        das setzt „Neue Information erhalten“ dann selbst zurück (m42_tickets.PREVIEW_WIDGETS).
+        Nur mit gehaltenem _browser_lock."""
+        import m42_tickets as mt
+        if not kind:
+            kind = mt.entity_type(self._fetch("GET", f"/m42Services/api/ticket/GetTicketEntityType/{ticket_id}"))
+        data = self._fetch("GET", mt.preview_path(kind, ticket_id))
+        offset = -int(datetime.now().astimezone().utcoffset().total_seconds() // 60)
+        self._fetch("GET", mt.journal_path(ticket_id, 0, offset))
+        return {"id": ticket_id, "entity": bool(data)}
 
     def _signature(self):
         """Objekt-Id der eigenen E-Mail-Signatur (einmal pro Sitzung), None ohne. Nur mit _browser_lock."""

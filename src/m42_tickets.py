@@ -302,6 +302,20 @@ def entity_type(data):
     return text if text.startswith("SPSActivityType") else ""
 
 
+# „Preview for Agent“ je Ticketart (WidgetCommon/GetWidgets). Öffnet der Bearbeiter ein Ticket darin,
+# setzt Matrix42 „Neue Information erhalten“ selbst zurück, ohne eigene Abfrage zum Speichern
+# (Mitschnitt vom 17.11.2026, 14:54: GetData mit NewInformationReceived 1, zwanzig Sekunden später 0)
+PREVIEW_WIDGETS = {"SPSActivityTypeIncident": "3b4c23df-08e7-c3bd-be7c-08d33f5dcbe1",
+                   "SPSActivityTypeServiceRequest": "99912400-5e96-c50f-9a1b-08d4617dc22d",
+                   "SPSActivityTypeTicket": "e54bab9f-0a7b-ce2a-ca48-08d46175796f"}
+
+
+def preview_path(kind, ticket_id):
+    """Ticket in der Vorschau öffnen wie Matrix42 (Kennzeichen „neue Information“ geht dann weg)."""
+    widget = PREVIEW_WIDGETS.get(kind or "", PREVIEW_WIDGETS["SPSActivityTypeTicket"])
+    return edit_data_path(widget, ticket_id)
+
+
 def edit_data_path(dialog, ticket_id):
     return f"{API}/WidgetCommon/GetData/{dialog}/{ticket_id}?archived=false"
 

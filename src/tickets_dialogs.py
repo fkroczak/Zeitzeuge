@@ -672,11 +672,19 @@ class TicketsDialog(QDialog):
             self._update_status()
         dialog.deleteLater()
 
+    def mark_read(self, row):
+        """Blau weg: sofort in der Liste, in Matrix42 über das Öffnen der Vorschau (m42_tickets.PREVIEW_WIDGETS)."""
+        self.table.mark_read(row)
+        if hasattr(self.reader, "ticket_task"):
+            self.reader.ticket_task("mark_read", id=row["id"], type=row.get("type", ""))
+
     def view_ticket(self):
         from ticket_dialogs import ViewTicketDialog
         row = self.current_row()
         if not row:
             return
+        if self.table.is_unread(row):  # Öffnen heißt gelesen, wie in Matrix42
+            self.mark_read(row)
         dialog = ViewTicketDialog(self.reader, row, self)
         action = dialog.action if dialog.exec() == QDialog.Accepted else None
         self._note_taken_over(row, dialog)
@@ -745,11 +753,8 @@ class TicketsDialog(QDialog):
             menu.addAction("Über&nehmen", self.take_over)
         if not mb.is_closed(row):
             menu.addAction("Ticket &schließen …", self.close_ticket)
-        if row.get("new_message") and not mb.is_closed(row):
-            if self.table.is_unread(row):
-                menu.addAction("Als &gelesen markieren", lambda: self.table.mark_read(row))
-            else:
-                menu.addAction("Als &ungelesen markieren", lambda: self.table.mark_read(row, False))
+        if not mb.is_closed(row) and self.table.is_unread(row):
+            menu.addAction("Als &gelesen markieren", lambda: self.mark_read(row))
         menu.addSeparator()
         menu.addAction("Nummer &kopieren", self.copy_number)
         menu.exec(self.table.viewport().mapToGlobal(pos))

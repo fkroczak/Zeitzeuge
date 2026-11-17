@@ -117,3 +117,27 @@ def test_schnellwahl_wiedervorlage():
     assert times["nächsten Montag"] == datetime(2026, 11, 23, 8, 0)
     assert "heute 16:00" not in dict(quick_pause_times(friday.replace(hour=17)))
     assert default_pause_until(friday) == datetime(2026, 11, 23, 8, 0)
+
+
+def test_als_gelesen_ueber_die_vorschau(tmp_path):
+    """Matrix42 setzt „Neue Information erhalten“ zurück, wenn der Bearbeiter die Vorschau öffnet."""
+    import m42_tickets as mt
+    from m42_reader import M42Reader
+    assert mt.preview_path("SPSActivityTypeServiceRequest", T).endswith(
+        "/WidgetCommon/GetData/99912400-5e96-c50f-9a1b-08d4617dc22d/" + T + "?archived=false")
+    assert "e54bab9f" in mt.preview_path("", T)  # unbekannte Art: Vorschau für Tickets
+    reader = M42Reader("https://m42.example/wm/", str(tmp_path / "m42.json"), str(tmp_path / "p"))
+    calls = []
+
+    def fetch(method, path, body=None, content_type=None):
+        calls.append((method, path))
+        if "GetTicketEntityType" in path:
+            return '"SPSActivityTypeIncident"'
+        return {"Entity": {}} if "GetData" in path else []
+    reader._fetch = fetch
+    got = []
+    reader.ticket_task_done.connect(got.append)
+    reader._ticket_task("mark_read", {"id": T})
+    assert got[-1]["ok"], got[-1]
+    assert [m for m, _p in calls] == ["GET", "GET", "GET"]  # liest nur, schickt nichts zum Speichern
+    assert "3b4c23df" in calls[1][1] and "/Journal?" in calls[2][1]
