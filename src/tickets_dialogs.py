@@ -735,8 +735,20 @@ class TicketsDialog(QDialog):
             self.show_category()
         dialog.deleteLater()
 
+    def forward_ticket(self, row=None):
+        """Markiertes Ticket weiterleiten (Team und/oder Kollege), Fenster aus ticket_action_dialog."""
+        from ticket_action_dialog import TicketActionDialog
+        row = row or self.current_row()
+        if not row or mb.is_closed(row) or not hasattr(self.reader, "ticket_task"):
+            return
+        dialog = TicketActionDialog(self.reader, row, "forward", self)
+        if dialog.exec() == QDialog.Accepted:
+            self._note = f"{row['ticket']} weitergeleitet."
+            self._update_status()
+        dialog.deleteLater()
+
     def _context_menu(self, pos):
-        """Rechte Maustaste auf einem Ticket: Ansehen, Bearbeiten, Übernehmen, Schließen, als gelesen markieren,
+        """Rechte Maustaste auf einem Ticket: Ansehen, Bearbeiten, Übernehmen, Weiterleiten, Schließen, als gelesen markieren,
         Nummer kopieren."""
         index = self.table.indexAt(pos)
         if not index.isValid():
@@ -752,6 +764,7 @@ class TicketsDialog(QDialog):
         if self.can_take_over(row):
             menu.addAction("Über&nehmen", self.take_over)
         if not mb.is_closed(row):
+            menu.addAction("&Weiterleiten …", self.forward_ticket)
             menu.addAction("Ticket &schließen …", self.close_ticket)
         if not mb.is_closed(row) and self.table.is_unread(row):
             menu.addAction("Als &gelesen markieren", lambda: self.mark_read(row))

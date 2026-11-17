@@ -414,7 +414,7 @@ def gui_test():
     QTimer.singleShot(10, read_menu)
     table = table_dialog.table
     table.customContextMenuRequested.emit(table.visualRect(table.model().index(1, 0)).center())
-    assert menus == [["Ans&ehen …", "&Bearbeiten …", "Über&nehmen", "Ticket &schließen …", "Nummer &kopieren"]], menus
+    assert menus == [["Ans&ehen …", "&Bearbeiten …", "Über&nehmen", "&Weiterleiten …", "Ticket &schließen …", "Nummer &kopieren"]], menus
     picked = table_dialog.current_row()
     assert picked["id"] == table_dialog.visible_rows()[1]["id"]  # Rechtsklick markiert die Zeile
     table_dialog.take_over()
@@ -616,6 +616,17 @@ def gui_test():
     act.ok_button.click()
     assert wait_for(lambda: act.result() == QDialog.Accepted, 3000)
     assert last("forward")["user"] == "u7" and last("forward")["role"] is None
+
+    # Weiterleiten direkt aus der Ticketliste
+    def forward_from_list():
+        dlg = next(w for w in app.topLevelWidgets() if isinstance(w, TicketActionDialog) and w.isVisible())
+        wait_for(lambda: dlg.role_combo.count() == 2, 3000)
+        dlg.role_combo.setCurrentIndex(1)
+        dlg.ok_button.click()
+    QTimer.singleShot(50, forward_from_list)
+    mine.forward_ticket(ROW)
+    assert last("forward")["role"] == "r1" and last("forward")["user"] is None
+    assert "weitergeleitet" in mine._note, mine._note
 
     assert QDialog  # (Import für Typen oben)
     mine.close()
