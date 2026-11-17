@@ -102,6 +102,8 @@ Weitere Kandidaten zum Kürzen (nicht geändert, Inhalt nötig): Export-Erkläru
 
 ## Neue Regeln für künftige Änderungen
 
+Welcher Baustein für welches Element (Fenstertyp, Felder, Knöpfe, Tabellen): [`UI-COOKBOOK.md`](UI-COOKBOOK.md).
+
 - Ränder und Abstände nur mit `SPACE_*` (Python) bzw. `$space_*` (QSS); 0 bleibt 0.
 - Schriftgrößen nur über Objektnamen (`#section_title`, `#page_title`, `#kpi_label` …), nie `setBold`/`setPointSize` für Titel, kein `<h3>`.
 - Rundungen nur `$radius_sm`/`$radius`/`$radius_card`/`$radius_chip`.
