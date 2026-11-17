@@ -3,7 +3,7 @@ Art (Störung/Serviceanfrage), Status, Bearbeiter, Angelegt; nach jeder Spalte s
 der Ticketsuche), erledigte Tickets grau. Enter oder Doppelklick: Signal activated(row).
 Spaltenbreiten lassen sich im Kopf ziehen; gezogene Breiten bleiben (je Tabelle gespeichert),
 Rechtsklick auf den Kopf setzt sie zurück. Der Betreff bekommt immer den Rest.
-Rote/gelbe SLA-Ampel: Zeile getönt, Balken am linken Rand. Mit „ticket_state_colors“ auch die
+Rote/gelbe SLA-Ampel und neue Nachricht (blau): Zeile getönt, Balken am linken Rand. Mit „ticket_state_colors“ auch die
 übrigen Zeilen in der Farbe ihres Status (Einstellungen → Darstellung → Tickets).
 """
 from PySide6.QtCore import QSettings, Qt, Signal
@@ -26,10 +26,11 @@ PEOPLE_SHARE, PEOPLE_MIN, PEOPLE_MAX = 0.09, 70, 130
 # (unter Windows sind sie fast doppelt so breit wie unter Linux); nie schmaler als SMALL_MIN
 SUBJECT_SHARE, SMALL_MIN = 0.35, 50
 
-# Farben: SLA-Ampel (immer) und Status (nur mit config["ticket_state_colors"]); Zeile getönt
+# Farben: SLA-Ampel und neue Nachricht (immer) und Status (nur mit config["ticket_state_colors"]); Zeile getönt
 # (Deckkraft 0–255), Balken BAR_WIDTH px am linken Rand der Ticketnummer
 SLA_COLORS = {"red": "#DC2626", "yellow": "#EAB308"}
-STATE_COLORS = {"neu": "#2563EB", "zugewiesen": "#7C3AED", "in bearbeitung": "#16A34A",
+MESSAGE_COLOR = "#2563EB"  # neue Nachricht im Ticket; „Neu“ darum türkis statt blau
+STATE_COLORS = {"neu": "#0891B2", "zugewiesen": "#7C3AED", "in bearbeitung": "#16A34A",
                 "angehalten": "#D97706"}
 CLOSED_COLOR = "#9CA3AF"
 SLA_TINT, STATE_TINT, BAR_WIDTH = 36, 20, 6
@@ -40,6 +41,8 @@ def row_color(row, all_states=False):
     """Farbe einer Ticketzeile -> (Farbe, Deckkraft der Tönung) oder None."""
     if row.get("sla") in SLA_COLORS and not mb.is_closed(row):
         return SLA_COLORS[row["sla"]], SLA_TINT
+    if row.get("new_message") and not mb.is_closed(row):
+        return MESSAGE_COLOR, SLA_TINT
     if not all_states:
         return None
     if mb.is_closed(row):

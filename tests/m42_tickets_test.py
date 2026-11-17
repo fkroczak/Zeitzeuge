@@ -482,3 +482,80 @@ def test_html_zum_ansehen():
     assert "script" not in out and "iframe" not in out and "input" not in out and "alert" not in out
     assert '<img src="data:image/png;base64,AAAA">' in out and "<p>Hallo</p>" in out
     assert mt.ticket_view(mt.loaded_entity(LOADED))["html"].startswith("<p>- Anpassungen")  # Tabelle: rich
+
+
+# Journal wie im Mitschnitt „Ticket ansehen“ vom 17.11.2026 (Feldnamen echt, Werte erfunden)
+def _entry(i, header, minute, text="x"):
+    return {"Id": f"j{i}", "CreatedDate": f"2026-11-17T09:{minute:02d}:00.000Z", "Header": header,
+            "Text": text, "CreatorFragmentId": "u", "CreatorPhoto": "", "Creator": "Muster, Max - Systems",
+            "Color": "0xff808080"}
+
+
+def test_journal_seiten_und_arten():
+    page1 = [_entry(1, "E-Mail empfangen von Kunde, Karl", 50,
+                    '<html><head><style>p{color:red}</style></head><body><p>Hallo</p>'
+                    '<a class="mx-journal-attachment-link" href="/SPS/Forms/AttachmentDownload.aspx?FileID=1">a.txt</a></body></html>'),
+             _entry(2, "Angehalten von Muster, Max - Systems", 40),
+             _entry(3, "Kommentiert von Muster, Max - Systems", 30),
+             _entry(4, "SLA geändert von Muster, Max - Systems", 20),
+             _entry(5, "Zeiteintrag erstellt von Muster, Max - Systems", 10),
+             _entry(6, "Das Ticket wurde aus der E-Mail erstellt, die von Kunde, Karl gesendet wurde", 5)]
+    page2 = [page1[-1]]  # Matrix42 fragt einen mehr ab: der sechste kommt auf der nächsten Seite wieder
+    entries = mt.journal_entries([page1, page2])
+    assert [e["id"] for e in entries] == ["j1", "j2", "j3", "j4", "j5", "j6"]
+    assert [e["message"] for e in entries] == [True, False, True, False, False, True]
+    assert entries[0]["time"].year == 2026
+    days = mt.journal_rows(entries)
+    assert len(days) == 1  # alles am 17.11.
+    kinds = [r["kind"] for r in days[0][1]]
+    assert kinds == ["mail_in", "change", "comment", "change", "change", "mail_in"], kinds
+    assert days[0][1][0]["preview"] == "Hallo a.txt"  # Inhalt, nicht der Kopf der Mail
+    page = mt.journal_html(entries, (), "https://m42.example")
+    assert "DIENSTAG, 17. NOVEMBER 2026" in page and "zz:toggle:j1" in page and "1 Anhang" in page
+    assert "<style" not in page and "<html" not in page  # Stil der Mail färbt nicht alles ein
+    assert "AttachmentDownload" not in page  # eingeklappt: nur die Vorschau
+    opened = mt.journal_html(entries, {"j1"}, "https://m42.example")
+    assert 'href="https://m42.example/SPS/Forms/AttachmentDownload.aspx?FileID=1"' in opened
+    assert "▴ zuklappen" in opened
+    assert "start=5" in mt.journal_path("t-1", 5) and "count=6" in mt.journal_path("t-1", 5)
+
+
+def test_leser_verlauf_blaettert(tmp_path):
+    from m42_reader import M42Reader
+    reader = M42Reader("https://m42.example/wm/", str(tmp_path / "m42.json"), str(tmp_path / "p"))
+    pages = {0: [_entry(i, "Kommentiert von A", 59 - i) for i in range(6)],
+             5: [_entry(i, "Status geändert von A", 59 - i) for i in range(5, 8)]}
+    starts = []
+
+    def fetch(method, path, body=None, content_type=None):
+        start = int(re.search(r"start=(\d+)", path).group(1))
+        starts.append(start)
+        return pages[start]
+    reader._fetch = fetch
+    got = []
+    reader.ticket_task_done.connect(got.append)
+    reader._ticket_task("journal", {"id": "t-1"})
+    assert got[-1]["ok"], got[-1]
+    assert starts == [0, 5]  # Seite 2 hat weniger als sechs: fertig
+    assert [e["id"] for e in got[-1]["data"]["entries"]] == [f"j{i}" for i in range(8)]
+    assert got[-1]["data"]["complete"]
+
+
+
+def test_journal_aenderungen_gebuendelt_und_mailvorschau():
+    mail = ("Die folgende E-Mail wurde versendet<br>An: Kunde, Karl;<br>Cc:<br>Bcc:<br>"
+            "#TCK0000000001 - Drucker<br><p>Hallo Herr Kunde,</p><p>bitte neu starten.</p>")
+    entries = mt.journal_entries([[
+        _entry(1, "E-Mail gesendet von Muster, Max - Systems", 30, mail),
+        _entry(2, "SLA geändert von Kollege, Kai - Systems", 21, "Das SLA wurde geändert"),
+        _entry(3, "Kategorie geändert von Kollege, Kai - Systems", 21, "Die Kategorie wurde geändert"),
+        _entry(4, "Priorität geändert von Kollege, Kai - Systems", 21, "Die Priorität wurde geändert"),
+        _entry(5, "Lösungszeitpunkt eskaliert", 10, "Der Lösungszeitpunkt ist eskaliert")]])
+    rows = mt.journal_rows(entries)[0][1]
+    assert [r["kind"] for r in rows] == ["mail_out", "change", "alert"]
+    assert rows[0]["preview"] == "Hallo Herr Kunde, bitte neu starten." and rows[0]["who"] == "Muster, Max"
+    assert [t for t, _e in rows[1]["items"]] == ["SLA geändert", "Kategorie geändert", "Priorität geändert"]
+    page = mt.journal_html(entries)
+    assert "3 Änderungen: SLA geändert · Kategorie geändert · Priorität geändert<small> · Kollege, Kai" in page
+    assert "Die Kategorie wurde geändert" not in page  # erst nach „mehr“
+    assert "Die Kategorie wurde geändert" in mt.journal_html(entries, {rows[1]["id"]})

@@ -70,7 +70,12 @@ def gui_test():
                     "user_details": {"OrgUnit": "WiRoPa GmbH", "Phone": "02542 1", "Email": "info@example.com"},
                     "take_over": {"ticket": ROW["ticket"], "id": "t2", "user": "Kroczak, Filip"},
                     "melder": {"user": {"id": "melder-1", "name": ROW["initiator"]},
-                               "details": {"OrgUnit": "WiRoPa GmbH", "Phone": "02542 1"}}}[kind]
+                               "details": {"OrgUnit": "WiRoPa GmbH", "Phone": "02542 1"}},
+                    "journal": {"complete": True, "entries": [
+                        {"id": "j1", "time": None, "header": "E-Mail empfangen von Huber, Max", "creator": "",
+                         "html": "<p>Geht wieder nicht</p><p>Gruß</p>", "message": True},
+                        {"id": "j2", "time": None, "header": "Angehalten von Kroczak, Filip", "creator": "",
+                         "html": "Warten auf Kunde", "message": False}]}}[kind]
             result = {"kind": kind, "args": args, "ok": kind not in self.fail, "data": data}
             if kind in self.fail:
                 result.update(error="Zeitüberschreitung", unclear=True)
@@ -211,6 +216,21 @@ def gui_test():
     assert ("user_details", {"owner": id(view), "user": "melder-1"}) in reader.tasks
     assert not any(k in ("edit", "close") for k, _ in reader.tasks[-2:])
     assert not view.cancel_button.isVisibleTo(view), "kein „Fertig“: schließen über ✕"
+    # Verlauf: erst beim Anklicken geladen, Zeitstrahl; E-Mail per Klick auf- und zuklappen
+    assert not any(k == "journal" for k, _ in reader.tasks)
+    view.view_chips["journal"].click()
+    assert wait_for(lambda: view.journal is not None, 3000)
+    text = view.description_view.toPlainText()
+    assert "Geht wieder nicht" in text and "Warten auf Kunde" in text and "aufklappen" in text, text
+    assert view.view_chips["journal"].text() == "&Verlauf (2)"
+    from PySide6.QtCore import QUrl
+    view.description_view.anchorClicked.emit(QUrl("zz:toggle:j1"))
+    assert view.expanded == {"j1"} and "zuklappen" in view.description_view.toPlainText()
+    view.description_view.anchorClicked.emit(QUrl("zz:toggle:j1"))
+    assert not view.expanded
+    view.view_chips["description"].click()
+    assert view.description_view.toPlainText() == "Druckt nicht"
+    assert sum(k == "journal" for k, _ in reader.tasks) == 1  # nur einmal geladen
     view.ok_button.click()
     assert view.action == "edit"
 

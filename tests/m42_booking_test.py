@@ -333,9 +333,20 @@ def test_kulanzzeit_im_buchen_fenster():
 
 
 def test_sla_ampel_aus_der_ticketliste():
-    assert mb.sla_level({"EscalationState": "Eskaliert"}) == "red"
-    assert mb.sla_level({"SLAStatus": "Eskalationsgefahr"}) == "yellow"
-    assert mb.sla_level({"EscalationState": "Keine Eskalationsgefahr"}) == ""
-    assert mb.sla_level({"Subject": "Rot eskaliert", "State": "Neu"}) == ""  # nur Ampel-Felder zählen
-    row = mb.ticket_row({"TicketNumber": "TCK0000000001", "Id": "1", "EscalationState": "red"})
-    assert row["sla"] == "red"
+    # Sys-Flags mit redFilter/yellowFilter/greenFilter (Mitschnitt 17.11.2026): 1 rot, 2 gelb, 4 grün
+    assert mb.sla_level({"Sys-Flags": 1, "ReactionTimeEscalated": True}) == "red"
+    assert mb.sla_level({"Sys-Flags": 6}) == "yellow"  # gelb und grün: gelb zählt
+    assert mb.sla_level({"Sys-Flags": 4}) == ""
+    assert mb.sla_level({"Sys-Flags": None}) == ""  # erledigt
+    assert mb.sla_level({"SolutionTimeEscalated": True}) == "red"  # ohne Flags: eskaliert
+    assert "redFilter=ddb13479" in mb.TRAFFIC_PARAMS and "yellowFilter=" in mb.TRAFFIC_PARAMS
+    row = mb.ticket_row({"TicketNumber": "TCK0000000001", "Id": "1", "Sys-Flags": 2})
+    assert row["sla"] == "yellow"
+
+
+def test_neue_nachricht_aus_der_ticketliste():
+    assert mb.new_message({"NewInformationReceived_Value": 1, "NewInformationReceived_Image": "email"})
+    assert not mb.new_message({"NewInformationReceived_Value": 0})
+    assert not mb.new_message({})
+    row = mb.ticket_row({"TicketNumber": "TCK0000000001", "Id": "1", "NewInformationReceived_Value": 1})
+    assert row["new_message"] is True
