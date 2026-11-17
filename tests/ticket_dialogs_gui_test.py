@@ -73,7 +73,7 @@ def gui_test():
                                "details": {"OrgUnit": "WiRoPa GmbH", "Phone": "02542 1"}},
                     "journal": {"complete": True, "entries": [
                         {"id": "j1", "time": None, "header": "E-Mail empfangen von Huber, Max", "creator": "",
-                         "html": "<p>Geht wieder nicht</p>", "message": True},
+                         "html": "<p>Geht wieder nicht</p><p>Gruß</p>", "message": True},
                         {"id": "j2", "time": None, "header": "Angehalten von Kroczak, Filip", "creator": "",
                          "html": "Warten auf Kunde", "message": False}]}}[kind]
             result = {"kind": kind, "args": args, "ok": kind not in self.fail, "data": data}
@@ -216,18 +216,18 @@ def gui_test():
     assert ("user_details", {"owner": id(view), "user": "melder-1"}) in reader.tasks
     assert not any(k in ("edit", "close") for k, _ in reader.tasks[-2:])
     assert not view.cancel_button.isVisibleTo(view), "kein „Fertig“: schließen über ✕"
-    # Verlauf: erst beim Anklicken geladen, dann alles / nur Nachrichten / nur Änderungen
+    # Verlauf: erst beim Anklicken geladen, Zeitstrahl; E-Mail per Klick auf- und zuklappen
     assert not any(k == "journal" for k, _ in reader.tasks)
     view.view_chips["journal"].click()
     assert wait_for(lambda: view.journal is not None, 3000)
     text = view.description_view.toPlainText()
-    assert "Geht wieder nicht" in text and "Warten auf Kunde" in text, text
-    assert view.view_chips["messages"].text() == "Nachrich&ten (1)"
-    view.view_chips["messages"].click()
-    assert "Geht wieder nicht" in view.description_view.toPlainText()
-    assert "Warten auf Kunde" not in view.description_view.toPlainText()
-    view.view_chips["changes"].click()
-    assert view.description_view.toPlainText().count("Angehalten") == 1
+    assert "Geht wieder nicht" in text and "Warten auf Kunde" in text and "aufklappen" in text, text
+    assert view.view_chips["journal"].text() == "&Verlauf (2)"
+    from PySide6.QtCore import QUrl
+    view.description_view.anchorClicked.emit(QUrl("zz:toggle:j1"))
+    assert view.expanded == {"j1"} and "zuklappen" in view.description_view.toPlainText()
+    view.description_view.anchorClicked.emit(QUrl("zz:toggle:j1"))
+    assert not view.expanded
     view.view_chips["description"].click()
     assert view.description_view.toPlainText() == "Druckt nicht"
     assert sum(k == "journal" for k, _ in reader.tasks) == 1  # nur einmal geladen

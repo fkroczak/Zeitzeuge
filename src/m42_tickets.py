@@ -616,18 +616,143 @@ _DOCUMENT_TAGS = re.compile(r"(?is)<head\b.*?</head\s*>|<style\b.*?</style\s*>|<
 _HREF = re.compile(r"""(?i)(\shref\s*=\s*["'])(/[^/"'][^"']*)""")
 
 
-def journal_html(entries, which="all", origin=""):
-    """Verlauf als ein HTML-Dokument zum Ansehen. which: "all", "messages" oder "changes".
+WEEKDAYS = ("Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag")
+MONTHS = ("Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober",
+          "November", "Dezember")
+# Art eines Eintrags -> (Zeichen, Farbe des Kästchens)
+JOURNAL_KINDS = {"mail_in": ("✉", "#2563EB"), "mail_out": ("↗", "#16A34A"), "comment": ("✎", "#CA8A04"),
+                 "alert": ("!", "#DC2626"), "change": ("•", "#9CA3AF")}
+PREVIEW_CHARS = 180
+_MAIL_META = re.compile(r"(?i)^(an|cc|bcc|von|from|to|betreff|subject)\s*:")
+_MAIL_INTRO = re.compile(r"(?i)^die folgende (nachricht|e-mail) wurde")
+_ATTACHMENT = re.compile(r"(?i)mx-journal-attachment-link")
+
+
+def _kind(entry):
+    head = entry["header"].casefold()
+    if head.startswith("e-mail gesendet"):
+        return "mail_out"
+    if head.startswith(("e-mail", "das ticket wurde aus der e-mail")):
+        return "mail_in"
+    if head.startswith(("kommentiert", "kommentar")):
+        return "comment"
+    return "alert" if "eskaliert" in head else "change"
+
+
+def _title_who(header):
+    """„Angehalten von Kroczak, Filip - Systems“ -> („Angehalten“, „Kroczak, Filip“)."""
+    title, sep, who = header.partition(" von ")
+    if not sep or header.casefold().startswith("das ticket wurde aus"):
+        return header, ""
+    return title.strip(), who.split(" - ")[0].split(" (")[0].strip()
+
+
+def _plain_lines(body):
+    return [line.strip() for line in html_text(body).split("\n") if line.strip()]
+
+
+def _preview(entry, kind):
+    """Erste Zeilen des eigentlichen Inhalts (bei E-Mails ohne Einleitung, An/CC, Betreff)."""
+    lines = _plain_lines(entry["html"])
+    if kind in ("mail_in", "mail_out"):
+        if lines and _MAIL_INTRO.match(lines[0]):
+            lines = lines[1:]
+        meta = [i for i, line in enumerate(lines[:6]) if _MAIL_META.match(line)]
+        if meta:
+            subject_after = kind == "mail_out"  # gesendet: Betreff nach Bcc, empfangen: davor
+            lines = lines[meta[-1] + 1 + subject_after:]
+    elif lines and lines[0].rstrip().endswith(":") and len(lines) > 1:
+        lines = lines[1:]  # „Das Ticket wurde mit folgendem Kommentar … angehalten:“ -> der Kommentar
+    text = " ".join(lines)
+    return text if len(text) <= PREVIEW_CHARS else text[:PREVIEW_CHARS].rsplit(" ", 1)[0] + " …"
+
+
+def journal_rows(entries):
+    """Einträge -> Tage [(datum, [Zeile, …])], neueste zuerst. Aufeinanderfolgende Änderungen
+    derselben Person in derselben Minute werden eine Zeile („3 Änderungen“)."""
+    days = []
+    for e in entries:
+        kind = _kind(e)
+        title, who = _title_who(e["header"])
+        when = e["time"]
+        row = {"id": e["id"], "kind": kind, "title": title, "who": who, "time": when,
+               "preview": _preview(e, kind), "html": e["html"], "items": [(title, e)]}
+        day = when.date() if when else None
+        if not days or days[-1][0] != day:
+            days.append((day, []))
+        rows = days[-1][1]
+        last = rows[-1] if rows else None
+        if (kind == "change" and last and last["kind"] == "change" and last["who"] == who
+                and (last["time"] and when and last["time"].strftime("%H%M") == when.strftime("%H%M"))):
+            last["items"].append((title, e))
+            continue
+        rows.append(row)
+    return days
+
+
+def _day_title(day):
+    if day is None:
+        return "Ohne Datum"
+    return f"{WEEKDAYS[day.weekday()]}, {day.day}. {MONTHS[day.month - 1]} {day.year}"
+
+
+def journal_html(entries, expanded=(), origin=""):
+    """Verlauf als Zeitstrahl, nach Tagen gruppiert: runde Punkte je Art auf einer Linie
+    (Bilder „zz:dot:<Art>“ und „zz:line“, das Fenster zeichnet sie), E-Mails und Kommentare mit
+    Vorschau (auf-/zuklappen über Links „zz:toggle:<id>“), Änderungen einzeilig und grau.
     origin („https://host“) macht Anhang-Links von Matrix42 klickbar."""
     parts = []
-    for e in entries:
-        if which == "messages" and not e["message"] or which == "changes" and e["message"]:
-            continue
-        when = e["time"].strftime("%d.%m.%y %H:%M") if e["time"] else ""
-        body = _DOCUMENT_TAGS.sub("", e["html"])
-        if origin:
-            body = _HREF.sub(lambda m: m.group(1) + origin.rstrip("/") + m.group(2), body)
-        color = "#1d4ed8" if e["message"] else "#555555"
-        parts.append(f'<p style="margin:12px 0 4px 0; color:{color};"><b>{html.escape(e["header"])}</b>'
-                     f' &nbsp;·&nbsp; {when}</p><div>{view_html(body)}</div><hr>')
+    for day, rows in journal_rows(entries):
+        parts.append(f'<p style="margin:14px 0 6px 0; color:{GREY}; font-size:small;">'
+                     f'<b>{html.escape(_day_title(day).upper())}</b></p>'
+                     '<table width="100%" cellspacing="0" cellpadding="0">')
+        for i, row in enumerate(rows):
+            line = ' background="zz:line"' if i < len(rows) - 1 else ""
+            parts.append(f'<tr><td width="30" valign="top"{line}><img src="zz:dot:{row["kind"]}"></td>'
+                         f'<td valign="top" style="padding-bottom:10px;">'
+                         f'{_row_html(row, row["id"] in expanded, origin)}</td></tr>')
+        parts.append("</table>")
     return "".join(parts)
+
+
+GREY = "#62626B"
+LINK = "color:#005FB8; text-decoration:none; font-size:small;"
+
+
+def _body_html(raw, origin):
+    body = _DOCUMENT_TAGS.sub("", raw)
+    if origin:
+        body = _HREF.sub(lambda m: m.group(1) + origin.rstrip("/") + m.group(2), body)
+    return view_html(body)
+
+
+def _row_html(row, open_, origin):
+    when = row["time"].strftime("%H:%M") if row["time"] else ""
+    toggle = f'zz:toggle:{html.escape(row["id"], quote=True)}'
+    if row["kind"] in ("change", "alert"):  # eine graue Zeile
+        if len(row["items"]) > 1:
+            text = f'{len(row["items"])} Änderungen: ' + " · ".join(dict.fromkeys(t for t, _e in row["items"]))
+        else:
+            text = row["title"] + (f' – {row["preview"]}' if row["preview"] else "")
+        who = f' · {row["who"]}' if row["who"] else ""
+        out = f'<span style="color:{GREY};">{html.escape(text)}<small>{html.escape(who)} · {when}</small></span>'
+        if open_:
+            out += "".join(f'<div style="color:{GREY};">{_body_html(e["html"], origin)}</div>'
+                           for _t, e in row["items"])
+            out += f'<a href="{toggle}" style="{LINK}">▴ zuklappen</a>'
+        elif len(row["items"]) > 1 or row["preview"].endswith(" …"):
+            out += f' <a href="{toggle}" style="{LINK}">▸ mehr</a>'
+        return out
+    label = "Kommentar von" if row["kind"] == "comment" else "E-Mail von"
+    title = f'{label} {row["who"]}' if row["who"] else row["title"]
+    if row["title"].casefold().startswith("das ticket wurde aus"):
+        title = "Ticket aus E-Mail erstellt"
+    out = f'<b>{html.escape(title)}</b> <span style="color:{GREY};">· {when}</span>'
+    images = len(_IMG.findall(row["html"]))
+    files = len(_ATTACHMENT.findall(row["html"]))
+    extra = "".join(f" · {n} {w}" for n, w in ((images, "Bild" if images == 1 else "Bilder"),
+                                                   (files, "Anhang" if files == 1 else "Anhänge")) if n)
+    if open_:
+        return out + f'<div>{_body_html(row["html"], origin)}</div><a href="{toggle}" style="{LINK}">▴ zuklappen</a>'
+    out += f'<br><span style="color:{GREY};">{html.escape(row["preview"])}</span>'
+    return out + f'<br><a href="{toggle}" style="{LINK}">▸ aufklappen{extra}</a>'

@@ -770,6 +770,32 @@ class EditTicketDialog(_MelderSearch, _CardDialog):
         self.accept()
 
 
+def _timeline_image(name, ratio=1.0):
+    """Bilder des Verlaufs (m42_tickets.journal_html): „dot:<Art>“ runder Punkt mit Zeichen,
+    „line“ Stück der senkrechten Linie (Hintergrund der Spalte, wiederholt)."""
+    from PySide6.QtGui import QColor, QFont, QPainter, QPen
+    width, height = (30, 4) if name == "line" else (30, 22)
+    image = QImage(int(width * ratio), int(height * ratio), QImage.Format_ARGB32_Premultiplied)
+    image.setDevicePixelRatio(ratio)
+    image.fill(QColor("white"))
+    p = QPainter(image)
+    p.setRenderHint(QPainter.Antialiasing)
+    p.fillRect(10, 0, 2, height, QColor("#E4E4E7"))  # Linie (unter dem Punkt geht sie weiter)
+    if name.startswith("dot:"):
+        sign, color = mt.JOURNAL_KINDS.get(name[4:], mt.JOURNAL_KINDS["change"])
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor(color))
+        p.drawEllipse(1, 1, 20, 20)
+        p.setPen(QPen(QColor("white")))
+        font = QFont(p.font())
+        font.setPixelSize(11)
+        font.setBold(True)
+        p.setFont(font)
+        p.drawText(1, 1, 20, 20, Qt.AlignCenter, sign)
+    p.end()
+    return image
+
+
 class _DescriptionView(QTextBrowser):
     """Beschreibung: Klartext oder HTML mit Bildern wie in Matrix42. Bilder kommen nur aus der
     Beschreibung selbst (data:), nie aus dem Netz, und werden auf die Breite verkleinert."""
@@ -786,6 +812,8 @@ class _DescriptionView(QTextBrowser):
             QDesktopServices.openUrl(url)
 
     def loadResource(self, kind, url):
+        if kind == QTextDocument.ImageResource and url.scheme() == "zz":
+            return _timeline_image(url.path(), self.devicePixelRatioF())
         if kind != QTextDocument.ImageResource or url.scheme() != "data":
             return None  # nichts nachladen (kein Netz, keine Dateien)
         head, _, payload = url.toString().partition(",")
@@ -808,13 +836,12 @@ class _DescriptionView(QTextBrowser):
 
 # „Ticket ansehen“: was das große Feld zeigt (Schlüssel, Chip, Hinweis)
 VIEW_CHIPS = [("description", "B&eschreibung", "Beschreibung des Tickets"),
-              ("journal", "&Verlauf", "Alles, was im Ticket passiert ist, das Neueste oben"),
-              ("messages", "Nachrich&ten", "E-Mails und Kommentare"),
-              ("changes", "Än&derungen", "Status, Bearbeiter, Kategorie, SLA, Zeiteinträge …")]
+              ("journal", "&Verlauf", "E-Mails, Kommentare und Änderungen nach Tagen, das Neueste oben. "
+                                     "Klick auf „ganze E-Mail“ klappt sie auf.")]
 
 
 class ViewTicketDialog(_CardDialog):
-    """Ticket ansehen: Eckdaten, Beschreibung oder Verlauf (E-Mails, Kommentare, Änderungen) und Kontakt des Melders
+    """Ticket ansehen: Eckdaten, Beschreibung oder Verlauf (Zeitstrahl nach Tagen) und Kontakt des Melders
     (Telefon und E-Mail anklickbar). Ändert nichts. Nach dem Schließen sagt self.action, ob
     gleich „Bearbeiten“ ("edit") oder „Schließen“ ("close") folgen soll, sonst None.
     „Übernehmen“ macht dich zum Bearbeiter (self.taken_over, siehe _CardDialog._add_take_over)."""
@@ -873,6 +900,8 @@ class ViewTicketDialog(_CardDialog):
             chips.addWidget(chip)
             chip.toggled.connect(lambda on, k=key: on and self._show_view(k))
         self.journal = None  # Verlauf, sobald geladen (erst beim ersten Anklicken)
+        self.expanded = set()  # aufgeklappte Einträge im Verlauf
+        self.description_view.anchorClicked.connect(self._journal_link)
         self._journal_loading = False
         self._description_html = None  # was unter „Beschreibung“ steht (zum Zurückschalten)
         self.view_chips["description"].setChecked(True)
@@ -904,15 +933,29 @@ class ViewTicketDialog(_CardDialog):
                     self._journal_loading = False
                     view.setPlaceholderText("⚠ Matrix42-Anmeldefenster ist offen. Bitte erst anmelden.")
             return
+        self._render_journal()
+        view.moveCursor(QTextCursor.Start)
+
+    def _render_journal(self):
+        view = self.description_view
         origin = "/".join((getattr(self.reader, "page_url", "") or "").split("/")[:3])
-        text = mt.journal_html(self.journal["entries"], {"journal": "all"}.get(key, key), origin)
+        text = mt.journal_html(self.journal["entries"], self.expanded, origin)
         if text:
             view.show_html(text)
         else:
             view.setStyleSheet("")
             view.setPlainText("")
             view.setPlaceholderText("(keine Einträge)")
-        view.moveCursor(QTextCursor.Start)
+
+    def _journal_link(self, url):
+        """„▸ ganze E-Mail“ / „mehr“: Eintrag auf- oder zuklappen, Position im Verlauf bleibt."""
+        if url.scheme() != "zz" or not url.path().startswith("toggle:") or self.journal is None:
+            return
+        self.expanded ^= {url.path().partition(":")[2]}
+        bar = self.description_view.verticalScrollBar()
+        top = bar.value()
+        self._render_journal()
+        bar.setValue(top)
 
     def _on_journal(self, result):
         self._journal_loading = False
@@ -921,11 +964,7 @@ class ViewTicketDialog(_CardDialog):
             return
         self.journal = result["data"]
         entries = self.journal["entries"]
-        counts = {"journal": len(entries), "messages": sum(e["message"] for e in entries)}
-        counts["changes"] = counts["journal"] - counts["messages"]
-        for key, text, _tip in VIEW_CHIPS:
-            if key in counts:
-                self.view_chips[key].setText(f"{text} ({counts[key]})")
+        self.view_chips["journal"].setText(f"&Verlauf ({len(entries)})")
         if not self.journal.get("complete"):
             self.status.setText(f"Verlauf: die neuesten {len(entries)} Einträge, ältere in Matrix42.")
         current = next((k for k, chip in self.view_chips.items() if chip.isChecked()), "description")
