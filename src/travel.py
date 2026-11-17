@@ -20,6 +20,7 @@ bzw. Kunden des Termins steht. Andere Termine zählen als belegt: Eine Fahrt üb
 des Termins, damit Kunde und Nachfrage („Was hast du gemacht?“) passen.
 """
 
+import re
 from datetime import timedelta
 
 import timefmt
@@ -51,15 +52,19 @@ def is_place(location, ignore=()):
     return not any(i.lower() in text for i in ignore if i)
 
 
-def place_minutes(appointment, places):
+def place_minutes(appointment, places, subject=True):
     """Fahrzeit des am besten passenden bekannten Orts oder None. Passt ein Ort mit 0 Minuten
-    (Besprechungsraum, Büro), gilt immer 0, sonst der längste passende Name.
+    (Besprechungsraum, Büro), gilt immer 0, sonst der längste passende Name. Der Name muss als
+    ganzes Wort im Ort (subject=True: auch im Betreff) stehen: „Test“ passt nicht in „Testen“.
     places: [{"name": "Besprechungsraum", "minutes": 0}, …]"""
-    text = f"{_location(appointment)} {appointment.get('customer_name') or ''}".lower()
+    text = _location(appointment)
+    if subject:
+        text += f" {appointment.get('customer_name') or ''}"
+    text = text.lower()
     best = None
     for place in places or ():
         name = str(place.get("name") or "").strip().lower()
-        if not name or name not in text:
+        if not name or not re.search(rf"(?<!\w){re.escape(name)}(?!\w)", text):
             continue
         try:
             minutes = max(0, int(place.get("minutes") or 0))
@@ -179,7 +184,8 @@ def suggest(entries, pc_entries=(), customer_net=None, ignore_locations=(),
     places: bekannte Orte mit Fahrzeit (place_minutes). address_minutes(termin) -> Fahrzeit
     zur Adresse im Ort des Termins (OpenStreetMap) oder None. customer_minutes(termin) ->
     Fahrzeit des Kunden, dem der Termin gehört (z. B. über die Mail-Domains), oder None.
-    Reihenfolge: bekannter Ort, Adresse des Termins, Kunde."""
+    Reihenfolge: bekannter Ort, Adresse des Termins, Kunde. Ein Ort mit Fahrzeit, dessen Name
+    nur im Betreff steht, gilt erst nach der Adresse."""
     busy = busy_spans(entries, pc_entries)
     appointments = []
     for e in entries:
@@ -205,8 +211,9 @@ def suggest(entries, pc_entries=(), customer_net=None, ignore_locations=(),
         except (KeyError, TypeError, ValueError):
             continue
         known = place_minutes(a, places)
-        if known is None and address_minutes:
-            known = address_minutes(a)
+        if address_minutes and (known is None or (known and place_minutes(a, places, subject=False) is None)):
+            # Adresse im Ort ist genauer als ein Name, der nur im Betreff steht (nicht bei 0 Min.)
+            known = address_minutes(a) or known
         if known is None and customer_minutes:
             known = customer_minutes(a)
         if known == 0:
