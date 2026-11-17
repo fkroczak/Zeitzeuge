@@ -59,6 +59,8 @@ class OutlookSettingsDialog(QDialog):
         self.mail_minutes.setSuffix(" min")
         self.mail_minutes.setValue(int(config.get("outlook_mail_minutes", 3) or 3))
         self.mail_minutes.setToolTip("So breit steht eine gesendete Mail in der Timeline.")
+        from settings_window import _guard_wheel  # Rad verstellt sonst beim Scrollen die Dauer
+        _guard_wheel(self.mail_minutes)
         outlook_rows.append(("Dauer je &Mail:", self.mail_minutes))
         self.days = QSpinBox()
         self.days.setRange(1, 90)
