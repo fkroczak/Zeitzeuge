@@ -71,7 +71,11 @@ class _EntryForm(QWidget):
         times = QHBoxLayout()
         times.setSpacing(SPACE_S)
         self.start_edit = QTimeEdit(QTime(start.hour, start.minute))
-        self.end_edit = QTimeEdit(QTime(end.hour, end.minute) if end.date() == start.date()
+        # Ende auf die angefangene Minute aufrunden: ein Anruf 08:27:05–08:28:48 wird 08:27–08:29,
+        # sonst ist die Doku kürzer als das Gespräch (1 statt 2 min)
+        end_up = end + timedelta(seconds=59)
+        self.end_edit = QTimeEdit(QTime(end_up.hour, end_up.minute)
+                                  if end_up.date() == start.date() and end.date() == start.date()
                                   else QTime(23, 59))
         for edit in (self.start_edit, self.end_edit):
             edit.setDisplayFormat("HH:mm")
