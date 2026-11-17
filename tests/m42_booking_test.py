@@ -339,3 +339,12 @@ def test_sla_ampel_aus_der_ticketliste():
     assert mb.sla_level({"Subject": "Rot eskaliert", "State": "Neu"}) == ""  # nur Ampel-Felder zählen
     row = mb.ticket_row({"TicketNumber": "TCK0000000001", "Id": "1", "EscalationState": "red"})
     assert row["sla"] == "red"
+
+
+def test_neue_nachricht_aus_der_ticketliste():
+    assert mb.new_message({"NewJournalEntryAdded": True})
+    assert mb.new_message({"SPSActivityClassBase-NewJournalEntryAdded": "true"})
+    assert not mb.new_message({"NewJournalEntryAdded": False})
+    assert not mb.new_message({"Subject": "NewJournalEntryAdded"})
+    row = mb.ticket_row({"TicketNumber": "TCK0000000001", "Id": "1", "NewJournalEntryAdded": 1})
+    assert row["new_message"] is True

@@ -120,3 +120,10 @@ def test_tabelle_merkt_farbe_an_der_ticketnummer():
     host.config["ticket_state_colors"] = True
     table.set_rows(rows)
     assert all(table.item(r, 0).data(MARK_ROLE) for r in range(2))
+
+
+def test_neue_nachricht_blau():
+    from ticket_table import MESSAGE_COLOR, SLA_COLORS, row_color
+    assert row_color({"state": "In Bearbeitung", "new_message": True})[0] == MESSAGE_COLOR
+    assert row_color({"state": "In Bearbeitung", "new_message": True, "sla": "red"})[0] == SLA_COLORS["red"]
+    assert row_color({"state": "Gelöst", "new_message": True}) is None

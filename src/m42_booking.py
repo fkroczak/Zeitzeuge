@@ -166,7 +166,17 @@ def ticket_row(item):
             "customer": _clean(item.get("Customer")), "state": (item.get("State") or "").strip(),
             "initiator": _clean(item.get("Initiator")), "recipient": _clean(item.get("Recipient")),
             "recipient_id": item.get("Recipient_Value") or "", "type": item.get("Sys-Entity") or "",
-            "created": item.get("CreatedDate") or "", "sla": sla_level(item)}
+            "created": item.get("CreatedDate") or "", "sla": sla_level(item),
+            "new_message": new_message(item)}
+
+
+def new_message(item):
+    """Neue Nachricht im Ticket (z. B. Antwort per E-Mail): Matrix42 setzt NewJournalEntryAdded,
+    bis jemand das Ticket speichert. Die Liste liefert es auch als „true“/1 oder unter einem Präfix."""
+    for key, value in item.items():
+        if str(key).rsplit(".", 1)[-1].rsplit("-", 1)[-1] == "NewJournalEntryAdded":
+            return value is True or str(value).strip().casefold() in ("true", "1", "ja", "yes")
+    return False
 
 
 # SLA-Ampel der Ticketliste (in Matrix42 die Balken vor der Nummer): Felder, deren Name nach

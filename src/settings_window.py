@@ -165,8 +165,8 @@ ROWS = [
      "ticket_layout", [(1, "Zwei Zeilen"), (2, "Kompakt"), (3, "Seitenleiste"), (4, "Bereiche"),
                        (5, "Favoriten")]),
     ("view/Tickets", "check", "list", "Tickets nach Status einfärben",
-     "Jede Zeile leicht in der Farbe ihres Status, mit Balken am Rand. Rote und gelbe SLA-Ampel "
-     "werden immer markiert. Gilt beim nächsten Laden der Liste.",
+     "Jede Zeile leicht in der Farbe ihres Status, mit Balken am Rand. Rote und gelbe SLA-Ampel und "
+     "neue Nachrichten (blau) werden immer markiert. Gilt beim nächsten Laden der Liste.",
      "ticket_state_colors", False),
     ("view/Texte", "check", "edit", "Rechtschreibprüfung",
      "Falsche Wörter in Tätigkeit, Buchung und Ticket rot unterkringeln, Vorschläge per Rechtsklick. "
