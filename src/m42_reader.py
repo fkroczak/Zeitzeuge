@@ -319,6 +319,29 @@ FETCH_JS = r"""
 """
 
 
+# Datei aus der angemeldeten Seite laden (Anhang, GET /fileStorage/<Id>): Inhalt als Base64
+FILE_JS = r"""
+(async function (path) {
+""" + _JS_HELPERS + r"""  for (let i = 0; i < 60 && !auth(); i++) {
+    if (isLogin() && (document.querySelector("input[type=password]") || i >= 40)) break;
+    await sleep(500);
+  }
+  if (!auth()) return JSON.stringify({state: isLogin() ? "login" : "notoken"});
+  let r;
+  try {
+    r = await apiFetch(path, {method: "GET", credentials: "include", headers: apiHeaders({"accept": "*/*"})});
+  } catch (e) { return JSON.stringify({state: "error", status: 0, error: String(e)}); }
+  if (r.status === 401) return JSON.stringify({state: "login", status: 401});
+  if (!r.ok) return JSON.stringify({state: "error", status: r.status});
+  const bytes = new Uint8Array(await r.arrayBuffer());
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 32768) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 32768));
+  return JSON.stringify({state: "ok", status: r.status, data: btoa(bin),
+                         type: r.headers.get("Content-Type") || "", disposition: r.headers.get("Content-Disposition") || ""});
+})(%s)
+"""
+
+
 # Anmeldefenster: angemeldet? Erst wenn die Seite (auf dem Matrix42-Server, keine Anmeldeseite)
 # eine angemeldete Abfrage erfolgreich gemacht hat. Ein Token im localStorage allein reicht
 # nicht: nach dem Start liegt dort oft noch ein abgelaufenes, und das Fenster ging zu, bevor
@@ -748,7 +771,7 @@ class M42Reader(BrowserReader):
         """Im Hintergrund: "users" (text), "user_details" (user), "melder" (name), "categories", "create" (request),
         "load" (id), "journal" (id), "edit" (request), "take_over" (id, type, ticket), "close_info" (id, type), "close" (request),
         Aktionen (ACTION_TASKS): "comment", "mail", "pause", "forward" (request), "mail_info", "pause_reasons", "roles",
-        "forward_users" (text, role), "mark_read" (id, type).
+        "forward_users" (text, role), "mark_read" (id, type), "attachment" (file).
         Ergebnis über ticket_task_done. False, wenn gerade ein Anmeldefenster offen ist."""
         if self._login_open:
             return False
@@ -806,6 +829,8 @@ class M42Reader(BrowserReader):
                     result["data"] = self._close_info(args["id"], args.get("type"), ids)
                 elif kind == "close":
                     result["data"] = self._close_ticket(args["request"], state)
+                elif kind == "attachment":
+                    result["data"] = self._attachment(args["file"])
                 elif kind == "mark_read":
                     result["data"] = self._mark_read(args["id"], args.get("type"))
                 elif kind in ACTION_TASKS:
@@ -873,6 +898,30 @@ class M42Reader(BrowserReader):
             self._fetch("POST", f"{api}/activity/Forward", body)
         self._set_status(f"Matrix42: {name} {ACTION_DONE[kind]}")
         return {"ticket": name}
+
+    def _attachment(self, file_id):
+        """Anhang laden und in einen eigenen Ordner im Temp-Verzeichnis legen. Nur mit _browser_lock.
+        -> {"path", "name", "risky"}"""
+        import base64
+        import os
+        import tempfile
+        import m42_booking
+        import m42_tickets as mt
+        if not self._tools:
+            self._start_browser()
+        raw = self._evaluate(FILE_JS % json.dumps(mt.file_path(file_id)), timeout=self.LOAD_TIMEOUT)
+        result = json.loads(raw) if raw else {"state": "error", "status": 0}
+        if result.get("state") in ("login", "notoken"):
+            raise m42_booking.BookingError("Bitte erst bei Matrix42 anmelden.")
+        if result.get("state") != "ok":
+            raise m42_booking.BookingError(f"Matrix42 liefert den Anhang nicht (Fehler {result.get('status', 0)}).")
+        name = mt.attachment_name(result.get("disposition"), result.get("type"), file_id)
+        folder = os.path.join(tempfile.gettempdir(), "ZeitZeuge-Anhaenge", file_id)
+        os.makedirs(folder, exist_ok=True)
+        path = os.path.join(folder, name)
+        with open(path, "wb") as f:
+            f.write(base64.b64decode(result.get("data") or ""))
+        return {"path": path, "name": name, "risky": mt.is_risky(name)}
 
     def _mark_read(self, ticket_id, kind=""):
         """Neue Nachricht als gelesen: Ticket in der Vorschau öffnen und den Verlauf lesen wie Matrix42,

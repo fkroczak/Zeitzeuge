@@ -141,3 +141,42 @@ def test_als_gelesen_ueber_die_vorschau(tmp_path):
     assert got[-1]["ok"], got[-1]
     assert [m for m, _p in calls] == ["GET", "GET", "GET"]  # liest nur, schickt nichts zum Speichern
     assert "3b4c23df" in calls[1][1] and "/Journal?" in calls[2][1]
+
+
+def test_anhang_name_und_adresse():
+    import m42_tickets as mt
+    fid = "a6c2d265-8c9f-4353-83fb-f277fe4db269"
+    assert mt.file_path(fid) == f"/m42Services/api/fileStorage/{fid}"
+    with pytest.raises(BookingError):
+        mt.file_path("../x")
+    assert mt.attachment_name('attachment; filename="a.eml"', "", fid) == "a.eml"
+    assert mt.attachment_name("attachment; filename*=UTF-8''3CX%20%E2%80%93%20IP.eml", "", fid) == "3CX – IP.eml"
+    assert mt.attachment_name('attachment; filename="..\\\\..\\\\boese:datei.pdf"', "", fid) == "boese_datei.pdf"
+    assert mt.attachment_name("", "application/pdf", fid) == fid + ".pdf"
+    assert mt.is_risky("Rechnung.pdf.exe") and not mt.is_risky("a.eml")
+
+
+def test_leser_laedt_anhang(tmp_path, monkeypatch):
+    import base64
+    import json
+    import tempfile
+    from m42_reader import M42Reader
+    monkeypatch.setattr(tempfile, "gettempdir", lambda: str(tmp_path))
+    reader = M42Reader("https://m42.example/wm/", str(tmp_path / "m42.json"), str(tmp_path / "p"))
+    reader._tools = object()
+    seen = []
+
+    def evaluate(js, timeout=15, retries=0):
+        seen.append(js)
+        return json.dumps({"state": "ok", "status": 200, "data": base64.b64encode(b"Hallo").decode(),
+                           "type": "message/rfc822", "disposition": 'attachment; filename="Alarm.eml"'})
+    reader._evaluate = evaluate
+    got = []
+    reader.ticket_task_done.connect(got.append)
+    fid = "a6c2d265-8c9f-4353-83fb-f277fe4db269"
+    reader._ticket_task("attachment", {"file": fid})
+    assert got[-1]["ok"], got[-1]
+    data = got[-1]["data"]
+    assert data["name"] == "Alarm.eml" and not data["risky"]
+    assert open(data["path"], "rb").read() == b"Hallo"
+    assert f"/m42Services/api/fileStorage/{fid}" in seen[0]

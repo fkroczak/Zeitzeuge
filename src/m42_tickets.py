@@ -641,7 +641,8 @@ _MAIL_META = re.compile(r"(?i)^(an|cc|bcc|von|from|to|betreff|subject)\s*:")
 _MAIL_INTRO = re.compile(r"(?i)^die folgende (nachricht|e-mail) wurde")
 _ATTACHMENT = re.compile(r"(?i)mx-journal-attachment-link")
 # Anhang-Link der Mail im Verlauf: /SPS/Forms/AttachmentDownload.aspx?FileID=…&ObjectID=… gibt es auf
-# dem Server nicht (404), die Weboberfläche lädt Anhänge anders. Das Fenster bekommt „zz:attachment:<FileID>“.
+# dem Server nicht (404). Die Weboberfläche lädt Anhänge über GET /fileStorage/<FileID> (FileID =
+# UniqueFileId aus /commonStorage/files). Das Fenster bekommt „zz:attachment:<FileID>“ und lädt selbst.
 _ATTACHMENT_HREF = re.compile(r"""(?i)(\shref\s*=\s*["'])[^"']*AttachmentDownload\.aspx\?[^"']*?FileID=([0-9a-f-]+)[^"']*""")
 
 
@@ -711,6 +712,42 @@ def _day_title(day):
     if day is None:
         return "Ohne Datum"
     return f"{WEEKDAYS[day.weekday()]}, {day.day}. {MONTHS[day.month - 1]} {day.year}"
+
+
+def file_path(file_id):
+    """Anhang herunterladen wie die Weboberfläche (Links vom 17.11.2026)."""
+    if not GUID.fullmatch(file_id or ""):
+        raise BookingError("Unbekannter Anhang.")
+    return f"{API}/fileStorage/{file_id}"
+
+
+# Diese Dateien öffnet Zeitzeuge nicht selbst (könnten Programme starten), sondern zeigt den Ordner
+RISKY_EXTENSIONS = {".exe", ".com", ".bat", ".cmd", ".msi", ".msp", ".scr", ".pif", ".lnk", ".js", ".jse",
+                    ".vbs", ".vbe", ".wsf", ".wsh", ".ps1", ".psm1", ".hta", ".cpl", ".jar", ".reg", ".application"}
+_TYPE_EXT = {"application/pdf": ".pdf", "message/rfc822": ".eml", "image/png": ".png", "image/jpeg": ".jpg",
+             "text/plain": ".txt", "application/zip": ".zip"}
+
+
+def attachment_name(disposition, content_type, file_id):
+    """Dateiname aus Content-Disposition (auch filename*=UTF-8''…), sonst Id plus Endung nach Typ.
+    Ohne Pfad und ohne Zeichen, die Windows nicht mag."""
+    from urllib.parse import unquote
+    name = ""
+    m = re.search(r"(?i)filename\*\s*=\s*([^']*)'[^']*'([^;]+)", disposition or "")
+    if m:
+        name = unquote(m.group(2).strip().strip('"'), encoding=m.group(1) or "utf-8", errors="replace")
+    else:
+        m = re.search(r'(?i)filename\s*=\s*"?([^";]+)"?', disposition or "")
+        name = m.group(1).strip() if m else ""
+    name = re.sub(r'[\\/:*?"<>|\x00-\x1f]', "_", name.replace("\\", "/").split("/")[-1]).strip(" .")
+    if not name:
+        name = file_id + _TYPE_EXT.get((content_type or "").split(";")[0].strip().lower(), "")
+    return name[:150]
+
+
+def is_risky(name):
+    import os
+    return os.path.splitext(name or "")[1].lower() in RISKY_EXTENSIONS
 
 
 def journal_html(entries, expanded=(), origin=""):
