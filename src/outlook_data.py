@@ -458,13 +458,15 @@ def mail_entry(item, own, minutes=3, external_only=True):
     domains = external(item.get("domains") or [], own)
     if external_only and not domains:
         return None
-    start = datetime.strptime(item["start"], TIME_FMT)
-    end = start + timedelta(minutes=max(1, int(minutes or 1)))
+    # Geschrieben wird vor dem Senden: Block endet beim Senden (Beginn ggf. aus dem Fensterverlauf,
+    # siehe compose_starts)
+    sent = datetime.strptime(item["start"], TIME_FMT)
+    start = sent - timedelta(minutes=max(1, int(minutes or 1)))
     n = item.get("recipients") or 0
     target = ", ".join(domains) if domains else "intern"
     details = f"an {target}" + (f" ({n} Empfänger)" if n > 1 else "")
     return {
-        "start": item["start"], "end": end.strftime(TIME_FMT),
+        "start": start.strftime(TIME_FMT), "end": item["start"], "sent": item["start"],
         "type": TYPE_MAIL,
         "customer_name": item.get("subject") or "(ohne Betreff)",
         "details": details,
@@ -472,6 +474,52 @@ def mail_entry(item, own, minutes=3, external_only=True):
         "outlook": "mail",
         "is_suggestion": True,
     }
+
+
+# Outlook-Fenster zum Verfassen: „Betreff - Nachricht (HTML)“ (englisch „Message (HTML)“)
+COMPOSE_TITLE = re.compile(r"^(?P<subject>.+?) - (?:Nachricht|Message) \(")
+COMPOSE_MAX_MINUTES = 120  # älter als 2 h vor dem Senden zählt nicht mehr zur Mail
+
+
+def _subject_key(text):
+    return " ".join((text or "").split()).casefold()
+
+
+def compose_starts(entries, windows, max_minutes=COMPOSE_MAX_MINUTES):
+    """Gesendete Mails beginnen beim ersten Outlook-Fenster mit ihrem Betreff vor dem Senden.
+
+    entries: Einträge des Tages (nur „Mail gesendet“ mit "sent" wird geändert, in place).
+    windows: PC-Fenster des Tages ({"start", "end", "customer_name": Titel, "app"}).
+    Ein Fenster gehört höchstens bis zur vorigen gesendeten Mail mit gleichem Betreff zurück.
+    Ohne passendes Fenster (z. B. Antwort im Lesebereich) bleibt die feste Dauer
+    („Gesendete Mail als Block“), endend beim Senden."""
+    by_subject = {}
+    for w in windows:
+        app = (w.get("app") or "").lower()
+        if "outlook" not in app and "olk" not in app:
+            continue
+        m = COMPOSE_TITLE.match(w.get("customer_name") or "")
+        if m:
+            by_subject.setdefault(_subject_key(m["subject"]), []).append(w)
+    if not by_subject:
+        return entries
+    mails = sorted((e for e in entries if e.get("type") == TYPE_MAIL and e.get("sent")), key=lambda e: e["sent"])
+    previous = {}
+    for e in mails:
+        key = _subject_key(e.get("customer_name"))
+        sent = e["sent"]
+        try:
+            limit = (datetime.strptime(sent, TIME_FMT) - timedelta(minutes=max_minutes)).strftime(TIME_FMT)
+        except ValueError:
+            continue
+        floor = max(previous.get(key, ""), limit)
+        previous[key] = sent
+        starts = [w["start"] for w in by_subject.get(key, ()) if floor < w["start"] < sent]
+        if starts:  # auch kürzer als die feste Dauer, aber mindestens 1 min sichtbar
+            one_min = (datetime.strptime(sent, TIME_FMT) - timedelta(minutes=1)).strftime(TIME_FMT)
+            e["start"] = min(min(starts), one_min)
+            e["details"] = f"{e.get('details', '')}, geschrieben ab {e['start'][11:16]} (Fensterverlauf)"
+    return entries
 
 
 def replied_entry(item, own, minutes=3, external_only=True):

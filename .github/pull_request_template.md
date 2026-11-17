@@ -13,4 +13,5 @@ Automatische Prüfungen laufen in CI (`tests/ui_audit_test.py`). Von Hand prüfe
 - [ ] Nicht mehr Auswahlmöglichkeiten gleichzeitig als nötig (Hick), Menügruppen ≤ 5 Einträge
 - [ ] Texte kurz, in Du-Form, Knöpfe sagen, was sie tun
 - [ ] Helles und dunkles Design geprüft
+- [ ] Fenster nach `docs/UI-COOKBOOK.md` gebaut (Karten-Dialog, Größe, Felder, eine Hauptaktion)
 - [ ] Siehe `docs/quality-guardrails.md`

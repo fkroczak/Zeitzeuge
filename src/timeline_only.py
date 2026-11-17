@@ -1224,7 +1224,11 @@ class TimelineView(QGraphicsView):
             )
         if self.outlook_entries:
             try:
-                result += self.outlook_entries(date_str)
+                outlook = self.outlook_entries(date_str)
+                if any(e.get("sent") for e in outlook):  # Mailbeginn aus dem Fensterverlauf
+                    from outlook_data import compose_starts
+                    compose_starts(outlook, self.pc_entries_for(date, 5, 60))
+                result += outlook
             except Exception as e:  # Outlook darf die Timeline nicht leeren
                 print(f"Fehler beim Lesen von Outlook/Teams: {e}")
         if self.imported:  # von einem anderen PC übernommen (z. B. auf der PAW)

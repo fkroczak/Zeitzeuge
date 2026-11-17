@@ -95,6 +95,8 @@ python tests/readability_check.py
 
 ## Regeln für neue Oberflächen
 
+Zuerst [`UI-COOKBOOK.md`](UI-COOKBOOK.md) lesen: Es legt fest, welchen Baustein du für welches Element nimmst.
+
 - Felder immer mit sichtbarer Beschriftung über `QFormLayout.addRow` oder `setBuddy`.
   Die Beschriftung steht direkt neben ihrem Feld, nie näher am nächsten Feld (Gesetz der Nähe).
 - Knöpfe mit Symbolen bekommen `setAccessibleName("…")` mit dem ausgeschriebenen Zweck.
