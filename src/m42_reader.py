@@ -208,6 +208,17 @@ _JS_HELPERS = r"""  const sleep = ms => new Promise(r => setTimeout(r, ms));
 # Mitschnitt): POST /m42Services/api/WidgetList/GetData/<Widget> mit Datumsfilter, Anmeldung
 # über das Token, das die Seite im localStorage hält. Gibt JSON zurück:
 # {state: "ok" | "login" | "notoken" | "error", status, widget, total, items: [...]}
+# Aktionen an einem Ticket (_ticket_action): lesende und schreibende, Text für die Statuszeile
+ACTION_WRITES = ("comment", "mail", "pause", "forward")
+ACTION_TASKS = ACTION_WRITES + ("pause_reasons", "roles", "forward_users", "mail_info")
+ACTION_DONE = {"comment": "kommentiert", "mail": "E-Mail gesendet", "pause": "pausiert", "forward": "weitergeleitet"}
+
+
+def mt_users(data):
+    import m42_tickets
+    return m42_tickets.users_from_fragments(data)
+
+
 DEFAULT_WIDGET = "05d8b58d-5764-ef11-debc-0050569e2f05"  # Kalender-Widget laut Mitschnitt
 API_JS = r"""
 (async function (monday, widgetDefault) {
@@ -308,6 +319,29 @@ FETCH_JS = r"""
 """
 
 
+# Datei aus der angemeldeten Seite laden (Anhang, GET /fileStorage/<Id>): Inhalt als Base64
+FILE_JS = r"""
+(async function (path) {
+""" + _JS_HELPERS + r"""  for (let i = 0; i < 60 && !auth(); i++) {
+    if (isLogin() && (document.querySelector("input[type=password]") || i >= 40)) break;
+    await sleep(500);
+  }
+  if (!auth()) return JSON.stringify({state: isLogin() ? "login" : "notoken"});
+  let r;
+  try {
+    r = await apiFetch(path, {method: "GET", credentials: "include", headers: apiHeaders({"accept": "*/*"})});
+  } catch (e) { return JSON.stringify({state: "error", status: 0, error: String(e)}); }
+  if (r.status === 401) return JSON.stringify({state: "login", status: 401});
+  if (!r.ok) return JSON.stringify({state: "error", status: r.status});
+  const bytes = new Uint8Array(await r.arrayBuffer());
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 32768) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 32768));
+  return JSON.stringify({state: "ok", status: r.status, data: btoa(bin),
+                         type: r.headers.get("Content-Type") || "", disposition: r.headers.get("Content-Disposition") || ""});
+})(%s)
+"""
+
+
 # Anmeldefenster: angemeldet? Erst wenn die Seite (auf dem Matrix42-Server, keine Anmeldeseite)
 # eine angemeldete Abfrage erfolgreich gemacht hat. Ein Token im localStorage allein reicht
 # nicht: nach dem Start liegt dort oft noch ein abgelaufenes, und das Fenster ging zu, bevor
@@ -372,6 +406,7 @@ class M42Reader(BrowserReader):
         self.ticket_filters = None  # letzte Antwort von ticket_filters_loaded
         self.ticket_list = ""   # Ticketliste (Widget-ID), leer = m42_booking.DEFAULT_IDS
         self.ticket_ids = {}    # Kennungen für Anlegen/Schließen, leer = m42_tickets.DEFAULT_IDS
+        self._mail_signature = None  # Objekt-Id der eigenen E-Mail-Signatur ("" = keine), siehe _signature
         self._me_checked = False  # eigener Benutzer schon bei Matrix42 nachgefragt (/userinfo)
         self._tickets_read = 0
         self._booking = False
@@ -734,7 +769,9 @@ class M42Reader(BrowserReader):
 
     def ticket_task(self, kind, **args):
         """Im Hintergrund: "users" (text), "user_details" (user), "melder" (name), "categories", "create" (request),
-        "load" (id), "journal" (id), "edit" (request), "take_over" (id, type, ticket), "close_info" (id, type), "close" (request).
+        "load" (id), "journal" (id), "edit" (request), "take_over" (id, type, ticket), "close_info" (id, type), "close" (request),
+        Aktionen (ACTION_TASKS): "comment", "mail", "pause", "forward" (request), "mail_info", "pause_reasons", "roles",
+        "forward_users" (text, role), "mark_read" (id, type), "attachment" (file).
         Ergebnis über ticket_task_done. False, wenn gerade ein Anmeldefenster offen ist."""
         if self._login_open:
             return False
@@ -792,6 +829,12 @@ class M42Reader(BrowserReader):
                     result["data"] = self._close_info(args["id"], args.get("type"), ids)
                 elif kind == "close":
                     result["data"] = self._close_ticket(args["request"], state)
+                elif kind == "attachment":
+                    result["data"] = self._attachment(args["file"])
+                elif kind == "mark_read":
+                    result["data"] = self._mark_read(args["id"], args.get("type"))
+                elif kind in ACTION_TASKS:
+                    result["data"] = self._ticket_action(kind, args, state)
                 else:
                     raise ValueError(kind)
             result["ok"] = True
@@ -801,12 +844,112 @@ class M42Reader(BrowserReader):
                 result["unclear"] = True
                 result["error"] = f"unklar, ob es geklappt hat ({e}). Bitte in Matrix42 nachsehen."
             safe_io.log(f"Matrix42: Ticket {kind} fehlgeschlagen ({e!r})")
-        if result["ok"] and kind in ("create", "edit", "close", "take_over"):
+        if result["ok"] and kind in ("create", "edit", "close", "take_over") + ACTION_WRITES:
             self._tickets_read = 0  # Meine Tickets beim nächsten Durchlauf neu lesen
             for view in self.ticket_views.values():
                 view["time"] = 0  # Kategorien beim nächsten Anzeigen neu lesen
             threading.Thread(target=self.load_my_tickets, daemon=True).start()
         self.ticket_task_done.emit(result)
+
+    def _ticket_action(self, kind, args, state):
+        """Kommentar, E-Mail, Pausieren, Weiterleiten (m42_ticket_actions). Nur mit gehaltenem _browser_lock."""
+        import m42_ticket_actions as ma
+        api = "/m42Services/api"
+        request = args.get("request") or {}
+        name = request.get("ticket") or "Ticket"
+        if kind == "pause_reasons":
+            return ma.pause_reasons(self._fetch("GET", ma.PAUSE_REASONS_PATH))
+        if kind == "roles":
+            return ma.roles(self._fetch("POST", f"{api}/dataQuery/relationItems", ma.roles_query()))
+        if kind == "forward_users":
+            data = self._fetch("POST", f"{api}/entity/fragments/forControl",
+                               ma.forward_user_query(args.get("text", ""), args.get("role")))
+            return mt_users(data)
+        if kind == "mail_info":
+            self._me()
+            return {"signature": self._signature(), "me": self.user_name or ""}
+        if kind == "comment":
+            self._me()
+            body = ma.comment_body(request.get("id"), request.get("text", ""), self.user_id,
+                                   request.get("public", True))
+            self._set_status(f"Matrix42: kommentiere {name} …")
+            state["sent"] = True
+            self._fetch("POST", f"{api}/Journal/Add", body)
+        elif kind == "mail":
+            self._me()
+            body = ma.mail_body(request.get("id"), request.get("to", ""), request.get("subject", ""),
+                                request.get("text", ""), request.get("cc", ""), self._signature(),
+                                request.get("known_users"))
+            self._set_status(f"Matrix42: sende E-Mail zu {name} …")
+            state["sent"] = True
+            self._fetch("POST", f"{api}/email/SendEmail", body)
+        elif kind == "pause":
+            until = datetime.fromisoformat(request["until"]) if request.get("until") else None
+            body = ma.pause_body(request.get("id"), until, request.get("reason"), request.get("text", ""),
+                                 request.get("no_escalation", True))
+            self._set_status(f"Matrix42: pausiere {name} …")
+            state["sent"] = True
+            self._fetch("POST", f"{api}/activity/Pause", body)
+        elif kind == "forward":
+            body = ma.forward_body(request.get("id"), request.get("type"), request.get("user"),
+                                   request.get("role"), request.get("text", ""))
+            self._set_status(f"Matrix42: leite {name} weiter …")
+            state["sent"] = True
+            self._fetch("POST", f"{api}/activity/Forward", body)
+        self._set_status(f"Matrix42: {name} {ACTION_DONE[kind]}")
+        return {"ticket": name}
+
+    def _attachment(self, file_id):
+        """Anhang laden und in einen eigenen Ordner im Temp-Verzeichnis legen. Nur mit _browser_lock.
+        -> {"path", "name", "risky"}"""
+        import base64
+        import os
+        import tempfile
+        import m42_booking
+        import m42_tickets as mt
+        if not self._tools:
+            self._start_browser()
+        raw = self._evaluate(FILE_JS % json.dumps(mt.file_path(file_id)), timeout=self.LOAD_TIMEOUT)
+        result = json.loads(raw) if raw else {"state": "error", "status": 0}
+        if result.get("state") in ("login", "notoken"):
+            raise m42_booking.BookingError("Bitte erst bei Matrix42 anmelden.")
+        if result.get("state") != "ok":
+            raise m42_booking.BookingError(f"Matrix42 liefert den Anhang nicht (Fehler {result.get('status', 0)}).")
+        name = mt.attachment_name(result.get("disposition"), result.get("type"), file_id)
+        folder = os.path.join(tempfile.gettempdir(), "ZeitZeuge-Anhaenge", file_id)
+        os.makedirs(folder, exist_ok=True)
+        path = os.path.join(folder, name)
+        with open(path, "wb") as f:
+            f.write(base64.b64decode(result.get("data") or ""))
+        return {"path": path, "name": name, "risky": mt.is_risky(name)}
+
+    def _mark_read(self, ticket_id, kind=""):
+        """Neue Nachricht als gelesen: Ticket in der Vorschau öffnen und den Verlauf lesen wie Matrix42,
+        das setzt „Neue Information erhalten“ dann selbst zurück (m42_tickets.PREVIEW_WIDGETS).
+        Nur mit gehaltenem _browser_lock."""
+        import m42_tickets as mt
+        if not kind:
+            kind = mt.entity_type(self._fetch("GET", f"/m42Services/api/ticket/GetTicketEntityType/{ticket_id}"))
+        data = self._fetch("GET", mt.preview_path(kind, ticket_id))
+        offset = -int(datetime.now().astimezone().utcoffset().total_seconds() // 60)
+        self._fetch("GET", mt.journal_path(ticket_id, 0, offset))
+        return {"id": ticket_id, "entity": bool(data)}
+
+    def _signature(self):
+        """Objekt-Id der eigenen E-Mail-Signatur (einmal pro Sitzung), None ohne. Nur mit _browser_lock."""
+        import m42_ticket_actions as ma
+        if self._mail_signature is None:
+            self._mail_signature = ""
+            try:
+                sig = ma.signature_class_id(self._fetch("POST", ma.signature_path(),
+                                                        ma.signature_query(self.user_id)))
+                if sig:
+                    self._mail_signature = ma.signature_object_id(
+                        self._fetch("POST", "/m42Services/api/entity/fragments", ma.signature_fragment_query(sig)),
+                        sig) or ""
+            except Exception as e:  # dann ohne Signatur
+                safe_io.log(f"Matrix42: Signatur nicht gelesen ({e})")
+        return self._mail_signature or None
 
     def _journal(self, ticket_id):
         """Verlauf des Tickets, alle Seiten (neueste zuerst). Nur mit gehaltenem _browser_lock.

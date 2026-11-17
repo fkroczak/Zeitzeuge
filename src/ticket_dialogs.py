@@ -863,6 +863,7 @@ class ViewTicketDialog(_CardDialog):
         self.close_ticket_button.clicked.connect(lambda: self._leave("close"))
         self.cancel_button.parentWidget().layout().insertWidget(1, self.close_ticket_button)
         self.close_ticket_button.setVisible(not mb.is_closed(row))  # erst nach dem Einfügen (s. o.)
+        self._add_actions(row)
         self._add_take_over(row)
 
         cards = QHBoxLayout()
@@ -915,6 +916,34 @@ class ViewTicketDialog(_CardDialog):
             self._description_done()
             self._show_contact([])
 
+    def _add_actions(self, row):
+        """Knopf „Aktionen“ mit Kommentieren, E-Mail senden, Pausieren, Weiterleiten (ticket_action_dialog)."""
+        from PySide6.QtWidgets import QMenu
+        self.melder_mail = ""
+        self.actions_button = QPushButton("&Aktionen")
+        self.actions_button.setAutoDefault(False)
+        self.actions_button.setToolTip("Kommentieren, E-Mail senden, Pausieren oder Weiterleiten")
+        menu = QMenu(self.actions_button)
+        for kind, icon, text in (("comment", "comment", "&Kommentieren …"), ("mail", "mail", "&E-Mail senden …"),
+                                 ("pause", "pause", "&Pausieren …"), ("forward", "forward", "&Weiterleiten …")):
+            action = menu.addAction(icons.icon(icon, self.muted), text)
+            action.triggered.connect(lambda _=False, k=kind: self._ticket_action(k))
+        self.actions_button.setMenu(menu)
+        self.cancel_button.parentWidget().layout().insertWidget(1, self.actions_button)
+        self.actions_button.setVisible(not mb.is_closed(row))
+
+    def _ticket_action(self, kind):
+        from ticket_action_dialog import TicketActionDialog
+        contact = {"email": self.melder_mail, "initiator_id": (self.loaded or {}).get("initiator") or ""}
+        dialog = TicketActionDialog(self.reader, self.row, kind, self, contact)
+        if dialog.exec() != QDialog.Accepted:
+            return
+        self.status.setText(dialog.done_text)
+        self.journal = None  # neu laden: der Eintrag steht jetzt im Verlauf
+        self.view_chips["journal"].setText("&Verlauf")
+        if self.view_chips["journal"].isChecked():
+            self._show_view("journal")
+
     def _show_view(self, key):
         """Beschreibung oder Verlauf ins Feld; den Verlauf beim ersten Mal aus Matrix42 laden."""
         view = self.description_view
@@ -949,6 +978,12 @@ class ViewTicketDialog(_CardDialog):
 
     def _journal_link(self, url):
         """„▸ ganze E-Mail“ / „mehr“: Eintrag auf- oder zuklappen, Position im Verlauf bleibt."""
+        if url.scheme() == "zz" and url.path().startswith("attachment:"):
+            file_id = url.path().partition(":")[2]
+            self.status.setText("Lade Anhang aus Matrix42 …")
+            if not self._run("attachment", file=file_id):
+                self.status.setText("⚠ Matrix42-Anmeldefenster ist offen. Bitte erst anmelden.")
+            return
         if url.scheme() != "zz" or not url.path().startswith("toggle:") or self.journal is None:
             return
         self.expanded ^= {url.path().partition(":")[2]}
@@ -956,6 +991,24 @@ class ViewTicketDialog(_CardDialog):
         top = bar.value()
         self._render_journal()
         bar.setValue(top)
+
+    def _on_attachment(self, result):
+        """Anhang geladen: öffnen (Programme nicht, dann nur den Ordner zeigen)."""
+        import os
+        from PySide6.QtCore import QUrl
+        from PySide6.QtGui import QDesktopServices
+        if not result.get("ok"):
+            self.status.setText(f"⚠ Anhang nicht geladen: {result.get('error', '')}")
+            return
+        data = result["data"]
+        if data.get("risky"):
+            QDesktopServices.openUrl(QUrl.fromLocalFile(os.path.dirname(data["path"])))
+            self.status.setText(f"„{data['name']}“ könnte ein Programm sein: nicht geöffnet, nur der Ordner.")
+            return
+        if QDesktopServices.openUrl(QUrl.fromLocalFile(data["path"])):
+            self.status.setText(f"„{data['name']}“ geöffnet.")
+        else:
+            self.status.setText(f"⚠ Kein Programm für „{data['name']}“, liegt in {os.path.dirname(data['path'])}.")
 
     def _on_journal(self, result):
         self._journal_loading = False
@@ -1007,6 +1060,8 @@ class ViewTicketDialog(_CardDialog):
         while self.contact_rows.rowCount():
             self.contact_rows.removeRow(0)
         for name, text, link in rows:
+            if link.startswith("mailto:") and not self.melder_mail:
+                self.melder_mail = text
             key = QLabel(name)
             key.setObjectName("hint")
             value = QLabel()

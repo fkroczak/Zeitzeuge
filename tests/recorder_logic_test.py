@@ -50,3 +50,13 @@ def test_ticket_ansehen_alles_ungekuerzt():
     assert out["DescriptionHTML"] == mail and out["Phone"] == "02542 1"
     assert out["Password"]["geschwaerzt"]
     assert "Kundendaten" in rec._hint()
+
+
+def test_neue_fenster_und_downloads():
+    """Anhang im Ticket öffnet einen neuen Tab: die Adresse steht im Mitschnitt."""
+    rec = rr.Recorder.__new__(rr.Recorder)  # ohne Verbindung zum Browser
+    rec.opened = []
+    rec._on_event("Page.windowOpen", {"url": "https://m42.example/x/download?fileId=1&token=geheim"})
+    rec._on_event("Page.downloadWillBegin", {"url": "https://m42.example/y", "suggestedFilename": "a.eml"})
+    assert [o["art"] for o in rec.opened] == ["neues Fenster", "Download"]
+    assert "geheim" not in rec.opened[0]["adresse"] and rec.opened[1]["datei"] == "a.eml"

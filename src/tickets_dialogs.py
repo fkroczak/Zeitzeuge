@@ -672,11 +672,19 @@ class TicketsDialog(QDialog):
             self._update_status()
         dialog.deleteLater()
 
+    def mark_read(self, row):
+        """Blau weg: sofort in der Liste, in Matrix42 über das Öffnen der Vorschau (m42_tickets.PREVIEW_WIDGETS)."""
+        self.table.mark_read(row)
+        if hasattr(self.reader, "ticket_task"):
+            self.reader.ticket_task("mark_read", id=row["id"], type=row.get("type", ""))
+
     def view_ticket(self):
         from ticket_dialogs import ViewTicketDialog
         row = self.current_row()
         if not row:
             return
+        if self.table.is_unread(row):  # Öffnen heißt gelesen, wie in Matrix42
+            self.mark_read(row)
         dialog = ViewTicketDialog(self.reader, row, self)
         action = dialog.action if dialog.exec() == QDialog.Accepted else None
         self._note_taken_over(row, dialog)
@@ -727,8 +735,21 @@ class TicketsDialog(QDialog):
             self.show_category()
         dialog.deleteLater()
 
+    def forward_ticket(self, row=None):
+        """Markiertes Ticket weiterleiten (Team und/oder Kollege), Fenster aus ticket_action_dialog."""
+        from ticket_action_dialog import TicketActionDialog
+        row = row or self.current_row()
+        if not row or mb.is_closed(row) or not hasattr(self.reader, "ticket_task"):
+            return
+        dialog = TicketActionDialog(self.reader, row, "forward", self)
+        if dialog.exec() == QDialog.Accepted:
+            self._note = f"{row['ticket']} weitergeleitet."
+            self._update_status()
+        dialog.deleteLater()
+
     def _context_menu(self, pos):
-        """Rechte Maustaste auf einem Ticket: Ansehen, Bearbeiten, Übernehmen, Schließen, Nummer kopieren."""
+        """Rechte Maustaste auf einem Ticket: Ansehen, Bearbeiten, Übernehmen, Weiterleiten, Schließen, als gelesen markieren,
+        Nummer kopieren."""
         index = self.table.indexAt(pos)
         if not index.isValid():
             return
@@ -743,7 +764,10 @@ class TicketsDialog(QDialog):
         if self.can_take_over(row):
             menu.addAction("Über&nehmen", self.take_over)
         if not mb.is_closed(row):
+            menu.addAction("&Weiterleiten …", self.forward_ticket)
             menu.addAction("Ticket &schließen …", self.close_ticket)
+        if not mb.is_closed(row) and self.table.is_unread(row):
+            menu.addAction("Als &gelesen markieren", lambda: self.mark_read(row))
         menu.addSeparator()
         menu.addAction("Nummer &kopieren", self.copy_number)
         menu.exec(self.table.viewport().mapToGlobal(pos))

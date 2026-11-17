@@ -515,7 +515,7 @@ def test_journal_seiten_und_arten():
     assert "<style" not in page and "<html" not in page  # Stil der Mail färbt nicht alles ein
     assert "AttachmentDownload" not in page  # eingeklappt: nur die Vorschau
     opened = mt.journal_html(entries, {"j1"}, "https://m42.example")
-    assert 'href="https://m42.example/SPS/Forms/AttachmentDownload.aspx?FileID=1"' in opened
+    assert 'href="zz:attachment:1"' in opened and "AttachmentDownload" not in opened  # 404 auf dem Server
     assert "▴ zuklappen" in opened
     assert "start=5" in mt.journal_path("t-1", 5) and "count=6" in mt.journal_path("t-1", 5)
 

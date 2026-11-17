@@ -3,7 +3,8 @@ Art (Störung/Serviceanfrage), Status, Bearbeiter, Angelegt; nach jeder Spalte s
 der Ticketsuche), erledigte Tickets grau. Enter oder Doppelklick: Signal activated(row).
 Spaltenbreiten lassen sich im Kopf ziehen; gezogene Breiten bleiben (je Tabelle gespeichert),
 Rechtsklick auf den Kopf setzt sie zurück. Der Betreff bekommt immer den Rest.
-Rote/gelbe SLA-Ampel und neue Nachricht (blau): Zeile getönt, Balken am linken Rand. Mit „ticket_state_colors“ auch die
+Rote/gelbe SLA-Ampel und neue Nachricht (blau): Zeile getönt, Balken am linken Rand. Neue Nachricht lässt
+sich per Rechtsklick als gelesen markieren (mark_read, nur in Zeitzeuge gemerkt). Mit „ticket_state_colors“ auch die
 übrigen Zeilen in der Farbe ihres Status (Einstellungen → Darstellung → Tickets).
 """
 from PySide6.QtCore import QSettings, Qt, Signal
@@ -49,6 +50,30 @@ def row_color(row, all_states=False):
         return CLOSED_COLOR, STATE_TINT
     color = STATE_COLORS.get((row.get("state") or "").strip().casefold())
     return (color, STATE_TINT) if color else None
+
+
+READ_KEY = "ticket_table/read"  # Tickets, deren neue Nachricht als gelesen markiert ist (Ids)
+
+
+def read_marks():
+    """Ids der Tickets, deren neue Nachricht du als gelesen markiert hast (nur in Zeitzeuge: Matrix42
+    bleibt „Neue Information erhalten“ gesetzt). Kommt das Kennzeichen weg und später wieder, ist das
+    Ticket wieder blau."""
+    raw = settings().value(READ_KEY, []) or []
+    return {str(x) for x in ([raw] if isinstance(raw, str) else raw) if x}
+
+
+def save_read_marks(ids):
+    store = settings()
+    if ids:
+        store.setValue(READ_KEY, sorted(ids))
+    else:
+        store.remove(READ_KEY)
+
+
+def is_unread(row, marks):
+    """Neue Nachricht, die noch nicht als gelesen markiert ist."""
+    return bool(row.get("new_message")) and row.get("id") not in marks
 
 
 def _config_of(widget):
@@ -256,9 +281,15 @@ class TicketTable(QTableWidget):
         all_states = bool(_config_of(self).get("ticket_state_colors", False))
         self.clearSelection()
         self.setRowCount(len(rows))
+        marks = read_marks()
+        # Kennzeichen in Matrix42 weg: Markierung vergessen, damit die nächste Nachricht wieder blau ist
+        stale = {row.get("id") for row in rows if not row.get("new_message")} & marks
+        if stale:
+            marks -= stale
+            save_read_marks(marks)
         for r, row in enumerate(rows):
             closed = mb.is_closed(row)
-            mark = row_color(row, all_states)
+            mark = row_color(dict(row, new_message=is_unread(row, marks)), all_states)
             for c, (_name, key) in enumerate(COLUMNS):
                 if key == "created":
                     text, sort_key = mb.ticket_date(row), row.get("created") or ""
@@ -285,6 +316,21 @@ class TicketTable(QTableWidget):
             if selected and self.row_at(r).get("id") == selected:
                 self.selectRow(r)
                 break
+
+    def is_unread(self, row):
+        return is_unread(row, read_marks())
+
+    def mark_read(self, row, read=True):
+        """Neue Nachricht als gelesen (blau weg) bzw. wieder als ungelesen markieren."""
+        marks = read_marks()
+        marks = marks | {row["id"]} if read else marks - {row["id"]}
+        save_read_marks(marks)
+        all_states = bool(_config_of(self).get("ticket_state_colors", False))
+        for r in range(self.rowCount()):
+            if self.row_at(r).get("id") == row["id"]:
+                self.item(r, 0).setData(MARK_ROLE, row_color(dict(row, new_message=is_unread(row, marks)),
+                                                             all_states))
+        self.viewport().update()
 
     def row_at(self, r):
         item = self.item(r, 0)

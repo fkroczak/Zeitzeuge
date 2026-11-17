@@ -302,6 +302,20 @@ def entity_type(data):
     return text if text.startswith("SPSActivityType") else ""
 
 
+# „Preview for Agent“ je Ticketart (WidgetCommon/GetWidgets). Öffnet der Bearbeiter ein Ticket darin,
+# setzt Matrix42 „Neue Information erhalten“ selbst zurück, ohne eigene Abfrage zum Speichern
+# (Mitschnitt vom 17.11.2026, 14:54: GetData mit NewInformationReceived 1, zwanzig Sekunden später 0)
+PREVIEW_WIDGETS = {"SPSActivityTypeIncident": "3b4c23df-08e7-c3bd-be7c-08d33f5dcbe1",
+                   "SPSActivityTypeServiceRequest": "99912400-5e96-c50f-9a1b-08d4617dc22d",
+                   "SPSActivityTypeTicket": "e54bab9f-0a7b-ce2a-ca48-08d46175796f"}
+
+
+def preview_path(kind, ticket_id):
+    """Ticket in der Vorschau öffnen wie Matrix42 (Kennzeichen „neue Information“ geht dann weg)."""
+    widget = PREVIEW_WIDGETS.get(kind or "", PREVIEW_WIDGETS["SPSActivityTypeTicket"])
+    return edit_data_path(widget, ticket_id)
+
+
 def edit_data_path(dialog, ticket_id):
     return f"{API}/WidgetCommon/GetData/{dialog}/{ticket_id}?archived=false"
 
@@ -626,6 +640,10 @@ PREVIEW_CHARS = 180
 _MAIL_META = re.compile(r"(?i)^(an|cc|bcc|von|from|to|betreff|subject)\s*:")
 _MAIL_INTRO = re.compile(r"(?i)^die folgende (nachricht|e-mail) wurde")
 _ATTACHMENT = re.compile(r"(?i)mx-journal-attachment-link")
+# Anhang-Link der Mail im Verlauf: /SPS/Forms/AttachmentDownload.aspx?FileID=…&ObjectID=… gibt es auf
+# dem Server nicht (404). Die Weboberfläche lädt Anhänge über GET /fileStorage/<FileID> (FileID =
+# UniqueFileId aus /commonStorage/files). Das Fenster bekommt „zz:attachment:<FileID>“ und lädt selbst.
+_ATTACHMENT_HREF = re.compile(r"""(?i)(\shref\s*=\s*["'])[^"']*AttachmentDownload\.aspx\?[^"']*?FileID=([0-9a-f-]+)[^"']*""")
 
 
 def _kind(entry):
@@ -696,6 +714,42 @@ def _day_title(day):
     return f"{WEEKDAYS[day.weekday()]}, {day.day}. {MONTHS[day.month - 1]} {day.year}"
 
 
+def file_path(file_id):
+    """Anhang herunterladen wie die Weboberfläche (Links vom 17.11.2026)."""
+    if not GUID.fullmatch(file_id or ""):
+        raise BookingError("Unbekannter Anhang.")
+    return f"{API}/fileStorage/{file_id}"
+
+
+# Diese Dateien öffnet Zeitzeuge nicht selbst (könnten Programme starten), sondern zeigt den Ordner
+RISKY_EXTENSIONS = {".exe", ".com", ".bat", ".cmd", ".msi", ".msp", ".scr", ".pif", ".lnk", ".js", ".jse",
+                    ".vbs", ".vbe", ".wsf", ".wsh", ".ps1", ".psm1", ".hta", ".cpl", ".jar", ".reg", ".application"}
+_TYPE_EXT = {"application/pdf": ".pdf", "message/rfc822": ".eml", "image/png": ".png", "image/jpeg": ".jpg",
+             "text/plain": ".txt", "application/zip": ".zip"}
+
+
+def attachment_name(disposition, content_type, file_id):
+    """Dateiname aus Content-Disposition (auch filename*=UTF-8''…), sonst Id plus Endung nach Typ.
+    Ohne Pfad und ohne Zeichen, die Windows nicht mag."""
+    from urllib.parse import unquote
+    name = ""
+    m = re.search(r"(?i)filename\*\s*=\s*([^']*)'[^']*'([^;]+)", disposition or "")
+    if m:
+        name = unquote(m.group(2).strip().strip('"'), encoding=m.group(1) or "utf-8", errors="replace")
+    else:
+        m = re.search(r'(?i)filename\s*=\s*"?([^";]+)"?', disposition or "")
+        name = m.group(1).strip() if m else ""
+    name = re.sub(r'[\\/:*?"<>|\x00-\x1f]', "_", name.replace("\\", "/").split("/")[-1]).strip(" .")
+    if not name:
+        name = file_id + _TYPE_EXT.get((content_type or "").split(";")[0].strip().lower(), "")
+    return name[:150]
+
+
+def is_risky(name):
+    import os
+    return os.path.splitext(name or "")[1].lower() in RISKY_EXTENSIONS
+
+
 def journal_html(entries, expanded=(), origin=""):
     """Verlauf als Zeitstrahl, nach Tagen gruppiert: runde Punkte je Art auf einer Linie
     (Bilder „zz:dot:<Art>“ und „zz:line“, das Fenster zeichnet sie), E-Mails und Kommentare mit
@@ -720,7 +774,7 @@ LINK = "color:#005FB8; text-decoration:none; font-size:small;"
 
 
 def _body_html(raw, origin):
-    body = _DOCUMENT_TAGS.sub("", raw)
+    body = _ATTACHMENT_HREF.sub(lambda m: m.group(1) + "zz:attachment:" + m.group(2), _DOCUMENT_TAGS.sub("", raw))
     if origin:
         body = _HREF.sub(lambda m: m.group(1) + origin.rstrip("/") + m.group(2), body)
     return view_html(body)
