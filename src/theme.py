@@ -11,8 +11,11 @@ import re
 
 from PySide6.QtCore import QLibraryInfo, QLocale, QSize, Qt, QTranslator
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QPen
-from PySide6.QtWidgets import (QDialogButtonBox, QHeaderView, QProxyStyle, QRubberBand, QStyle,
-                               QStyleFactory)
+from PySide6.QtWidgets import (QDialogButtonBox, QHeaderView, QProxyStyle, QRubberBand, QSpinBox,
+                               QStyle, QStyleFactory)
+
+SPIN_ARROWS = 20  # Breite der Pfeile hoch/runter rechts in Zahlenfeldern (Stylesheet: QSpinBox::up-button)
+SPIN_TEXT_LEFT = 7  # Textabstand links: Qt 6 ignoriert padding-left, sobald die Pfeile rechts stehen
 
 
 class AppStyle(QProxyStyle):
@@ -40,6 +43,8 @@ class AppStyle(QProxyStyle):
         # Eingabefelder mit Stylesheet so groß wie unter Qt 5: Rahmen und Abstände rechnet das
         # Stylesheet selbst dazu, Qt 6 zählt sonst noch Platz für die ausgeblendeten Pfeile mit
         if ct == QStyle.CT_SpinBox and widget is not None and widget.style() is not self:
+            if isinstance(widget, QSpinBox):  # Zahlenfelder zeigen die Pfeile
+                return QSize(size.width() + SPIN_ARROWS + SPIN_TEXT_LEFT, size.height())
             return QSize(size)
         return super().sizeFromContents(ct, option, size, widget)
 
@@ -47,6 +52,8 @@ class AppStyle(QProxyStyle):
         # Spaltenköpfe überall linksbündig wie der Text darunter (Qt zentriert sonst)
         if isinstance(target, QHeaderView) and target.orientation() == Qt.Horizontal:
             target.setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        if isinstance(target, QSpinBox) and target.lineEdit() is not None:
+            target.lineEdit().setTextMargins(SPIN_TEXT_LEFT, 0, 0, 0)
         return super().polish(target)
 
     def drawControl(self, element, option, painter, widget=None):
@@ -358,6 +365,17 @@ QDateEdit { font-weight: bold; }
 QSpinBox, QTimeEdit { padding-right: 6px; }
 QAbstractSpinBox::up-button, QAbstractSpinBox::down-button { width: 0; border: none;
     subcontrol-origin: content; subcontrol-position: center left; } /* sonst Text ohne Rand links (Qt 6.12) */
+/* Zahlenfelder: Pfeile hoch/runter rechts im Feld; tippen geht weiterhin */
+QSpinBox::up-button, QSpinBox::down-button { subcontrol-origin: content; width: 20px; /* = SPIN_ARROWS */ border: none;
+    background: transparent; }
+QSpinBox::up-button { subcontrol-position: top right; }
+QSpinBox::down-button { subcontrol-position: bottom right; }
+QSpinBox::up-button:hover, QSpinBox::down-button:hover { background-color: $hover;
+    border-radius: $radius_smpx; }
+QSpinBox::up-arrow { image: url($chevron_up); width: 10px; height: 10px; }
+QSpinBox::down-arrow { image: url($chevron); width: 10px; height: 10px; }
+QSpinBox::up-arrow:disabled, QSpinBox::up-arrow:off,
+QSpinBox::down-arrow:disabled, QSpinBox::down-arrow:off { image: none; }
 QDateEdit { min-width: 102px; } /* + 18 px Kalenderpfeil (Qt 6) = 120 px wie bisher */
 QComboBox { padding-right: 28px; }
 /* Dropdown wie Windows 11: kein abgesetzter Pfeil-Kasten, nur ein Winkel rechts im Feld */

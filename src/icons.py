@@ -334,15 +334,17 @@ def check_mark_file(color):
     return path.replace(os.sep, "/")
 
 
-def chevron_file(color):
-    """Winkel nach unten als PNG für QComboBox::down-arrow (Dropdowns wie Windows 11)."""
+def chevron_file(color, up=False):
+    """Winkel nach unten (oder oben) als PNG für QComboBox::down-arrow und die Pfeile der
+    Zahlenfelder (QSpinBox), wie bei Windows 11."""
     import os
     import tempfile
     c = QColor(color).name()
-    path = os.path.join(tempfile.gettempdir(), f"zeitzeuge_chevron_{c[1:]}.png")
+    path = os.path.join(tempfile.gettempdir(), f"zeitzeuge_chevron{'_up' if up else ''}_{c[1:]}.png")
     if not os.path.exists(path):
+        d = "m6 15 6-6 6 6" if up else "m6 9 6 6 6-6"
         svg = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">'
-               f'<path d="m6 9 6 6 6-6" stroke="{c}" stroke-width="2.2" fill="none" '
+               f'<path d="{d}" stroke="{c}" stroke-width="2.2" fill="none" '
                'stroke-linecap="round" stroke-linejoin="round"/></svg>')
         _render(svg, (48,)).pixmap(48, 48).save(path, "PNG")
     return path.replace(os.sep, "/")
@@ -377,9 +379,9 @@ def switch_file(track, knob, border, on):
 
 def switch_tokens(theme):
     """Bildpfade fürs Stylesheet: Schalter ($switch_on, $switch_off, deaktiviert) und der Winkel
-    der Dropdowns ($chevron)."""
+    der Dropdowns ($chevron) und Zahlenfelder ($chevron_up)."""
     accent, surface, muted, border = (theme[k] for k in ("accent", "surface", "muted", "border"))
-    return {"chevron": chevron_file(muted),
+    return {"chevron": chevron_file(muted), "chevron_up": chevron_file(muted, up=True),
             "switch_on": switch_file(accent, theme["onaccent"], accent, True),
             "switch_off": switch_file(surface, muted, muted, False),
             "switch_on_disabled": switch_file(border, surface, border, True),
