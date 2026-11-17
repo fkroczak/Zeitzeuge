@@ -105,13 +105,13 @@ def test_eintraege():
     kinds = [(e["start"][11:16], e["type"], e["customer_name"]) for e in entries]
     assert kinds == [
         ("09:00", "Teams-Besprechung", "Abstimmung Firewall"),
-        ("10:15", "Mail gesendet", "AW: Firewall"),        # interne Mail fehlt
+        ("10:12", "Mail gesendet", "AW: Firewall"),        # interne Mail fehlt; Block endet beim Senden
         ("11:00", "Termin", "Vor Ort Server"),
         ("17:00", "Termin", "Privater Termin"),             # ganztags und abgesagt fehlen
     ]
     meeting, mail, onsite, private = entries
     assert meeting["email_domains"] == ["kunde-nord.de"] and "Teilnehmer: kunde-nord.de" in meeting["details"]
-    assert mail["end"] == "2026-10-26 10:18:30" and mail["email_domains"] == ["kunde-nord.de"]
+    assert mail["start"] == "2026-10-26 10:12:30" and mail["end"] == mail["sent"] == "2026-10-26 10:15:30" and mail["email_domains"] == ["kunde-nord.de"]
     assert mail["details"] == "an kunde-nord.de (3 Empfänger)"
     assert onsite["email_domains"] == []                # Subdomain der eigenen Firma
     assert private["email_domains"] == [] and "Praxis" not in private["details"]
@@ -121,9 +121,40 @@ def test_eintraege():
                outlook_calendar_enabled=False)
     entries = od.day_entries(days["2026-10-26"], cfg)
     assert [(e["customer_name"], e["details"], e["end"][11:]) for e in entries] == [
-        ("AW: Firewall", "an kunde-nord.de (3 Empfänger)", "10:20:30"),
-        ("Intern", "an intern", "10:45:00")]
+        ("AW: Firewall", "an kunde-nord.de (3 Empfänger)", "10:15:30"),
+        ("Intern", "an intern", "10:40:00")]
     assert od.day_entries(None, CONFIG) == []
+
+
+def test_mailbeginn_aus_fensterverlauf():
+    """Gesendete Mail beginnt beim ersten Fenster „Betreff - Nachricht (HTML)“ vor dem Senden."""
+    def mail(sent, subject="Bereinigung alter Server"):
+        return od.mail_entry({"start": f"2026-10-26 {sent}", "subject": subject, "recipients": 1,
+                              "domains": ["kunde.de"]}, [], 3)
+
+    def win(start, end, title, app="OUTLOOK.EXE"):
+        return {"start": f"2026-10-26 {start}", "end": f"2026-10-26 {end}", "customer_name": title, "app": app}
+
+    first, second, reply, short = (mail("10:04:10"), mail("11:30:00"), mail("12:00:00", "AW: Angebot"),
+                                   mail("13:00:00", "Kurz"))
+    windows = [
+        win("08:00:00", "08:05:00", "Bereinigung alter Server - Nachricht (HTML)"),  # > 2 h vorher
+        win("09:58:20", "10:01:00", "Bereinigung alter Server - Nachricht (HTML)"),
+        win("10:01:00", "10:03:00", "Chrome", app="chrome.exe"),
+        win("10:03:00", "10:04:10", "Bereinigung  alter server - Nachricht (HTML)"),
+        win("11:20:00", "11:29:00", "Bereinigung alter Server - Nachricht (HTML)"),
+        win("11:50:00", "11:55:00", "AW: Angebot - Message (HTML)"),
+        win("12:59:40", "13:00:00", "Kurz - Nachricht (Nur-Text)"),
+        win("09:00:00", "09:10:00", "Bereinigung alter Server - Nachricht (HTML)", app="notepad.exe"),
+    ]
+    other = mail("14:00:00", "Ohne Fenster")
+    od.compose_starts([first, second, reply, short, other], windows)
+    assert (first["start"][11:], first["end"][11:]) == ("09:58:20", "10:04:10")
+    assert "geschrieben ab 09:58 (Fensterverlauf)" in first["details"]
+    assert second["start"][11:] == "11:20:00"  # nicht schon beim Fenster der ersten Mail
+    assert reply["start"][11:] == "11:50:00"
+    assert short["start"][11:] == "12:59:00"   # mindestens 1 min
+    assert other["start"][11:] == "13:57:00" and "Fensterverlauf" not in other["details"]
 
 
 def test_skript():
@@ -256,7 +287,7 @@ def test_zeile_regeln_und_ki():
     blocks = rules.classify(entries + [call], [], rules.default_rules(), min_minutes=1)
     cats = [(b["start"][11:16], b["category"]) for b in blocks]
     assert ("09:00", "Beratung / Abstimmung") in cats and ("14:00", "Telefonsupport") in cats
-    assert ("10:15", "E-Mail / Kommunikation") in cats
+    assert ("10:12", "E-Mail / Kommunikation") in cats
 
     text = ai_classifier.build_day_text(entries + [call])
     head, outlook = text.split("\n\nTermine und gesendete Mails aus Outlook")
