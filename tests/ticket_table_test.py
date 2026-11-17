@@ -127,3 +127,24 @@ def test_neue_nachricht_blau():
     assert row_color({"state": "In Bearbeitung", "new_message": True})[0] == MESSAGE_COLOR
     assert row_color({"state": "In Bearbeitung", "new_message": True, "sla": "red"})[0] == SLA_COLORS["red"]
     assert row_color({"state": "Gelöst", "new_message": True}) is None
+
+
+def test_als_gelesen_markieren(ini):
+    """Rechtsklick „Als gelesen markieren“: blau weg, bis Matrix42 das Kennzeichen zurücknimmt und neu setzt."""
+    from ticket_table import MARK_ROLE, MESSAGE_COLOR, TicketTable, read_marks
+    widgets.QApplication.instance() or widgets.QApplication([])
+    table = TicketTable("Tickets")
+    row = {"ticket": "TCK1", "id": "t1", "subject": "x", "customer": "", "initiator": "", "recipient": "", "type": "", "state": "Angehalten", "created": "", "new_message": True}
+    table.set_rows([row])
+    assert table.item(0, 0).data(MARK_ROLE)[0] == MESSAGE_COLOR and table.is_unread(row)
+    table.mark_read(row)
+    assert table.item(0, 0).data(MARK_ROLE) is None and not table.is_unread(row)
+    table.set_rows([row])  # neu gelesen, Kennzeichen noch da: bleibt gelesen
+    assert table.item(0, 0).data(MARK_ROLE) is None
+    table.set_rows([dict(row, new_message=False)])  # Matrix42 hat es zurückgesetzt
+    assert read_marks() == set()
+    table.set_rows([row])  # nächste Nachricht: wieder blau
+    assert table.item(0, 0).data(MARK_ROLE)[0] == MESSAGE_COLOR
+    table.mark_read(row)
+    table.mark_read(row, False)
+    assert table.item(0, 0).data(MARK_ROLE)[0] == MESSAGE_COLOR

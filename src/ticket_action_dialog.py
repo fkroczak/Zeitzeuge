@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 
 from PySide6.QtCore import QDate, QTime, Qt, QTimer
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QDateEdit, QHBoxLayout, QLineEdit, QListWidget,
-                               QListWidgetItem, QPlainTextEdit, QTimeEdit, QWidget)
+                               QListWidgetItem, QPlainTextEdit, QPushButton, QTimeEdit, QWidget)
 
 import m42_ticket_actions as ma
 import spellcheck
@@ -21,6 +21,24 @@ KINDS = {"comment": ("Kommentieren", "comment", "&Kommentar speichern",
          "pause": ("Ticket pausieren", "pause", "&Pausieren", "Warum ruht das Ticket? z. B. „Warten auf Rückruf“"),
          "forward": ("Ticket weiterleiten", "forward", "&Weiterleiten", "Hinweis für den neuen Bearbeiter (optional)")}
 DEFAULT_PAUSE_REASON = 421  # Warten auf Kunde
+
+
+def quick_pause_times(now=None):
+    """Schnellwahl für die Wiedervorlage -> [(Text, datetime)]."""
+    now = (now or datetime.now()).replace(second=0, microsecond=0)
+
+    def workday(days, hour=8):
+        day = now.date() + timedelta(days=days)
+        while day.weekday() >= 5:
+            day += timedelta(days=1)
+        return datetime(day.year, day.month, day.day, hour, 0)
+    monday = now.date() + timedelta(days=7 - now.weekday())
+    out = [("in 1 Std.", now + timedelta(hours=1)), ("in 2 Std.", now + timedelta(hours=2))]
+    if now.hour < 15:
+        out.append(("heute 16:00", now.replace(hour=16, minute=0)))
+    return out + [("morgen 8:00", workday(1)), ("übermorgen", workday(2)),
+                  ("nächsten Montag", datetime(monday.year, monday.month, monday.day, 8, 0)),
+                  ("in 1 Woche", workday(7))]
 
 
 def default_pause_until(now=None):
@@ -110,8 +128,21 @@ class TicketActionDialog(_CardDialog):
         line = QHBoxLayout()
         line.addWidget(self.date_edit, 1)
         line.addWidget(self.time_edit)
-        self.body_box.addWidget(_label("&Wiedervorlage", self.date_edit))
+        self.body_box.addWidget(_label("&Wiedervorlage (Datum und Uhrzeit frei wählbar)", self.date_edit))
         self.body_box.addLayout(line)
+        quick_host = QWidget()
+        quick_host.setObjectName("chips")
+        quick = FlowLayout(quick_host, spacing=6)
+        self.quick_buttons = []
+        for text, when in quick_pause_times():
+            button = QPushButton(text)
+            button.setObjectName("chip_button")
+            button.setAutoDefault(False)
+            button.setToolTip(f"Wiedervorlage {when:%d.%m.%Y %H:%M}")
+            button.clicked.connect(lambda _=False, w=when: self.set_until(w))
+            quick.addWidget(button)
+            self.quick_buttons.append(button)
+        self.body_box.addWidget(quick_host)
         self.reason_combo = QComboBox()
         self.reason_combo.setAccessibleName("Grund")
         self._fill_reasons(ma.PAUSE_REASONS)
@@ -120,6 +151,10 @@ class TicketActionDialog(_CardDialog):
         self.no_escalation = QCheckBox("&Nicht eskalieren, solange pausiert")
         self.no_escalation.setChecked(True)
         self._run("pause_reasons")
+
+    def set_until(self, when):
+        self.date_edit.setDate(QDate(when.year, when.month, when.day))
+        self.time_edit.setTime(QTime(when.hour, when.minute))
 
     def _fill_reasons(self, reasons):
         current = self.reason_combo.currentData() or DEFAULT_PAUSE_REASON

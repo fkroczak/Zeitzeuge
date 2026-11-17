@@ -728,7 +728,8 @@ class TicketsDialog(QDialog):
         dialog.deleteLater()
 
     def _context_menu(self, pos):
-        """Rechte Maustaste auf einem Ticket: Ansehen, Bearbeiten, Übernehmen, Schließen, Nummer kopieren."""
+        """Rechte Maustaste auf einem Ticket: Ansehen, Bearbeiten, Übernehmen, Schließen, als gelesen markieren,
+        Nummer kopieren."""
         index = self.table.indexAt(pos)
         if not index.isValid():
             return
@@ -744,6 +745,11 @@ class TicketsDialog(QDialog):
             menu.addAction("Über&nehmen", self.take_over)
         if not mb.is_closed(row):
             menu.addAction("Ticket &schließen …", self.close_ticket)
+        if row.get("new_message") and not mb.is_closed(row):
+            if self.table.is_unread(row):
+                menu.addAction("Als &gelesen markieren", lambda: self.table.mark_read(row))
+            else:
+                menu.addAction("Als &ungelesen markieren", lambda: self.table.mark_read(row, False))
         menu.addSeparator()
         menu.addAction("Nummer &kopieren", self.copy_number)
         menu.exec(self.table.viewport().mapToGlobal(pos))

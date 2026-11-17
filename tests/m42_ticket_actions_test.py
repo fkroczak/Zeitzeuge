@@ -106,3 +106,14 @@ def test_leser_schickt_aktionen(tmp_path, monkeypatch):
     assert got[-1]["ok"] and calls[-1][2]["RoleID"] == "r1"
     reader._ticket_task("pause", {"request": {"id": T, "until": until, "reason": 421, "text": " "}})
     assert not got[-1]["ok"] and not got[-1].get("unclear")  # Fehler vor dem Senden: sicher nichts passiert
+
+
+def test_schnellwahl_wiedervorlage():
+    from ticket_action_dialog import default_pause_until, quick_pause_times
+    friday = datetime(2026, 11, 20, 10, 15)  # Freitag
+    times = dict(quick_pause_times(friday))
+    assert times["in 1 Std."] == datetime(2026, 11, 20, 11, 15) and times["heute 16:00"].hour == 16
+    assert times["morgen 8:00"] == datetime(2026, 11, 23, 8, 0)  # Montag, kein Wochenende
+    assert times["nächsten Montag"] == datetime(2026, 11, 23, 8, 0)
+    assert "heute 16:00" not in dict(quick_pause_times(friday.replace(hour=17)))
+    assert default_pause_until(friday) == datetime(2026, 11, 23, 8, 0)

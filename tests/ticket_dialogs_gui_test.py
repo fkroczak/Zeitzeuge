@@ -596,6 +596,9 @@ def gui_test():
 
     act = TicketActionDialog(reader, ROW, "pause")
     assert wait_for(lambda: act.reason_combo.count() == 2, 3000)
+    week = next(b for b in act.quick_buttons if b.text() == "in 1 Woche")
+    week.click()
+    assert act.until().date() >= (__import__("datetime").datetime.now() + __import__("datetime").timedelta(days=7)).date()
     assert act.reason_combo.currentData() == 421
     act.text_edit.setPlainText("Warten auf Rückruf")
     act.ok_button.click()
