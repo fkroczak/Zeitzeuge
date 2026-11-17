@@ -102,6 +102,28 @@ def test_fahrzeit_zur_adresse_im_termin():
                           places=[{"name": "Creacam", "minutes": 0}]) == []
 
 
+def test_adresse_schlaegt_namen_im_betreff():
+    """„Vor Ort - Testen aktualisierter Server“ bei Oberwies: Ein Kunde mit Fahrzeit, dessen Name
+    nur im Betreff steht, darf die berechnete Fahrzeit zur Adresse nicht ersetzen."""
+    pc = [e("07:50", "08:40", "PC: Outlook", "Posteingang", app="outlook.exe")]
+    ort = ("Ort: OBERWIES GmbH & Co. KG - ENTSORGUNG & RECYCLING "
+           "(Schildarpstraße 60, , 48712 Gescher North Rhine-Westphalia)")
+    entries = [e("09:30", "11:00", "Termin", "Vor Ort - Testen aktualisierter Server", details=ort),
+               e("12:05", "12:10", "Telefonat", "Anruf")]
+    by_address = lambda a: 11 if "Schildarpstraße 60" in travel._location(a) else None  # noqa: E731
+    places = [{"name": "Server", "minutes": 45}, {"name": "Test", "minutes": 30}]
+    trips = travel.suggest(entries, pc, places=places, address_minutes=by_address)
+    assert [(t["start"][11:16], t["end"][11:16]) for t in trips] == [("09:19", "09:30"), ("11:00", "11:11")]
+    # ohne Adresse gilt der Name weiter, aber nur als ganzes Wort („Test“ nicht in „Testen“)
+    trips = travel.suggest(entries, pc, places=[{"name": "Test", "minutes": 30}])
+    assert [(t["start"][11:16], t["end"][11:16]) for t in trips] == [("08:40", "09:30"), ("11:00", "11:50")]
+    trips = travel.suggest(entries, pc, places=[{"name": "Server", "minutes": 20}])
+    assert [(t["start"][11:16], t["end"][11:16]) for t in trips] == [("09:10", "09:30"), ("11:00", "11:20")]
+    # Name im Ort selbst bleibt vor der Adresse
+    trips = travel.suggest(entries, pc, places=[{"name": "Oberwies", "minutes": 20}], address_minutes=by_address)
+    assert [(t["start"][11:16], t["end"][11:16]) for t in trips] == [("09:10", "09:30"), ("11:00", "11:20")]
+
+
 def test_adresse_erkennen():
     import route
     assert route.looks_like_address("Hauptstr. 5, Stuttgart")
