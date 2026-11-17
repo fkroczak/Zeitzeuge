@@ -8,7 +8,7 @@ Teil von TimelineApp (main_timeline.py): SettingsWindow(main) bekommt das Hauptf
 """
 import os
 
-from PySide6.QtCore import QSize, Qt, QTimer, QUrl
+from PySide6.QtCore import QEvent, QObject, QSize, Qt, QTimer, QUrl
 from PySide6.QtGui import QCursor, QDesktopServices, QIcon, QPainter
 from PySide6.QtWidgets import (QButtonGroup, QCheckBox, QComboBox, QDialog, QFrame, QGridLayout, QHBoxLayout, QLabel,
                                QLineEdit, QListWidget, QListWidgetItem, QMessageBox, QPushButton, QScrollArea,
@@ -390,6 +390,29 @@ def _set_quiet(box, on):
         box.setText("An" if on else "Aus")
 
 
+class _WheelGuard(QObject):
+    """Mausrad nur für Zahlen- und Auswahlfelder mit Fokus: Wer die Seite scrollt und dabei über
+    ein Feld fährt, verstellt sonst unbemerkt den Wert (z. B. Mail-Block 3 -> 16 min), und der
+    wird sofort gespeichert. Ohne Fokus scrollt das Rad die Seite weiter."""
+
+    def eventFilter(self, obj, event):
+        if event.type() == QEvent.Wheel and not obj.hasFocus():
+            event.ignore()
+            return True
+        return False
+
+
+_WHEEL_GUARD = None
+
+
+def _guard_wheel(widget):
+    global _WHEEL_GUARD
+    if _WHEEL_GUARD is None:
+        _WHEEL_GUARD = _WheelGuard()
+    widget.setFocusPolicy(Qt.StrongFocus)  # Rad allein gibt keinen Fokus mehr
+    widget.installEventFilter(_WHEEL_GUARD)
+
+
 class _ElidedLabel(QLabel):
     """Wert rechts in einer Zeile (z. B. Pfad): so breit wie nötig, höchstens maximumWidth,
     in schmalen Fenstern in der Mitte mit „…“ gekürzt (voller Text als Tooltip).
@@ -494,12 +517,14 @@ class _Row(QFrame):
             self.control.setAccessibleName(title)
             self.control.setValue(int(main.config.get(target, low) or 0))
             self.control.valueChanged.connect(lambda v: self._set_config(target, v, after))
+            _guard_wheel(self.control)
         elif kind == "theme":
             self.control = QComboBox()
             self.control.setAccessibleName(title)
             for value, text in main.THEME_CHOICES:
                 self.control.addItem(text.replace("&", ""), value)
             self.control.activated.connect(lambda i: self._choose_theme(self.control.itemData(i)))
+            _guard_wheel(self.control)
         elif kind == "choice":
             options, _after = extra
             self.control = QComboBox()
@@ -508,6 +533,7 @@ class _Row(QFrame):
                 self.control.addItem(text, value)
             self.control.activated.connect(
                 lambda i: self._set_config(target, self.control.itemData(i), extra[1]))
+            _guard_wheel(self.control)
         else:  # button
             if extra:
                 self.value = _ElidedLabel()

@@ -53,7 +53,7 @@ def gui_test():
     window.tray.showMessage = lambda title, text, *a: tray_messages.append(title)
     window.show()
 
-    now = datetime.now().replace(microsecond=0)
+    now = datetime.now().replace(second=0, microsecond=0)
     if now.hour == 0 and now.minute < 50:
         print("Kurz nach Mitternacht: Oberflächentest übersprungen")
         return
