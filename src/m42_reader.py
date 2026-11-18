@@ -364,6 +364,7 @@ class M42Reader(BrowserReader):
     tickets_loaded = Signal(object)  # Kategorie im Fenster „Tickets“: {key, rows, error, at, limited}
     ticket_filters_loaded = Signal(object)  # [{id, title}] gespeicherte Filter der Ticketliste
     ticket_task_done = Signal(object)  # Ergebnis von ticket_task(): {kind, ok, data | error, unclear}
+    managers_loaded = Signal(object)  # load_managers(): {OU-Id: {"company", "people": [{role, id, name}]}}
 
     NAME = "Matrix42"
     READ_INTERVAL = 10 * 60   # aktuelle Woche so oft neu lesen
@@ -403,6 +404,7 @@ class M42Reader(BrowserReader):
         self.user_name = ""
         self.my_tickets = None  # letzte Antwort von my_tickets_loaded
         self.ticket_views = {}  # Kategorie -> letzte Antwort von tickets_loaded
+        self.managers_cache = {}  # OU-Id -> (Zeit, {"company", "people"}): Verwalter des Kunden
         self.ticket_filters = None  # letzte Antwort von ticket_filters_loaded
         self.ticket_list = ""   # Ticketliste (Widget-ID), leer = m42_booking.DEFAULT_IDS
         self.ticket_ids = {}    # Kennungen für Anlegen/Schließen, leer = m42_tickets.DEFAULT_IDS
@@ -953,6 +955,56 @@ class M42Reader(BrowserReader):
                 safe_io.log(f"Matrix42: Signatur nicht gelesen ({e})")
         return self._mail_signature or None
 
+    MANAGERS_MAX_AGE = 4 * 3600  # Verwalter ändern sich selten: je Kunde höchstens alle 4 Stunden lesen
+
+    def cached_managers(self, ou):
+        """Verwalter des Kunden aus dem Speicher (None, wenn unbekannt oder zu alt)."""
+        hit = self.managers_cache.get(ou)
+        return hit[1] if hit and time.time() - hit[0] < self.MANAGERS_MAX_AGE else None
+
+    def load_managers(self, ous):
+        """Verwalter mehrerer Kunden im Hintergrund lesen (nur Namen, für die Ticketliste).
+        Ergebnis über managers_loaded, auch schon bekannte. Gibt die bekannten sofort zurück."""
+        ous = [o for o in dict.fromkeys(ous or []) if o]
+        known = {o: self.cached_managers(o) for o in ous if self.cached_managers(o) is not None}
+        todo = [o for o in ous if o not in known]
+        if todo and not self._login_open:
+            threading.Thread(target=self._load_managers, args=(todo,), daemon=True,
+                             name="Matrix42 Verwalter").start()
+        return known
+
+    def _load_managers(self, ous):
+        import m42_tickets as mt
+        ids = dict(mt.DEFAULT_IDS, **{k: v for k, v in self.ticket_ids.items() if v})
+        found = {}
+        try:
+            with self._browser_lock:  # Kunden auf einmal nachschlagen
+                units = mt.fragments_by_id(self._fetch("POST", "/m42Services/api/entity/fragments",
+                                                       mt.fragments_query("SPSOrgUnitClassBase", ous)))
+            roles = {}
+            for ou in ous:  # je Kunde einzeln: dazwischen kommen Ticket-Aufgaben dran
+                unit = units.get(ou)
+                if not unit or not unit["object"]:
+                    continue
+                with self._browser_lock:
+                    roles[ou] = mt.org_unit_managers(self._fetch(
+                        "GET", mt.edit_data_path(ids["org_unit_dialog"], unit["object"])))
+            users = list(dict.fromkeys(u for r in roles.values() for _role, u in r))
+            names = {}
+            if users:
+                with self._browser_lock:
+                    names = mt.fragments_by_id(self._fetch("POST", "/m42Services/api/entity/fragments",
+                                                           mt.fragments_query("SPSUserClassBase", users)))
+            for ou, pairs in roles.items():
+                found[ou] = {"ou": ou, "company": units[ou]["name"], "people": [
+                    {"role": role, "id": u, "name": mt.person_name((names.get(u) or {}).get("name"))}
+                    for role, u in pairs]}
+                self.managers_cache[ou] = (time.time(), found[ou])
+        except Exception as e:
+            safe_io.log(f"Matrix42: Verwalter der Kunden nicht gelesen ({e!r})")
+        if found:
+            self.managers_loaded.emit(found)
+
     def _managers(self, ou, ids):
         """Verwalter und Delegierter Verwalter des Kunden (OU-Id aus dem Ticket), mit Telefon/E-Mail.
         Nur mit gehaltenem _browser_lock."""
@@ -975,7 +1027,10 @@ class M42Reader(BrowserReader):
                     details[user] = {}
             people.append({"role": role, "id": user, "details": details[user],
                            "name": mt.person_name((names.get(user) or {}).get("name"))})
-        return {"ou": ou, "company": unit["name"], "people": people}
+        result = {"ou": ou, "company": unit["name"], "people": people}
+        self.managers_cache[ou] = (time.time(), {"ou": ou, "company": unit["name"], "people": [
+            {k: p[k] for k in ("role", "id", "name")} for p in people]})
+        return result
 
     def _journal(self, ticket_id):
         """Verlauf des Tickets, alle Seiten (neueste zuerst). Nur mit gehaltenem _browser_lock.

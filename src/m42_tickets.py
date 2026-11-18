@@ -521,6 +521,34 @@ def manager_rows(people, initiator=""):
     return rows
 
 
+def manager_pairs(people, initiator=""):
+    """Verwalter als Klartext-Zeilen [(Rolle, Name)], fehlende Rolle als „nicht hinterlegt“."""
+    pairs = [(p.get("role") or "", (p.get("name") or "?") + (" (Melder)" if initiator and p.get("id") == initiator
+                                                            else "")) for p in people or []]
+    if not pairs:
+        return [("Verwalter", "beim Kunden nicht hinterlegt")]
+    have = {role for role, _ in pairs}
+    return pairs + [(role, "nicht hinterlegt") for _key, role in MANAGER_ROLES if role not in have]
+
+
+def manager_summary(info):
+    """Verwalter eines Kunden für die Ticketliste -> (Zellentext, Hinweis). info None: noch unbekannt."""
+    if info is None:
+        return "", ""
+    people = info.get("people") or []
+    if not people:
+        return "–", "Beim Kunden ist kein Verwalter hinterlegt."
+    first = people[0]
+    text = first.get("name") or "?"
+    if first.get("role") != "Verwalter":
+        text += " (deleg.)"
+    tip = "\n".join(f"{p.get('role')}: {p.get('name') or '?'}" for p in people)
+    if len(people) == 1:
+        tip += "\n" + ("Delegierter Verwalter" if first.get("role") == "Verwalter" else "Verwalter") + \
+            ": nicht hinterlegt"
+    return text, tip
+
+
 def ticket_kind(entity):
     """Art des geladenen Tickets für die SLA-Abfrage (0 Störung, 6 Serviceanfrage)."""
     config = ((entity.get("InitialData") or {}).get("Configuration") or {})

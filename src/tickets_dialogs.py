@@ -163,6 +163,7 @@ class TicketsDialog(QDialog):
 
         self.table = TicketTable("Tickets", self)
         self.table.setAccessibleDescription("Enter oder Doppelklick öffnet das Ticket.")
+        self.table.use_reader(reader)  # Spalte „Verwalter“ des Kunden
         self.table.sort_by(len(COLUMNS) - 1, Qt.DescendingOrder)  # neueste zuerst
         self.table.activated.connect(lambda _row: self.view_ticket())
         self.table.itemSelectionChanged.connect(self._selected)

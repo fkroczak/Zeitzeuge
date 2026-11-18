@@ -37,11 +37,12 @@ def gui_test():
         return done()
     ROW = {"ticket": "TCK0000000002", "id": "t2", "subject": "Drucker", "customer": "Müller", "state": "Neu",
            "initiator": "Huber, Max", "recipient": "Kroczak, Filip", "recipient_id": "me",
-           "type": "SPSActivityTypeIncident", "created": ""}
+           "type": "SPSActivityTypeIncident", "created": "", "ou": "ou-1"}
 
     class FakeReader(QObject):
         my_tickets_loaded = Signal(object)
         ticket_task_done = Signal(object)
+        managers_loaded = Signal(object)
         my_tickets = {"at": "10:42", "error": "", "rows": [ROW]}
 
         def __init__(self):
@@ -49,6 +50,13 @@ def gui_test():
             self.tasks = []
             self.fail = set()
             self.solution = ""  # Lösungstext von früher (close_info)
+
+        def load_managers(self, ous):
+            """Verwalter je Kunde: „ou-1“ sofort bekannt, „ou-2“ kommt später über managers_loaded."""
+            if "ou-2" in ous:
+                QTimer.singleShot(0, lambda: self.managers_loaded.emit({"ou-2": {"people": []}}))
+            return {"ou-1": {"people": [{"role": "Delegierter Verwalter", "id": "u9", "name": "Vertreter, Bernd"}]}} \
+                if "ou-1" in ous else {}
 
         def load_my_tickets(self):
             self.my_tickets_loaded.emit(self.my_tickets)
@@ -70,7 +78,8 @@ def gui_test():
                          "details": {"Phone": "02542 1", "Email": "info@example.com"}}]},
                     "edit": {"ticket": ROW["ticket"], "id": "t2", "type": ROW["type"],
                              "subject": "Drucker Empfang"},
-                    "user_details": {"OrgUnit": "WiRoPa GmbH", "Phone": "02542 1", "Email": "info@example.com"},
+                    "user_details": {"OrgUnit": "WiRoPa GmbH", "Phone": "02542 1", "Email": "info@example.com",
+                                     "OrgUnitId": "ou-1"},
                     "take_over": {"ticket": ROW["ticket"], "id": "t2", "user": "Kroczak, Filip"},
                     "melder": {"user": {"id": "melder-1", "name": ROW["initiator"]},
                                "details": {"OrgUnit": "WiRoPa GmbH", "Phone": "02542 1"}},
@@ -111,7 +120,7 @@ def gui_test():
         QTest.qWait(500)  # Suche nach kurzer Pause
         seen["users"] = dialog.users.count()
         dialog._take_user(dialog.users.item(0))
-        QTest.qWait(20)
+        wait_for(lambda: dialog.user_rows.rowCount() > 4, 2000)
         seen["card"] = [dialog.user_rows.itemAt(i, QFormLayout.FieldRole).widget().text()
                         for i in range(dialog.user_rows.rowCount())]
         dialog.category_edit.setCurrentText("Visaas > Server > Fileserver")
@@ -124,7 +133,8 @@ def gui_test():
     QTimer.singleShot(0, fill_new)
     mine.new_button.click()
     assert seen == {"category": "cat-in", "ok_before": False, "users": 1, "ok_after": True, "incident_off": True,
-                    "card": ["Brüning, Gerd", "WiRoPa GmbH", "02542 1", "info@example.com"]}, seen
+                    "card": ["Brüning, Gerd", "WiRoPa GmbH", "02542 1", "info@example.com",
+                             "Huber, Max (Melder)", "nicht hinterlegt"]}, seen
     kind, args = reader.tasks[-1]
     assert kind == "create", reader.tasks
     assert {k: v for k, v in args["request"].items()} == {
@@ -381,10 +391,18 @@ def gui_test():
     table_dialog.filter_edit.setText("drucker weber")
     assert order() == ["2"] and "1 passen zum Filter" in table_dialog.status.text(), table_dialog.status.text()
     table_dialog.filter_edit.setText("störung")  # Spalte Art
-    assert len(order()) == 3 and table_dialog.table.item(0, 4).text() == "Störung"
+    assert len(order()) == 3 and table_dialog.table.item(0, 5).text() == "Störung"
     table_dialog.filter_edit.setText("serviceanfrage")
     assert order() == []
     table_dialog.filter_edit.clear()
+    # Spalte Verwalter: bekannte sofort, andere kommen nach („–“ = nicht hinterlegt)
+    col = table_dialog.table.MANAGERS_COL
+    assert table_dialog.table.horizontalHeaderItem(col).text() == "Verwalter"
+    assert table_dialog.table.item(0, col).text() == "Vertreter, Bernd (deleg.)"
+    assert "Verwalter: nicht hinterlegt" in table_dialog.table.item(0, col).toolTip()
+    table_dialog.table.set_rows([dict(r, ou="ou-2") for r in table_dialog.table.visible_rows()])
+    assert wait_for(lambda: table_dialog.table.item(0, col).text() == "–", 2000)
+    table_dialog.table.set_rows(reader.my_tickets["rows"])
     table_dialog.table.sort_by(2, Qt.AscendingOrder)  # Kunde
     assert [r["customer"] for r in table_dialog.visible_rows()] == ["Schmidt", "Weber", "Weber"]
     table_dialog.filter_edit.setFocus()
@@ -604,6 +622,23 @@ def gui_test():
     act.ok_button.click()
     assert wait_for(lambda: act.result() == QDialog.Accepted, 3000)
     assert last("mail")["known_users"] == {"info@example.com": "melder-1"}
+
+    # Verwalter mit einem Klick ins CC (der Melder selbst nicht doppelt)
+    managers = [{"role": "Verwalter", "id": "melder-1", "name": "Huber, Max", "email": "INFO@example.com"},
+                {"role": "Delegierter Verwalter", "id": "u9", "name": "Vertreter, Bernd", "email": "b@kunde.example"}]
+    act = TicketActionDialog(reader, ROW, "mail", contact={"email": "info@example.com", "initiator_id": "melder-1",
+                                                           "managers": managers})
+    assert [c.text() for c in act.cc_checks] == ["CC: Vertreter, Bernd (Delegierter Verwalter)"]
+    act.cc_edit.setText("x@y.example")
+    act.cc_checks[0].setChecked(True)
+    assert act.cc_edit.text() == "x@y.example; b@kunde.example"
+    act.cc_checks[0].setChecked(False)
+    act.cc_checks[0].setChecked(True)
+    act.text_edit.setPlainText("Hallo")
+    act.ok_button.click()
+    assert wait_for(lambda: act.result() == QDialog.Accepted, 3000)
+    assert last("mail")["cc"] == "x@y.example; b@kunde.example"
+    assert last("mail")["known_users"] == {"info@example.com": "melder-1", "b@kunde.example": "u9"}
 
     act = TicketActionDialog(reader, ROW, "pause")
     assert wait_for(lambda: act.reason_combo.count() == 2, 3000)

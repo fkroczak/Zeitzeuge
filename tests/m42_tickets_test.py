@@ -606,3 +606,37 @@ def test_verwalter_nicht_hinterlegt():
     assert mt.fragments_query("SPSUserClassBase", [None, ""]) == []
     assert mt.person_name("Lütke Sunderhaus, Ursula - Oberwies GmbH & Co. KG ") == "Lütke Sunderhaus, Ursula"
     assert mt.manager_rows([{"role": "Verwalter", "id": "a", "name": "<b>X</b>"}]) == [("Verwalter", "&lt;b&gt;X&lt;/b&gt;")]
+
+
+def test_verwalter_klartext_und_liste():
+    people = [{"role": "Delegierter Verwalter", "id": "d", "name": "Vertreter, Bernd"}]
+    assert mt.manager_pairs(people, "d") == [("Delegierter Verwalter", "Vertreter, Bernd (Melder)"),
+                                             ("Verwalter", "nicht hinterlegt")]
+    assert mt.manager_pairs([]) == [("Verwalter", "beim Kunden nicht hinterlegt")]
+    assert mt.manager_summary(None) == ("", "")
+    assert mt.manager_summary({"people": []})[0] == "–"
+    text, tip = mt.manager_summary({"people": people})
+    assert text == "Vertreter, Bernd (deleg.)" and tip.endswith("Verwalter: nicht hinterlegt")
+    two = [{"role": "Verwalter", "name": "Chef, Anna"}] + people
+    assert mt.manager_summary({"people": two}) == ("Chef, Anna", "Verwalter: Chef, Anna\nDelegierter Verwalter: Vertreter, Bernd")
+
+
+def test_verwalter_fuer_die_liste_gesammelt(tmp_path):
+    """load_managers: Kunden auf einmal nachschlagen, je Kunde den Dialog, Namen auf einmal; danach aus dem Speicher."""
+    reader, calls, got = _reader(tmp_path, OU_ANSWERS)
+    loaded = []
+    reader.managers_loaded.connect(loaded.append)
+
+    def fetch(method, path, body=None, content_type=None):
+        calls.append((method, path.split("?")[0], body))
+        if path.endswith("/entity/fragments"):
+            return [{"Id": q["ids"][0], "ObjectId": OU_OBJECT if q["ids"][0] == OU else "",
+                     "DisplayString": {OU: "Kunde GmbH", VERWALTER: "Chef, Anna - Kunde GmbH",
+                                       DELEGIERT: "Vertretung, Ben - Kunde GmbH"}.get(q["ids"][0], "")} for q in body]
+        return next((v for k, v in OU_ANSWERS.items() if k in path), None)
+    reader._fetch = fetch
+    reader._load_managers([OU, "ohne-objekt"])
+    assert [c[0] for c in calls] == ["POST", "GET", "POST"]  # nicht je Ticket, keine UserDetails
+    assert loaded[-1][OU]["people"][0] == {"role": "Verwalter", "id": VERWALTER, "name": "Chef, Anna"}
+    calls.clear()
+    assert reader.load_managers([OU]) == {OU: loaded[-1][OU]} and not calls  # aus dem Speicher

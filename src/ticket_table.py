@@ -1,4 +1,5 @@
-"""Tickettabelle für „Tickets“ und „Ticket suchen“: Spalten Ticket, Betreff, Kunde, Melder,
+"""Tickettabelle für „Tickets“ und „Ticket suchen“: Spalten Ticket, Betreff, Kunde, Verwalter (des Kunden,
+aus Matrix42 nachgeladen, siehe use_reader), Melder,
 Art (Störung/Serviceanfrage), Status, Bearbeiter, Angelegt; nach jeder Spalte sortierbar, filterbar (jedes Wort muss vorkommen, wie bei
 der Ticketsuche), erledigte Tickets grau. Enter oder Doppelklick: Signal activated(row).
 Spaltenbreiten lassen sich im Kopf ziehen; gezogene Breiten bleiben (je Tabelle gespeichert),
@@ -8,6 +9,8 @@ sich per Rechtsklick als gelesen markieren (mark_read, nur in Zeitzeuge gemerkt)
 übrigen Zeilen in der Farbe ihres Status (Einstellungen → Darstellung → Tickets).
 """
 from PySide6.QtCore import QSettings, Qt, Signal
+
+import m42_tickets as mt
 from PySide6.QtGui import QAction, QColor, QKeySequence, QPainter, QPalette
 from PySide6.QtWidgets import (QAbstractItemView, QHeaderView, QMenu, QStyle, QStyledItemDelegate, QTableWidget,
                                QTableWidgetItem)
@@ -16,10 +19,11 @@ import m42_booking as mb
 import skeleton
 
 # Spalte -> Feld der Ticketzeile (m42_booking.ticket_row)
-COLUMNS = [("Ticket", "ticket"), ("Betreff", "subject"), ("Kunde", "customer"), ("Melder", "initiator"),
+COLUMNS = [("Ticket", "ticket"), ("Betreff", "subject"), ("Kunde", "customer"), ("Verwalter", "managers"),
+           ("Melder", "initiator"),
            ("Art", "type"), ("Status", "state"), ("Bearbeiter", "recipient"), ("Angelegt", "created")]
 SUBJECT_COL = 1
-PEOPLE_KEYS = ("customer", "initiator", "recipient")
+PEOPLE_KEYS = ("customer", "managers", "initiator", "recipient")
 # Kunde, Melder, Bearbeiter: Anteil an der Tabellenbreite, in Grenzen. Fest 150 px ließen dem
 # Betreff bei 1280 px Fensterbreite nur 160 px („Meldung ploppt …“)
 PEOPLE_SHARE, PEOPLE_MIN, PEOPLE_MAX = 0.09, 70, 130
@@ -146,10 +150,13 @@ class TicketTable(QTableWidget):
         self.page_size = 0  # Tickets je Seite, 0 = alle auf einer Seite
         self.page = 0
         self._loading = False
+        self._reader = None  # liefert Verwalter je Kunde (use_reader)
+        self._managers = {}  # OU-Id -> Verwalter des Kunden (m42_tickets.manager_summary)
         # Vom Benutzer gezogene Breiten {Feld: px}; _fit_columns lässt sie stehen
         self._fitting = False
         self._settings_key = "ticket_table/%s/widths" % name
         self._user_widths = self._load_widths()
+        self.setColumnHidden(self.MANAGERS_COL, True)  # erst mit use_reader (Verwalter kommen aus Matrix42)
         header.sectionResized.connect(self._section_resized)
         header.setContextMenuPolicy(Qt.CustomContextMenu)
         header.customContextMenuRequested.connect(self._header_menu)
@@ -163,6 +170,33 @@ class TicketTable(QTableWidget):
         enter.setShortcutContext(Qt.WidgetShortcut)
         enter.triggered.connect(self._activate)
         self.addAction(enter)
+
+    def use_reader(self, reader):
+        """Verwalter der Kunden aus Matrix42 nachladen (M42Reader.load_managers), sobald Tickets da sind."""
+        self._reader = reader
+        self.setColumnHidden(self.MANAGERS_COL, False)
+        if hasattr(reader, "managers_loaded"):
+            reader.managers_loaded.connect(self.set_managers, Qt.QueuedConnection)
+
+    MANAGERS_COL = [key for _n, key in COLUMNS].index("managers")
+
+    def set_managers(self, found):
+        """Verwalter je Kunde (OU-Id -> Info) eintragen, in allen Zeilen dieses Kunden."""
+        self._managers.update(found or {})
+        for r in range(self.rowCount()):
+            ou = self.row_at(r).get("ou")
+            if ou in (found or {}):
+                self._fill_managers(r, self.row_at(r))
+        self._fit_columns()
+
+    def _fill_managers(self, r, row):
+        text, tip = mt.manager_summary(self._managers.get(row.get("ou")))
+        item = self.item(r, self.MANAGERS_COL)
+        if item is None:
+            return
+        item.setText(text)
+        item.key = text.casefold() if text != "–" else "~"  # „nicht hinterlegt“ ans Ende
+        item.setToolTip(f"{row.get('customer') or 'Kunde'}\n{tip}" if tip else mb.ticket_tooltip(row))
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -223,6 +257,8 @@ class TicketTable(QTableWidget):
         small = {}
         fixed = 0  # schon vergebene Breite (ohne Betreff und Art/Status/Angelegt)
         for col, (_name, key) in enumerate(COLUMNS):
+            if self.isColumnHidden(col):
+                continue
             if key in self._user_widths:
                 want = self._user_widths[key]
                 header.resizeSection(col, want)
@@ -309,6 +345,13 @@ class TicketTable(QTableWidget):
                     item.setData(Qt.UserRole, row)
                     item.setData(MARK_ROLE, mark)
                 self.setItem(r, c, item)
+            self._fill_managers(r, row)
+        if self._reader is not None and hasattr(self._reader, "load_managers"):
+            known = self._reader.load_managers([row.get("ou") for row in rows if not mb.is_closed(row)])
+            if known:
+                self._managers.update(known)
+                for r in range(self.rowCount()):
+                    self._fill_managers(r, self.row_at(r))
         if self._sort:
             self.sortItems(*self._sort)
         self._show_page()
