@@ -621,7 +621,8 @@ class EditTicketDialog(_MelderSearch, _CardDialog):
                                     f"(Status danach {mb.WORKING_STATE}).")
         self.assigned_hint.setWordWrap(True)
         self.assigned_hint.setObjectName("hint")
-        self.assigned_hint.setVisible(self.needs_take_over())
+        if not self.needs_take_over():  # nur verstecken, siehe card_dialog.modernize
+            self.assigned_hint.hide()
         box.addWidget(self.assigned_hint)
 
         self.ok_button.clicked.connect(self.save)

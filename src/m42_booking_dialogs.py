@@ -80,6 +80,9 @@ class BookingDialog(_TicketSearch, CardParts, QDialog):
         layout.addWidget(intro)
 
         form = QFormLayout()
+        # Sofort ins Fenster hängen: sonst hätten die Felder noch kein Elternfenster, und setVisible(True)
+        # (Kulanz, Zuschlag, Zeitzeile) zeigte jedes kurz als eigenes kleines Fenster.
+        layout.addLayout(form)
         # Ein Feld für beides: Ticketnummer eintragen oder Kunde, Benutzer, Titel tippen und suchen.
         # Ohne Ticket steht der Kunde drin und die Suche läuft gleich los.
         self.ticket_edit = QLineEdit(plan.get("ticket", "") or plan.get("customer", ""))
@@ -194,7 +197,6 @@ class BookingDialog(_TicketSearch, CardParts, QDialog):
         self.text_edit.setTabChangesFocus(True)
         self.text_edit.setFixedHeight(90)
         form.addRow("&Beschreibung:", self.text_edit)
-        layout.addLayout(form)
 
         self.warning = QLabel()
         self.warning.setWordWrap(True)

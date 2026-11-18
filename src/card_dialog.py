@@ -172,7 +172,8 @@ def modernize(dialog, title, subtitle="", icon="doc", intro=None, scroll=False, 
     else:
         dialog.card_subtitle = QLabel(subtitle or (intro.text() if intro else ""))
         dialog.card_subtitle.setWordWrap(True)
-        dialog.card_subtitle.setVisible(bool(dialog.card_subtitle.text()))
+        if not dialog.card_subtitle.text():  # nur verstecken: setVisible(True) ohne Elternfenster
+            dialog.card_subtitle.hide()       # zeigte das Label kurz als eigenes kleines Fenster
     dialog.card_subtitle.setObjectName("hint")
     texts.addWidget(dialog.card_subtitle)
     row_head.addLayout(texts, 1)

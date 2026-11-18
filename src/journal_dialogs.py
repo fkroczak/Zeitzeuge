@@ -659,7 +659,8 @@ class EntryDialog(CardParts, QDialog):
         self.title.setObjectName("prompt_title")
         self.subtitle = _ElidedLabel(info or (customer if can_delete else ""))
         self.subtitle.setObjectName("hint")
-        self.subtitle.setVisible(bool(self.subtitle.full_text()))
+        if not self.subtitle.full_text():  # nur verstecken: setVisible(True) ohne Elternfenster zeigte
+            self.subtitle.hide()           # das Label kurz als eigenes kleines Fenster
         texts.addWidget(self.title)
         texts.addWidget(self.subtitle)
         head.addLayout(texts, 1)
