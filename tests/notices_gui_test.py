@@ -104,6 +104,18 @@ def gui_test():
     blocker.close()
     assert wait_for(lambda: card.isVisible() and later.isVisible()), "Hinweise kommen nicht wieder"
     assert not card._blocked and not later._blocked
+    assert later.frameGeometry().bottom() <= card.frameGeometry().top() + 1 or \
+        card.frameGeometry().bottom() <= later.frameGeometry().top() + 1, "überdecken sich nach der Sperre"
+    # Nur fensterweise gesperrt (WindowModal, z. B. Buchung zu einem Fenster): Hinweis bleibt stehen
+    owner = QDialog(window)
+    owner.show()
+    side = QDialog(owner)
+    side.setWindowModality(Qt.WindowModal)
+    side.show()
+    QTest.qWait(700)
+    assert card.isVisible() and not card._blocked
+    side.close()
+    owner.close()
     for notice in list(window._notices):
         notice._finish(notice.closed)
     flush_deletes()

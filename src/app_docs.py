@@ -7,7 +7,7 @@ import os
 
 from datetime import datetime, timedelta
 
-from PySide6.QtCore import QDate, QTimer
+from PySide6.QtCore import QDate, Qt, QTimer
 from PySide6.QtWidgets import QApplication, QDialog, QMessageBox
 
 from ai_classifier import to_entries
@@ -15,7 +15,7 @@ from billing import Billing
 from journal import describe, entry_key as journal_key, open_entry, sub_entries, ticket_line
 from journal_dialogs import (prompt_thresholds, EntryDialog, PromptStrip, PromptWindow,
                              default_span, PROMPT_SOURCES, prompt_style, prompt_timeout)
-from prompt_card import entry_label, prompt_position
+from prompt_card import _AutoHide, entry_label, prompt_position
 import snippets
 import tickets
 from snippets_dialogs import SnippetsDialog
@@ -774,9 +774,27 @@ class DocsMixin(CustomersMixin):
         self.end_of_day_reminder(open_items, now)
 
     @staticmethod
-    def _modal_open():
+    def _blocking_modal(window=None):
+        """Offenes Fenster, das alle anderen sperrt (z. B. „Ticket ansehen“, „Tätigkeit nachtragen“),
+        sonst None. Fenster, die window selbst geöffnet hat (Kind, Enkel …), zählen nicht: die sperren
+        window nicht. Fensterweise modale (WindowModal) sperren nur ihre Eltern, nie eine Benachrichtigung."""
         app = QApplication.instance()
-        return app is not None and app.activeModalWidget() is not None
+        if app is None:
+            return None
+        for widget in app.topLevelWidgets():
+            if (not widget.isVisible() or widget.windowModality() != Qt.ApplicationModal
+                    or isinstance(widget, _AutoHide)):
+                continue
+            own = widget
+            while own is not None and own is not window:
+                own = own.parentWidget()
+            if window is None or own is None:
+                return widget
+        return None
+
+    @classmethod
+    def _modal_open(cls):
+        return cls._blocking_modal() is not None
 
     def _watch_modal(self):
         """Einmal anmelden: Fokuswechsel der Anwendung (auch beim Öffnen und Schließen sperrender
@@ -800,28 +818,31 @@ class DocsMixin(CustomersMixin):
         QTimer.singleShot(0, self._check_modal)
 
     def _check_modal(self):
-        """Sperrendes Fenster auf (nicht aus der Karte selbst): offene Nachfrage und Hinweise (z. B.
-        „Feierabend: bitte prüfen“) ausblenden, sie wären davor nicht bedienbar und nicht wegzuklicken.
-        Fenster zu: wieder zeigen. Der Countdown hält solange an (_blocked)."""
+        """Gilt für alle Benachrichtigungen (Nachfrage als Karte/Leiste, Hinweise als Karte/Leiste,
+        alles mit _AutoHide): Sperrt ein anderes Fenster sie, ausblenden, sie wären davor nicht
+        bedienbar und nicht wegzuklicken. Fenster zu: wieder zeigen. Der Countdown hält an (_blocked)."""
         from shiboken6 import isValid
         app = QApplication.instance()
-        modal = app.activeModalWidget() if app is not None else None
-        windows = [self._prompt_window] + list(getattr(self, "_notices", []))
+        if app is None:
+            return
+        windows = [w for w in app.topLevelWidgets()
+                   if isinstance(w, _AutoHide) and isValid(w) and not getattr(w, "_done", False)]
+        back = []
         for window in windows:
-            if window is None or not isValid(window) or getattr(window, "_done", False):
-                continue
-            own = modal
-            while own is not None and own is not window:
-                own = own.parentWidget()
-            if modal is not None and own is None:
+            if self._blocking_modal(window) is not None:
                 if window.isVisible():
                     window._blocked = True
                     window._hidden_for_modal = True
                     window.hide()
-            elif modal is None and getattr(window, "_hidden_for_modal", False):
+            elif getattr(window, "_hidden_for_modal", False):
                 window._hidden_for_modal = False
                 window._blocked = False
-                window.show()
+                back.append(window)
+        notices = getattr(self, "_notices", [])
+        for window in sorted(back, key=lambda w: w in notices):  # Nachfrage zuerst, Hinweise darüber
+            if window in notices:  # neu stapeln: während der Sperre können andere gekommen oder gegangen sein
+                window.dock_bottom_right(self._notice_margin(window))
+            window.show()
 
     def _retry_prompt_after_modal(self):
         if self._prompt_window is None and self._modal_open():
