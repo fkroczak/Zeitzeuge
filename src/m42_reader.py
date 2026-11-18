@@ -769,7 +769,7 @@ class M42Reader(BrowserReader):
 
     def ticket_task(self, kind, **args):
         """Im Hintergrund: "users" (text), "user_details" (user), "melder" (name), "categories", "create" (request),
-        "load" (id), "journal" (id), "edit" (request), "take_over" (id, type, ticket), "close_info" (id, type), "close" (request),
+        "load" (id), "journal" (id), "managers" (ou), "edit" (request), "take_over" (id, type, ticket), "close_info" (id, type), "close" (request),
         Aktionen (ACTION_TASKS): "comment", "mail", "pause", "forward" (request), "mail_info", "pause_reasons", "roles",
         "forward_users" (text, role), "mark_read" (id, type), "attachment" (file).
         Ergebnis über ticket_task_done. False, wenn gerade ein Anmeldefenster offen ist."""
@@ -816,6 +816,8 @@ class M42Reader(BrowserReader):
                     result["data"] = mt.ticket_view(mt.loaded_entity(data))
                 elif kind == "journal":
                     result["data"] = self._journal(args["id"])
+                elif kind == "managers":
+                    result["data"] = self._managers(args["ou"], ids)
                 elif kind == "edit":
                     result["data"] = self._edit_ticket(args["request"], ids, state)
                 elif kind == "take_over":
@@ -950,6 +952,30 @@ class M42Reader(BrowserReader):
             except Exception as e:  # dann ohne Signatur
                 safe_io.log(f"Matrix42: Signatur nicht gelesen ({e})")
         return self._mail_signature or None
+
+    def _managers(self, ou, ids):
+        """Verwalter und Delegierter Verwalter des Kunden (OU-Id aus dem Ticket), mit Telefon/E-Mail.
+        Nur mit gehaltenem _browser_lock."""
+        import m42_tickets as mt
+        api = "/m42Services/api"
+        unit = mt.fragments_by_id(self._fetch("POST", f"{api}/entity/fragments",
+                                              mt.fragments_query("SPSOrgUnitClassBase", [ou]))).get(ou)
+        if not unit or not unit["object"]:
+            raise mt.BookingError("Kunde nicht gefunden")
+        roles = mt.org_unit_managers(self._fetch("GET", mt.edit_data_path(ids["org_unit_dialog"], unit["object"])))
+        names = mt.fragments_by_id(self._fetch("POST", f"{api}/entity/fragments", mt.fragments_query(
+            "SPSUserClassBase", list(dict.fromkeys(user for _role, user in roles))))) if roles else {}
+        people, details = [], {}
+        for role, user in roles:
+            if user not in details:
+                try:
+                    details[user] = self._fetch("GET", f"{api}/activity/UserDetails/{user}/?userId={user}") or {}
+                except Exception as e:  # Name reicht zur Not
+                    safe_io.log(f"Matrix42: Kontakt des Verwalters nicht gelesen ({e!r})")
+                    details[user] = {}
+            people.append({"role": role, "id": user, "details": details[user],
+                           "name": mt.person_name((names.get(user) or {}).get("name"))})
+        return {"ou": ou, "company": unit["name"], "people": people}
 
     def _journal(self, ticket_id):
         """Verlauf des Tickets, alle Seiten (neueste zuerst). Nur mit gehaltenem _browser_lock.

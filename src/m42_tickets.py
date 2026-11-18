@@ -45,6 +45,14 @@ Schließen: POST /ticket/CloseWizardInitialData/?ticketType=<Typ> [Id] -> Katego
 POST /ticket/Close mit Lösungstext (Comments, HTML). Beim Öffnen des Fensters holt „close_info“
 die Startwerte und das Ticket: ein Lösungstext von früher (Ticket wieder eröffnet) wird vorbelegt.
 
+Verwalter des Kunden (Mitschnitt „Ticket ansehen“ vom 18.11.2026, Klick auf den Kunden im Ticket):
+1. Ticket: SPSCommonClassBase.OU = Id des Kunden (Fragment-Id, wie UserDetails.OrgUnitId).
+2. POST /entity/fragments [{"entityClass": "SPSOrgUnitClassBase", "ids": [OU]}] -> ObjectId, Anzeigename.
+3. GET /WidgetCommon/GetData/<Kundendialog>/<ObjectId>?archived=false -> SPSOrgUnitClassBase.Manager
+   („Verwalter“) und SubManager („Delegierte Verwalter“), je eine Benutzer-Id oder null.
+4. POST /entity/fragments [{"entityClass": "SPSUserClassBase", "ids": [Id]}, …] -> Namen
+   („Spiekermann, Jörg - Kropff-Federath'sche Stiftung …“), dann /activity/UserDetails für Telefon/E-Mail.
+
 Melder suchen: POST /entity/fragments/forControl (Personenauswahl im Ticketdialog).
 Kategorien: POST /entity/tree (ganzer Kategoriebaum).
 """
@@ -60,7 +68,8 @@ from m42_booking import API, BookingError, EMPTY_RELATIONS, wrap
 DEFAULT_IDS = {"ticket_dialog": "be4ceef2-aadf-ca41-a130-08d46543427a",            # Neues Ticket
                "ticket_edit_dialog": "89427fc1-3c2b-c21a-f6dc-08d46550b705",       # Serviceanfrage
                "incident_edit_dialog": "44823b12-332d-c3fb-7d47-08d2f40c5bfe",     # Störung
-               "ticket_type_edit_dialog": "2725327a-bc66-ef11-debc-0050569e2f05"}  # Ticket
+               "ticket_type_edit_dialog": "2725327a-bc66-ef11-debc-0050569e2f05",  # Ticket
+               "org_unit_dialog": "be4a3af4-b45d-ca53-2e23-08d383179037"}          # Kunde (OU)
 
 INCIDENT, SERVICE_REQUEST = 0, 6  # SPSTicketPickupType: 0 Störung, 6 Serviceanfrage (5 Ticket)
 TYPES = [(INCIDENT, "Störung (Incident)"), (SERVICE_REQUEST, "Serviceanfrage (Service Request)")]
@@ -430,6 +439,7 @@ def ticket_view(entity):
             "category": base.get("Category"), "rich": bool(RICH_HTML.search(description)),
             "html": view_html(description) if RICH_HTML.search(description) else "",
             "stamp": stamp(entity), "initiator": base.get("Initiator") or "",
+            "ou": (entity.get("SPSCommonClassBase") or {}).get("OU") or "",
             "callback": ((entity.get("SPSActivityClassIncident") or {}).get("Callback") or "").strip(),
             # Kontakt des Melders kommt mit dem Ticket (Telefon, E-Mail, Firma), dann ohne Extra-Abfrage
             "contact": _user_details(entity)}
@@ -464,6 +474,51 @@ def contact_rows(details, name="", callback=""):
     if location and location.lower() != "global":
         rows.append(("Standort", location, ""))
     return [r for r in rows if r[1]]
+
+
+MANAGER_ROLES = (("Manager", "Verwalter"), ("SubManager", "Delegierter Verwalter"))
+
+
+def fragments_query(entity_class, ids):
+    """POST /entity/fragments: Anzeigenamen (und ObjectId) zu Ids, je Id ein Eintrag."""
+    return [{"entityClass": entity_class, "ids": [i]} for i in ids if i]
+
+
+def fragments_by_id(data):
+    """Antwort von /entity/fragments -> {Id: {"object": ObjectId, "name": Anzeigename}}."""
+    return {f["Id"]: {"object": f.get("ObjectId") or "", "name": (f.get("DisplayString") or "").strip()}
+            for f in (data if isinstance(data, list) else []) if isinstance(f, dict) and f.get("Id")}
+
+
+def org_unit_managers(data):
+    """Kunde aus WidgetCommon/GetData -> [(Rolle, Benutzer-Id)] für Verwalter und Delegierten Verwalter,
+    nur die hinterlegten."""
+    entity = data.get("Entity", data) if isinstance(data, dict) else {}
+    base = (entity or {}).get("SPSOrgUnitClassBase") or {}
+    return [(role, base[key]) for key, role in MANAGER_ROLES if base.get(key)]
+
+
+def person_name(display):
+    """„Spiekermann, Jörg - Kropff-Federath'sche Stiftung …“ -> „Spiekermann, Jörg“."""
+    return (display or "").split(" - ", 1)[0].strip()
+
+
+def manager_rows(people, initiator=""):
+    """Verwalter des Kunden -> [(Rolle, HTML)] fürs Fenster: Name, Telefon und E-Mail als Links.
+    Ist der Verwalter selbst Melder, steht „(Melder)“ dahinter."""
+    rows = []
+    for p in people or []:
+        details = p.get("details") or {}
+        parts = [html.escape(p.get("name") or "?") + (" (Melder)" if initiator and p.get("id") == initiator else "")]
+        for number in (details.get("Phone"), details.get("MobilePhone") or details.get("Mobile")):
+            if isinstance(number, str) and re.search(r"\d", number):
+                digits = re.sub(r"[^\d+]", "", number)
+                parts.append(f'<a href="tel:{digits}">{html.escape(number.strip())}</a>')
+        mail = details.get("Email")
+        if isinstance(mail, str) and "@" in mail:
+            parts.append(f'<a href="mailto:{html.escape(mail.strip(), quote=True)}">{html.escape(mail.strip())}</a>')
+        rows.append((p.get("role") or "", " · ".join(parts)))
+    return rows
 
 
 def ticket_kind(entity):

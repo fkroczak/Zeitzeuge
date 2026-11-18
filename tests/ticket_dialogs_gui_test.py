@@ -64,7 +64,10 @@ def gui_test():
                     "close_info": {"solution": self.solution},
                     "load": {"id": "t2", "ticket": ROW["ticket"], "type": ROW["type"], "subject": "Drucker",
                              "description": "Druckt nicht", "category": "cat-in", "rich": False,
-                             "stamp": "s1", "initiator": "melder-1", "callback": "0171 5"},
+                             "stamp": "s1", "initiator": "melder-1", "callback": "0171 5", "ou": "ou-1"},
+                    "managers": {"ou": "ou-1", "company": "WiRoPa GmbH", "people": [
+                        {"role": "Verwalter", "id": "melder-1", "name": "Huber, Max",
+                         "details": {"Phone": "02542 1", "Email": "info@example.com"}}]},
                     "edit": {"ticket": ROW["ticket"], "id": "t2", "type": ROW["type"],
                              "subject": "Drucker Empfang"},
                     "user_details": {"OrgUnit": "WiRoPa GmbH", "Phone": "02542 1", "Email": "info@example.com"},
@@ -221,6 +224,13 @@ def gui_test():
     assert 'href="tel:025421"' in contact["Telefon"] and 'href="mailto:info@example.com"' in contact["E-Mail"]
     assert 'href="tel:01715"' in contact["Rückruf"], contact
     assert ("user_details", {"owner": id(view), "user": "melder-1"}) in reader.tasks
+    # Zuständig beim Kunden: Verwalter (hier selbst Melder) mit Links, fehlender Delegierter sichtbar
+    assert ("managers", {"owner": id(view), "ou": "ou-1"}) in reader.tasks
+    managers = {view.manager_rows.itemAt(i, QFormLayout.LabelRole).widget().text():
+                view.manager_rows.itemAt(i, QFormLayout.FieldRole).widget().text()
+                for i in range(view.manager_rows.rowCount())}
+    assert managers["Verwalter"].startswith("Huber, Max (Melder)") and 'href="tel:025421"' in managers["Verwalter"]
+    assert managers["Delegierter Verwalter"] == "nicht hinterlegt", managers
     assert not any(k in ("edit", "close") for k, _ in reader.tasks[-2:])
     assert not view.cancel_button.isVisibleTo(view), "kein „Fertig“: schließen über ✕"
     # Verlauf: erst beim Anklicken geladen, Zeitstrahl; E-Mail per Klick auf- und zuklappen

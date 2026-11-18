@@ -247,7 +247,7 @@ def test_ticket_bearbeiten_felder():
     assert view == {"id": "ticket-1", "ticket": "TCK0000050866", "type": "SPSActivityTypeServiceRequest",
                     "subject": "Rückmeldung", "description": "- Anpassungen an ZRO Ordnern\nx",
                     "category": CAT, "rich": True, "stamp": "00000000DC09AE2F/00000000DC09AEE9",
-                    "initiator": MELDER, "callback": "02542 1", "contact": {},
+                    "initiator": MELDER, "ou": "", "callback": "02542 1", "contact": {},
                     "html": mt.view_html(LOADED["SPSActivityClassBase"]["DescriptionHTML"])}
     assert mt.loaded_entity(LOADED) is LOADED  # auch ohne Hülle
     with pytest.raises(BookingError):
@@ -559,3 +559,50 @@ def test_journal_aenderungen_gebuendelt_und_mailvorschau():
     assert "3 Änderungen: SLA geändert · Kategorie geändert · Priorität geändert<small> · Kollege, Kai" in page
     assert "Die Kategorie wurde geändert" not in page  # erst nach „mehr“
     assert "Die Kategorie wurde geändert" in mt.journal_html(entries, {rows[1]["id"]})
+
+
+# ------------------------------------------- Verwalter des Kunden (Mitschnitt „Ticket ansehen“ 18.11.2026)
+
+OU, OU_OBJECT, VERWALTER, DELEGIERT = "ou-1", "ou-obj-1", "user-v", "user-d"
+OU_ANSWERS = {"GetData/" + mt.DEFAULT_IDS["org_unit_dialog"]: {"Entity": {
+                  "Sys-Entity": "SPSOrgUnitType", "ID": OU_OBJECT,
+                  "SPSOrgUnitClassBase": {"ID": OU, "Manager": VERWALTER, "SubManager": DELEGIERT, "Type": 18}}},
+              "UserDetails/" + VERWALTER: {"Phone": "02542 1", "Email": "chef@kunde.example"},
+              "UserDetails/" + DELEGIERT: {"MobilePhone": "0171 2"}}
+
+
+def test_verwalter_des_kunden(tmp_path):
+    reader, calls, got = _reader(tmp_path, OU_ANSWERS)
+
+    def fragments(method, path, body=None, content_type=None):
+        calls.append((method, path.split("?")[0], body))
+        if path.endswith("/entity/fragments"):
+            names = {OU: ("ou-obj-1", "Kunde GmbH (3138)"), VERWALTER: ("o-v", "Chef, Anna - Kunde GmbH"),
+                     DELEGIERT: ("o-d", "Vertretung, Ben - Kunde GmbH - Werk 2")}
+            return [{"Id": q["ids"][0], "ObjectId": names[q["ids"][0]][0], "DisplayString": names[q["ids"][0]][1]}
+                    for q in body]
+        return next((v for k, v in OU_ANSWERS.items() if k in path), None)
+    reader._fetch = fragments
+    reader._ticket_task("managers", {"ou": OU})
+    assert got[-1]["ok"], got[-1]
+    data = got[-1]["data"]
+    assert data["company"] == "Kunde GmbH (3138)"
+    assert [(p["role"], p["name"]) for p in data["people"]] == [("Verwalter", "Chef, Anna"),
+                                                                 ("Delegierter Verwalter", "Vertretung, Ben")]
+    assert calls[0][2] == [{"entityClass": "SPSOrgUnitClassBase", "ids": [OU]}]
+    assert calls[1][:2] == ("GET", f"/m42Services/api/WidgetCommon/GetData/{mt.DEFAULT_IDS['org_unit_dialog']}/{OU_OBJECT}")
+    assert calls[2][2] == [{"entityClass": "SPSUserClassBase", "ids": [VERWALTER]},
+                           {"entityClass": "SPSUserClassBase", "ids": [DELEGIERT]}]
+    rows = mt.manager_rows(data["people"], initiator=VERWALTER)
+    assert rows[0] == ("Verwalter", 'Chef, Anna (Melder) · <a href="tel:025421">02542 1</a> · '
+                                    '<a href="mailto:chef@kunde.example">chef@kunde.example</a>')
+    assert rows[1] == ("Delegierter Verwalter", 'Vertretung, Ben · <a href="tel:01712">0171 2</a>')
+
+
+def test_verwalter_nicht_hinterlegt():
+    assert mt.org_unit_managers({"Entity": {"SPSOrgUnitClassBase": {"Manager": None, "SubManager": None}}}) == []
+    assert mt.org_unit_managers({"SPSOrgUnitClassBase": {"SubManager": "x"}}) == [("Delegierter Verwalter", "x")]
+    assert mt.org_unit_managers(None) == [] and mt.manager_rows(None) == []
+    assert mt.fragments_query("SPSUserClassBase", [None, ""]) == []
+    assert mt.person_name("Lütke Sunderhaus, Ursula - Oberwies GmbH & Co. KG ") == "Lütke Sunderhaus, Ursula"
+    assert mt.manager_rows([{"role": "Verwalter", "id": "a", "name": "<b>X</b>"}]) == [("Verwalter", "&lt;b&gt;X&lt;/b&gt;")]
