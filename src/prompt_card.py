@@ -405,7 +405,7 @@ class CardParts:
     # ---- Zeitzeile
 
     def _build_time_row(self, form, old, muted):
-        self.time_row = QFrame()
+        self.time_row = QFrame(self)  # mit Elternfenster: show() unten öffnet kein eigenes kleines Fenster
         self.time_row.setObjectName("prompt_time")
         self.time_row.setProperty("editing", False)
         time = QHBoxLayout(self.time_row)
@@ -413,9 +413,9 @@ class CardParts:
         time.setSpacing(SPACE_XS + 2)
         for w in (form.date_edit, form.start_edit, form.end_edit, form.duration):
             _detach(w, old)
-        form.date_edit.show()
         time.addWidget(_icon_label("calendar", muted, 14))
         time.addWidget(form.date_edit)
+        form.date_edit.show()
         time.addSpacing(SPACE_S)
         time.addWidget(_icon_label("clock", muted, 14))
         time.addWidget(form.start_edit)
