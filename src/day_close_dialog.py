@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QDialog, QDialogButtonBox, QHB
 from card_dialog import modernize, nav_icons
 import day_close as dc
 import m42_booking as mb
+import m42_data
 import prompt_topics
 from theme import GERMAN, fit_bold, prose
 
@@ -513,7 +514,8 @@ class DayCloseDialog(QDialog):
         self.current = None
         if result.get("ok"):
             entry = result.get("entry", "")
-            booked = dict(item, m42_entry=entry, m42_booked=datetime.now().strftime(dc.TIME_FMT))
+            booked = dict(item, m42_entry=entry, m42_booked=datetime.now().strftime(dc.TIME_FMT),
+                          m42_marks=m42_data.marks_from_request(request))
             try:
                 row["doc_item"] = self.window.journal.update(item, booked)
             except (OSError, ValueError) as e:
