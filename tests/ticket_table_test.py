@@ -190,3 +190,65 @@ def test_spalten_ein_und_ausblenden(ini):
     assert not again.isColumnHidden(col["type"]) and again.isColumnHidden(col["managers"])
     for t in (table, again, other):
         t.close()
+
+
+def test_spalten_verschieben_anpassen_und_zusatzfelder(ini):
+    """Reihenfolge per Ziehen (gemerkt), „an Inhalt anpassen“, Zusatzspalten aus der Ticketliste und Gebucht."""
+    from PySide6.QtCore import QObject
+    import m42_booking as mb
+    from ticket_table import COL, COLUMNS, TicketTable
+    app = widgets.QApplication.instance() or widgets.QApplication([])
+    item = {"TicketNumber": "TCK0000051159", "Sys-ObjectId": "t1", "Subject": "Internet", "State": "Gelöst",
+            "Customer": "Kunde GmbH (3138)", "Category": "Infrastruktur", "SLA": "ITM SLA Visaas",
+            "RecipientRole": "SD.ITM.Team Infrastruktur", "Creator": "Kroczak, Filip - Systems",
+            "ClosedDate": "2026-11-18T09:00:00Z", "CreatedDate": "2026-11-18T08:31:58Z"}
+    row = mb.ticket_row(item)
+    assert (row["category"], row["sla_name"], row["role"], row["creator"]) == (
+        "Infrastruktur", "ITM SLA Visaas", "SD.ITM.Team Infrastruktur", "Kroczak, Filip - Systems")
+
+    class Reader(QObject):
+        days = {"2026-11-18": [{"ticket": "TCK0000051159", "start": "2026-11-18 09:10:00",
+                                "end": "2026-11-18 09:40:00", "minutes_rounded": 45},
+                               {"ticket": "TCK0000051159", "start": "2026-11-18 10:00:00",
+                                "end": "2026-11-18 10:15:00"}]}
+
+    table = TicketTable("Tickets")
+    table.use_reader(Reader())
+    table.resize(1400, 300)
+    table.show()
+    for key in ("category", "sla_name", "role", "creator", "closed", "booked"):
+        assert table.isColumnHidden(COL[key]), key  # anfangs aus
+        table.set_column_visible(key, True)
+    table.set_rows([row])
+    texts = {key: table.item(0, COL[key]).text() for key in ("category", "role", "creator", "closed", "booked")}
+    assert texts == {"category": "Infrastruktur", "role": "SD.ITM.Team Infrastruktur", "creator": "Kroczak, Filip",
+                     "closed": "18.11.26", "booked": "1:00 h"}, texts
+
+    # an Inhalt anpassen: ganzer Text passt, gilt als gezogene Breite
+    header = table.horizontalHeader()
+    header.resizeSection(COL["role"], 40)
+    table.fit_to_content("role")
+    assert header.sectionSize(COL["role"]) >= table.sizeHintForColumn(COL["role"])
+    assert "role" in table._user_widths
+
+    # verschieben: Status nach vorn (hinter Ticket), gemerkt; Ticket bleibt vorn
+    header.moveSection(header.visualIndex(COL["state"]), 1)
+    assert table.column_order()[:3] == ["ticket", "state", "subject"]
+    app.processEvents()
+    again = TicketTable("Tickets")
+    assert again.column_order()[:3] == ["ticket", "state", "subject"]
+    assert len(again.column_order()) == len(COLUMNS)
+    again.reset_columns()
+    assert again.column_order() == [k for _n, k in COLUMNS] and again.isColumnHidden(COL["booked"])
+    for t in (table, again):
+        t.close()
+
+
+def test_gebuchte_minuten_je_ticket():
+    import m42_booking as mb
+    days = {"d1": [{"ticket": "tck1", "start": "2026-11-18 09:00:00", "end": "2026-11-18 09:30:00"},
+                   {"ticket": "", "start": "2026-11-18 10:00:00", "end": "2026-11-18 11:00:00"}],
+            "d2": [{"ticket": "TCK1", "start": "2026-11-19 09:00:00", "end": "2026-11-19 09:10:00",
+                    "minutes_rounded": 15}]}
+    assert mb.booked_minutes(days) == {"TCK1": 45}
+    assert mb.booked_minutes(None) == {}

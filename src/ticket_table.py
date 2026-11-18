@@ -2,9 +2,10 @@
 aus Matrix42 nachgeladen, siehe use_reader), Melder,
 Art (Störung/Serviceanfrage), Status, Bearbeiter, Angelegt; nach jeder Spalte sortierbar, filterbar (jedes Wort muss vorkommen, wie bei
 der Ticketsuche), erledigte Tickets grau. Enter oder Doppelklick: Signal activated(row).
-Spaltenbreiten lassen sich im Kopf ziehen; gezogene Breiten bleiben (je Tabelle gespeichert).
-Rechtsklick auf den Kopf: Spalten ein- und ausblenden (Ticket und Betreff bleiben immer, Verwalter ist
-anfangs aus) und Breiten zurücksetzen; beides je Tabelle gespeichert. Der Betreff bekommt immer den Rest.
+Spaltenbreiten lassen sich im Kopf ziehen, Spalten (außer Ticket) per Ziehen verschieben; Breiten und
+Reihenfolge bleiben (je Tabelle gespeichert). Rechtsklick auf den Kopf: Spalten ein- und ausblenden (Ticket
+und Betreff bleiben immer; Verwalter, Kategorie, SLA, Team, Angelegt von, Geschlossen und Gebucht sind
+anfangs aus), Spalte an Inhalt anpassen, zurücksetzen. Der Betreff bekommt immer den Rest.
 Rote/gelbe SLA-Ampel und neue Nachricht (blau): Zeile getönt, Balken am linken Rand. Neue Nachricht lässt
 sich per Rechtsklick als gelesen markieren (mark_read, nur in Zeitzeuge gemerkt). Mit „ticket_state_colors“ auch die
 übrigen Zeilen in der Farbe ihres Status (Einstellungen → Darstellung → Tickets).
@@ -22,11 +23,16 @@ import skeleton
 # Spalte -> Feld der Ticketzeile (m42_booking.ticket_row)
 COLUMNS = [("Ticket", "ticket"), ("Betreff", "subject"), ("Kunde", "customer"), ("Verwalter", "managers"),
            ("Melder", "initiator"),
-           ("Art", "type"), ("Status", "state"), ("Bearbeiter", "recipient"), ("Angelegt", "created")]
+           ("Art", "type"), ("Status", "state"), ("Bearbeiter", "recipient"),
+           ("Kategorie", "category"), ("SLA", "sla_name"), ("Team", "role"), ("Angelegt von", "creator"),
+           ("Geschlossen", "closed"), ("Gebucht", "booked"), ("Angelegt", "created")]
+COL = {key: c for c, (_n, key) in enumerate(COLUMNS)}
 SUBJECT_COL = 1
 ALWAYS_SHOWN = ("ticket", "subject")  # lassen sich nicht ausblenden
-DEFAULT_HIDDEN = frozenset({"managers"})  # Verwalter erst auf Wunsch (Rechtsklick auf den Kopf)
-PEOPLE_KEYS = ("customer", "managers", "initiator", "recipient")
+# Erst auf Wunsch (Rechtsklick auf den Kopf): Verwalter fragt Matrix42 je Kunde ab, der Rest ist selten nötig
+DEFAULT_HIDDEN = frozenset({"managers", "category", "sla_name", "role", "creator", "closed", "booked"})
+PEOPLE_KEYS = ("customer", "managers", "initiator", "recipient", "category", "sla_name", "role", "creator")
+SHORT_NAME_KEYS = ("initiator", "recipient", "creator")  # „Müller, Jan“ ohne Firma/Abteilung (steht im Hinweis)
 # Kunde, Melder, Bearbeiter: Anteil an der Tabellenbreite, in Grenzen. Fest 150 px ließen dem
 # Betreff bei 1280 px Fensterbreite nur 160 px („Meldung ploppt …“)
 PEOPLE_SHARE, PEOPLE_MIN, PEOPLE_MAX = 0.09, 70, 130
@@ -162,6 +168,13 @@ class TicketTable(QTableWidget):
         self._hidden_key = "ticket_table/%s/hidden" % name
         self._hidden = self._load_hidden()  # ausgeblendete Spalten (Felder)
         self._apply_hidden()
+        # Spalten verschieben (Ticket bleibt vorn), Reihenfolge je Tabelle merken
+        self._order_key = "ticket_table/%s/order" % name
+        header.setSectionsMovable(True)
+        header.setFirstSectionMovable(False)
+        self._restore_order()
+        header.sectionMoved.connect(self._section_moved)
+        self._booked = {}  # Ticketnummer -> gebuchte Minuten (Spalte Gebucht)
         header.sectionResized.connect(self._section_resized)
         header.setContextMenuPolicy(Qt.CustomContextMenu)
         header.customContextMenuRequested.connect(self._header_menu)
@@ -213,14 +226,59 @@ class TicketTable(QTableWidget):
         self._apply_hidden()
         if on and key == "managers":
             self._load_managers([self.row_at(r) for r in range(self.rowCount())])
+        if on and key == "booked":
+            self._refresh_booked()
         self._fit_columns()
 
     def reset_columns(self):
-        """Spaltenauswahl wie am Anfang (alle außer Verwalter)."""
+        """Spaltenauswahl und Reihenfolge wie am Anfang."""
         settings().remove(self._hidden_key)
+        settings().remove(self._order_key)
         self._hidden = set(DEFAULT_HIDDEN)
         self._apply_hidden()
+        self._set_order([key for _n, key in COLUMNS])
         self._fit_columns()
+
+    def column_order(self):
+        """Felder in der angezeigten Reihenfolge (auch ausgeblendete)."""
+        header = self.horizontalHeader()
+        return [COLUMNS[header.logicalIndex(v)][1] for v in range(header.count())]
+
+    def _set_order(self, keys):
+        header = self.horizontalHeader()
+        header.blockSignals(True)
+        try:
+            for visual, key in enumerate(k for k in keys if k in COL):
+                header.moveSection(header.visualIndex(COL[key]), visual)
+        finally:
+            header.blockSignals(False)
+
+    def _restore_order(self):
+        raw = settings().value(self._order_key, "") or ""
+        keys = [k for k in (raw if isinstance(raw, list) else str(raw).split(",")) if k in COL and k != "ticket"]
+        if keys:  # neue Spalten (nicht gespeichert) an ihren Platz in COLUMNS
+            missing = [k for _n, k in COLUMNS if k not in keys and k != "ticket"]
+            for k in missing:
+                before = [c for _n, c in COLUMNS][:COL[k]]
+                at = max((keys.index(b) + 1 for b in before if b in keys), default=0)
+                keys.insert(at, k)
+            self._set_order(["ticket"] + keys)
+
+    def _section_moved(self, _logical, _old, _new):
+        """Spalte im Kopf verschoben: Reihenfolge merken."""
+        order = self.column_order()
+        if order == [key for _n, key in COLUMNS]:
+            settings().remove(self._order_key)
+        else:
+            settings().setValue(self._order_key, ",".join(order))
+
+    def fit_to_content(self, key):
+        """Spalte so breit, dass nichts abgeschnitten ist (gilt dann als gezogene Breite)."""
+        col = COL[key]
+        if col == SUBJECT_COL or self.isColumnHidden(col):
+            return
+        header = self.horizontalHeader()
+        header.resizeSection(col, max(self.sizeHintForColumn(col), header.sectionSizeHint(col)) + 4)
 
     def _load_managers(self, rows):
         """Verwalter der offenen Tickets beim Leser anfragen (nur bei sichtbarer Spalte)."""
@@ -286,6 +344,11 @@ class TicketTable(QTableWidget):
 
     def _header_menu(self, pos):
         menu = QMenu(self)
+        under = self.horizontalHeader().logicalIndexAt(pos)
+        if 0 <= under != SUBJECT_COL:
+            name, key = COLUMNS[under]
+            menu.addAction(f"„{name}“ an Inhalt anpassen", lambda k=key: self.fit_to_content(k))
+            menu.addSeparator()
         menu.addSection("Spalten zeigen")
         for _name, key in COLUMNS:
             if not self._offered(key):
@@ -295,8 +358,8 @@ class TicketTable(QTableWidget):
             action.setChecked(self.column_visible(key))
             action.toggled.connect(lambda on, k=key: self.set_column_visible(k, on))
         menu.addSeparator()
-        columns = menu.addAction("Spaltenauswahl zurücksetzen")
-        columns.setEnabled(settings().contains(self._hidden_key))
+        columns = menu.addAction("Spaltenauswahl und Reihenfolge zurücksetzen")
+        columns.setEnabled(settings().contains(self._hidden_key) or settings().contains(self._order_key))
         columns.triggered.connect(self.reset_columns)
         reset = menu.addAction("Spaltenbreiten zurücksetzen")
         reset.setEnabled(bool(self._user_widths))
@@ -393,16 +456,7 @@ class TicketTable(QTableWidget):
             closed = mb.is_closed(row)
             mark = row_color(dict(row, new_message=is_unread(row, marks)), all_states)
             for c, (_name, key) in enumerate(COLUMNS):
-                if key == "created":
-                    text, sort_key = mb.ticket_date(row), row.get("created") or ""
-                elif key == "type":
-                    text = mb.ticket_kind(row)
-                    sort_key = text.casefold()
-                else:
-                    text = row.get(key) or ""
-                    if key in ("initiator", "recipient"):
-                        text = text.split(" - ")[0]  # „Müller, Jan“ ohne Firma/Abteilung (steht im Hinweis)
-                    sort_key = text.casefold()
+                text, sort_key = self._cell(key, row)
                 item = _Item(text, sort_key)
                 item.setToolTip(mb.ticket_tooltip(row))
                 if closed:
@@ -413,6 +467,8 @@ class TicketTable(QTableWidget):
                 self.setItem(r, c, item)
             self._fill_managers(r, row)
         self._load_managers(rows)
+        if self.column_visible("booked"):
+            self._refresh_booked()
         if self._sort:
             self.sortItems(*self._sort)
         self._show_page()
@@ -420,6 +476,35 @@ class TicketTable(QTableWidget):
             if selected and self.row_at(r).get("id") == selected:
                 self.selectRow(r)
                 break
+
+    def _cell(self, key, row):
+        """Zellentext und Sortierschlüssel eines Felds."""
+        if key in ("created", "closed"):
+            return mb.ticket_date({"created": row.get(key) or ""}), row.get(key) or ""
+        if key == "type":
+            text = mb.ticket_kind(row)
+            return text, text.casefold()
+        if key == "booked":
+            minutes = self._booked.get(row.get("ticket"))
+            return (f"{minutes // 60}:{minutes % 60:02d} h", f"{minutes:08d}") if minutes else ("", "")
+        text = row.get(key) or ""
+        if key in SHORT_NAME_KEYS:
+            text = text.split(" - ")[0]
+        return text, text.casefold()
+
+    def _refresh_booked(self):
+        """Spalte Gebucht: deine Buchungen je Ticket aus den gelesenen Matrix42-Wochen."""
+        days = getattr(self._reader, "days", None)
+        self._booked = mb.booked_minutes(days) if isinstance(days, dict) else {}
+        col = COL["booked"]
+        for r in range(self.rowCount()):
+            item, row = self.item(r, col), self.row_at(r)
+            if item is not None:
+                item.setText(self._cell("booked", row)[0])
+                item.key = self._cell("booked", row)[1]
+                if item.text():
+                    item.setToolTip(f"{row.get('ticket')}: {item.text()} von dir gebucht "
+                                    "(nur die von Zeitzeuge gelesenen Wochen)")
 
     def is_unread(self, row):
         return is_unread(row, read_marks())

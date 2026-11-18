@@ -31,7 +31,7 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog, QDia
 
 import m42_booking as mb
 from flow_layout import FlowLayout
-from ticket_table import COLUMNS, TicketTable
+from ticket_table import COL, TicketTable
 
 MINE = "mine"
 STALE_AFTER = 10 * 60  # Kategorien, die älter sind, beim Anzeigen neu lesen
@@ -164,7 +164,7 @@ class TicketsDialog(QDialog):
         self.table = TicketTable("Tickets", self)
         self.table.setAccessibleDescription("Enter oder Doppelklick öffnet das Ticket.")
         self.table.use_reader(reader)  # Spalte „Verwalter“ des Kunden
-        self.table.sort_by(len(COLUMNS) - 1, Qt.DescendingOrder)  # neueste zuerst
+        self.table.sort_by(COL["created"], Qt.DescendingOrder)  # neueste zuerst
         self.table.activated.connect(lambda _row: self.view_ticket())
         self.table.itemSelectionChanged.connect(self._selected)
         self.table.setContextMenuPolicy(Qt.CustomContextMenu)

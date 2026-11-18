@@ -32,7 +32,11 @@ Testversionen aus Branches tragen die Version ihres main-Stands plus Buildnummer
 - **Rechtschreibprüfung lief nie:** Falsche Wörter wurden in Tätigkeit, Buchungstext und Ticket nicht unterkringelt, obwohl der Schalter an war. Die Windows-Prüfung scheiterte schon beim Start an einem internen Aufruffehler und schaltete sich still ab. Jetzt startet sie (deutsches Sprachpaket in Windows vorausgesetzt).
 
 ### Neu
-- **Tickets: Spalten ein- und ausblenden:** Rechtsklick auf den Tabellenkopf in **Tickets** und **Ticket suchen** zeigt alle Spalten zum An- und Abhaken (Ticket und Betreff bleiben immer). Die Wahl gilt je Tabelle und bleibt gespeichert, „Spaltenauswahl zurücksetzen“ stellt den Anfang wieder her. Der Knopf „Nummer kopieren“ heißt jetzt **„TCK-Nr. kopieren“**.
+- **Tickets: Tabellenkopf mit Kontextmenü:** Rechtsklick auf den Tabellenkopf in **Tickets** und **Ticket suchen** zeigt alle Spalten zum An- und Abhaken (Ticket und Betreff bleiben immer).
+  - **Neue Spalten**, anfangs aus: **Kategorie**, **SLA**, **Team** (Bearbeiterrolle), **Angelegt von**, **Geschlossen** (Datum) und **Gebucht** (deine Buchungen auf dem Ticket aus den gelesenen Matrix42-Wochen), dazu **Verwalter**.
+  - **„… an Inhalt anpassen“**: Die Spalte unter der Maus wird so breit, dass nichts mehr mit „…“ abgeschnitten ist.
+  - **Spalten verschieben**: Spalte im Kopf an eine andere Stelle ziehen (Ticket bleibt vorn).
+  - Auswahl, Reihenfolge und Breiten gelten je Tabelle und bleiben gespeichert; „Spaltenauswahl und Reihenfolge zurücksetzen“ stellt den Anfang wieder her. Der Knopf „Nummer kopieren“ heißt jetzt **„TCK-Nr. kopieren“**.
 - **Verwalter des Kunden überall, wo du mit Tickets arbeitest:** Oft ist unklar, wer beim Kunden zuständig ist. Zeitzeuge liest dazu **Verwalter** und **Delegierten Verwalter** aus Matrix42, wie sie beim Kunden hinterlegt sind.
   - **Ticket ansehen:** Kasten „Zuständig beim Kunden“ mit beiden, Telefon und E-Mail anklickbar. Ist der Verwalter selbst Melder, steht „(Melder)“ dahinter. Fehlt einer, steht dort „nicht hinterlegt“, damit die Lücke auffällt.
   - **Ticketliste:** neue Spalte „Verwalter“ (anfangs ausgeblendet, Rechtsklick auf den Tabellenkopf → „Verwalter“) (Delegierter mit „(deleg.)“, „–“ = keiner hinterlegt); der Hinweis zeigt beide. Zeitzeuge liest die Verwalter je Kunde einmal und merkt sie sich 4 Stunden.
