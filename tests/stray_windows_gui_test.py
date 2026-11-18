@@ -11,6 +11,7 @@ import traceback
 from datetime import datetime
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"))
+import safe_io  # noqa: E402  (hard_exit: Ende ohne Qt-Absturz)
 sys.stdout.reconfigure(line_buffering=True, errors="backslashreplace")
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ["ZEITZEUGE_DATA"] = tempfile.mkdtemp()
@@ -56,6 +57,6 @@ if __name__ == "__main__":
     except Exception:
         traceback.print_exc()
         sys.stdout.flush()
-        os._exit(1)
+        safe_io.hard_exit(1)
     sys.stdout.flush()
-    os._exit(0)
+    safe_io.hard_exit(0)
