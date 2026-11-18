@@ -118,11 +118,11 @@ def gui_test():
 
     def fill_new():
         dialog = next(w for w in app.topLevelWidgets() if isinstance(w, NewTicketDialog) and w.isVisible())
-        QTest.qWait(20)
+        wait_for(lambda: dialog.category() is not None, 2000)  # Kategorien kommen asynchron
         seen["category"] = dialog.category()
         seen["ok_before"] = dialog.ok_button.isEnabled()
         QTest.keyClicks(dialog.user_edit, "brun")
-        QTest.qWait(500)  # Suche nach kurzer Pause
+        wait_for(lambda: dialog.users.count() > 0, 3000)  # Suche nach kurzer Pause, Antwort asynchron
         seen["users"] = dialog.users.count()
         dialog._take_user(dialog.users.item(0))
         wait_for(lambda: dialog.user_rows.rowCount() > 4, 2000)
