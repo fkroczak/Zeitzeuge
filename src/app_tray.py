@@ -334,11 +334,15 @@ class TrayMixin:
             notice = NoticeStrip(title, text, action, kind, timeout, self)
         if on_action is not None:
             notice.acted.connect(on_action)
-        self._notices = [n for n in self._live_notices() if n.isVisible()] + [notice]
+        self._notices = [n for n in self._live_notices() if n.isVisible() or getattr(n, "_hidden_for_modal", False)] + [notice]
         notice.position = prompt_position(self.config)
         notice.adjustSize()
         notice.dock_bottom_right(self._notice_margin(notice))
-        notice.show()
+        self._watch_modal()
+        if self._modal_open():  # z. B. „Ticket ansehen“ offen: davor wäre der Hinweis gesperrt
+            notice._blocked = notice._hidden_for_modal = True  # erscheint, sobald es zu ist
+        else:
+            notice.show()
         return notice
 
     def _live_notices(self):
