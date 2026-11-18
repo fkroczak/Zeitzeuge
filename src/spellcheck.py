@@ -5,19 +5,29 @@ Prüfung einfach aus (speller() liefert None), die Felder bleiben normal.
 
 - attach(edit, config): Falsche Wörter rot unterkringeln (QSyntaxHighlighter), Rechtsklick auf
   ein Wort zeigt Vorschläge, „Zum Wörterbuch hinzufügen“ und „Ignorieren“.
-- Schalter: Einstellungen → Darstellung → Rechtschreibprüfung (config "spellcheck", Standard an).
+- Autokorrektur: Nach Leertaste, Satzzeichen oder Enter ersetzt Zeitzeuge das eben getippte Wort,
+  wenn Windows dafür eine feste Korrektur kennt (CORRECTIVE_ACTION_REPLACE, z. B. eigene Paare
+  aus „Immer automatisch ersetzen“ im Rechtsklick-Menü). Bei bloßen Vorschlägen wird nur
+  unterkringelt. Strg+Z direkt danach nimmt die Korrektur zurück, das Wort bleibt dann im Feld.
+- Schalter: Einstellungen → Darstellung → Rechtschreibprüfung (config "spellcheck", Standard an),
+  Autokorrektur (config "autocorrect", Standard an, braucht die Rechtschreibprüfung).
 
 Die API zählt Positionen in UTF-16-Einheiten wie Qt (QString); darum passen die Positionen
 direkt zu setFormat. Für Python-Strings (Wort für die Vorschläge) rechnet _utf16_slice um.
 """
 import ctypes
+import re
 import sys
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QSyntaxHighlighter, QTextCharFormat, QTextCursor
+from PySide6.QtCore import QEvent, QObject, Qt
+from PySide6.QtGui import QColor, QKeySequence, QSyntaxHighlighter, QTextCharFormat, QTextCursor
 
 LANGUAGE = "de-DE"
 MAX_SUGGESTIONS = 5
+CORRECTIVE_ACTION_REPLACE = 2
+AUTOCORRECT_KEYS = " .,;:!?)\r\n\t"  # nach diesen Zeichen wird das Wort davor korrigiert
+_MODIFIER_KEYS = {Qt.Key_Control, Qt.Key_Shift, Qt.Key_Alt, Qt.Key_Meta, Qt.Key_AltGr}
+_WORD_BEFORE = re.compile(r"[^\W\d_][\w'-]*$")
 
 _speller = None
 _tried = False
@@ -125,6 +135,37 @@ class WindowsSpeller:
             _Com.release(strings)
         return result
 
+    def autocorrect(self, word):
+        """Feste Korrektur für word (Windows-Autokorrekturliste) oder None."""
+        errors = ctypes.c_void_p()
+        _Com.call(self._checker, 4, ctypes.HRESULT, ctypes.c_wchar_p(word), ctypes.byref(errors))
+        try:
+            error = ctypes.c_void_p()
+            if _Com.call(errors, 3, ctypes.c_long, ctypes.byref(error)) != 0 or not error:
+                return None
+            try:
+                start, length, action = ctypes.c_ulong(), ctypes.c_ulong(), ctypes.c_int()
+                _Com.call(error, 3, ctypes.HRESULT, ctypes.byref(start))
+                _Com.call(error, 4, ctypes.HRESULT, ctypes.byref(length))
+                _Com.call(error, 5, ctypes.HRESULT, ctypes.byref(action))
+                if (action.value != CORRECTIVE_ACTION_REPLACE or start.value != 0
+                        or length.value != len(word.encode("utf-16-le")) // 2):
+                    return None
+                text = ctypes.c_void_p()
+                _Com.call(error, 6, ctypes.HRESULT, ctypes.byref(text))
+                try:
+                    return ctypes.wstring_at(text.value) if text.value else None
+                finally:
+                    self._free(text)
+            finally:
+                _Com.release(error)
+        finally:
+            _Com.release(errors)
+
+    def learn(self, word, replacement):
+        """Paar in die Autokorrekturliste von Windows (bleibt gespeichert)."""
+        _Com.call(self._checker, 8, ctypes.HRESULT, ctypes.c_wchar_p(word), ctypes.c_wchar_p(replacement))
+
     def add(self, word):
         _Com.call(self._checker, 6, ctypes.HRESULT, ctypes.c_wchar_p(word))
 
@@ -187,10 +228,67 @@ class SpellHighlighter(QSyntaxHighlighter):
         return None
 
 
+class AutoCorrector(QObject):
+    """Ersetzt beim Tippen das Wort vor Leertaste/Satzzeichen, wenn checker.autocorrect(wort)
+    eine feste Korrektur liefert. Ersetzen und Zeichen sind ein Rückgängig-Schritt; Strg+Z
+    direkt danach stellt das Wort wieder her und lässt es in diesem Feld künftig in Ruhe."""
+
+    def __init__(self, edit, checker):
+        super().__init__(edit)
+        self.edit, self.checker = edit, checker
+        self.last = None  # (Original, Korrektur, Position danach) der letzten Ersetzung
+        self.keep = set()  # per Strg+Z zurückgenommen: nicht wieder ersetzen
+        edit.installEventFilter(self)
+
+    def eventFilter(self, obj, event):
+        if obj is self.edit and event.type() == QEvent.KeyPress:
+            if event.matches(QKeySequence.Undo):
+                if self.last and self.edit.textCursor().position() == self.last[2]:
+                    self.keep.add(self.last[0])
+                self.last = None
+                return False
+            text = event.text()
+            if (len(text) == 1 and text in AUTOCORRECT_KEYS
+                    and not event.modifiers() & (Qt.ControlModifier | Qt.AltModifier)):
+                return self.correct(text)
+            if event.key() not in _MODIFIER_KEYS:  # Strg allein (vor Strg+Z) zählt nicht
+                self.last = None
+        return False
+
+    def correct(self, typed):
+        """Wort vor dem Cursor ersetzen. True: Zeichen schon eingefügt (Taste verbraucht)."""
+        cursor = self.edit.textCursor()
+        if cursor.hasSelection():
+            return False
+        before = cursor.block().text()[:cursor.positionInBlock()]
+        match = _WORD_BEFORE.search(before)
+        if not match or match.group() in self.keep:
+            return False
+        word = match.group()
+        try:
+            new = self.checker.autocorrect(word)
+        except Exception:  # Prüfung darf das Tippen nie stören
+            return False
+        if not new or new == word:
+            return False
+        length = len(word.encode("utf-16-le")) // 2
+        cursor.beginEditBlock()
+        cursor.setPosition(cursor.position() - length, QTextCursor.KeepAnchor)
+        cursor.insertText(new)
+        printable = typed not in "\r\n\t"  # Enter/Tab macht das Feld selbst (evtl. Speichern)
+        if printable:
+            cursor.insertText(typed)
+        cursor.endEditBlock()
+        self.edit.setTextCursor(cursor)
+        self.last = (word, new, cursor.position())
+        return printable
+
+
 def attach(edit, config=None, checker=None):
-    """Rechtschreibprüfung an ein QPlainTextEdit/QTextEdit hängen (nichts tun, wenn aus oder
-    nicht verfügbar). Gibt den Highlighter zurück oder None."""
-    if not (config if config is not None else _config).get("spellcheck", True):
+    """Rechtschreibprüfung und Autokorrektur an ein QPlainTextEdit/QTextEdit hängen (nichts tun,
+    wenn aus oder nicht verfügbar). Gibt den Highlighter zurück oder None."""
+    config = config if config is not None else _config
+    if not config.get("spellcheck", True):
         return None
     checker = checker or speller()
     if checker is None:
@@ -199,6 +297,8 @@ def attach(edit, config=None, checker=None):
     edit.setContextMenuPolicy(Qt.CustomContextMenu)
     edit.customContextMenuRequested.connect(lambda pos: _menu(edit, highlighter, pos))
     edit._spell = highlighter  # am Feld halten (sonst räumt Python ihn weg)
+    if config.get("autocorrect", True) and hasattr(checker, "autocorrect"):
+        edit._autocorrect = AutoCorrector(edit, checker)
     return highlighter
 
 
@@ -238,6 +338,20 @@ def suggestion_menu(edit, highlighter, pos):
         action.setFont(font)
         action.triggered.connect(lambda _c=False, t=text: replace(t))
         actions.append(action)
+    if suggestions and hasattr(highlighter.checker, "learn"):
+        always = menu.addMenu("Immer automatisch ersetzen")
+
+        def learn(new):
+            try:
+                highlighter.checker.learn(word, new)
+            except Exception as e:
+                print(f"Autokorrektur: Merken ging nicht: {e}")
+            replace(new)
+
+        for text in suggestions:
+            always.addAction(f"„{word}“ → „{text}“").triggered.connect(
+                lambda _c=False, t=text: learn(t))
+        actions.append(always.menuAction())
     if not suggestions:
         none = menu.addAction("Keine Vorschläge")
         none.setEnabled(False)

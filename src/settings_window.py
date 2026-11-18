@@ -172,6 +172,11 @@ ROWS = [
      "Falsche Wörter in Tätigkeit, Buchung und Ticket rot unterkringeln, Vorschläge per Rechtsklick. "
      "Nutzt die Prüfung von Windows (deutsches Sprachpaket). Gilt für neu geöffnete Fenster.",
      "spellcheck", True),
+    ("view/Texte", "check", "edit", "Autokorrektur",
+     "Beim Tippen falsche Wörter selbst verbessern, sobald Windows eine feste Korrektur kennt. "
+     "Eigene Korrekturen: Rechtsklick auf ein Wort → „Immer automatisch ersetzen“. Strg+Z nimmt "
+     "eine Korrektur zurück. Braucht die Rechtschreibprüfung. Gilt für neu geöffnete Fenster.",
+     "autocorrect", True),
     ("view/Tagesliste", "check", "details", "Aktivitätsdetails als Textfelder",
      "Werte im Fenster „Aktivitätsdetails“ in Textfeldern zeigen: hineinklicken, Strg+A, Strg+C.",
      "detail_text_fields", False),
