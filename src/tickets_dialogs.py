@@ -60,7 +60,7 @@ def pill_rank(title):
         return 2, 99
     if "pool" in words or key.startswith("ticketpool"):
         return 3, 99
-    return len(PILL_GROUPS), 99
+    return len(GROUP_NAMES) - 1, 99  # „Weitere“, hinter den bekannten (sonst IndexError bei GROUP_NAMES)
 
 
 GROUP_NAMES = ["Meine", "Allgemein", "TK", "Pools", "Weitere"]  # zu PILL_GROUPS, „Weitere“ = Rest
