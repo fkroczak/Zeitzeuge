@@ -12,7 +12,8 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QDateEdit, QHBoxLayout, QLi
 import m42_ticket_actions as ma
 import spellcheck
 from flow_layout import FlowLayout
-from ticket_dialogs import _CardDialog, _label
+import m42_tickets as mt
+from ticket_dialogs import _CardDialog, _label, show_contact
 
 # Art -> (Titel, Symbol, Hauptknopf, Platzhalter für den Text)
 KINDS = {"comment": ("Kommentieren", "comment", "&Kommentar speichern",
@@ -51,7 +52,8 @@ def default_pause_until(now=None):
 
 class TicketActionDialog(_CardDialog):
     """kind: "comment", "mail", "pause" oder "forward". row: Zeile der Ticketliste.
-    contact: {"email", "initiator_id"} des Melders (für „E-Mail senden“), dazu "managers": Verwalter des
+    contact: {"email", "initiator_id", "rows"} des Melders (für „E-Mail senden“; rows: Kontaktzeilen wie in
+    „Ticket ansehen“, fehlen sie, sucht das Fenster den Melder per Name), dazu "managers": Verwalter des
     Kunden [{role, id, name, email}], die sich per Schalter ins CC nehmen lassen. Danach self.done_text."""
 
     def __init__(self, reader, row, kind, parent=None, contact=None):
@@ -101,6 +103,13 @@ class TicketActionDialog(_CardDialog):
         self.public.setChecked(True)  # wie in Matrix42 vorbelegt
 
     def _build_mail(self):
+        # Wer ist der Melder? Karte wie „Kontakt“ in „Ticket ansehen“
+        card, self.melder_rows = self._info_card("phone", "Melder")
+        rows = self.contact.get("rows") or []
+        show_contact(self.melder_rows, rows or [("Name", self.row.get("initiator") or "–", "")])
+        self.body_box.addWidget(card)
+        if not (rows and self.contact.get("email")) and self.row.get("initiator"):
+            self._run("melder", name=self.row["initiator"])
         self.to_edit = QLineEdit(self.contact.get("email", ""))
         self.cc_edit = QLineEdit()
         self.subject_edit = QLineEdit(ma.mail_subject(self.row["ticket"], self.row.get("subject", "")))
@@ -275,6 +284,18 @@ class TicketActionDialog(_CardDialog):
     def _on_pause_reasons(self, result):
         if result.get("ok") and result.get("data"):
             self._fill_reasons(result["data"])
+
+    def _on_melder(self, result):
+        """Melder per Name gefunden: Kontakt zeigen und „An“ vorbelegen, wenn noch leer."""
+        data = (result.get("data") or {}) if result.get("ok") else {}
+        if not data.get("user"):  # nicht gefunden oder nicht eindeutig: lieber nichts Falsches zeigen
+            return
+        rows = mt.contact_rows(data.get("details"), self.row.get("initiator", ""))
+        mail = show_contact(self.melder_rows, rows)
+        if mail and not self.contact.get("email"):
+            self.contact = dict(self.contact, email=mail, initiator_id=(data["user"] or {}).get("id", ""))
+            if not self.to_edit.text().strip():
+                self.to_edit.setText(mail)
 
     def _on_mail_info(self, result):
         if result.get("ok") and not (result.get("data") or {}).get("signature"):

@@ -429,6 +429,11 @@ QDialog[card="true"] QLabel#prompt_src, QDialog[card="true"] QWidget#prompt_top 
 QDialog#entry_dialog QLabel, QDialog#entry_dialog QWidget#chips, QDialog#entry_dialog QWidget#flag_details,
 QDialog#entry_dialog QWidget#prompt_body { background: transparent; }
 QDialog#entry_dialog QLabel#prompt_src { background-color: $sel; border-radius: 9px; }
+/* Ticketfenster: Kategorie „Ticketeingang“ rot (ticket_dialogs.category_label), Hinweis darunter */
+QDialog#entry_dialog QLabel#inbox_category { background-color: $rate_low; color: $rate_low_text;
+    font-weight: bold; border-radius: 4px; padding: 1px 6px; }
+QDialog#entry_dialog QLabel#inbox_hint { background-color: $rate_low; color: $rate_low_text;
+    border-radius: 6px; padding: 6px 8px; }
 QWidget#prompt_foot[flat="true"] { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
 QFrame#entry_context { background-color: $bg; border: 1px solid $line; border-radius: $radius_cardpx; }
 QFrame#prompt_strip QLabel#prompt_src_round { background-color: $sel; border-radius: 15px; }

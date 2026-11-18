@@ -352,6 +352,34 @@ def gui_test():
     dialog.reject()
     reader.fail.clear()
 
+    # Kategorie „Ticketeingang“: rot markiert, Schließen nur nach Rückfrage
+    from PySide6.QtWidgets import QMessageBox
+    inbox_row = dict(ROW, category="Ticketeingang")
+    for answer, sent in (("Abbrechen", False), ("&Trotzdem schließen", True)):
+        dialog = CloseTicketDialog(reader, inbox_row)
+        assert dialog.category_label.objectName() == "inbox_category" and dialog.inbox_hint.isVisibleTo(dialog)
+        dialog.solution_edit.setPlainText("Treiber neu installiert")
+        closes = sum(1 for k, _ in reader.tasks if k == "close")
+
+        def answer_box(text=answer):
+            box = getattr(dialog, "category_box", None)
+            if box is None or not box.isVisible():
+                QTimer.singleShot(10, answer_box)
+                return
+            next(b for b in box.buttons() if b.text() == text).click()
+        QTimer.singleShot(0, answer_box)
+        dialog.ok_button.click()
+        assert (sum(1 for k, _ in reader.tasks if k == "close") == closes + 1) == sent
+        if sent:
+            assert wait_for(lambda: dialog.closed, 3000)
+        dialog.reject()
+    dialog = CloseTicketDialog(reader, dict(ROW, category="Visaas > Server > Fileserver"))
+    assert dialog.category_label.objectName() != "inbox_category" and not dialog.inbox_hint.isVisibleTo(dialog)
+    assert dialog.category_label.text() == "Fileserver"
+    dialog.set_category("weitere Dienstleistungen > Default > Ticketeingang")
+    assert dialog.category_label.objectName() == "inbox_category" and dialog.inbox_hint.isVisibleTo(dialog)
+    dialog.reject()
+
     # Wieder eröffnetes Ticket: bisheriger Lösungstext steht schon drin, Getipptes bleibt
     reader.solution = "Lizenz erneuert"
     dialog = CloseTicketDialog(reader, ROW)
@@ -655,6 +683,24 @@ def gui_test():
     assert wait_for(lambda: act.result() == QDialog.Accepted, 3000)
     assert last("mail")["cc"] == "x@y.example; b@kunde.example"
     assert last("mail")["known_users"] == {"info@example.com": "melder-1", "b@kunde.example": "u9"}
+
+    # Aus der Ticketliste (ohne Kontakt): Melder per Name suchen und als Karte zeigen
+    from PySide6.QtWidgets import QFormLayout
+
+    def card_texts(rows):
+        return [rows.itemAt(i, QFormLayout.FieldRole).widget().text() for i in range(rows.rowCount())]
+    act = TicketActionDialog(reader, ROW, "mail")
+    last_args = [a for k, a in reader.tasks if k == "melder"][-1]
+    assert last_args["name"] == ROW["initiator"]
+    assert wait_for(lambda: "WiRoPa GmbH" in card_texts(act.melder_rows), 3000), card_texts(act.melder_rows)
+    assert "Huber, Max" in card_texts(act.melder_rows)
+    act.reject()
+    rows = [("Name", "Huber, Max", ""), ("E-Mail", "info@example.com", "mailto:info@example.com")]
+    melders = sum(1 for k, _ in reader.tasks if k == "melder")
+    act = TicketActionDialog(reader, ROW, "mail", contact={"email": "info@example.com", "rows": rows})
+    assert any("info@example.com" in t for t in card_texts(act.melder_rows))
+    assert sum(1 for k, _ in reader.tasks if k == "melder") == melders  # schon bekannt: keine Suche
+    act.reject()
 
     act = TicketActionDialog(reader, ROW, "pause")
     assert wait_for(lambda: act.reason_combo.count() == 2, 3000)
