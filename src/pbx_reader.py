@@ -501,16 +501,18 @@ class BrowserReader(QObject):
         self._tools.call("Page.navigate", url=self.start_url())
 
     def _close_browser(self):
+        # Läuft beim Beenden gleichzeitig aus stop() (Hauptthread) und dem Ende der Lese-Schleife:
+        # erst übernehmen, dann benutzen, sonst setzt der andere Thread _proc dazwischen auf None
         self._close_tools()
-        if self._proc and self._proc.poll() is None:
-            self._proc.terminate()
+        proc, self._proc = self._proc, None
+        if proc and proc.poll() is None:
+            proc.terminate()
             try:
-                self._proc.wait(timeout=10)
+                proc.wait(timeout=10)
             except subprocess.TimeoutExpired:
-                self._proc.kill()
-        if self._proc:
+                proc.kill()
+        if proc:
             kill_profile_processes(self.profile_dir)  # falls Edge an einen anderen Prozess abgab
-        self._proc = None
 
     def _login_window(self):
         self._wake.set()  # Lese-Schleife aus dem Warten holen
@@ -621,9 +623,9 @@ class BrowserReader(QObject):
         return False
 
     def _close_tools(self):
-        if self._tools:
-            self._tools.close()
-            self._tools = None
+        tools, self._tools = self._tools, None  # wie _close_browser: aus zwei Threads möglich
+        if tools:
+            tools.close()
 
     def _close_gracefully(self, port):
         """Edge regulär beenden, damit die Anmeldung (Cookies) im Profil gespeichert wird."""
