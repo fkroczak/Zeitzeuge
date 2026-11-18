@@ -166,6 +166,11 @@ def ticket_row(item):
             "customer": _clean(item.get("Customer")), "state": (item.get("State") or "").strip(),
             "initiator": _clean(item.get("Initiator")), "recipient": _clean(item.get("Recipient")),
             "recipient_id": item.get("Recipient_Value") or "", "type": item.get("Sys-Entity") or "",
+            "ou": item.get("Customer_Value") or "",
+            # zuschaltbare Spalten der Ticketliste (Rechtsklick auf den Tabellenkopf)
+            "category": _clean(item.get("Category")), "sla_name": (item.get("SLA") or "").strip(),
+            "role": (item.get("RecipientRole") or "").strip(), "creator": _clean(item.get("Creator")),
+            "closed": item.get("ClosedDate") or "",
             "created": item.get("CreatedDate") or "", "sla": sla_level(item),
             "new_message": new_message(item)}
 
@@ -383,6 +388,17 @@ def ticket_filters(data, skip_ids=()):
 def merge_tickets_rows(rows, text):
     """Schon gefundene Treffer auf einen neuen Suchtext eingrenzen (Reihenfolge bleibt)."""
     return [r for r in rows if matches(r, text)]
+
+
+def booked_minutes(days):
+    """Gebuchte Minuten je Ticketnummer aus den gelesenen Buchungen ({Tag: [Buchungen]})."""
+    from booking_rate import booked_seconds
+    by_ticket = {}
+    for items in (days or {}).values():
+        for b in items or []:
+            if isinstance(b, dict) and b.get("ticket"):
+                by_ticket.setdefault(b["ticket"].upper(), []).append(b)
+    return {t: round(booked_seconds(bs) / 60) for t, bs in by_ticket.items() if booked_seconds(bs) > 0}
 
 
 def ticket_date(row):

@@ -9,6 +9,7 @@ import tempfile
 import traceback
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"))
+import safe_io  # noqa: E402  (hard_exit: Ende ohne Qt-Absturz)
 sys.stdout.reconfigure(line_buffering=True, errors="backslashreplace")
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ["ZEITZEUGE_DATA"] = tempfile.mkdtemp()
@@ -22,6 +23,10 @@ def gui_test():
 
     import m42_booking as mb
     import m42_tickets as mt
+    import ticket_table
+    from PySide6.QtCore import QSettings
+    ini = os.path.join(os.environ["ZEITZEUGE_DATA"], "zz.ini")  # Spaltenwahl nicht in die echten Einstellungen
+    ticket_table.settings = lambda: QSettings(ini, QSettings.IniFormat)
     from tickets_dialogs import TicketsDialog
     from ticket_dialogs import CloseTicketDialog, EditTicketDialog, NewTicketDialog, ViewTicketDialog
 
@@ -37,11 +42,12 @@ def gui_test():
         return done()
     ROW = {"ticket": "TCK0000000002", "id": "t2", "subject": "Drucker", "customer": "Müller", "state": "Neu",
            "initiator": "Huber, Max", "recipient": "Kroczak, Filip", "recipient_id": "me",
-           "type": "SPSActivityTypeIncident", "created": ""}
+           "type": "SPSActivityTypeIncident", "created": "", "ou": "ou-1"}
 
     class FakeReader(QObject):
         my_tickets_loaded = Signal(object)
         ticket_task_done = Signal(object)
+        managers_loaded = Signal(object)
         my_tickets = {"at": "10:42", "error": "", "rows": [ROW]}
 
         def __init__(self):
@@ -49,6 +55,13 @@ def gui_test():
             self.tasks = []
             self.fail = set()
             self.solution = ""  # Lösungstext von früher (close_info)
+
+        def load_managers(self, ous):
+            """Verwalter je Kunde: „ou-1“ sofort bekannt, „ou-2“ kommt später über managers_loaded."""
+            if "ou-2" in ous:
+                QTimer.singleShot(0, lambda: self.managers_loaded.emit({"ou-2": {"people": []}}))
+            return {"ou-1": {"people": [{"role": "Delegierter Verwalter", "id": "u9", "name": "Vertreter, Bernd"}]}} \
+                if "ou-1" in ous else {}
 
         def load_my_tickets(self):
             self.my_tickets_loaded.emit(self.my_tickets)
@@ -64,10 +77,14 @@ def gui_test():
                     "close_info": {"solution": self.solution},
                     "load": {"id": "t2", "ticket": ROW["ticket"], "type": ROW["type"], "subject": "Drucker",
                              "description": "Druckt nicht", "category": "cat-in", "rich": False,
-                             "stamp": "s1", "initiator": "melder-1", "callback": "0171 5"},
+                             "stamp": "s1", "initiator": "melder-1", "callback": "0171 5", "ou": "ou-1"},
+                    "managers": {"ou": "ou-1", "company": "WiRoPa GmbH", "people": [
+                        {"role": "Verwalter", "id": "melder-1", "name": "Huber, Max",
+                         "details": {"Phone": "02542 1", "Email": "info@example.com"}}]},
                     "edit": {"ticket": ROW["ticket"], "id": "t2", "type": ROW["type"],
                              "subject": "Drucker Empfang"},
-                    "user_details": {"OrgUnit": "WiRoPa GmbH", "Phone": "02542 1", "Email": "info@example.com"},
+                    "user_details": {"OrgUnit": "WiRoPa GmbH", "Phone": "02542 1", "Email": "info@example.com",
+                                     "OrgUnitId": "ou-1"},
                     "take_over": {"ticket": ROW["ticket"], "id": "t2", "user": "Kroczak, Filip"},
                     "melder": {"user": {"id": "melder-1", "name": ROW["initiator"]},
                                "details": {"OrgUnit": "WiRoPa GmbH", "Phone": "02542 1"}},
@@ -101,14 +118,14 @@ def gui_test():
 
     def fill_new():
         dialog = next(w for w in app.topLevelWidgets() if isinstance(w, NewTicketDialog) and w.isVisible())
-        QTest.qWait(20)
+        wait_for(lambda: dialog.category() is not None, 2000)  # Kategorien kommen asynchron
         seen["category"] = dialog.category()
         seen["ok_before"] = dialog.ok_button.isEnabled()
         QTest.keyClicks(dialog.user_edit, "brun")
-        QTest.qWait(500)  # Suche nach kurzer Pause
+        wait_for(lambda: dialog.users.count() > 0, 3000)  # Suche nach kurzer Pause, Antwort asynchron
         seen["users"] = dialog.users.count()
         dialog._take_user(dialog.users.item(0))
-        QTest.qWait(20)
+        wait_for(lambda: dialog.user_rows.rowCount() > 4, 2000)
         seen["card"] = [dialog.user_rows.itemAt(i, QFormLayout.FieldRole).widget().text()
                         for i in range(dialog.user_rows.rowCount())]
         dialog.category_edit.setCurrentText("Visaas > Server > Fileserver")
@@ -121,7 +138,8 @@ def gui_test():
     QTimer.singleShot(0, fill_new)
     mine.new_button.click()
     assert seen == {"category": "cat-in", "ok_before": False, "users": 1, "ok_after": True, "incident_off": True,
-                    "card": ["Brüning, Gerd", "WiRoPa GmbH", "02542 1", "info@example.com"]}, seen
+                    "card": ["Brüning, Gerd", "WiRoPa GmbH", "02542 1", "info@example.com",
+                             "Huber, Max (Melder)", "nicht hinterlegt"]}, seen
     kind, args = reader.tasks[-1]
     assert kind == "create", reader.tasks
     assert {k: v for k, v in args["request"].items()} == {
@@ -221,6 +239,13 @@ def gui_test():
     assert 'href="tel:025421"' in contact["Telefon"] and 'href="mailto:info@example.com"' in contact["E-Mail"]
     assert 'href="tel:01715"' in contact["Rückruf"], contact
     assert ("user_details", {"owner": id(view), "user": "melder-1"}) in reader.tasks
+    # Zuständig beim Kunden: Verwalter (hier selbst Melder) mit Links, fehlender Delegierter sichtbar
+    assert ("managers", {"owner": id(view), "ou": "ou-1"}) in reader.tasks
+    managers = {view.manager_rows.itemAt(i, QFormLayout.LabelRole).widget().text():
+                view.manager_rows.itemAt(i, QFormLayout.FieldRole).widget().text()
+                for i in range(view.manager_rows.rowCount())}
+    assert managers["Verwalter"].startswith("Huber, Max (Melder)") and 'href="tel:025421"' in managers["Verwalter"]
+    assert managers["Delegierter Verwalter"] == "nicht hinterlegt", managers
     assert not any(k in ("edit", "close") for k, _ in reader.tasks[-2:])
     assert not view.cancel_button.isVisibleTo(view), "kein „Fertig“: schließen über ✕"
     # Verlauf: erst beim Anklicken geladen, Zeitstrahl; E-Mail per Klick auf- und zuklappen
@@ -371,10 +396,21 @@ def gui_test():
     table_dialog.filter_edit.setText("drucker weber")
     assert order() == ["2"] and "1 passen zum Filter" in table_dialog.status.text(), table_dialog.status.text()
     table_dialog.filter_edit.setText("störung")  # Spalte Art
-    assert len(order()) == 3 and table_dialog.table.item(0, 4).text() == "Störung"
+    assert len(order()) == 3 and table_dialog.table.item(0, 5).text() == "Störung"
     table_dialog.filter_edit.setText("serviceanfrage")
     assert order() == []
     table_dialog.filter_edit.clear()
+    # Spalte Verwalter: bekannte sofort, andere kommen nach („–“ = nicht hinterlegt)
+    col = table_dialog.table.MANAGERS_COL
+    assert table_dialog.table.horizontalHeaderItem(col).text() == "Verwalter"
+    assert table_dialog.table.isColumnHidden(col)  # erst auf Wunsch (Rechtsklick auf den Kopf)
+    table_dialog.table.set_column_visible("managers", True)
+    assert not table_dialog.table.isColumnHidden(col)
+    assert table_dialog.table.item(0, col).text() == "Vertreter, Bernd (deleg.)"
+    assert "Verwalter: nicht hinterlegt" in table_dialog.table.item(0, col).toolTip()
+    table_dialog.table.set_rows([dict(r, ou="ou-2") for r in table_dialog.table.visible_rows()])
+    assert wait_for(lambda: table_dialog.table.item(0, col).text() == "–", 2000)
+    table_dialog.table.set_rows(reader.my_tickets["rows"])
     table_dialog.table.sort_by(2, Qt.AscendingOrder)  # Kunde
     assert [r["customer"] for r in table_dialog.visible_rows()] == ["Schmidt", "Weber", "Weber"]
     table_dialog.filter_edit.setFocus()
@@ -401,7 +437,7 @@ def gui_test():
     table_dialog.table.viewport().repaint()  # malt trotz Zeilen ohne Fehler
     table_dialog.table.set_loading(False)
 
-    # rechte Maustaste: Kontextmenü mit Ansehen, Bearbeiten, Übernehmen, Schließen, Nummer kopieren
+    # rechte Maustaste: Kontextmenü mit Ansehen, Bearbeiten, Übernehmen, Schließen, TCK-Nr. kopieren
     menus = []
 
     def read_menu():
@@ -414,7 +450,7 @@ def gui_test():
     QTimer.singleShot(10, read_menu)
     table = table_dialog.table
     table.customContextMenuRequested.emit(table.visualRect(table.model().index(1, 0)).center())
-    assert menus == [["Ans&ehen …", "&Bearbeiten …", "Über&nehmen", "&Weiterleiten …", "Ticket &schließen …", "Nummer &kopieren"]], menus
+    assert menus == [["Ans&ehen …", "&Bearbeiten …", "Über&nehmen", "&Pausieren …", "&Weiterleiten …", "Ticket &schließen …", "TCK-Nr. &kopieren"]], menus
     picked = table_dialog.current_row()
     assert picked["id"] == table_dialog.visible_rows()[1]["id"]  # Rechtsklick markiert die Zeile
     table_dialog.take_over()
@@ -535,6 +571,14 @@ def gui_test():
     tickets.choose_layout(1)
     assert tickets.closed_button is tickets.closed_switch and tickets.category == "f:f-v"
     assert tickets.category_buttons["f:f-v"].isChecked() and tickets.layout_no == 1
+    # Unbekannter gespeicherter Filter landet unter „Weitere“: keine Anordnung bricht ab
+    # (fehler.log: IndexError in _build_2…_build_5 bei GROUP_NAMES)
+    tickets.show_filters([{"id": "f-x", "title": "Störungen extern"}])
+    for no in (1, 2, 3, 4, 5):
+        tickets.choose_layout(no)
+        assert tickets.layout_no == no
+    tickets.choose("f:f-x")
+    assert tickets.group_of("f:f-x") == 4 and "Störungen extern" in shown(), shown()
     tickets.close()
 
     # ---- Reihenfolge wie im Service Desk sinnvoll gruppiert, Unbekannte nach Ähnlichkeit/ans Ende
@@ -595,6 +639,23 @@ def gui_test():
     assert wait_for(lambda: act.result() == QDialog.Accepted, 3000)
     assert last("mail")["known_users"] == {"info@example.com": "melder-1"}
 
+    # Verwalter mit einem Klick ins CC (der Melder selbst nicht doppelt)
+    managers = [{"role": "Verwalter", "id": "melder-1", "name": "Huber, Max", "email": "INFO@example.com"},
+                {"role": "Delegierter Verwalter", "id": "u9", "name": "Vertreter, Bernd", "email": "b@kunde.example"}]
+    act = TicketActionDialog(reader, ROW, "mail", contact={"email": "info@example.com", "initiator_id": "melder-1",
+                                                           "managers": managers})
+    assert [c.text() for c in act.cc_checks] == ["CC: Vertreter, Bernd (Delegierter Verwalter)"]
+    act.cc_edit.setText("x@y.example")
+    act.cc_checks[0].setChecked(True)
+    assert act.cc_edit.text() == "x@y.example; b@kunde.example"
+    act.cc_checks[0].setChecked(False)
+    act.cc_checks[0].setChecked(True)
+    act.text_edit.setPlainText("Hallo")
+    act.ok_button.click()
+    assert wait_for(lambda: act.result() == QDialog.Accepted, 3000)
+    assert last("mail")["cc"] == "x@y.example; b@kunde.example"
+    assert last("mail")["known_users"] == {"info@example.com": "melder-1", "b@kunde.example": "u9"}
+
     act = TicketActionDialog(reader, ROW, "pause")
     assert wait_for(lambda: act.reason_combo.count() == 2, 3000)
     week = next(b for b in act.quick_buttons if b.text() == "in 1 Woche")
@@ -628,6 +689,18 @@ def gui_test():
     assert last("forward")["role"] == "r1" and last("forward")["user"] is None
     assert "weitergeleitet" in mine._note, mine._note
 
+    # Pausieren direkt aus der Ticketliste
+    def pause_from_list():
+        dlg = next(w for w in app.topLevelWidgets() if isinstance(w, TicketActionDialog) and w.isVisible())
+        wait_for(lambda: dlg.reason_combo.count() == 2, 3000)
+        dlg.text_edit.setPlainText("Warten auf Rückruf")
+        dlg.ok_button.click()
+    QTimer.singleShot(50, pause_from_list)
+    mine.pause_ticket(ROW)
+    assert last("pause")["reason"] == 421
+    assert "pausiert bis" in mine._note, mine._note
+    assert mine._changed[ROW["id"]]["state"] == "Angehalten"
+
     assert QDialog  # (Import für Typen oben)
     mine.close()
     print("Ticket-Fenster ok")
@@ -638,6 +711,6 @@ try:
 except Exception:
     traceback.print_exc()
     sys.stdout.flush()
-    os._exit(1)
+    safe_io.hard_exit(1)
 sys.stdout.flush()
-os._exit(0)
+safe_io.hard_exit(0)

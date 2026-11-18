@@ -18,6 +18,7 @@ from theme import fit_bold, prose
 from prompt_card import CardParts, _theme_colors
 import billing
 import m42_booking as mb
+import m42_data
 
 
 def _hm(minutes):
@@ -70,6 +71,7 @@ class BookingDialog(_TicketSearch, CardParts, QDialog):
         self.ids = ids or dict(mb.DEFAULT_IDS)
         self.day = plan["start"].date()
         self.result_entry = ""
+        self.result_marks = None  # was an Kulanz / Reise / Zuschlag wirklich gebucht wurde
         self.ticket_info = None
         layout = QVBoxLayout(self)
         intro = QLabel("Zeitzeuge legt eine Zeiterfassung mit Status „Neu“ am Ticket an. "
@@ -80,6 +82,9 @@ class BookingDialog(_TicketSearch, CardParts, QDialog):
         layout.addWidget(intro)
 
         form = QFormLayout()
+        # Sofort ins Fenster hängen: sonst hätten die Felder noch kein Elternfenster, und setVisible(True)
+        # (Kulanz, Zuschlag, Zeitzeile) zeigte jedes kurz als eigenes kleines Fenster.
+        layout.addLayout(form)
         # Ein Feld für beides: Ticketnummer eintragen oder Kunde, Benutzer, Titel tippen und suchen.
         # Ohne Ticket steht der Kunde drin und die Suche läuft gleich los.
         self.ticket_edit = QLineEdit(plan.get("ticket", "") or plan.get("customer", ""))
@@ -194,7 +199,6 @@ class BookingDialog(_TicketSearch, CardParts, QDialog):
         self.text_edit.setTabChangesFocus(True)
         self.text_edit.setFixedHeight(90)
         form.addRow("&Beschreibung:", self.text_edit)
-        layout.addLayout(form)
 
         self.warning = QLabel()
         self.warning.setWordWrap(True)
@@ -372,6 +376,7 @@ class BookingDialog(_TicketSearch, CardParts, QDialog):
     def on_booked(self, result):
         if result.get("ok"):
             self.result_entry = result.get("entry", "")
+            self.result_marks = m42_data.marks_from_request(result.get("request"))
             self.ticket_info = result.get("ticket")
             self.accept()
             return

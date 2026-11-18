@@ -31,7 +31,7 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog, QDia
 
 import m42_booking as mb
 from flow_layout import FlowLayout
-from ticket_table import COLUMNS, TicketTable
+from ticket_table import COL, TicketTable
 
 MINE = "mine"
 STALE_AFTER = 10 * 60  # Kategorien, die älter sind, beim Anzeigen neu lesen
@@ -60,7 +60,7 @@ def pill_rank(title):
         return 2, 99
     if "pool" in words or key.startswith("ticketpool"):
         return 3, 99
-    return len(PILL_GROUPS), 99
+    return len(GROUP_NAMES) - 1, 99  # „Weitere“, hinter den bekannten (sonst IndexError bei GROUP_NAMES)
 
 
 GROUP_NAMES = ["Meine", "Allgemein", "TK", "Pools", "Weitere"]  # zu PILL_GROUPS, „Weitere“ = Rest
@@ -163,7 +163,8 @@ class TicketsDialog(QDialog):
 
         self.table = TicketTable("Tickets", self)
         self.table.setAccessibleDescription("Enter oder Doppelklick öffnet das Ticket.")
-        self.table.sort_by(len(COLUMNS) - 1, Qt.DescendingOrder)  # neueste zuerst
+        self.table.use_reader(reader)  # Spalte „Verwalter“ des Kunden
+        self.table.sort_by(COL["created"], Qt.DescendingOrder)  # neueste zuerst
         self.table.activated.connect(lambda _row: self.view_ticket())
         self.table.itemSelectionChanged.connect(self._selected)
         self.table.setContextMenuPolicy(Qt.CustomContextMenu)
@@ -214,7 +215,7 @@ class TicketsDialog(QDialog):
             foot.addWidget(w)
         layout.addLayout(foot)
         buttons = QDialogButtonBox(self)  # kein „Fertig“: schließen über ✕ oder Esc
-        self.copy_button = QPushButton("Nummer &kopieren", self)
+        self.copy_button = QPushButton("TCK-Nr. &kopieren", self)
         self.copy_button.clicked.connect(self.copy_number)
         self.refresh_button = QPushButton("&Aktualisieren", self)
         self.refresh_button.clicked.connect(self.refresh)
@@ -737,19 +738,31 @@ class TicketsDialog(QDialog):
 
     def forward_ticket(self, row=None):
         """Markiertes Ticket weiterleiten (Team und/oder Kollege), Fenster aus ticket_action_dialog."""
+        self._ticket_action("forward", row)
+
+    def pause_ticket(self, row=None):
+        """Markiertes Ticket pausieren (bis wann, Grund), Fenster aus ticket_action_dialog."""
+        self._ticket_action("pause", row)
+
+    def _ticket_action(self, kind, row=None):
         from ticket_action_dialog import TicketActionDialog
         row = row or self.current_row()
         if not row or mb.is_closed(row) or not hasattr(self.reader, "ticket_task"):
             return
-        dialog = TicketActionDialog(self.reader, row, "forward", self)
+        dialog = TicketActionDialog(self.reader, row, kind, self)
         if dialog.exec() == QDialog.Accepted:
-            self._note = f"{row['ticket']} weitergeleitet."
+            if kind == "pause":
+                self._note = f"{row['ticket']} {dialog.done_text[0].lower()}{dialog.done_text[1:]}"
+                self._changed.setdefault(row["id"], {})["state"] = "Angehalten"
+                self.show_category()
+            else:
+                self._note = f"{row['ticket']} weitergeleitet."
             self._update_status()
         dialog.deleteLater()
 
     def _context_menu(self, pos):
-        """Rechte Maustaste auf einem Ticket: Ansehen, Bearbeiten, Übernehmen, Weiterleiten, Schließen, als gelesen markieren,
-        Nummer kopieren."""
+        """Rechte Maustaste auf einem Ticket: Ansehen, Bearbeiten, Übernehmen, Pausieren, Weiterleiten, Schließen, als gelesen markieren,
+        TCK-Nr. kopieren."""
         index = self.table.indexAt(pos)
         if not index.isValid():
             return
@@ -764,12 +777,13 @@ class TicketsDialog(QDialog):
         if self.can_take_over(row):
             menu.addAction("Über&nehmen", self.take_over)
         if not mb.is_closed(row):
+            menu.addAction("&Pausieren …", self.pause_ticket)
             menu.addAction("&Weiterleiten …", self.forward_ticket)
             menu.addAction("Ticket &schließen …", self.close_ticket)
         if not mb.is_closed(row) and self.table.is_unread(row):
             menu.addAction("Als &gelesen markieren", lambda: self.mark_read(row))
         menu.addSeparator()
-        menu.addAction("Nummer &kopieren", self.copy_number)
+        menu.addAction("TCK-Nr. &kopieren", self.copy_number)
         menu.exec(self.table.viewport().mapToGlobal(pos))
 
     def can_take_over(self, row):

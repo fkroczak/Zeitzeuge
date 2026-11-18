@@ -553,6 +553,8 @@ class ActivityViewDialog(QDialog):
         layout.addLayout(form)
 
         text = activity.get("details", "")
+        if activity.get("booking_text"):  # Matrix42: gebuchter Text zuerst, Ticket-Angaben darunter
+            text = activity["booking_text"] + ("\n\n" + text if text else "")
         parts = [p for p in activity.get("parts") or [] if isinstance(p, dict)]  # ohne (Programm, Sek.)-Paare
         if parts:
             lines = [f"{p['start'][11:16]}–{p['end'][11:16]}  {type_label(p)}  "
@@ -581,7 +583,7 @@ class ActivityViewDialog(QDialog):
                 details = QPlainTextEdit(text)
                 details.setReadOnly(True)
             details.setObjectName("detail_field")
-            details.setMaximumHeight(240 if parts else 110)
+            details.setMaximumHeight(240 if parts else 160 if activity.get("booking_text") else 110)
             label = QLabel("Details")
             label.setObjectName("detail_key")
             layout.addSpacing(8)
@@ -607,7 +609,7 @@ class ActivityViewDialog(QDialog):
             scroll.setWidget(details)
             scroll.setWidgetResizable(True)
             scroll.setFrameShape(QFrame.NoFrame)
-            scroll.setMaximumHeight(240 if parts else 90)
+            scroll.setMaximumHeight(240 if parts else 160 if activity.get("booking_text") else 90)
             inner.addWidget(scroll)
             label = QLabel("Details")
             label.setObjectName("detail_key")
@@ -2543,6 +2545,8 @@ class TimelineView(QGraphicsView):
                                  else "<i>Arbeitszeit aus den Einstellungen</i>")
             elif hovered.get("m42"):
                 lines.append(escape(hovered.get("details", "")))
+                if hovered.get("booking_text"):  # was gebucht wurde (Text aus Matrix42)
+                    lines.append(escape(hovered["booking_text"]).replace("\n", "<br>"))
                 lines.append("<i>In Matrix42 gebucht</i>")
             elif hovered.get("m42_gap"):
                 lines.append(escape(hovered.get("details", "")))

@@ -12,7 +12,7 @@ import html
 from urllib.parse import unquote_to_bytes
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QImage, QTextCursor, QTextDocument
+from PySide6.QtGui import QImage, QTextCursor, QTextDocument, QTextDocumentFragment
 from PySide6.QtWidgets import (QApplication, QButtonGroup, QCheckBox, QComboBox, QCompleter, QDialog, QFormLayout,
                                QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem,
                                QPlainTextEdit, QPushButton, QTextBrowser, QToolButton, QVBoxLayout, QWidget)
@@ -152,6 +152,8 @@ class _CardDialog(QDialog):
             if text:
                 line_box.addWidget(_icon_label(icon, self.muted, 16))
                 label = QLabel(text)
+                label.setTextInteractionFlags(Qt.TextSelectableByMouse)  # Nummer, Kunde markieren und kopieren
+                label.setCursor(Qt.IBeamCursor)
                 line_box.addWidget(label)
                 line_box.addSpacing(SPACE_M)
                 if icon == "clock":
@@ -328,7 +330,17 @@ class _MelderSearch:
         rows = [("Name", self.initiator["name"].split(" - ")[0]),
                 ("Firma", (d.get("OrgUnit") or "").strip()), ("Telefon", d.get("Phone") or ""),
                 ("E-Mail", d.get("Email") or "")]
-        self._fill_rows(self.user_rows, [(k, v) for k, v in rows if v])
+        self._melder_pairs = [(k, v) for k, v in rows if v]
+        self._fill_rows(self.user_rows, self._melder_pairs)
+        if d.get("OrgUnitId"):  # wer beim Kunden des Melders zuständig ist
+            self._run("managers", ou=d["OrgUnitId"], melder=self.initiator["id"])
+
+    def _on_managers(self, result):
+        if not self.initiator or result["args"].get("melder") != self.initiator["id"] or not result.get("ok"):
+            return
+        people = (result.get("data") or {}).get("people")
+        self._fill_rows(self.user_rows, getattr(self, "_melder_pairs", []) +
+                        mt.manager_pairs(people, self.initiator["id"]))
 
     def _melder_keys(self, event):
         """Pfeil runter im Melder-Feld: in die Treffer (Enter dort wählt den Melder). True = erledigt."""
@@ -621,7 +633,8 @@ class EditTicketDialog(_MelderSearch, _CardDialog):
                                     f"(Status danach {mb.WORKING_STATE}).")
         self.assigned_hint.setWordWrap(True)
         self.assigned_hint.setObjectName("hint")
-        self.assigned_hint.setVisible(self.needs_take_over())
+        if not self.needs_take_over():  # nur verstecken, siehe card_dialog.modernize
+            self.assigned_hint.hide()
         box.addWidget(self.assigned_hint)
 
         self.ok_button.clicked.connect(self.save)
@@ -879,6 +892,12 @@ class ViewTicketDialog(_CardDialog):
         cards.addWidget(ticket_card, 1)
         cards.addWidget(contact_card, 1)
         box.addLayout(cards)
+        # Wer beim Kunden zuständig ist (Verwalter / Delegierter Verwalter aus Matrix42), sobald das Ticket da ist
+        self.managers_card, self.manager_rows = self._info_card("users", "Zuständig beim Kunden")
+        self.managers_card.setToolTip("Verwalter und Delegierter Verwalter, wie beim Kunden in Matrix42 hinterlegt")
+        self.manager_rows.addRow(skeleton.Bar(56, 14), skeleton.Bar(220, 14))
+        self.managers = None  # Antwort von "managers", sobald da
+        box.addWidget(self.managers_card)
 
         self.description_view = _DescriptionView()
         self.description_view.setAccessibleName("Beschreibung")
@@ -915,6 +934,7 @@ class ViewTicketDialog(_CardDialog):
             self.status.setText("⚠ Matrix42-Anmeldefenster ist offen. Bitte erst anmelden.")
             self._description_done()
             self._show_contact([])
+            self.managers_card.hide()
 
     def _add_actions(self, row):
         """Knopf „Aktionen“ mit Kommentieren, E-Mail senden, Pausieren, Weiterleiten (ticket_action_dialog)."""
@@ -934,7 +954,10 @@ class ViewTicketDialog(_CardDialog):
 
     def _ticket_action(self, kind):
         from ticket_action_dialog import TicketActionDialog
-        contact = {"email": self.melder_mail, "initiator_id": (self.loaded or {}).get("initiator") or ""}
+        contact = {"email": self.melder_mail, "initiator_id": (self.loaded or {}).get("initiator") or "",
+                   "managers": [{"role": p.get("role"), "id": p.get("id"), "name": p.get("name"),
+                                 "email": ((p.get("details") or {}).get("Email") or "").strip()}
+                                for p in (self.managers or {}).get("people") or []]}
         dialog = TicketActionDialog(self.reader, self.row, kind, self, contact)
         if dialog.exec() != QDialog.Accepted:
             return
@@ -1083,6 +1106,7 @@ class ViewTicketDialog(_CardDialog):
         self._description_done()
         if not result.get("ok"):
             self.status.setText(f"⚠ Laden fehlgeschlagen: {result.get('error', '')}")
+            self.managers_card.hide()
             self.ok_button.setEnabled(True)  # Bearbeiten zeigt den Fehler genauso, schadet nicht
             if not self._find_melder():  # Kontakt trotzdem: Melder über den Namen suchen
                 self._show_contact([])
@@ -1095,6 +1119,9 @@ class ViewTicketDialog(_CardDialog):
             self._fill_description()
         self.ok_button.setEnabled(True)
         self.status.clear()
+        if self.managers is None:
+            if not (self.loaded.get("ou") and self._run("managers", ou=self.loaded["ou"])):
+                self.managers_card.hide()
         contact = self.loaded.get("contact") or {}
         if contact.get("Phone") or contact.get("Email"):  # kam mit dem Ticket
             self._show_contact(mt.contact_rows(contact, self.row.get("initiator", ""),
@@ -1105,6 +1132,33 @@ class ViewTicketDialog(_CardDialog):
         else:
             self._show_contact(mt.contact_rows({}, self.row.get("initiator", ""), self.loaded.get("callback", "")))
             self._find_melder()
+
+    def _on_managers(self, result):
+        """Verwalter des Kunden: Name, Telefon und E-Mail (anklickbar); „nicht hinterlegt“, wenn keiner da ist."""
+        self.managers = (result.get("data") or {}) if result.get("ok") else {}
+        rows = self.manager_rows
+        while rows.rowCount():
+            rows.removeRow(0)
+        if not result.get("ok"):
+            pairs = [("Verwalter", html.escape(f"nicht gelesen ({result.get('error', '')})"))]
+        else:
+            people = self.managers.get("people")
+            pairs = mt.manager_rows(people, (self.loaded or {}).get("initiator", ""))
+            # zeigen, was fehlt: oft ist unklar, wer zuständig ist
+            pairs += [p for p in mt.manager_pairs(people) if "nicht hinterlegt" in p[1]]
+        for name, text in pairs:
+            key = QLabel(name)
+            key.setObjectName("hint")
+            value = QLabel()
+            value.setWordWrap(True)
+            value.setTextFormat(Qt.RichText)
+            value.setText(text)
+            value.setOpenExternalLinks(True)
+            value.setTextInteractionFlags(Qt.TextBrowserInteraction)
+            value.setAccessibleName(f"{name}: {QTextDocumentFragment.fromHtml(text).toPlainText()}")
+            if "nicht" in text and "<a" not in text:
+                value.setObjectName("hint")
+            rows.addRow(key, value)
 
     def _find_melder(self):
         """Ohne Id des Melders (Ticket nicht ladbar): Melder aus der Liste per Name suchen."""

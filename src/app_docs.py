@@ -7,7 +7,7 @@ import os
 
 from datetime import datetime, timedelta
 
-from PySide6.QtCore import QDate, QTimer
+from PySide6.QtCore import QDate, Qt, QTimer
 from PySide6.QtWidgets import QApplication, QDialog, QMessageBox
 
 from ai_classifier import to_entries
@@ -15,7 +15,7 @@ from billing import Billing
 from journal import describe, entry_key as journal_key, open_entry, sub_entries, ticket_line
 from journal_dialogs import (prompt_thresholds, EntryDialog, PromptStrip, PromptWindow,
                              default_span, PROMPT_SOURCES, prompt_style, prompt_timeout)
-from prompt_card import entry_label, prompt_position
+from prompt_card import _AutoHide, entry_label, prompt_position
 import snippets
 import tickets
 from snippets_dialogs import SnippetsDialog
@@ -223,13 +223,16 @@ class DocsMixin(CustomersMixin):
         if bookings is None:  # Tag (noch) nicht gelesen: nichts behaupten
             return []
         result = []
+        own = self.journal.items(date_str)  # selbst gebucht: Kulanz / Reise / Zuschlag von dort
         for b in bookings:
+            marks = m42.booking_marks(b, own)
             result.append({
                 "start": b["start"], "end": b["end"], "type": "Matrix42-Buchung", "m42": True,
                 "customer_name": b.get("customer", ""), "category": b.get("ticket", ""),
-                "description": b.get("subject", ""),
-                "details": " · ".join(t for t in (b.get("ticket"), b.get("subject"), b.get("entry"),
-                                                  b.get("activity_type"), b.get("state")) if t),
+                "description": b.get("subject", ""), "m42_marks": marks,
+                "booking_text": m42.booking_text(b, own),
+                "details": " · ".join(t for t in (b.get("ticket"), b.get("subject"), m42.marks_text(marks),
+                                                  b.get("entry"), b.get("activity_type"), b.get("state")) if t),
             })
         date = QDate.fromString(date_str, "yyyy-MM-dd")
         day = datetime.strptime(date_str, "%Y-%m-%d")
@@ -774,9 +777,27 @@ class DocsMixin(CustomersMixin):
         self.end_of_day_reminder(open_items, now)
 
     @staticmethod
-    def _modal_open():
+    def _blocking_modal(window=None):
+        """Offenes Fenster, das alle anderen sperrt (z. B. „Ticket ansehen“, „Tätigkeit nachtragen“),
+        sonst None. Fenster, die window selbst geöffnet hat (Kind, Enkel …), zählen nicht: die sperren
+        window nicht. Fensterweise modale (WindowModal) sperren nur ihre Eltern, nie eine Benachrichtigung."""
         app = QApplication.instance()
-        return app is not None and app.activeModalWidget() is not None
+        if app is None:
+            return None
+        for widget in app.topLevelWidgets():
+            if (not widget.isVisible() or widget.windowModality() != Qt.ApplicationModal
+                    or isinstance(widget, _AutoHide)):
+                continue
+            own = widget
+            while own is not None and own is not window:
+                own = own.parentWidget()
+            if window is None or own is None:
+                return widget
+        return None
+
+    @classmethod
+    def _modal_open(cls):
+        return cls._blocking_modal() is not None
 
     def _watch_modal(self):
         """Einmal anmelden: Fokuswechsel der Anwendung (auch beim Öffnen und Schließen sperrender
@@ -800,26 +821,30 @@ class DocsMixin(CustomersMixin):
         QTimer.singleShot(0, self._check_modal)
 
     def _check_modal(self):
-        """Sperrendes Fenster auf (nicht aus der Karte selbst): offene Nachfrage ausblenden, sie wäre
-        davor nicht bedienbar und nicht wegzuklicken. Fenster zu: wieder zeigen."""
+        """Gilt für alle Benachrichtigungen (Nachfrage als Karte/Leiste, Hinweise als Karte/Leiste,
+        alles mit _AutoHide): Sperrt ein anderes Fenster sie, ausblenden, sie wären davor nicht
+        bedienbar und nicht wegzuklicken. Fenster zu: wieder zeigen. Der Countdown hält an (_blocked)."""
         from shiboken6 import isValid
-        window = self._prompt_window
-        if window is None or not isValid(window):
-            self._prompt_hidden_for_modal = False
-            return
         app = QApplication.instance()
-        modal = app.activeModalWidget() if app is not None else None
-        own = modal
-        while own is not None and own is not window:
-            own = own.parentWidget()
-        if modal is not None and own is None:
-            if window.isVisible():
-                window._blocked = True
-                self._prompt_hidden_for_modal = True
-                window.hide()
-        elif modal is None and getattr(self, "_prompt_hidden_for_modal", False):
-            self._prompt_hidden_for_modal = False
-            window._blocked = False
+        if app is None:
+            return
+        windows = [w for w in app.topLevelWidgets()
+                   if isinstance(w, _AutoHide) and isValid(w) and not getattr(w, "_done", False)]
+        back = []
+        for window in windows:
+            if self._blocking_modal(window) is not None:
+                if window.isVisible():
+                    window._blocked = True
+                    window._hidden_for_modal = True
+                    window.hide()
+            elif getattr(window, "_hidden_for_modal", False):
+                window._hidden_for_modal = False
+                window._blocked = False
+                back.append(window)
+        notices = getattr(self, "_notices", [])
+        for window in sorted(back, key=lambda w: w in notices):  # Nachfrage zuerst, Hinweise darüber
+            if window in notices:  # neu stapeln: während der Sperre können andere gekommen oder gegangen sein
+                window.dock_bottom_right(self._notice_margin(window))
             window.show()
 
     def _retry_prompt_after_modal(self):
@@ -1111,7 +1136,7 @@ class DocsMixin(CustomersMixin):
                                m42_booking.ids(self.config), parent or self)
         reader.load_activity_types()
         accepted = dialog.exec() == QDialog.Accepted
-        entry, chosen = dialog.result_entry, dialog.type_edit.currentData()
+        entry, chosen, marks = dialog.result_entry, dialog.type_edit.currentData(), dialog.result_marks
         dialog.deleteLater()  # sonst bliebe es mit booking_done verbunden
         if not accepted or not entry:
             return None
@@ -1119,6 +1144,8 @@ class DocsMixin(CustomersMixin):
             self.config["m42_activity_type"] = chosen  # beim nächsten Mal vorbelegt
             mt.save_config(self.config)
         booked = dict(item, m42_entry=entry, m42_booked=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+        if marks:  # Kulanz / Reise / Zuschlag, wie gebucht (im Fenster änderbar)
+            booked["m42_marks"] = marks
         if not item.get("ticket") and dialog.ticket_info:
             booked["ticket"] = m42_booking.normalize_ticket(dialog.ticket_edit.text())
         try:

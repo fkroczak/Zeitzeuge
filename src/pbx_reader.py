@@ -235,16 +235,24 @@ class _DevTools:
             raise ConnectionError("Verbindung zu Edge getrennt")
         deadline = time.time() + timeout
         self._id += 1
-        self.ws.settimeout(timeout)
-        self.ws.send(json.dumps({"id": self._id, "method": method, "params": params}))
+        try:
+            self.ws.settimeout(timeout)
+            self.ws.send(json.dumps({"id": self._id, "method": method, "params": params}))
+        except (OSError, websocket.WebSocketConnectionClosedException) as e:
+            self._lost(e)
         while True:
             left = deadline - time.time()
             if left <= 0:
                 raise TimeoutError(f"Edge antwortet nicht auf {method}")
-            self.ws.settimeout(left)
-            raw = self.ws.recv()
+            try:
+                self.ws.settimeout(left)
+                raw = self.ws.recv()
+            except (websocket.WebSocketTimeoutException, TimeoutError):
+                raise TimeoutError(f"Edge antwortet nicht auf {method}") from None
+            except (OSError, websocket.WebSocketConnectionClosedException) as e:
+                self._lost(e)
             if not raw:  # Verbindung zu (Edge beendet oder abgestürzt)
-                raise ConnectionError("Verbindung zu Edge getrennt")
+                self._lost(None)
             try:
                 msg = json.loads(raw)
             except ValueError:
@@ -253,6 +261,12 @@ class _DevTools:
                 if "error" in msg:
                     raise RuntimeError(msg["error"].get("message"))
                 return msg.get("result", {})
+
+    def _lost(self, error):
+        """Edge beendet, abgestürzt oder Verbindung von Windows gekappt (z. B. WinError 10053):
+        Verbindung schließen, damit alive() False meldet und Edge neu gestartet wird."""
+        self.close()
+        raise ConnectionError("Verbindung zu Edge getrennt") from error
 
     def alive(self):
         return bool(getattr(self.ws, "connected", False))
@@ -501,16 +515,18 @@ class BrowserReader(QObject):
         self._tools.call("Page.navigate", url=self.start_url())
 
     def _close_browser(self):
+        # Läuft beim Beenden gleichzeitig aus stop() (Hauptthread) und dem Ende der Lese-Schleife:
+        # erst übernehmen, dann benutzen, sonst setzt der andere Thread _proc dazwischen auf None
         self._close_tools()
-        if self._proc and self._proc.poll() is None:
-            self._proc.terminate()
+        proc, self._proc = self._proc, None
+        if proc and proc.poll() is None:
+            proc.terminate()
             try:
-                self._proc.wait(timeout=10)
+                proc.wait(timeout=10)
             except subprocess.TimeoutExpired:
-                self._proc.kill()
-        if self._proc:
+                proc.kill()
+        if proc:
             kill_profile_processes(self.profile_dir)  # falls Edge an einen anderen Prozess abgab
-        self._proc = None
 
     def _login_window(self):
         self._wake.set()  # Lese-Schleife aus dem Warten holen
@@ -621,9 +637,9 @@ class BrowserReader(QObject):
         return False
 
     def _close_tools(self):
-        if self._tools:
-            self._tools.close()
-            self._tools = None
+        tools, self._tools = self._tools, None  # wie _close_browser: aus zwei Threads möglich
+        if tools:
+            tools.close()
 
     def _close_gracefully(self, port):
         """Edge regulär beenden, damit die Anmeldung (Cookies) im Profil gespeichert wird."""

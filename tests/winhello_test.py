@@ -43,7 +43,13 @@ class FakeHello:
             raise winhello.HelloCancelled("abgebrochen")
         if self.private is None:
             raise winhello.HelloMissing("fehlt")
-        return self.private.decrypt(data, padding.PKCS1v15())
+        try:
+            return self.private.decrypt(data, padding.PKCS1v15())
+        except ValueError:
+            # Falscher Schlüssel: Neuere OpenSSL liefern dann Zufallsbytes (implizite Ablehnung),
+            # ältere werfen ValueError. Immer wie die neueren, damit der Test nicht von der
+            # OpenSSL-Version abhängt; datakey erkennt es an AES-GCM und meldet WrongKey.
+            return os.urandom(32)
 
 
 @pytest.fixture

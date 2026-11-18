@@ -81,6 +81,45 @@ def gui_test():
     assert gone(card)
     flush_deletes()
 
+    # Sperrendes Fenster (z. B. „Ticket ansehen“): Hinweis davor wäre nicht wegzuklicken.
+    # Offener Hinweis blendet aus und kommt wieder; neuer wartet, bis das Fenster zu ist.
+    from PySide6.QtWidgets import QDialog
+
+    def wait_for(check):
+        for _ in range(30):  # Fokuswechsel oder Nachprüfung alle 0,5 s (app_docs._check_modal)
+            if check():
+                return True
+            QTest.qWait(100)
+        return check()
+
+    card = window.notify("Feierabend: bitte prüfen", "Tagesabschluss", items=["A"], card=True,
+                         action="Tagesabschluss öffnen", on_action=lambda: None, timeout=0)
+    blocker = QDialog(window)
+    blocker.setWindowModality(Qt.ApplicationModal)
+    blocker.show()
+    assert wait_for(lambda: not card.isVisible()) and card._blocked, "Hinweis bleibt gesperrt davor stehen"
+    later = window.notify("Matrix42-Anmeldung nötig", "Zeitzeuge kann nicht lesen.", timeout=0)
+    QTest.qWait(50)
+    assert not later.isVisible() and later in window._notices, "neuer Hinweis wartet"
+    blocker.close()
+    assert wait_for(lambda: card.isVisible() and later.isVisible()), "Hinweise kommen nicht wieder"
+    assert not card._blocked and not later._blocked
+    assert later.frameGeometry().bottom() <= card.frameGeometry().top() + 1 or \
+        card.frameGeometry().bottom() <= later.frameGeometry().top() + 1, "überdecken sich nach der Sperre"
+    # Nur fensterweise gesperrt (WindowModal, z. B. Buchung zu einem Fenster): Hinweis bleibt stehen
+    owner = QDialog(window)
+    owner.show()
+    side = QDialog(owner)
+    side.setWindowModality(Qt.WindowModal)
+    side.show()
+    QTest.qWait(700)
+    assert card.isVisible() and not card._blocked
+    side.close()
+    owner.close()
+    for notice in list(window._notices):
+        notice._finish(notice.closed)
+    flush_deletes()
+
     # Gleiche Ecke wie die Nachfrage (oben links) und mit Abstand darunter, wenn sie offen ist
     window.config["prompt_position"] = "top_left"
     strip = window.notify("ITM-Zeiterfassung prüfen", "Buchung ohne Ende", timeout=0)

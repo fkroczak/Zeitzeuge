@@ -190,6 +190,9 @@ def test_fehler_406_laedt_seite_neu_und_versucht_einmal(tmp_path, monkeypatch):
         def call(self, method, **kw):
             seen.append(method)
 
+        def alive(self):
+            return True
+
     reader._tools = Tools()
     monkeypatch.setattr(reader, "_evaluate", lambda js, **kw: (seen.append(("fresh", "true)" in js)),
                                                               json.dumps(answers.pop(0)))[1])
@@ -210,8 +213,128 @@ def test_fehler_406_auch_nach_neuladen_heisst_anmelden(tmp_path, monkeypatch):
     monkeypatch.setattr(m42_reader.time, "sleep", lambda s: None)
     reader = M42Reader("http://m42.invalid/kalender", str(tmp_path / "m42_buchungen.json"),
                        str(tmp_path / "profil"), weeks_back=0)
-    reader._tools = type("Tools", (), {"call": lambda self, method, **kw: None})()
+    reader._tools = type("Tools", (), {"call": lambda self, method, **kw: None, "alive": lambda self: True})()
     monkeypatch.setattr(reader, "_evaluate", lambda js, **kw: json.dumps({"state": "error", "status": 406}))
     with pytest.raises(m42_booking.BookingError, match="anmelden"):
         reader._fetch("GET", "/m42Services/api/x")
     assert reader.needs_login
+
+
+def test_verbindung_zu_edge_gekappt_wird_connectionerror(monkeypatch):
+    """WinError 10053 o. Ä. beim Senden oder Empfangen: Verbindung zu, alive() False,
+    ConnectionError statt der rohen Windows-Meldung."""
+    import pytest
+
+    import pbx_reader
+
+    class Ws:
+        connected = True
+
+        def __init__(self, fail_on):
+            self.fail_on = fail_on
+
+        def settimeout(self, t):
+            pass
+
+        def send(self, data):
+            if self.fail_on == "send":
+                raise ConnectionAbortedError(10053, "Eine bestehende Verbindung wurde abgebrochen")
+
+        def recv(self):
+            raise ConnectionAbortedError(10053, "Eine bestehende Verbindung wurde abgebrochen")
+
+        def close(self):
+            self.connected = False
+
+    for where in ("send", "recv"):
+        tools = pbx_reader._DevTools.__new__(pbx_reader._DevTools)
+        tools.ws, tools._id = Ws(where), 0
+        with pytest.raises(ConnectionError, match="Verbindung zu Edge getrennt"):
+            tools.call("Runtime.evaluate")
+        assert not tools.alive()
+
+
+def test_verbindung_verloren_startet_edge_neu_und_liest_nochmal(tmp_path, monkeypatch):
+    """Ticketliste lesen, Edge-Verbindung ist weg: Edge neu starten, einmal wiederholen.
+    Speichern wird nie wiederholt."""
+    import json
+
+    import pytest
+
+    from m42_reader import M42Reader
+
+    reader = M42Reader("http://m42.invalid/kalender", str(tmp_path / "m42_buchungen.json"),
+                       str(tmp_path / "profil"), weeks_back=0)
+
+    class Tools:
+        def __init__(self, ok=True):
+            self.ok = ok
+
+        def alive(self):
+            return self.ok
+
+        def close(self):
+            pass
+
+    starts, answers = [], []
+    monkeypatch.setattr(reader, "_start_browser", lambda: (starts.append(1), setattr(reader, "_tools", Tools())))
+    monkeypatch.setattr(reader, "_close_browser", lambda: setattr(reader, "_tools", None))
+
+    def evaluate(js, **kw):
+        answer = answers.pop(0)
+        if isinstance(answer, Exception):
+            raise answer
+        return json.dumps(answer)
+    monkeypatch.setattr(reader, "_evaluate", evaluate)
+
+    # Verbindung schon tot: gleich neu starten
+    reader._tools = Tools(ok=False)
+    answers[:] = [{"state": "ok", "status": 200, "data": [1]}]
+    assert reader._fetch("POST", "/m42Services/api/WidgetList/GetData/x") == [1] and len(starts) == 1
+
+    # Verbindung reißt beim Lesen ab: neu starten, nochmal
+    answers[:] = [ConnectionError("Verbindung zu Edge getrennt"), {"state": "ok", "status": 200, "data": [2]}]
+    assert reader._fetch("POST", "/m42Services/api/WidgetList/GetData/x") == [2] and len(starts) == 2
+
+    # Speichern: kein zweiter Versuch
+    answers[:] = [ConnectionError("Verbindung zu Edge getrennt"), {"state": "ok", "status": 200, "data": [3]}]
+    with pytest.raises(ConnectionError):
+        reader._fetch("POST", "/m42Services/api/data/objects/UpdateData")
+    assert len(answers) == 1
+
+
+def test_merker_aus_der_schnittstelle():
+    """Kulanz / Reise / Zuschlag aus Matrix42; ohne die Felder unbekannt (nichts behaupten)."""
+    item = dict(API_ITEM, Start=_utc("2026-10-05 08:00"), End=_utc("2026-10-05 08:30"), WorktimeRounded=30)
+    assert "marks" not in m.booking_from_api(item)
+    b = m.booking_from_api(dict(item, IsGoodwill=True, GoodwillAmount=15, GoodwillReason="Nacharbeit",
+                                IsTravel=True, IgnoreSurcharge=True, IgnoreSurchargeReason="Zuschlag ignoriert"))
+    assert b["marks"]["goodwill_minutes"] == 15 and b["marks"]["travel"] and b["marks"]["no_surcharge"]
+    assert m.marks_text(b["marks"]) == "Kulanz 0:15 h (Nacharbeit), berechnet 0:15 h · Reise · ohne Zuschlag"
+    plain = m.booking_from_api(dict(item, IsGoodwill=False, IsTravel=False, IgnoreSurcharge=False))
+    assert m.marks_text(plain["marks"]) == "berechnet 0:30 h"
+
+
+def test_merker_wie_gebucht():
+    """Gespeichert wird, was das Buchen-Fenster sendet; Kulanzzeit 0 = die ganze Zeit."""
+    marks = m.marks_from_request({"minutes": 45, "goodwill": True, "goodwill_minutes": 0})
+    assert marks["goodwill_minutes"] == 45 and marks["goodwill_reason"] == "Kulanz"
+    assert m.marks_text(marks) == "Kulanz 0:45 h, nicht berechnet"
+    booking = {"entry": "TE1"}
+    assert m.booking_marks(booking, [{"m42_entry": "TE2", "m42_marks": marks}]) is None
+    assert m.booking_marks(booking, [{"m42_entry": "TE1", "m42_marks": marks}]) == marks
+    assert m.booking_marks(dict(booking, marks={"minutes": 5}), [{"m42_entry": "TE1", "m42_marks": marks}]) == {"minutes": 5}
+    assert m.marks_text(None) == ""
+
+
+def test_buchungstext_aus_matrix42_und_eigener_taetigkeit():
+    item = dict(API_ITEM, Start=_utc("2026-10-05 08:00"), End=_utc("2026-10-05 08:15"),
+                Description="<p>- Praktikantenbetreuung</p><p>-- Berichte&nbsp;geprüft</p>")
+    b = m.booking_from_api(item)
+    assert b["text"] == "- Praktikantenbetreuung\n-- Berichte geprüft"
+    assert m.booking_text(b) == b["text"]
+    # ohne Text in Matrix42: aus der Tätigkeit, die Zeitzeuge als diese Zeiterfassung gebucht hat
+    b.pop("text")
+    own = [{"m42_entry": "TE0000000001", "text": "fremd"}, {"m42_entry": "TE0000085085", "text": " - Nacharbeit "}]
+    assert m.booking_text(b, own) == "- Nacharbeit"
+    assert m.booking_text(b) == "" and m.plain_text(None) == ""

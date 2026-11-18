@@ -4,6 +4,7 @@ Matrix42-Buchungen: Einträge aus dem Kalender umwandeln und mit dem Tag abgleic
 Rein funktional, ohne Qt und ohne Edge (das Lesen steht in m42_reader.py). So lädt
 das Hauptfenster beim Start nichts von der Browser-Steuerung.
 """
+import html
 import re
 from datetime import date, datetime, timedelta
 
@@ -88,6 +89,16 @@ def _local(text):
     return value
 
 
+def plain_text(value):
+    """Buchungstext aus Matrix42 als schlichter Text (Matrix42 speichert ihn teils als HTML)."""
+    if not isinstance(value, str) or not value.strip():
+        return ""
+    text = re.sub(r"(?i)<br\s*/?>|</p\s*>|</div\s*>|</li\s*>", "\n", value)
+    text = html.unescape(re.sub(r"<[^>]+>", "", text)).replace("\xa0", " ")
+    lines = [line.rstrip() for line in text.splitlines()]
+    return "\n".join(lines).strip()
+
+
 def booking_from_api(item):
     """Eintrag der Schnittstelle -> Buchung wie aus dem Kalender, dazu Status, Tätigkeitsart
     und gerundete Minuten. None, wenn Zeit fehlt oder es keine Zeiterfassung ist."""
@@ -111,9 +122,117 @@ def booking_from_api(item):
     for key, field in (("state", "State"), ("activity_type", "ActivityType")):
         if item.get(field):
             booking[key] = str(item[field]).strip()
+    text = plain_text(item.get("Description"))
+    if text:
+        booking["text"] = text
     if isinstance(item.get("WorktimeRounded"), (int, float)):
         booking["minutes_rounded"] = item["WorktimeRounded"]
+    marks = marks_from_api(item)
+    if marks:
+        booking["marks"] = marks
     return booking
+
+
+# ------------------------------------------------------------------ Kulanz / Reise / Zuschlag
+
+# Felder der Zeiterfassung dazu (liefert die Schnittstelle nur, wenn die Liste sie hat)
+MARK_FIELDS = ("IsGoodwill", "GoodwillAmount", "GoodwillAmountRounded", "GoodwillReason",
+               "IsTravel", "IgnoreSurcharge", "IgnoreSurchargeReason")
+
+
+def _minutes(value):
+    try:
+        return max(0, int(value or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def marks_from_api(item):
+    """Kulanz / Reise / Zuschlag einer gelesenen Zeiterfassung -> Merker wie marks_from_request.
+    None, wenn die Schnittstelle die Felder nicht liefert (dann ist es unbekannt)."""
+    if not any(k in item for k in ("IsGoodwill", "IsTravel", "IgnoreSurcharge")):
+        return None
+    minutes = _minutes(item.get("WorktimeRounded"))
+    goodwill = bool(item.get("IsGoodwill"))
+    amount = _minutes(item.get("GoodwillAmountRounded") or item.get("GoodwillAmount")) if goodwill else 0
+    return {"minutes": minutes, "goodwill": goodwill,
+            "goodwill_minutes": min(amount or minutes, minutes) if goodwill and minutes else amount,
+            "goodwill_reason": (item.get("GoodwillReason") or "").strip() if goodwill else "",
+            "travel": bool(item.get("IsTravel")), "no_surcharge": bool(item.get("IgnoreSurcharge")),
+            "surcharge_reason": ((item.get("IgnoreSurchargeReason") or "").strip()
+                                 if item.get("IgnoreSurcharge") else "")}
+
+
+def marks_from_request(request):
+    """Was beim Buchen wirklich an Matrix42 ging (Buchen-Fenster, nicht die Tätigkeit):
+    {minutes, goodwill, goodwill_minutes, goodwill_reason, travel, no_surcharge, surcharge_reason}.
+    Kulanzzeit wie in m42_booking.time_entry: 0 = die ganze Zeit."""
+    request = request or {}
+    minutes = _minutes(request.get("minutes"))
+    goodwill = bool(request.get("goodwill"))
+    amount = _minutes(request.get("goodwill_minutes"))
+    if goodwill:
+        amount = min(amount, minutes) if amount else minutes
+    return {"minutes": minutes, "goodwill": goodwill, "goodwill_minutes": amount if goodwill else 0,
+            "goodwill_reason": ((request.get("goodwill_reason") or "").strip() or "Kulanz") if goodwill else "",
+            "travel": bool(request.get("travel")), "no_surcharge": bool(request.get("no_surcharge")),
+            "surcharge_reason": (request.get("surcharge_reason") or "").strip() if request.get("no_surcharge") else ""}
+
+
+def _h(minutes):
+    return f"{minutes // 60}:{minutes % 60:02d} h"
+
+
+def marks_text(marks):
+    """Merker als Text, z. B. "Kulanz 0:15 h (Nacharbeit), berechnet 0:15 h · Reise · ohne Zuschlag".
+    Leer, wenn unbekannt."""
+    if not marks:
+        return ""
+    minutes, parts = _minutes(marks.get("minutes")), []
+    if marks.get("goodwill"):
+        free = _minutes(marks.get("goodwill_minutes")) or minutes
+        reason = (marks.get("goodwill_reason") or "").strip()
+        why = f" ({reason})" if reason and reason != "Kulanz" else ""
+        if minutes and free >= minutes:
+            parts.append(f"Kulanz {_h(minutes)}{why}, nicht berechnet")
+        elif minutes:
+            parts.append(f"Kulanz {_h(free)}{why}, berechnet {_h(minutes - free)}")
+        else:
+            parts.append(f"Kulanz{why}")
+    else:
+        parts.append(f"berechnet {_h(minutes)}" if minutes else "berechnet")
+    if marks.get("travel"):
+        parts.append("Reise")
+    if marks.get("no_surcharge"):
+        reason = (marks.get("surcharge_reason") or "").strip()
+        parts.append("ohne Zuschlag" + (f" ({reason})" if reason and reason != "Zuschlag ignoriert" else ""))
+    return " · ".join(parts)
+
+
+def booking_marks(booking, items=()):
+    """Merker einer Matrix42-Buchung: aus Matrix42 selbst, sonst aus der eigenen Tätigkeit,
+    die Zeitzeuge als diese Zeiterfassung (m42_entry) gebucht hat. None = unbekannt."""
+    if booking.get("marks"):
+        return booking["marks"]
+    entry = booking.get("entry")
+    if entry:
+        for item in items or ():
+            if item.get("m42_entry") == entry and item.get("m42_marks"):
+                return item["m42_marks"]
+    return None
+
+
+def booking_text(booking, items=()):
+    """Buchungstext einer Matrix42-Buchung: aus Matrix42 selbst, sonst aus der eigenen Tätigkeit,
+    die Zeitzeuge als diese Zeiterfassung (m42_entry) gebucht hat. "" = unbekannt."""
+    if booking.get("text"):
+        return booking["text"]
+    entry = booking.get("entry")
+    if entry:
+        for item in items or ():
+            if item.get("m42_entry") == entry and (item.get("text") or "").strip():
+                return item["text"].strip()
+    return ""
 
 
 def api_bookings_by_day(monday, items):

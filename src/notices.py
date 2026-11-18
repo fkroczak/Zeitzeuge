@@ -106,7 +106,8 @@ class NoticeCard(_Notice, QDialog):
         self.text = QLabel(text)
         self.text.setObjectName("hint")
         self.text.setWordWrap(True)
-        self.text.setVisible(bool(text))
+        if not text:  # nur verstecken: setVisible(True) ohne Elternfenster zeigte ein eigenes Fenster
+            self.text.hide()
         texts.addWidget(self.title)
         texts.addWidget(self.text)
         head.addLayout(texts, 1)
