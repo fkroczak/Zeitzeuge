@@ -325,3 +325,16 @@ def test_merker_wie_gebucht():
     assert m.booking_marks(booking, [{"m42_entry": "TE1", "m42_marks": marks}]) == marks
     assert m.booking_marks(dict(booking, marks={"minutes": 5}), [{"m42_entry": "TE1", "m42_marks": marks}]) == {"minutes": 5}
     assert m.marks_text(None) == ""
+
+
+def test_buchungstext_aus_matrix42_und_eigener_taetigkeit():
+    item = dict(API_ITEM, Start=_utc("2026-10-05 08:00"), End=_utc("2026-10-05 08:15"),
+                Description="<p>- Praktikantenbetreuung</p><p>-- Berichte&nbsp;geprüft</p>")
+    b = m.booking_from_api(item)
+    assert b["text"] == "- Praktikantenbetreuung\n-- Berichte geprüft"
+    assert m.booking_text(b) == b["text"]
+    # ohne Text in Matrix42: aus der Tätigkeit, die Zeitzeuge als diese Zeiterfassung gebucht hat
+    b.pop("text")
+    own = [{"m42_entry": "TE0000000001", "text": "fremd"}, {"m42_entry": "TE0000085085", "text": " - Nacharbeit "}]
+    assert m.booking_text(b, own) == "- Nacharbeit"
+    assert m.booking_text(b) == "" and m.plain_text(None) == ""
