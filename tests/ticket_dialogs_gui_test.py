@@ -563,6 +563,14 @@ def gui_test():
     tickets.choose_layout(1)
     assert tickets.closed_button is tickets.closed_switch and tickets.category == "f:f-v"
     assert tickets.category_buttons["f:f-v"].isChecked() and tickets.layout_no == 1
+    # Unbekannter gespeicherter Filter landet unter „Weitere“: keine Anordnung bricht ab
+    # (fehler.log: IndexError in _build_2…_build_5 bei GROUP_NAMES)
+    tickets.show_filters([{"id": "f-x", "title": "Störungen extern"}])
+    for no in (1, 2, 3, 4, 5):
+        tickets.choose_layout(no)
+        assert tickets.layout_no == no
+    tickets.choose("f:f-x")
+    assert tickets.group_of("f:f-x") == 4 and "Störungen extern" in shown(), shown()
     tickets.close()
 
     # ---- Reihenfolge wie im Service Desk sinnvoll gruppiert, Unbekannte nach Ähnlichkeit/ans Ende

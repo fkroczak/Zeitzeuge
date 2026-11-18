@@ -215,3 +215,27 @@ def test_fehler_406_auch_nach_neuladen_heisst_anmelden(tmp_path, monkeypatch):
     with pytest.raises(m42_booking.BookingError, match="anmelden"):
         reader._fetch("GET", "/m42Services/api/x")
     assert reader.needs_login
+
+
+def test_merker_aus_der_schnittstelle():
+    """Kulanz / Reise / Zuschlag aus Matrix42; ohne die Felder unbekannt (nichts behaupten)."""
+    item = dict(API_ITEM, Start=_utc("2026-10-05 08:00"), End=_utc("2026-10-05 08:30"), WorktimeRounded=30)
+    assert "marks" not in m.booking_from_api(item)
+    b = m.booking_from_api(dict(item, IsGoodwill=True, GoodwillAmount=15, GoodwillReason="Nacharbeit",
+                                IsTravel=True, IgnoreSurcharge=True, IgnoreSurchargeReason="Zuschlag ignoriert"))
+    assert b["marks"]["goodwill_minutes"] == 15 and b["marks"]["travel"] and b["marks"]["no_surcharge"]
+    assert m.marks_text(b["marks"]) == "Kulanz 0:15 h (Nacharbeit), berechnet 0:15 h · Reise · ohne Zuschlag"
+    plain = m.booking_from_api(dict(item, IsGoodwill=False, IsTravel=False, IgnoreSurcharge=False))
+    assert m.marks_text(plain["marks"]) == "berechnet 0:30 h"
+
+
+def test_merker_wie_gebucht():
+    """Gespeichert wird, was das Buchen-Fenster sendet; Kulanzzeit 0 = die ganze Zeit."""
+    marks = m.marks_from_request({"minutes": 45, "goodwill": True, "goodwill_minutes": 0})
+    assert marks["goodwill_minutes"] == 45 and marks["goodwill_reason"] == "Kulanz"
+    assert m.marks_text(marks) == "Kulanz 0:45 h, nicht berechnet"
+    booking = {"entry": "TE1"}
+    assert m.booking_marks(booking, [{"m42_entry": "TE2", "m42_marks": marks}]) is None
+    assert m.booking_marks(booking, [{"m42_entry": "TE1", "m42_marks": marks}]) == marks
+    assert m.booking_marks(dict(booking, marks={"minutes": 5}), [{"m42_entry": "TE1", "m42_marks": marks}]) == {"minutes": 5}
+    assert m.marks_text(None) == ""

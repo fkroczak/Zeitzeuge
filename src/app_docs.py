@@ -223,13 +223,15 @@ class DocsMixin(CustomersMixin):
         if bookings is None:  # Tag (noch) nicht gelesen: nichts behaupten
             return []
         result = []
+        own = self.journal.items(date_str)  # selbst gebucht: Kulanz / Reise / Zuschlag von dort
         for b in bookings:
+            marks = m42.booking_marks(b, own)
             result.append({
                 "start": b["start"], "end": b["end"], "type": "Matrix42-Buchung", "m42": True,
                 "customer_name": b.get("customer", ""), "category": b.get("ticket", ""),
-                "description": b.get("subject", ""),
-                "details": " · ".join(t for t in (b.get("ticket"), b.get("subject"), b.get("entry"),
-                                                  b.get("activity_type"), b.get("state")) if t),
+                "description": b.get("subject", ""), "m42_marks": marks,
+                "details": " · ".join(t for t in (b.get("ticket"), b.get("subject"), m42.marks_text(marks),
+                                                  b.get("entry"), b.get("activity_type"), b.get("state")) if t),
             })
         date = QDate.fromString(date_str, "yyyy-MM-dd")
         day = datetime.strptime(date_str, "%Y-%m-%d")
@@ -1133,7 +1135,7 @@ class DocsMixin(CustomersMixin):
                                m42_booking.ids(self.config), parent or self)
         reader.load_activity_types()
         accepted = dialog.exec() == QDialog.Accepted
-        entry, chosen = dialog.result_entry, dialog.type_edit.currentData()
+        entry, chosen, marks = dialog.result_entry, dialog.type_edit.currentData(), dialog.result_marks
         dialog.deleteLater()  # sonst bliebe es mit booking_done verbunden
         if not accepted or not entry:
             return None
@@ -1141,6 +1143,8 @@ class DocsMixin(CustomersMixin):
             self.config["m42_activity_type"] = chosen  # beim nächsten Mal vorbelegt
             mt.save_config(self.config)
         booked = dict(item, m42_entry=entry, m42_booked=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+        if marks:  # Kulanz / Reise / Zuschlag, wie gebucht (im Fenster änderbar)
+            booked["m42_marks"] = marks
         if not item.get("ticket") and dialog.ticket_info:
             booked["ticket"] = m42_booking.normalize_ticket(dialog.ticket_edit.text())
         try:

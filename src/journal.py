@@ -23,6 +23,7 @@ import uuid
 from datetime import datetime, timedelta
 
 import datastore
+import m42_data
 import prompt_topics
 import safe_io
 import timefmt
@@ -238,6 +239,8 @@ class Journal:
                                            *flag_names(item), item.get("text")) if t)
             if item.get("von_pc"):
                 label += f" (von {item['von_pc']})"
+            if item.get("m42_marks"):  # so gebucht (im Buchen-Fenster änderbar, kann abweichen)
+                label += f" · gebucht: {m42_data.marks_text(item['m42_marks'])}"
             result.append({
                 "start": item["start"], "end": item["end"],
                 "type": DOC_TYPE,
