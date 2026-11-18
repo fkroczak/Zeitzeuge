@@ -17,6 +17,7 @@ import tempfile
 import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"))
+import safe_io  # noqa: E402  (hard_exit: Ende ohne Qt-Absturz)
 sys.stdout.reconfigure(line_buffering=True, errors="backslashreplace")
 faulthandler.enable()
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -45,7 +46,7 @@ def spin(until, seconds=3.0):
 def check(ok, text):
     if not ok:
         print(f"::error title=update_gui_test::{text}")
-        os._exit(1)
+        safe_io.hard_exit(1)
     print("ok:", text)
 
 
@@ -155,4 +156,4 @@ check(code == 0, f"Zeitzeuge beendet sich mit offenem Update-Fenster (Code {code
 
 print("update_gui_test: alles ok")
 sys.stdout.flush()
-os._exit(0)
+safe_io.hard_exit(0)
