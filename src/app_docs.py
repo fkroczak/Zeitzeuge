@@ -800,27 +800,28 @@ class DocsMixin(CustomersMixin):
         QTimer.singleShot(0, self._check_modal)
 
     def _check_modal(self):
-        """Sperrendes Fenster auf (nicht aus der Karte selbst): offene Nachfrage ausblenden, sie wäre
-        davor nicht bedienbar und nicht wegzuklicken. Fenster zu: wieder zeigen."""
+        """Sperrendes Fenster auf (nicht aus der Karte selbst): offene Nachfrage und Hinweise (z. B.
+        „Feierabend: bitte prüfen“) ausblenden, sie wären davor nicht bedienbar und nicht wegzuklicken.
+        Fenster zu: wieder zeigen. Der Countdown hält solange an (_blocked)."""
         from shiboken6 import isValid
-        window = self._prompt_window
-        if window is None or not isValid(window):
-            self._prompt_hidden_for_modal = False
-            return
         app = QApplication.instance()
         modal = app.activeModalWidget() if app is not None else None
-        own = modal
-        while own is not None and own is not window:
-            own = own.parentWidget()
-        if modal is not None and own is None:
-            if window.isVisible():
-                window._blocked = True
-                self._prompt_hidden_for_modal = True
-                window.hide()
-        elif modal is None and getattr(self, "_prompt_hidden_for_modal", False):
-            self._prompt_hidden_for_modal = False
-            window._blocked = False
-            window.show()
+        windows = [self._prompt_window] + list(getattr(self, "_notices", []))
+        for window in windows:
+            if window is None or not isValid(window) or getattr(window, "_done", False):
+                continue
+            own = modal
+            while own is not None and own is not window:
+                own = own.parentWidget()
+            if modal is not None and own is None:
+                if window.isVisible():
+                    window._blocked = True
+                    window._hidden_for_modal = True
+                    window.hide()
+            elif modal is None and getattr(window, "_hidden_for_modal", False):
+                window._hidden_for_modal = False
+                window._blocked = False
+                window.show()
 
     def _retry_prompt_after_modal(self):
         if self._prompt_window is None and self._modal_open():
