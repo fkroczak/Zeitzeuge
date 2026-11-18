@@ -32,6 +32,7 @@ Testversionen aus Branches tragen die Version ihres main-Stands plus Buildnummer
 - **Rechtschreibprüfung lief nie:** Falsche Wörter wurden in Tätigkeit, Buchungstext und Ticket nicht unterkringelt, obwohl der Schalter an war. Die Windows-Prüfung scheiterte schon beim Start an einem internen Aufruffehler und schaltete sich still ab. Jetzt startet sie (deutsches Sprachpaket in Windows vorausgesetzt).
 
 ### Neu
+- **Buchungstext bei Matrix42-Buchungen:** Hinweis und „Aktivitätsdetails“ eines Matrix42-Balkens zeigen jetzt auch den gebuchten Text (was du getan hast), nicht nur Ticket, Betreff und TE-Nummer. Zeitzeuge liest ihn beim Wochenlesen mit aus Matrix42; liefert die Schnittstelle ihn nicht, nimmt es den Text der eigenen Tätigkeit, die Zeitzeuge als diese Zeiterfassung gebucht hat.
 - **Tickets: Tabellenkopf mit Kontextmenü:** Rechtsklick auf den Tabellenkopf in **Tickets** und **Ticket suchen** zeigt alle Spalten zum An- und Abhaken (Ticket und Betreff bleiben immer).
   - **Neue Spalten**, anfangs aus: **Kategorie**, **SLA**, **Team** (Bearbeiterrolle), **Angelegt von**, **Geschlossen** (Datum) und **Gebucht** (deine Buchungen auf dem Ticket aus den gelesenen Matrix42-Wochen), dazu **Verwalter**.
   - **„… an Inhalt anpassen“**: Die Spalte unter der Maus wird so breit, dass nichts mehr mit „…“ abgeschnitten ist.
