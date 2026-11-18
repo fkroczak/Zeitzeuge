@@ -30,6 +30,55 @@ DEFAULT_CATEGORY = "Ticketeingang"
 TYPE_CHIPS = [(mt.INCIDENT, "&Störung"), (mt.SERVICE_REQUEST, "Service&anfrage")]
 
 
+def is_inbox_category(name):
+    """Kategorie „Ticketeingang“ (auch als Pfad „… > Ticketeingang“): beim Schließen fast immer falsch."""
+    return (name or "").split(">")[-1].strip().casefold() == DEFAULT_CATEGORY.casefold()
+
+
+INBOX_TIP = (f"Kategorie steht noch auf „{DEFAULT_CATEGORY}“. Das ist nur der Eingang: bitte über "
+             "„Bearbeiten“ die passende Kategorie wählen.")
+
+
+def category_label(name):
+    """Kategorie als Text; „Ticketeingang“ rot hinterlegt mit Hinweis."""
+    inbox = is_inbox_category(name)
+    label = QLabel(name.split(">")[-1].strip())
+    label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+    label.setToolTip(INBOX_TIP if inbox else name)
+    if inbox:
+        label.setObjectName("inbox_category")  # rot hinterlegt (theme.py)
+    label.setAccessibleName(f"Kategorie: {name}" + (" (bitte ändern)" if inbox else ""))
+    return label
+
+
+def show_contact(rows_layout, rows):
+    """Kontaktzeilen (Name, Wert, Link) in ein QFormLayout; Links öffnen Telefon-App bzw. E-Mail-Programm.
+    -> erste E-Mail-Adresse oder ""."""
+    mail = ""
+    while rows_layout.rowCount():
+        rows_layout.removeRow(0)
+    for name, text, link in rows:
+        if link.startswith("mailto:") and not mail:
+            mail = text
+        key = QLabel(name)
+        key.setObjectName("hint")
+        value = QLabel()
+        value.setWordWrap(True)
+        if link:
+            value.setTextFormat(Qt.RichText)
+            value.setText(f'<a href="{html.escape(link, quote=True)}">{html.escape(text)}</a>')
+            value.setOpenExternalLinks(True)
+            value.setTextInteractionFlags(Qt.TextBrowserInteraction)
+            value.setToolTip(f"{'E-Mail schreiben an' if link.startswith('mailto:') else 'Anrufen:'} {text}")
+        else:
+            value.setTextFormat(Qt.PlainText)
+            value.setText(text)
+            value.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        value.setAccessibleName(f"{name}: {text}")
+        rows_layout.addRow(key, value)
+    return mail
+
+
 def _label(text, buddy):
     label = QLabel(text)
     label.setObjectName("prompt_label")
@@ -151,14 +200,21 @@ class _CardDialog(QDialog):
                            ("clock", row.get("state", ""))):
             if text:
                 line_box.addWidget(_icon_label(icon, self.muted, 16))
-                label = QLabel(text)
+                # Kunde darf mit „…“ kürzen (voller Name als Tooltip), damit die Kategorie Platz hat
+                label = _ElidedLabel(text) if icon == "users" and row.get("category") else QLabel(text)
                 label.setTextInteractionFlags(Qt.TextSelectableByMouse)  # Nummer, Kunde markieren und kopieren
                 label.setCursor(Qt.IBeamCursor)
-                line_box.addWidget(label)
+                line_box.addWidget(label, 1 if isinstance(label, _ElidedLabel) else 0)
                 line_box.addSpacing(SPACE_M)
                 if icon == "clock":
                     self.state_label = label
-        line_box.addStretch(1)
+        self.category_label = None
+        if row.get("category"):
+            line_box.addWidget(_icon_label("folder", self.muted, 16))
+            self.category_label = category_label(row["category"])
+            line_box.addWidget(self.category_label)
+        else:
+            line_box.addStretch(1)  # mit Kategorie füllt der Kunde (kürzbar) die Breite
         if pen_tip:
             self.pen_button = QToolButton()
             self.pen_button.setObjectName("prompt_tool")
@@ -523,9 +579,16 @@ class CloseTicketDialog(_CardDialog):
         self.body_box.addSpacing(SPACE_XS)
         card, rows = self._info_card("doc", "Ticket")
         self._fill_rows(rows, [(k, v) for k, v in (
-            ("Betreff", row.get("subject", "")), ("Melder", row.get("initiator", "")),
+            ("Betreff", row.get("subject", "")), ("Kategorie", row.get("category", "")),
+            ("Melder", row.get("initiator", "")),
             ("Bearbeiter", row.get("recipient", "")), ("Angelegt", mb.ticket_date(row))) if v])
         self.body_box.addWidget(card)
+        # eine Zeile: ein umbrechendes Label im festen Fenster quetscht sonst die Karte darüber
+        self.inbox_hint = QLabel(f"⚠ Kategorie ist noch „{DEFAULT_CATEGORY}“: bitte die passende wählen.")
+        self.inbox_hint.setObjectName("inbox_hint")
+        self.inbox_hint.setToolTip(INBOX_TIP)
+        self.body_box.addWidget(self.inbox_hint)
+        self.inbox_hint.setVisible(is_inbox_category(row.get("category", "")))
 
         self.ok_button.clicked.connect(self.close_ticket)
         self.validate()
@@ -549,8 +612,49 @@ class CloseTicketDialog(_CardDialog):
         self.ok_button.setEnabled(ok)
         return ok
 
+    def confirm_category(self):
+        """Kategorie noch „Ticketeingang“: nachfragen. -> True, wenn trotzdem geschlossen werden soll.
+        „Kategorie ändern …“ öffnet „Ticket bearbeiten“; danach steht die neue Kategorie im Fenster."""
+        if not is_inbox_category(self.row.get("category", "")):
+            return True
+        from PySide6.QtWidgets import QMessageBox
+        box = QMessageBox(QMessageBox.Warning, "Kategorie prüfen",
+                          f"{self.row['ticket']} steht noch in der Kategorie „{DEFAULT_CATEGORY}“.", parent=self)
+        box.setInformativeText("Soll nicht doch eine passende Kategorie gewählt werden?")
+        change = box.addButton("&Kategorie ändern …", QMessageBox.AcceptRole)
+        anyway = box.addButton("&Trotzdem schließen", QMessageBox.DestructiveRole)
+        box.addButton("Abbrechen", QMessageBox.RejectRole)
+        box.setDefaultButton(change)
+        self.category_box = box  # für Tests
+        box.exec()
+        clicked = box.clickedButton()
+        self.category_box = None
+        if clicked is anyway:
+            return True
+        if clicked is change:
+            self.change_category()
+        return False
+
+    def change_category(self):
+        dialog = EditTicketDialog(self.reader, self.row, self)
+        if dialog.exec() == QDialog.Accepted and dialog.saved is not None:
+            category = dialog.category_edit.currentText().strip()
+            if category:
+                self.set_category(category)
+                self.status.setText(f"Kategorie geändert: {category.split('>')[-1].strip()}")
+        dialog.deleteLater()
+
+    def set_category(self, category):
+        self.row = dict(self.row, category=category)
+        if self.category_label is not None:
+            new = category_label(category)
+            self.category_label.parentWidget().layout().replaceWidget(self.category_label, new)
+            self.category_label.deleteLater()
+            self.category_label = new
+        self.inbox_hint.setVisible(is_inbox_category(category))
+
     def close_ticket(self):
-        if self.validate():
+        if self.validate() and self.confirm_category():
             self._start("close", f"Schließe {self.row['ticket']} in Matrix42 …",
                         request={"id": self.row["id"], "type": self.row.get("type", ""),
                                  "ticket": self.row["ticket"], "solution": self.solution_edit.toPlainText(),
@@ -955,6 +1059,7 @@ class ViewTicketDialog(_CardDialog):
     def _ticket_action(self, kind):
         from ticket_action_dialog import TicketActionDialog
         contact = {"email": self.melder_mail, "initiator_id": (self.loaded or {}).get("initiator") or "",
+                   "rows": getattr(self, "contact", None) or [],
                    "managers": [{"role": p.get("role"), "id": p.get("id"), "name": p.get("name"),
                                  "email": ((p.get("details") or {}).get("Email") or "").strip()}
                                 for p in (self.managers or {}).get("people") or []]}
@@ -1066,7 +1171,8 @@ class ViewTicketDialog(_CardDialog):
     def _ticket_pairs(self, recipient):
         row = self.row
         return [(k, v) for k, v in (
-            ("Art", mb.ticket_kind(row)), ("Status", row.get("state", "")), ("Melder", row.get("initiator", "")),
+            ("Art", mb.ticket_kind(row)), ("Status", row.get("state", "")),
+            ("Kategorie", row.get("category", "").split(">")[-1].strip()), ("Melder", row.get("initiator", "")),
             ("Bearbeiter", recipient), ("Angelegt", mb.ticket_date(row))) if v]
 
     def _took_over(self):
@@ -1080,27 +1186,9 @@ class ViewTicketDialog(_CardDialog):
         """Kontaktzeilen (Name, Wert, Link); Links öffnen Telefon-App bzw. E-Mail-Programm."""
         rows = rows or [("Melder", self.row.get("initiator") or "–", "")]
         self._contact_loading = False
-        while self.contact_rows.rowCount():
-            self.contact_rows.removeRow(0)
-        for name, text, link in rows:
-            if link.startswith("mailto:") and not self.melder_mail:
-                self.melder_mail = text
-            key = QLabel(name)
-            key.setObjectName("hint")
-            value = QLabel()
-            value.setWordWrap(True)
-            if link:
-                value.setTextFormat(Qt.RichText)
-                value.setText(f'<a href="{html.escape(link, quote=True)}">{html.escape(text)}</a>')
-                value.setOpenExternalLinks(True)
-                value.setTextInteractionFlags(Qt.TextBrowserInteraction)
-                value.setToolTip(f"{'E-Mail schreiben an' if link.startswith('mailto:') else 'Anrufen:'} {text}")
-            else:
-                value.setTextFormat(Qt.PlainText)
-                value.setText(text)
-                value.setTextInteractionFlags(Qt.TextSelectableByMouse)
-            value.setAccessibleName(f"{name}: {text}")
-            self.contact_rows.addRow(key, value)
+        self.contact = rows
+        mail = show_contact(self.contact_rows, rows)
+        self.melder_mail = self.melder_mail or mail
 
     def _on_load(self, result):
         self._description_done()
