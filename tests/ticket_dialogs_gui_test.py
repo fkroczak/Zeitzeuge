@@ -22,6 +22,10 @@ def gui_test():
 
     import m42_booking as mb
     import m42_tickets as mt
+    import ticket_table
+    from PySide6.QtCore import QSettings
+    ini = os.path.join(os.environ["ZEITZEUGE_DATA"], "zz.ini")  # Spaltenwahl nicht in die echten Einstellungen
+    ticket_table.settings = lambda: QSettings(ini, QSettings.IniFormat)
     from tickets_dialogs import TicketsDialog
     from ticket_dialogs import CloseTicketDialog, EditTicketDialog, NewTicketDialog, ViewTicketDialog
 
@@ -398,6 +402,9 @@ def gui_test():
     # Spalte Verwalter: bekannte sofort, andere kommen nach („–“ = nicht hinterlegt)
     col = table_dialog.table.MANAGERS_COL
     assert table_dialog.table.horizontalHeaderItem(col).text() == "Verwalter"
+    assert table_dialog.table.isColumnHidden(col)  # erst auf Wunsch (Rechtsklick auf den Kopf)
+    table_dialog.table.set_column_visible("managers", True)
+    assert not table_dialog.table.isColumnHidden(col)
     assert table_dialog.table.item(0, col).text() == "Vertreter, Bernd (deleg.)"
     assert "Verwalter: nicht hinterlegt" in table_dialog.table.item(0, col).toolTip()
     table_dialog.table.set_rows([dict(r, ou="ou-2") for r in table_dialog.table.visible_rows()])
@@ -429,7 +436,7 @@ def gui_test():
     table_dialog.table.viewport().repaint()  # malt trotz Zeilen ohne Fehler
     table_dialog.table.set_loading(False)
 
-    # rechte Maustaste: Kontextmenü mit Ansehen, Bearbeiten, Übernehmen, Schließen, Nummer kopieren
+    # rechte Maustaste: Kontextmenü mit Ansehen, Bearbeiten, Übernehmen, Schließen, TCK-Nr. kopieren
     menus = []
 
     def read_menu():
@@ -442,7 +449,7 @@ def gui_test():
     QTimer.singleShot(10, read_menu)
     table = table_dialog.table
     table.customContextMenuRequested.emit(table.visualRect(table.model().index(1, 0)).center())
-    assert menus == [["Ans&ehen …", "&Bearbeiten …", "Über&nehmen", "&Weiterleiten …", "Ticket &schließen …", "Nummer &kopieren"]], menus
+    assert menus == [["Ans&ehen …", "&Bearbeiten …", "Über&nehmen", "&Weiterleiten …", "Ticket &schließen …", "TCK-Nr. &kopieren"]], menus
     picked = table_dialog.current_row()
     assert picked["id"] == table_dialog.visible_rows()[1]["id"]  # Rechtsklick markiert die Zeile
     table_dialog.take_over()

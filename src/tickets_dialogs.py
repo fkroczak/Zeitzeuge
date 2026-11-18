@@ -215,7 +215,7 @@ class TicketsDialog(QDialog):
             foot.addWidget(w)
         layout.addLayout(foot)
         buttons = QDialogButtonBox(self)  # kein „Fertig“: schließen über ✕ oder Esc
-        self.copy_button = QPushButton("Nummer &kopieren", self)
+        self.copy_button = QPushButton("TCK-Nr. &kopieren", self)
         self.copy_button.clicked.connect(self.copy_number)
         self.refresh_button = QPushButton("&Aktualisieren", self)
         self.refresh_button.clicked.connect(self.refresh)
@@ -750,7 +750,7 @@ class TicketsDialog(QDialog):
 
     def _context_menu(self, pos):
         """Rechte Maustaste auf einem Ticket: Ansehen, Bearbeiten, Übernehmen, Weiterleiten, Schließen, als gelesen markieren,
-        Nummer kopieren."""
+        TCK-Nr. kopieren."""
         index = self.table.indexAt(pos)
         if not index.isValid():
             return
@@ -770,7 +770,7 @@ class TicketsDialog(QDialog):
         if not mb.is_closed(row) and self.table.is_unread(row):
             menu.addAction("Als &gelesen markieren", lambda: self.mark_read(row))
         menu.addSeparator()
-        menu.addAction("Nummer &kopieren", self.copy_number)
+        menu.addAction("TCK-Nr. &kopieren", self.copy_number)
         menu.exec(self.table.viewport().mapToGlobal(pos))
 
     def can_take_over(self, row):

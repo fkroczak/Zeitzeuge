@@ -148,3 +148,45 @@ def test_als_gelesen_markieren(ini):
     table.mark_read(row)
     table.mark_read(row, False)
     assert table.item(0, 0).data(MARK_ROLE)[0] == MESSAGE_COLOR
+
+
+def test_spalten_ein_und_ausblenden(ini):
+    """Rechtsklick auf den Kopf: Felder ausblenden; Verwalter anfangs aus, nur mit Leser wählbar; gemerkt je Tabelle."""
+    from PySide6.QtCore import QObject, Signal
+    from ticket_table import COLUMNS, TicketTable
+    app = widgets.QApplication.instance() or widgets.QApplication([])
+    col = {key: c for c, (_n, key) in enumerate(COLUMNS)}
+
+    class Reader(QObject):
+        managers_loaded = Signal(object)
+        asked = []
+
+        def load_managers(self, ous):
+            self.asked.append(list(ous))
+            return {"ou-1": {"people": []}}
+
+    reader = Reader()
+    table = TicketTable("Tickets")
+    assert table.isColumnHidden(col["managers"]) and not table._offered("managers")  # ohne Leser nie
+    table.use_reader(reader)
+    assert table.isColumnHidden(col["managers"]) and table._offered("managers")
+    assert not table._offered("ticket") and not table._offered("subject")
+    table.set_rows([{"ticket": "TCK0000000001", "id": "1", "ou": "ou-1", "state": "Neu", "subject": "Drucker",
+                    "customer": "Kunde", "initiator": "", "recipient": "", "type": "", "created": ""}])
+    assert reader.asked == []  # Spalte aus: nichts aus Matrix42 lesen
+    table.set_column_visible("managers", True)
+    assert reader.asked == [["ou-1"]] and table.item(0, col["managers"]).text() == "–"
+    table.set_column_visible("type", False)
+    table.set_column_visible("ticket", False)  # bleibt immer
+    assert table.isColumnHidden(col["type"]) and not table.isColumnHidden(col["ticket"])
+    app.processEvents()
+
+    again = TicketTable("Tickets")  # gemerkt
+    again.use_reader(reader)
+    assert again.isColumnHidden(col["type"]) and not again.isColumnHidden(col["managers"])
+    other = TicketTable("Gefundene Tickets")  # andere Tabelle: eigene Wahl
+    assert not other.isColumnHidden(col["type"])
+    again.reset_columns()
+    assert not again.isColumnHidden(col["type"]) and again.isColumnHidden(col["managers"])
+    for t in (table, again, other):
+        t.close()

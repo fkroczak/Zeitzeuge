@@ -2,8 +2,9 @@
 aus Matrix42 nachgeladen, siehe use_reader), Melder,
 Art (Störung/Serviceanfrage), Status, Bearbeiter, Angelegt; nach jeder Spalte sortierbar, filterbar (jedes Wort muss vorkommen, wie bei
 der Ticketsuche), erledigte Tickets grau. Enter oder Doppelklick: Signal activated(row).
-Spaltenbreiten lassen sich im Kopf ziehen; gezogene Breiten bleiben (je Tabelle gespeichert),
-Rechtsklick auf den Kopf setzt sie zurück. Der Betreff bekommt immer den Rest.
+Spaltenbreiten lassen sich im Kopf ziehen; gezogene Breiten bleiben (je Tabelle gespeichert).
+Rechtsklick auf den Kopf: Spalten ein- und ausblenden (Ticket und Betreff bleiben immer, Verwalter ist
+anfangs aus) und Breiten zurücksetzen; beides je Tabelle gespeichert. Der Betreff bekommt immer den Rest.
 Rote/gelbe SLA-Ampel und neue Nachricht (blau): Zeile getönt, Balken am linken Rand. Neue Nachricht lässt
 sich per Rechtsklick als gelesen markieren (mark_read, nur in Zeitzeuge gemerkt). Mit „ticket_state_colors“ auch die
 übrigen Zeilen in der Farbe ihres Status (Einstellungen → Darstellung → Tickets).
@@ -23,6 +24,8 @@ COLUMNS = [("Ticket", "ticket"), ("Betreff", "subject"), ("Kunde", "customer"), 
            ("Melder", "initiator"),
            ("Art", "type"), ("Status", "state"), ("Bearbeiter", "recipient"), ("Angelegt", "created")]
 SUBJECT_COL = 1
+ALWAYS_SHOWN = ("ticket", "subject")  # lassen sich nicht ausblenden
+DEFAULT_HIDDEN = frozenset({"managers"})  # Verwalter erst auf Wunsch (Rechtsklick auf den Kopf)
 PEOPLE_KEYS = ("customer", "managers", "initiator", "recipient")
 # Kunde, Melder, Bearbeiter: Anteil an der Tabellenbreite, in Grenzen. Fest 150 px ließen dem
 # Betreff bei 1280 px Fensterbreite nur 160 px („Meldung ploppt …“)
@@ -156,7 +159,9 @@ class TicketTable(QTableWidget):
         self._fitting = False
         self._settings_key = "ticket_table/%s/widths" % name
         self._user_widths = self._load_widths()
-        self.setColumnHidden(self.MANAGERS_COL, True)  # erst mit use_reader (Verwalter kommen aus Matrix42)
+        self._hidden_key = "ticket_table/%s/hidden" % name
+        self._hidden = self._load_hidden()  # ausgeblendete Spalten (Felder)
+        self._apply_hidden()
         header.sectionResized.connect(self._section_resized)
         header.setContextMenuPolicy(Qt.CustomContextMenu)
         header.customContextMenuRequested.connect(self._header_menu)
@@ -174,9 +179,58 @@ class TicketTable(QTableWidget):
     def use_reader(self, reader):
         """Verwalter der Kunden aus Matrix42 nachladen (M42Reader.load_managers), sobald Tickets da sind."""
         self._reader = reader
-        self.setColumnHidden(self.MANAGERS_COL, False)
+        self._apply_hidden()
         if hasattr(reader, "managers_loaded"):
             reader.managers_loaded.connect(self.set_managers, Qt.QueuedConnection)
+
+    # ------------------------------------------------------------ Spalten ein-/ausblenden
+
+    def _load_hidden(self):
+        store = settings()
+        if not store.contains(self._hidden_key):
+            return set(DEFAULT_HIDDEN)
+        raw = store.value(self._hidden_key, "") or ""
+        keys = {key for _n, key in COLUMNS} - set(ALWAYS_SHOWN)
+        return {k for k in (raw if isinstance(raw, list) else str(raw).split(",")) if k in keys}
+
+    def _offered(self, key):
+        """Spalte im Kopfmenü wählbar? Verwalter nur, wenn sie aus Matrix42 kommen können."""
+        return key not in ALWAYS_SHOWN and (key != "managers" or self._reader is not None)
+
+    def _apply_hidden(self):
+        for col, (_name, key) in enumerate(COLUMNS):
+            self.setColumnHidden(col, key in self._hidden or (key == "managers" and self._reader is None))
+
+    def column_visible(self, key):
+        return not self.isColumnHidden([k for _n, k in COLUMNS].index(key))
+
+    def set_column_visible(self, key, on):
+        """Spalte ein- oder ausblenden und merken; Verwalter beim Einblenden gleich nachladen."""
+        if key in ALWAYS_SHOWN:
+            return
+        self._hidden.discard(key) if on else self._hidden.add(key)
+        settings().setValue(self._hidden_key, ",".join(sorted(self._hidden)))
+        self._apply_hidden()
+        if on and key == "managers":
+            self._load_managers([self.row_at(r) for r in range(self.rowCount())])
+        self._fit_columns()
+
+    def reset_columns(self):
+        """Spaltenauswahl wie am Anfang (alle außer Verwalter)."""
+        settings().remove(self._hidden_key)
+        self._hidden = set(DEFAULT_HIDDEN)
+        self._apply_hidden()
+        self._fit_columns()
+
+    def _load_managers(self, rows):
+        """Verwalter der offenen Tickets beim Leser anfragen (nur bei sichtbarer Spalte)."""
+        if self._reader is None or not hasattr(self._reader, "load_managers") or not self.column_visible("managers"):
+            return
+        known = self._reader.load_managers([row.get("ou") for row in rows if not mb.is_closed(row)])
+        if known:
+            self._managers.update(known)
+            for r in range(self.rowCount()):
+                self._fill_managers(r, self.row_at(r))
 
     MANAGERS_COL = [key for _n, key in COLUMNS].index("managers")
 
@@ -232,6 +286,18 @@ class TicketTable(QTableWidget):
 
     def _header_menu(self, pos):
         menu = QMenu(self)
+        menu.addSection("Spalten zeigen")
+        for _name, key in COLUMNS:
+            if not self._offered(key):
+                continue
+            action = menu.addAction(_name)
+            action.setCheckable(True)
+            action.setChecked(self.column_visible(key))
+            action.toggled.connect(lambda on, k=key: self.set_column_visible(k, on))
+        menu.addSeparator()
+        columns = menu.addAction("Spaltenauswahl zurücksetzen")
+        columns.setEnabled(settings().contains(self._hidden_key))
+        columns.triggered.connect(self.reset_columns)
         reset = menu.addAction("Spaltenbreiten zurücksetzen")
         reset.setEnabled(bool(self._user_widths))
         reset.triggered.connect(self.reset_widths)
@@ -346,12 +412,7 @@ class TicketTable(QTableWidget):
                     item.setData(MARK_ROLE, mark)
                 self.setItem(r, c, item)
             self._fill_managers(r, row)
-        if self._reader is not None and hasattr(self._reader, "load_managers"):
-            known = self._reader.load_managers([row.get("ou") for row in rows if not mb.is_closed(row)])
-            if known:
-                self._managers.update(known)
-                for r in range(self.rowCount()):
-                    self._fill_managers(r, self.row_at(r))
+        self._load_managers(rows)
         if self._sort:
             self.sortItems(*self._sort)
         self._show_page()
