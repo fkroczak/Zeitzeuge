@@ -737,18 +737,30 @@ class TicketsDialog(QDialog):
 
     def forward_ticket(self, row=None):
         """Markiertes Ticket weiterleiten (Team und/oder Kollege), Fenster aus ticket_action_dialog."""
+        self._ticket_action("forward", row)
+
+    def pause_ticket(self, row=None):
+        """Markiertes Ticket pausieren (bis wann, Grund), Fenster aus ticket_action_dialog."""
+        self._ticket_action("pause", row)
+
+    def _ticket_action(self, kind, row=None):
         from ticket_action_dialog import TicketActionDialog
         row = row or self.current_row()
         if not row or mb.is_closed(row) or not hasattr(self.reader, "ticket_task"):
             return
-        dialog = TicketActionDialog(self.reader, row, "forward", self)
+        dialog = TicketActionDialog(self.reader, row, kind, self)
         if dialog.exec() == QDialog.Accepted:
-            self._note = f"{row['ticket']} weitergeleitet."
+            if kind == "pause":
+                self._note = f"{row['ticket']} {dialog.done_text[0].lower()}{dialog.done_text[1:]}"
+                self._changed.setdefault(row["id"], {})["state"] = "Angehalten"
+                self.show_category()
+            else:
+                self._note = f"{row['ticket']} weitergeleitet."
             self._update_status()
         dialog.deleteLater()
 
     def _context_menu(self, pos):
-        """Rechte Maustaste auf einem Ticket: Ansehen, Bearbeiten, Übernehmen, Weiterleiten, Schließen, als gelesen markieren,
+        """Rechte Maustaste auf einem Ticket: Ansehen, Bearbeiten, Übernehmen, Pausieren, Weiterleiten, Schließen, als gelesen markieren,
         Nummer kopieren."""
         index = self.table.indexAt(pos)
         if not index.isValid():
@@ -764,6 +776,7 @@ class TicketsDialog(QDialog):
         if self.can_take_over(row):
             menu.addAction("Über&nehmen", self.take_over)
         if not mb.is_closed(row):
+            menu.addAction("&Pausieren …", self.pause_ticket)
             menu.addAction("&Weiterleiten …", self.forward_ticket)
             menu.addAction("Ticket &schließen …", self.close_ticket)
         if not mb.is_closed(row) and self.table.is_unread(row):

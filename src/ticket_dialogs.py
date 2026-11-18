@@ -152,6 +152,8 @@ class _CardDialog(QDialog):
             if text:
                 line_box.addWidget(_icon_label(icon, self.muted, 16))
                 label = QLabel(text)
+                label.setTextInteractionFlags(Qt.TextSelectableByMouse)  # Nummer, Kunde markieren und kopieren
+                label.setCursor(Qt.IBeamCursor)
                 line_box.addWidget(label)
                 line_box.addSpacing(SPACE_M)
                 if icon == "clock":
