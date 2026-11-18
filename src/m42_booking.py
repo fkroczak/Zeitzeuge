@@ -166,6 +166,7 @@ def ticket_row(item):
             "customer": _clean(item.get("Customer")), "state": (item.get("State") or "").strip(),
             "initiator": _clean(item.get("Initiator")), "recipient": _clean(item.get("Recipient")),
             "recipient_id": item.get("Recipient_Value") or "", "type": item.get("Sys-Entity") or "",
+            "ou": item.get("Customer_Value") or "",
             "created": item.get("CreatedDate") or "", "sla": sla_level(item),
             "new_message": new_message(item)}
 

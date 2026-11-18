@@ -51,7 +51,8 @@ def default_pause_until(now=None):
 
 class TicketActionDialog(_CardDialog):
     """kind: "comment", "mail", "pause" oder "forward". row: Zeile der Ticketliste.
-    contact: {"email", "initiator_id"} des Melders (für „E-Mail senden“). Danach self.done_text."""
+    contact: {"email", "initiator_id"} des Melders (für „E-Mail senden“), dazu "managers": Verwalter des
+    Kunden [{role, id, name, email}], die sich per Schalter ins CC nehmen lassen. Danach self.done_text."""
 
     def __init__(self, reader, row, kind, parent=None, contact=None):
         super().__init__(parent)
@@ -112,7 +113,30 @@ class TicketActionDialog(_CardDialog):
             edit.textChanged.connect(self.validate)
             self.body_box.addWidget(_label(label, edit))
             self.body_box.addWidget(edit)
+            if edit is self.cc_edit:
+                self._manager_chips()
         self._run("mail_info")  # Signatur schon mal holen
+
+    def _manager_chips(self):
+        """Verwalter des Kunden mit einem Klick ins CC (nur mit E-Mail und nicht schon Empfänger)."""
+        self.cc_checks = []
+        own = (self.contact.get("email") or "").casefold()
+        people = [p for p in self.contact.get("managers") or []
+                  if "@" in (p.get("email") or "") and p["email"].casefold() != own]
+        if not people:
+            return
+        for p in people:
+            check = QCheckBox(f"CC: {p.get('name') or p['email']} ({p.get('role') or 'Verwalter'})")
+            check.setToolTip(p["email"])
+            check.toggled.connect(lambda on, mail=p["email"]: self._toggle_cc(mail, on))
+            self.cc_checks.append(check)
+        self._chips(*self.cc_checks)
+
+    def _toggle_cc(self, mail, on):
+        addresses = [a for a in ma.mail_addresses(self.cc_edit.text()) if a.casefold() != mail.casefold()]
+        if on:
+            addresses.append(mail)
+        self.cc_edit.setText("; ".join(addresses))
 
     def _build_pause(self):
         until = default_pause_until()
@@ -286,6 +310,9 @@ class TicketActionDialog(_CardDialog):
         elif self.kind == "mail":
             known = {self.contact["email"]: self.contact["initiator_id"]} \
                 if self.contact.get("email") and self.contact.get("initiator_id") else {}
+            for p in self.contact.get("managers") or []:  # Verwalter im CC: als Benutzer bekannt
+                if p.get("email") and p.get("id") and p["email"].casefold() not in {k.casefold() for k in known}:
+                    known[p["email"]] = p["id"]
             req.update(to=self.to_edit.text(), cc=self.cc_edit.text(), subject=self.subject_edit.text(),
                        known_users=known)
         elif self.kind == "pause":
