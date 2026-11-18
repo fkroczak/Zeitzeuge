@@ -230,6 +230,7 @@ class DocsMixin(CustomersMixin):
                 "start": b["start"], "end": b["end"], "type": "Matrix42-Buchung", "m42": True,
                 "customer_name": b.get("customer", ""), "category": b.get("ticket", ""),
                 "description": b.get("subject", ""), "m42_marks": marks,
+                "booking_text": m42.booking_text(b, own),
                 "details": " · ".join(t for t in (b.get("ticket"), b.get("subject"), m42.marks_text(marks),
                                                   b.get("entry"), b.get("activity_type"), b.get("state")) if t),
             })

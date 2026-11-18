@@ -253,7 +253,7 @@ API_JS = r"""
         {Property: "Start", Operator: 12, Value: ["", a]}, {Property: "End", Operator: 12, Value: [b, ""]}]}]},
     {Groups: [], Conditions: [], LogicalOperator: 1}]};
   const keep = ["Sys-Entity", "ObjectId", "Customer", "Activity", "TicketInfo", "State", "ActivityType",
-                "Start", "End", "WorktimeRounded", "WorktimeNominal", "Anwender", "Anwender_Value",
+                "Start", "End", "Description", "WorktimeRounded", "WorktimeNominal", "Anwender", "Anwender_Value",
                 "IsGoodwill", "GoodwillAmount", "GoodwillAmountRounded", "GoodwillReason",
                 "IsTravel", "IgnoreSurcharge", "IgnoreSurchargeReason"];
   let last = {state: "error", status: 0, url: location.href};

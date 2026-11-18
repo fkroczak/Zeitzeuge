@@ -4,6 +4,7 @@ Matrix42-Buchungen: Einträge aus dem Kalender umwandeln und mit dem Tag abgleic
 Rein funktional, ohne Qt und ohne Edge (das Lesen steht in m42_reader.py). So lädt
 das Hauptfenster beim Start nichts von der Browser-Steuerung.
 """
+import html
 import re
 from datetime import date, datetime, timedelta
 
@@ -88,6 +89,16 @@ def _local(text):
     return value
 
 
+def plain_text(value):
+    """Buchungstext aus Matrix42 als schlichter Text (Matrix42 speichert ihn teils als HTML)."""
+    if not isinstance(value, str) or not value.strip():
+        return ""
+    text = re.sub(r"(?i)<br\s*/?>|</p\s*>|</div\s*>|</li\s*>", "\n", value)
+    text = html.unescape(re.sub(r"<[^>]+>", "", text)).replace("\xa0", " ")
+    lines = [line.rstrip() for line in text.splitlines()]
+    return "\n".join(lines).strip()
+
+
 def booking_from_api(item):
     """Eintrag der Schnittstelle -> Buchung wie aus dem Kalender, dazu Status, Tätigkeitsart
     und gerundete Minuten. None, wenn Zeit fehlt oder es keine Zeiterfassung ist."""
@@ -111,6 +122,9 @@ def booking_from_api(item):
     for key, field in (("state", "State"), ("activity_type", "ActivityType")):
         if item.get(field):
             booking[key] = str(item[field]).strip()
+    text = plain_text(item.get("Description"))
+    if text:
+        booking["text"] = text
     if isinstance(item.get("WorktimeRounded"), (int, float)):
         booking["minutes_rounded"] = item["WorktimeRounded"]
     marks = marks_from_api(item)
@@ -206,6 +220,19 @@ def booking_marks(booking, items=()):
             if item.get("m42_entry") == entry and item.get("m42_marks"):
                 return item["m42_marks"]
     return None
+
+
+def booking_text(booking, items=()):
+    """Buchungstext einer Matrix42-Buchung: aus Matrix42 selbst, sonst aus der eigenen Tätigkeit,
+    die Zeitzeuge als diese Zeiterfassung (m42_entry) gebucht hat. "" = unbekannt."""
+    if booking.get("text"):
+        return booking["text"]
+    entry = booking.get("entry")
+    if entry:
+        for item in items or ():
+            if item.get("m42_entry") == entry and (item.get("text") or "").strip():
+                return item["text"].strip()
+    return ""
 
 
 def api_bookings_by_day(monday, items):
