@@ -163,7 +163,7 @@ def test_leser_laedt_anhang(tmp_path, monkeypatch):
     from m42_reader import M42Reader
     monkeypatch.setattr(tempfile, "gettempdir", lambda: str(tmp_path))
     reader = M42Reader("https://m42.example/wm/", str(tmp_path / "m42.json"), str(tmp_path / "p"))
-    reader._tools = object()
+    reader._tools = type("Tools", (), {"alive": lambda self: True})()
     seen = []
 
     def evaluate(js, timeout=15, retries=0):

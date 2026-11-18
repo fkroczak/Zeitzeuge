@@ -913,8 +913,7 @@ class M42Reader(BrowserReader):
         import tempfile
         import m42_booking
         import m42_tickets as mt
-        if not self._tools:
-            self._start_browser()
+        self._ensure_browser()
         raw = self._evaluate(FILE_JS % json.dumps(mt.file_path(file_id)), timeout=self.LOAD_TIMEOUT)
         result = json.loads(raw) if raw else {"state": "error", "status": 0}
         if result.get("state") in ("login", "notoken"):
@@ -1173,11 +1172,20 @@ class M42Reader(BrowserReader):
         """Abfrage aus der angemeldeten Seite. Aufruf nur mit gehaltenem _browser_lock.
         -> data (JSON). LoginRequired/BookingError bei Problemen."""
         import m42_booking
-        if not self._tools:
-            self._start_browser()
+        self._ensure_browser()
         if isinstance(body, (dict, list)):
             body = json.dumps(body, ensure_ascii=False)
-        result = self._fetch_once(method, path, body, content_type)
+        try:
+            result = self._fetch_once(method, path, body, content_type)
+        except ConnectionError:
+            # Edge weg (abgestürzt, beendet, Verbindung von Windows gekappt): neu starten.
+            # Speichern nie wiederholen, es könnte schon angekommen sein.
+            self._close_browser()
+            if any(w in path for w in self.NO_RETRY):
+                raise
+            safe_io.log(f"Matrix42: Verbindung zu Edge verloren bei {path.split('?')[0]}, starte neu")
+            self._ensure_browser()
+            result = self._fetch_once(method, path, body, content_type, fresh=True)
         if result.get("status") == 406:
             # Matrix42 lehnt die Anmeldung ab (meist altes Token im Profil): Seite neu laden,
             # damit sie sich frisch anmeldet, und einmal mit ihren Köpfen wiederholen.
@@ -1201,6 +1209,14 @@ class M42Reader(BrowserReader):
             raise m42_booking.BookingError(f"Matrix42 antwortet mit Fehler {result.get('status')}"
                                            f"{': ' + detail[:200] if detail else ''}")
         return result.get("data")
+
+    def _ensure_browser(self):
+        """Edge starten, falls er nicht läuft oder die Verbindung zu ihm verloren ist."""
+        if self._tools and not self._tools.alive():
+            safe_io.log("Matrix42: Verbindung zu Edge verloren, starte neu")
+            self._close_browser()
+        if not self._tools:
+            self._start_browser()
 
     def _fetch_once(self, method, path, body, content_type, fresh=False):
         raw = self._evaluate(FETCH_JS % (json.dumps(method), json.dumps(path), json.dumps(body),

@@ -235,16 +235,24 @@ class _DevTools:
             raise ConnectionError("Verbindung zu Edge getrennt")
         deadline = time.time() + timeout
         self._id += 1
-        self.ws.settimeout(timeout)
-        self.ws.send(json.dumps({"id": self._id, "method": method, "params": params}))
+        try:
+            self.ws.settimeout(timeout)
+            self.ws.send(json.dumps({"id": self._id, "method": method, "params": params}))
+        except (OSError, websocket.WebSocketConnectionClosedException) as e:
+            self._lost(e)
         while True:
             left = deadline - time.time()
             if left <= 0:
                 raise TimeoutError(f"Edge antwortet nicht auf {method}")
-            self.ws.settimeout(left)
-            raw = self.ws.recv()
+            try:
+                self.ws.settimeout(left)
+                raw = self.ws.recv()
+            except (websocket.WebSocketTimeoutException, TimeoutError):
+                raise TimeoutError(f"Edge antwortet nicht auf {method}") from None
+            except (OSError, websocket.WebSocketConnectionClosedException) as e:
+                self._lost(e)
             if not raw:  # Verbindung zu (Edge beendet oder abgestürzt)
-                raise ConnectionError("Verbindung zu Edge getrennt")
+                self._lost(None)
             try:
                 msg = json.loads(raw)
             except ValueError:
@@ -253,6 +261,12 @@ class _DevTools:
                 if "error" in msg:
                     raise RuntimeError(msg["error"].get("message"))
                 return msg.get("result", {})
+
+    def _lost(self, error):
+        """Edge beendet, abgestürzt oder Verbindung von Windows gekappt (z. B. WinError 10053):
+        Verbindung schließen, damit alive() False meldet und Edge neu gestartet wird."""
+        self.close()
+        raise ConnectionError("Verbindung zu Edge getrennt") from error
 
     def alive(self):
         return bool(getattr(self.ws, "connected", False))

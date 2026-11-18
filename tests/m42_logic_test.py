@@ -190,6 +190,9 @@ def test_fehler_406_laedt_seite_neu_und_versucht_einmal(tmp_path, monkeypatch):
         def call(self, method, **kw):
             seen.append(method)
 
+        def alive(self):
+            return True
+
     reader._tools = Tools()
     monkeypatch.setattr(reader, "_evaluate", lambda js, **kw: (seen.append(("fresh", "true)" in js)),
                                                               json.dumps(answers.pop(0)))[1])
@@ -210,11 +213,94 @@ def test_fehler_406_auch_nach_neuladen_heisst_anmelden(tmp_path, monkeypatch):
     monkeypatch.setattr(m42_reader.time, "sleep", lambda s: None)
     reader = M42Reader("http://m42.invalid/kalender", str(tmp_path / "m42_buchungen.json"),
                        str(tmp_path / "profil"), weeks_back=0)
-    reader._tools = type("Tools", (), {"call": lambda self, method, **kw: None})()
+    reader._tools = type("Tools", (), {"call": lambda self, method, **kw: None, "alive": lambda self: True})()
     monkeypatch.setattr(reader, "_evaluate", lambda js, **kw: json.dumps({"state": "error", "status": 406}))
     with pytest.raises(m42_booking.BookingError, match="anmelden"):
         reader._fetch("GET", "/m42Services/api/x")
     assert reader.needs_login
+
+
+def test_verbindung_zu_edge_gekappt_wird_connectionerror(monkeypatch):
+    """WinError 10053 o. Ä. beim Senden oder Empfangen: Verbindung zu, alive() False,
+    ConnectionError statt der rohen Windows-Meldung."""
+    import pytest
+
+    import pbx_reader
+
+    class Ws:
+        connected = True
+
+        def __init__(self, fail_on):
+            self.fail_on = fail_on
+
+        def settimeout(self, t):
+            pass
+
+        def send(self, data):
+            if self.fail_on == "send":
+                raise ConnectionAbortedError(10053, "Eine bestehende Verbindung wurde abgebrochen")
+
+        def recv(self):
+            raise ConnectionAbortedError(10053, "Eine bestehende Verbindung wurde abgebrochen")
+
+        def close(self):
+            self.connected = False
+
+    for where in ("send", "recv"):
+        tools = pbx_reader._DevTools.__new__(pbx_reader._DevTools)
+        tools.ws, tools._id = Ws(where), 0
+        with pytest.raises(ConnectionError, match="Verbindung zu Edge getrennt"):
+            tools.call("Runtime.evaluate")
+        assert not tools.alive()
+
+
+def test_verbindung_verloren_startet_edge_neu_und_liest_nochmal(tmp_path, monkeypatch):
+    """Ticketliste lesen, Edge-Verbindung ist weg: Edge neu starten, einmal wiederholen.
+    Speichern wird nie wiederholt."""
+    import json
+
+    import pytest
+
+    from m42_reader import M42Reader
+
+    reader = M42Reader("http://m42.invalid/kalender", str(tmp_path / "m42_buchungen.json"),
+                       str(tmp_path / "profil"), weeks_back=0)
+
+    class Tools:
+        def __init__(self, ok=True):
+            self.ok = ok
+
+        def alive(self):
+            return self.ok
+
+        def close(self):
+            pass
+
+    starts, answers = [], []
+    monkeypatch.setattr(reader, "_start_browser", lambda: (starts.append(1), setattr(reader, "_tools", Tools())))
+    monkeypatch.setattr(reader, "_close_browser", lambda: setattr(reader, "_tools", None))
+
+    def evaluate(js, **kw):
+        answer = answers.pop(0)
+        if isinstance(answer, Exception):
+            raise answer
+        return json.dumps(answer)
+    monkeypatch.setattr(reader, "_evaluate", evaluate)
+
+    # Verbindung schon tot: gleich neu starten
+    reader._tools = Tools(ok=False)
+    answers[:] = [{"state": "ok", "status": 200, "data": [1]}]
+    assert reader._fetch("POST", "/m42Services/api/WidgetList/GetData/x") == [1] and len(starts) == 1
+
+    # Verbindung reißt beim Lesen ab: neu starten, nochmal
+    answers[:] = [ConnectionError("Verbindung zu Edge getrennt"), {"state": "ok", "status": 200, "data": [2]}]
+    assert reader._fetch("POST", "/m42Services/api/WidgetList/GetData/x") == [2] and len(starts) == 2
+
+    # Speichern: kein zweiter Versuch
+    answers[:] = [ConnectionError("Verbindung zu Edge getrennt"), {"state": "ok", "status": 200, "data": [3]}]
+    with pytest.raises(ConnectionError):
+        reader._fetch("POST", "/m42Services/api/data/objects/UpdateData")
+    assert len(answers) == 1
 
 
 def test_merker_aus_der_schnittstelle():
