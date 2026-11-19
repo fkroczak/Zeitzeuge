@@ -284,6 +284,9 @@ def merge_tickets(*lists, text=""):
 # prüft Zeitzeuge selbst. So viele Seiten liest es höchstens (neueste zuerst).
 MY_TICKETS_PAGE_SIZE = 100
 MY_TICKETS_PAGES = 5
+# „Ältere laden“ im Fenster „Tickets“: je Klick so viele Seiten mehr, höchstens MAX_TICKET_PAGES
+# (bei 100 je Seite also 500 mehr, insgesamt bis 10 000 Tickets).
+MAX_TICKET_PAGES = 100
 
 
 def own_name(text):

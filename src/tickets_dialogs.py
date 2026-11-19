@@ -209,8 +209,15 @@ class TicketsDialog(QDialog):
             self.size_combo.addItem(f"{size} pro Seite", size)
         self.size_combo.setCurrentIndex(PAGE_SIZES.index(self.page_size))
         self.size_combo.currentIndexChanged.connect(self._size_chosen)
+        self.more_button = QPushButton("Ä&ltere laden", self)
+        self.more_button.setAutoDefault(False)
+        self.more_button.setToolTip(f"{mb.MY_TICKETS_PAGES * mb.MY_TICKETS_PAGE_SIZE} ältere Tickets dieser "
+                                    "Kategorie aus Matrix42 dazulesen (bleibt beim Aktualisieren so)")
+        self.more_button.clicked.connect(self.load_more)
+        self.more_button.hide()
         foot = QHBoxLayout()
         foot.addWidget(self.status, 1)
+        foot.addWidget(self.more_button)
         for w in (self.prev_button, self.page_label, self.next_button, self.size_combo):
             foot.addWidget(w)
         layout.addLayout(foot)
@@ -580,6 +587,13 @@ class TicketsDialog(QDialog):
         else:
             self.reader.load_tickets(self.category, self.categories[self.category][1])
 
+    def load_more(self):
+        """Ältere Tickets der gewählten Kategorie dazulesen (die Liste wird länger und bleibt es)."""
+        if not hasattr(self.reader, "more_pages") or self.category in self._loading:
+            return
+        self.reader.more_pages(self.category)
+        self.refresh()
+
     def _mine_loaded(self, _result):
         self._changed.clear()  # frisch gelesen: lokale Änderungen stecken drin
         self._loaded(MINE)
@@ -628,6 +642,9 @@ class TicketsDialog(QDialog):
         self.prev_button.setEnabled(page > 0)
         self.next_button.setEnabled(page < pages - 1)
         self.table.set_loading(self.category in self._loading and not n)
+        self.more_button.setVisible(bool(view.get("limited")) and hasattr(self.reader, "more_pages"))
+        self.more_button.setEnabled(self.category not in self._loading
+                                    and (view.get("read") or 0) < mb.MAX_TICKET_PAGES * mb.MY_TICKETS_PAGE_SIZE)
         closed = self.closed()
         text = ""
         if self.category in self._loading:
@@ -643,7 +660,11 @@ class TicketsDialog(QDialog):
             if shown != n:
                 text += f" {shown} passen zum Filter."
             if view.get("limited"):
-                text += f" Nur die neuesten {mb.MY_TICKETS_PAGES * mb.MY_TICKETS_PAGE_SIZE} gelesen."
+                read = view.get("read") or mb.MY_TICKETS_PAGES * mb.MY_TICKETS_PAGE_SIZE
+                oldest = min((r.get("created") for r in view.get("all") or view.get("rows") or []
+                              if r.get("created")), default="")
+                since = mb.ticket_date({"created": oldest})
+                text += f" Nur die neuesten {read} gelesen" + (f" (ab {since})." if since else ".")
             text += " Enter öffnet das Ticket."
         if view.get("error"):
             text = (text + "\n" if text else "") + f"⚠ {view['error']}"

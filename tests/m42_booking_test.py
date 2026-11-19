@@ -350,3 +350,26 @@ def test_neue_nachricht_aus_der_ticketliste():
     assert not mb.new_message({})
     row = mb.ticket_row({"TicketNumber": "TCK0000000001", "Id": "1", "NewInformationReceived_Value": 1})
     assert row["new_message"] is True
+
+
+def test_aeltere_tickets_dazulesen(tmp_path):
+    from m42_reader import M42Reader
+    reader = M42Reader("https://m42.example/wm/", str(tmp_path / "m42.json"), str(tmp_path / "p"))
+    pages, got = [], []
+
+    def fetch(method, path, body=None, content_type=None):
+        page = int(path.split("&page=")[1].split("&")[0])
+        pages.append(page)
+        return [{"TicketNumber": f"TCK{page:03d}{i:07d}", "Id": f"{page}-{i}", "State": "Offen",
+                 "CreatedDate": f"2026-11-{19 - page:02d}T08:00:00Z"} for i in range(mb.MY_TICKETS_PAGE_SIZE)]
+    reader._fetch = fetch
+    reader.tickets_loaded.connect(got.append)
+    reader._read_tickets("all", "")
+    assert pages == list(range(mb.MY_TICKETS_PAGES)) and got[-1]["limited"] and got[-1]["read"] == 500
+    assert reader.more_pages("all") == 2 * mb.MY_TICKETS_PAGES
+    pages.clear()
+    reader._read_tickets("all", "")  # gilt auch für jedes spätere Aktualisieren
+    assert pages == list(range(2 * mb.MY_TICKETS_PAGES)) and len(got[-1]["rows"]) == 1000 and got[-1]["read"] == 1000
+    for _ in range(100):
+        reader.more_pages("all")
+    assert reader.ticket_pages["all"] == mb.MAX_TICKET_PAGES and "tk" not in reader.ticket_pages

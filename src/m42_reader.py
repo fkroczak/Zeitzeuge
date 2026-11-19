@@ -406,6 +406,7 @@ class M42Reader(BrowserReader):
         self.user_name = ""
         self.my_tickets = None  # letzte Antwort von my_tickets_loaded
         self.ticket_views = {}  # Kategorie -> letzte Antwort von tickets_loaded
+        self.ticket_pages = {}  # Kategorie ("mine" = Meine Tickets) -> Seiten, die gelesen werden
         self.managers_cache = {}  # OU-Id -> (Zeit, {"company", "people"}): Verwalter des Kunden
         self.ticket_filters = None  # letzte Antwort von ticket_filters_loaded
         self.ticket_list = ""   # Ticketliste (Widget-ID), leer = m42_booking.DEFAULT_IDS
@@ -658,6 +659,14 @@ class M42Reader(BrowserReader):
             rows, error = [], str(e)
         self.tickets_found.emit({"text": text, "rows": rows, "error": error})
 
+    def more_pages(self, key):
+        """„Ältere laden“: die Kategorie key liest ab jetzt MY_TICKETS_PAGES Seiten mehr
+        (bleibt so, auch beim Aktualisieren). -> neue Seitenzahl."""
+        import m42_booking as mb
+        pages = min(self.ticket_pages.get(key, mb.MY_TICKETS_PAGES) + mb.MY_TICKETS_PAGES, mb.MAX_TICKET_PAGES)
+        self.ticket_pages[key] = pages
+        return pages
+
     def load_my_tickets(self):
         """Meine Tickets sofort neu lesen (im Hintergrund), Ergebnis über my_tickets_loaded."""
         def run():
@@ -680,7 +689,9 @@ class M42Reader(BrowserReader):
                                "oder aus der Einstellung „m42_own_name“.")
         else:
             try:
-                items, result["limited"] = self._ticket_pages("", mb.search_query("Recipient", word))
+                result["read"] = self.ticket_pages.get("mine", mb.MY_TICKETS_PAGES) * mb.MY_TICKETS_PAGE_SIZE
+                items, result["limited"] = self._ticket_pages("", mb.search_query("Recipient", word),
+                                                              self.ticket_pages.get("mine"))
                 # alle (auch erledigte) fürs Fenster „Tickets“ mit „Geschlossene“, offene für die Kachel
                 result["all"] = mb.my_tickets(items, name, "" if self.own_name else self.user_id)
                 result["rows"] = [r for r in result["all"] if not mb.is_closed(r)]
@@ -694,12 +705,12 @@ class M42Reader(BrowserReader):
             self.my_tickets = dict(self.my_tickets, error=result["error"])
         self.my_tickets_loaded.emit(self.my_tickets)
 
-    def _ticket_pages(self, params, body):
-        """Ticketliste seitenweise lesen (neueste zuerst, höchstens MY_TICKETS_PAGES Seiten).
+    def _ticket_pages(self, params, body, pages=None):
+        """Ticketliste seitenweise lesen (neueste zuerst, höchstens pages Seiten, sonst MY_TICKETS_PAGES).
         -> (Einträge, True wenn es mehr gäbe). Nur mit gehaltenem _browser_lock."""
         import m42_booking as mb
         items = []
-        for page in range(mb.MY_TICKETS_PAGES):
+        for page in range(pages or mb.MY_TICKETS_PAGES):
             data = self._fetch("POST", f"{mb.API}/WidgetList/GetData/"
                                f"{self.ticket_list or mb.DEFAULT_IDS['ticket_list']}"
                                f"?orderBy=CreatedDate+desc&pageSize={mb.MY_TICKETS_PAGE_SIZE}&page={page}"
@@ -723,9 +734,11 @@ class M42Reader(BrowserReader):
         import m42_booking as mb
         result = {"key": key, "rows": None, "error": "", "at": datetime.now().strftime("%H:%M"),
                   "limited": False, "time": time.time()}
+        pages = self.ticket_pages.get(key, mb.MY_TICKETS_PAGES)
+        result["read"] = pages * mb.MY_TICKETS_PAGE_SIZE
         try:
             items, result["limited"] = self._ticket_pages(f"&filters={filter_id}" if filter_id else "",
-                                                          mb.EMPTY_QUERY)
+                                                          mb.EMPTY_QUERY, pages)
             result["rows"] = mb.ticket_rows(items)
         except Exception as e:
             result["error"] = str(e)
