@@ -317,6 +317,21 @@ def open_entry(entry):
     }
 
 
+END_STEP = 5  # Minuten: Raster beim Ziehen des Endes in der Timeline
+
+
+def end_at_minute(item, minute):
+    """Neues Ende einer Tätigkeit beim Ziehen in der Timeline: minute (seit 0 Uhr ihres Tages)
+    auf 5 min gerundet, mindestens 5 min nach dem Beginn, höchstens 23:59."""
+    start = _t(item["start"])
+    day = start.replace(hour=0, minute=0, second=0, microsecond=0)
+    snapped = round(minute / END_STEP) * END_STEP
+    first = (start - day).total_seconds() / 60 + END_STEP
+    snapped = max(snapped, -(-first // END_STEP) * END_STEP)  # erste volle 5 min nach Beginn + 5
+    snapped = min(snapped, 24 * 60 - 1)  # 24:00 gibt es im Zeitfeld nicht
+    return (day + timedelta(minutes=snapped)).strftime(TIME_FMT)
+
+
 def describe(entry):
     """Kurze Beschreibung eines erkannten Eintrags für die Nachfrage."""
     start, end = _t(entry["start"]), _t(entry["end"])

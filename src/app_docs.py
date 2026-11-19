@@ -427,6 +427,8 @@ class DocsMixin(CustomersMixin):
             self.add_doc(span=(day + timedelta(minutes=entry["start_min"]), day + timedelta(minutes=end_min)))
         elif key == "edit":
             self.edit_doc(entry["doc_item"])
+        elif key == "set_end":  # Ende des Doku-Balkens in der Timeline gezogen
+            self.set_doc_end(entry["doc_item"], entry["end"])
         elif key == "delete":
             self.delete_doc(entry["doc_item"])
         elif key == "ignore":
@@ -571,6 +573,22 @@ class DocsMixin(CustomersMixin):
             self.delete_doc(item, ask=False)
         else:
             self._save_doc(dialog.item(), old=item)
+
+    def set_doc_end(self, item, end):
+        """Neues Ende einer Tätigkeit (in der Timeline gezogen), ohne Dialog speichern."""
+        if self._foreign_doc(item):
+            return
+        try:
+            self.journal.update(item, {"end": end})
+        except (OSError, ValueError) as e:
+            QMessageBox.warning(self, "Tätigkeit", str(e))
+            return
+        self.timeline.draw_timeline(self.current_date)
+        start, new = parse_time(item["start"]), parse_time(end)
+        note = " · in Matrix42 bleibt die Buchung, wie sie ist" if item.get("m42_entry") else ""
+        self.statusBar().showMessage(f"Tätigkeit {start:%H:%M} – {new:%H:%M} "
+                                     f"({format_duration((new - start).total_seconds())}){note}",
+                                     6000 if note else 3000)
 
     def delete_doc(self, item, ask=True):
         if self._foreign_doc(item):

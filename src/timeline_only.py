@@ -29,6 +29,7 @@ import sessionmgmt_reader
 from local_sources import BROWSER_TYPE, FILE_TYPE, NET_TYPE, PC_STATE_TYPES, WLAN_TYPE, LocalReader
 from theme import contrast, readable_on, theme_for, ui_font
 import skeleton
+from journal import end_at_minute
 from vpn_reader import VpnReader, drop_unnamed_twins, vpn_sources
 
 TIME_FMT = "%Y-%m-%d %H:%M:%S"
@@ -843,6 +844,7 @@ class TimelineView(QGraphicsView):
         self.fit_day = True        # ganzen Tag ins Fenster einpassen
         # Arbeitszeit-Ansicht heute: (Beginn, Ende) des gezeigten Bereichs; die Ansicht wächst
         # mit der Zeit mit (jetzt + 30 min rechts). None, sobald selbst gezoomt oder geblättert wird.
+        self._end_drag = None      # Ende eines Doku-Balkens wird gezogen: (Balken, Eintrag, alte Fläche, neues Ende)
         self._follow_range = None
         self._work_view = False    # Ansicht "Arbeitszeit" gewählt (nicht "ganzer Tag")
         self._resume_at = None     # time.monotonic(): ab dann wieder mitwandern
@@ -2368,6 +2370,46 @@ class TimelineView(QGraphicsView):
             rect.setGraphicsEffect(glow)
         self._focused = (rect, raised, pen)
 
+    END_GRIP = 6  # Pixel am rechten Rand eines Doku-Balkens: dort das Ende ziehen (↔)
+
+    def _end_grip_at(self, pos):
+        """Eigener Doku-Balken, dessen rechter Rand unter der Maus liegt, sonst None."""
+        point = self.mapToScene(pos)
+        for item in self.scene.items(point):
+            a = self.activity_rects.get(item) if isinstance(item, QGraphicsRectItem) else None
+            if a is None:
+                continue
+            if not (a.get("doc") and a.get("doc_item") and not a["doc_item"].get("von_pc")):
+                return None
+            box = item.sceneBoundingRect()
+            grip = min(self.END_GRIP, box.width() / 3)
+            return item if box.right() - point.x() <= grip else None
+        return None
+
+    def _end_drag_move(self, pos):
+        """Ende beim Ziehen auf 5 min einrasten lassen, Balken und Hinweis mitführen."""
+        rect, a, old, _end = self._end_drag
+        end = end_at_minute(a["doc_item"], self._minute_at(pos.x()))
+        end_dt, start = parse_time(end), parse_time(a["start"])
+        x2 = self._x(end_dt.hour * 60 + end_dt.minute)
+        rect.setRect(QRectF(old.x(), old.y(), max(2, x2 - old.x()), old.height()))
+        self._end_drag = (rect, a, old, end)
+        self.tooltip.setText(f"<b>{start:%H:%M} – {end_dt:%H:%M}</b> "
+                             f"({format_duration((end_dt - start).total_seconds())})"
+                             "<br><i>Loslassen: Ende speichern · Esc: abbrechen</i>")
+        self.tooltip.adjustSize()
+        self._move_tooltip(pos)
+        self.tooltip.show()
+
+    def _cancel_end_drag(self):
+        if self._end_drag:
+            rect, _a, old, _end = self._end_drag
+            if rect.scene() is self.scene:
+                rect.setRect(old)
+            self._end_drag = None
+        self.viewport().unsetCursor()
+        self.tooltip.hide()
+
     def _activity_at(self, pos):
         for item in self.scene.items(self.mapToScene(pos)):
             if isinstance(item, QGraphicsRectItem) and item in self.activity_rects:
@@ -2404,6 +2446,9 @@ class TimelineView(QGraphicsView):
         if self._row_drag is not None:
             self._row_drag[1] = pos.y()
             self.viewport().update()  # Linie reicht über die ganze Breite
+            return
+        if self._end_drag is not None:
+            self._end_drag_move(pos)
             return
         in_legend = bool(self._legend) and pos.x() < self.LEFT - 6 and self._drag_start is None
         if in_legend:  # Hand über verschiebbaren Zeilen, sonst Pfeil (auch über Balken darunter)
@@ -2442,6 +2487,17 @@ class TimelineView(QGraphicsView):
             return
 
         minute = self._minute_at(pos.x()) if self._ppm else -1
+        grip = None if in_legend or self._drag_start is not None else self._end_grip_at(pos)
+        if grip is not None:  # rechter Rand eines Doku-Balkens: Ende ziehen
+            self.viewport().setCursor(Qt.SizeHorCursor)
+            self._legend_cursor = True  # nächste Bewegung woanders setzt den Zeiger zurück
+            self._focus_block(grip)
+            self._hide_hover()
+            self.tooltip.setText("<b>Ende ziehen</b><br><i>in 5-min-Schritten</i>")
+            self.tooltip.adjustSize()
+            self._move_tooltip(pos)
+            self.tooltip.show()
+            return
         self._focus_block(None if in_legend else self._rect_at(pos))
         if 0 <= minute < 24 * 60:
             self._show_hover_line(minute)
@@ -2678,6 +2734,9 @@ class TimelineView(QGraphicsView):
             if self._drag_start is not None:  # zweite Taste während des Ziehens: abbrechen
                 self._cancel_drag()
                 return
+            if self._end_drag is not None:
+                self._cancel_end_drag()
+                return
             pos = event.position().toPoint()
             if event.button() == Qt.RightButton and self._legend and pos.x() < self.LEFT - 6:
                 return  # Legende: Menü beim Loslassen, kein Bereich
@@ -2688,6 +2747,11 @@ class TimelineView(QGraphicsView):
                     self.viewport().setCursor(Qt.ClosedHandCursor)
                     self._legend_cursor = True
                 return
+            grip = self._end_grip_at(pos) if event.button() == Qt.LeftButton else None
+            if grip is not None:  # Ende des Doku-Balkens ziehen statt Bereich markieren
+                self._end_drag = (grip, self.activity_rects[grip], grip.rect(), None)
+                self.viewport().setCursor(Qt.SizeHorCursor)
+                return
             self._drag_start, self._drag_button = pos, event.button()
             return
         super().mousePressEvent(event)
@@ -2695,6 +2759,14 @@ class TimelineView(QGraphicsView):
     def mouseReleaseEvent(self, event):
         button = event.button()
         pos = event.position().toPoint()
+        if self._end_drag is not None:
+            _rect, a, _old, end = self._end_drag
+            self._cancel_end_drag()
+            if button == Qt.LeftButton and end and end != a["doc_item"]["end"]:
+                self.doc_request.emit("set_end", {"doc_item": a["doc_item"], "end": end})
+            elif button == Qt.LeftButton and end is None:  # nur geklickt, nicht gezogen
+                self.doc_request.emit("edit", a)
+            return
         if self._row_drag is not None and button == Qt.LeftButton:
             key = self._row_drag[0]
             self._row_drag = None
@@ -2744,6 +2816,9 @@ class TimelineView(QGraphicsView):
             return
         if event.key() == Qt.Key_Escape and self._drag_start is not None:
             self._cancel_drag()
+            return
+        if event.key() == Qt.Key_Escape and self._end_drag is not None:
+            self._cancel_end_drag()
             return
         super().keyPressEvent(event)
 
