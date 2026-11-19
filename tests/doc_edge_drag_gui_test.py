@@ -1,4 +1,4 @@
-"""Ende eines Doku-Balkens in der Timeline ziehen (↔ am rechten Rand), Raster 5 min.
+"""Beginn und Ende eines Doku-Balkens in der Timeline ziehen (↔ am Rand), Raster 5 min.
 
 Läuft ohne Bildschirm als eigener Prozess (Skript).
 """
@@ -17,14 +17,21 @@ os.environ["ZEITZEUGE_DATA"] = tempfile.mkdtemp()
 
 
 def unit_test():
-    from journal import end_at_minute
+    from journal import edge_at_minute
 
     def end(minute, start="09:00:00"):
-        return end_at_minute({"start": f"2026-11-19 {start}"}, minute)[11:16]
+        item = {"start": f"2026-11-19 {start}", "end": "2026-11-19 10:00:00"}
+        return edge_at_minute(item, "end", minute)[11:16]
+
+    def begin(minute, end="10:00:00"):
+        item = {"start": "2026-11-19 09:00:00", "end": f"2026-11-19 {end}"}
+        return edge_at_minute(item, "start", minute)[11:16]
     assert end(10 * 60 + 13) == "10:15" and end(10 * 60 + 12) == "10:10"
     assert end(9 * 60 + 1) == "09:05", "mindestens 5 min"
     assert end(9 * 60, start="09:02:00") == "09:10", "erste volle 5 min nach Beginn + 5"
     assert end(24 * 60 + 30) == "23:59"
+    assert begin(8 * 60 + 33) == "08:35" and begin(10 * 60) == "09:55", "mindestens 5 min"
+    assert begin(10 * 60, end="10:08:00") == "10:00" and begin(-20) == "00:00"
 
 
 def gui_test():
@@ -64,8 +71,9 @@ def gui_test():
     box = view.mapFromScene(doc_rect().sceneBoundingRect()).boundingRect()
     y = box.center().y()
     edge = QPoint(box.right() - 2, y)
-    assert view._end_grip_at(edge) is doc_rect(), "rechter Rand greifbar"
-    assert view._end_grip_at(QPoint(box.center().x(), y)) is None, "Mitte nicht"
+    assert view._edge_grip_at(edge) == (doc_rect(), "end"), "rechter Rand greifbar"
+    assert view._edge_grip_at(QPoint(box.left() + 2, y)) == (doc_rect(), "start"), "linker Rand"
+    assert view._edge_grip_at(QPoint(box.center().x(), y)) is None, "Mitte nicht"
     QTest.mouseMove(vp, edge)
     assert vp.cursor().shape() == Qt.SizeHorCursor
 
@@ -94,6 +102,18 @@ def gui_test():
     QTest.mouseRelease(vp, Qt.LeftButton, Qt.NoModifier, at(9 * 60 + 41, y))
     assert end_now() == "09:40", end_now()
 
+    # Beginn nach links ziehen: 8:32 -> 8:30, Ende bleibt
+    box = view.mapFromScene(doc_rect().sceneBoundingRect()).boundingRect()
+    left = QPoint(box.left() + 2, y)
+    QTest.mouseMove(vp, left)
+    assert vp.cursor().shape() == Qt.SizeHorCursor
+    QTest.mousePress(vp, Qt.LeftButton, Qt.NoModifier, left)
+    QTest.mouseMove(vp, at(8 * 60 + 45, y))
+    QTest.mouseMove(vp, at(8 * 60 + 32, y))
+    QTest.mouseRelease(vp, Qt.LeftButton, Qt.NoModifier, at(8 * 60 + 32, y))
+    begin_now = next(i for i in window.journal.items(day) if i["id"] == item["id"])["start"][11:16]
+    assert begin_now == "08:30" and end_now() == "09:40", (begin_now, end_now())
+
     # Nur auf den Rand geklickt: bearbeiten wie bisher
     box = view.mapFromScene(doc_rect().sceneBoundingRect()).boundingRect()
     edge = QPoint(box.right() - 2, y)
@@ -101,7 +121,7 @@ def gui_test():
     QTest.mouseClick(vp, Qt.LeftButton, Qt.NoModifier, edge)
     assert len(edits) == 1 and end_now() == "09:40"
     window.quit_app()
-    print("Ende ziehen: OK")
+    print("Beginn/Ende ziehen: OK")
 
 
 try:

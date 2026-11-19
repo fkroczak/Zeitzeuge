@@ -317,18 +317,23 @@ def open_entry(entry):
     }
 
 
-END_STEP = 5  # Minuten: Raster beim Ziehen des Endes in der Timeline
+EDGE_STEP = 5  # Minuten: Raster beim Ziehen von Beginn oder Ende in der Timeline
 
 
-def end_at_minute(item, minute):
-    """Neues Ende einer Tätigkeit beim Ziehen in der Timeline: minute (seit 0 Uhr ihres Tages)
-    auf 5 min gerundet, mindestens 5 min nach dem Beginn, höchstens 23:59."""
-    start = _t(item["start"])
+def edge_at_minute(item, side, minute):
+    """Neuer Beginn (side "start") oder neues Ende ("end") einer Tätigkeit beim Ziehen in der
+    Timeline: minute (seit 0 Uhr ihres Tages) auf 5 min gerundet. Die Tätigkeit bleibt
+    mindestens 5 min lang und am selben Tag (0:00 bis 23:59)."""
+    start, end = _t(item["start"]), _t(item["end"])
     day = start.replace(hour=0, minute=0, second=0, microsecond=0)
-    snapped = round(minute / END_STEP) * END_STEP
-    first = (start - day).total_seconds() / 60 + END_STEP
-    snapped = max(snapped, -(-first // END_STEP) * END_STEP)  # erste volle 5 min nach Beginn + 5
-    snapped = min(snapped, 24 * 60 - 1)  # 24:00 gibt es im Zeitfeld nicht
+    snapped = round(minute / EDGE_STEP) * EDGE_STEP
+    if side == "end":
+        first = (start - day).total_seconds() / 60 + EDGE_STEP
+        snapped = max(snapped, -(-first // EDGE_STEP) * EDGE_STEP)  # volle 5 min ab Beginn + 5
+        snapped = min(snapped, 24 * 60 - 1)  # 24:00 gibt es im Zeitfeld nicht
+    else:
+        last = (end - day).total_seconds() / 60 - EDGE_STEP
+        snapped = max(0, min(snapped, last // EDGE_STEP * EDGE_STEP))  # volle 5 min bis Ende − 5
     return (day + timedelta(minutes=snapped)).strftime(TIME_FMT)
 
 
