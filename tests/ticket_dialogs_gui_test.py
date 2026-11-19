@@ -260,9 +260,27 @@ def gui_test():
     assert view.expanded == {"j1"} and "zuklappen" in view.description_view.toPlainText()
     view.description_view.anchorClicked.emit(QUrl("zz:toggle:j1"))
     assert not view.expanded
+    # „↩ Antworten“ an der E-Mail: „E-Mail senden“ mit Melder, „AW:“ und Zitat
+    assert "Antworten" in text
+    seen = {}
+
+    def answer():
+        act = QApplication.activeModalWidget()
+        seen.update(title=act.windowTitle(), to=act.to_edit.text(), subject=act.subject_edit.text(),
+                    quote=act.quote_check.isChecked())
+        act.text_edit.setPlainText("Bitte neu starten")
+        act.ok_button.click()
+    QTimer.singleShot(200, answer)
+    view.description_view.anchorClicked.emit(QUrl("zz:reply:j1"))
+    assert seen == {"title": "Auf E-Mail antworten", "to": "info@example.com",
+                    "subject": f"AW: #{ROW['ticket']} - {ROW['subject']}", "quote": True}, seen
+    sent = [a for k, a in reader.tasks if k == "mail"][-1]["request"]
+    assert "Geht wieder nicht" in sent["quote"] and sent["text"] == "Bitte neu starten"
+    assert view.status.text() == "Antwort gesendet." and view.journal is None  # Verlauf neu laden
+    assert wait_for(lambda: view.journal is not None, 3000)
     view.view_chips["description"].click()
     assert view.description_view.toPlainText() == "Druckt nicht"
-    assert sum(k == "journal" for k, _ in reader.tasks) == 1  # nur einmal geladen
+    assert sum(k == "journal" for k, _ in reader.tasks) == 2  # einmal geladen, nach der Antwort neu
     view.ok_button.click()
     assert view.action == "edit"
 
@@ -422,7 +440,7 @@ def gui_test():
     order = lambda: [r["ticket"][-1] for r in table_dialog.visible_rows()]  # noqa: E731
     assert order() == ["3", "2", "1"], order()  # Angelegt absteigend
     table_dialog.filter_edit.setText("drucker weber")
-    assert order() == ["2"] and "1 passen zum Filter" in table_dialog.status.text(), table_dialog.status.text()
+    assert order() == ["2"] and "1 Treffer für „drucker weber“" in table_dialog.status.text(), table_dialog.status.text()
     table_dialog.filter_edit.setText("störung")  # Spalte Art
     assert len(order()) == 3 and table_dialog.table.item(0, 5).text() == "Störung"
     table_dialog.filter_edit.setText("serviceanfrage")
@@ -638,7 +656,7 @@ def gui_test():
     paged.next_button.click()
     paged.filter_edit.setText("vpn")  # 60 Treffer, wieder Seite 1
     assert paged.page_label.text() == "Seite 1 von 1" and len(paged.visible_rows()) == 60
-    assert "60 passen zum Filter" in paged.status.text(), paged.status.text()
+    assert "60 Treffer für „vpn“" in paged.status.text(), paged.status.text()
     paged.close()
     assert TicketsDialog(creader).size_combo.currentData() == 100  # Wahl gilt fürs nächste Fenster
     # ---- Aktionen: Kommentieren, E-Mail senden, Pausieren, Weiterleiten

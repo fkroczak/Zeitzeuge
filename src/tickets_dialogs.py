@@ -12,8 +12,10 @@ Skelett-Bild), gespeichert in der Einstellung ticket_layout:
   4 Zwei Ebenen: oben der Bereich, darunter seine Kategorien
   5 Favoriten: angeheftete Pillen (ticket_favorites), der Rest über „+ Filter“
 
-Das Filterfeld sucht nur in dem, was Kategorie und Status zeigen; jedes Wort muss irgendwo
-vorkommen, wie bei der Ticketsuche. Tabelle (Ticket, Betreff, Kunde, Melder, Art, Status,
+Das Suchfeld gilt für die gewählte Kategorie und den Status; jedes Wort muss irgendwo vorkommen,
+wie bei der Ticketsuche. Beim Tippen zeigt es sofort die Treffer aus der geladenen Liste; nach einer
+kurzen Pause (ab mb.LIST_SEARCH_MIN Zeichen, Enter sofort) sucht es außerdem in Matrix42 in derselben
+Kategorie ohne Datumsgrenze (M42Reader.search_ticket_list) und nimmt die Treffer dazu. Tabelle (Ticket, Betreff, Kunde, Melder, Art, Status,
 Bearbeiter, Angelegt), nach jeder Spalte sortierbar, in Seiten zu 50 oder 100 Tickets.
 
 Meine Tickets liest M42Reader alle 10 Minuten (my_tickets_loaded), die übrigen Kategorien beim
@@ -23,7 +25,7 @@ sofort. „Neues Ticket …“, „Ansehen …“ (auch Enter/Doppelklick), „B
 """
 import time
 
-from PySide6.QtCore import QEvent, Qt, Signal
+from PySide6.QtCore import QEvent, Qt, QTimer, Signal
 from PySide6.QtGui import QFont, QGuiApplication
 from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QHBoxLayout, QLabel,
                                QLineEdit, QListWidget, QListWidgetItem, QMenu, QPushButton, QSizePolicy, QToolButton,
@@ -34,6 +36,7 @@ from flow_layout import FlowLayout
 from ticket_table import COL, TicketTable
 
 MINE = "mine"
+SEARCH_DELAY_MS = 600  # Tipppause, nach der das Suchfeld auch in Matrix42 sucht
 STALE_AFTER = 10 * 60  # Kategorien, die älter sind, beim Anzeigen neu lesen
 # Feste Kategorien: (Schlüssel, Pille, gespeicherter Filter in Matrix42; "" = alle Tickets)
 FIXED = [(MINE, "Meine Tickets", None), ("tk", "TK-Tickets", mb.TK_FILTER), ("all", "Alle", "")]
@@ -152,6 +155,13 @@ class TicketsDialog(QDialog):
         self.filter_edit.setAccessibleName("Tickets filtern")
         self.filter_edit.setClearButtonEnabled(True)
         self.filter_edit.textChanged.connect(self.apply_filter)
+        self.filter_edit.textChanged.connect(self._typed)
+        self._search_timer = QTimer(self)
+        self._search_timer.setSingleShot(True)
+        self._search_timer.setInterval(SEARCH_DELAY_MS)
+        self._search_timer.timeout.connect(self.search_matrix42)
+        self._searching = None  # (Kategorie, Text) der laufenden Matrix42-Suche
+        self._merged = None  # Antwort der Matrix42-Suche, deren Treffer in der Tabelle stehen
         self.filter_edit.installEventFilter(self)
         self.search_row = QWidget(self)
         search = self._search_layout = QHBoxLayout(self.search_row)
@@ -209,8 +219,15 @@ class TicketsDialog(QDialog):
             self.size_combo.addItem(f"{size} pro Seite", size)
         self.size_combo.setCurrentIndex(PAGE_SIZES.index(self.page_size))
         self.size_combo.currentIndexChanged.connect(self._size_chosen)
+        self.more_button = QPushButton("Ä&ltere laden", self)
+        self.more_button.setAutoDefault(False)
+        self.more_button.setToolTip(f"{mb.MY_TICKETS_PAGES * mb.MY_TICKETS_PAGE_SIZE} ältere Tickets dieser "
+                                    "Kategorie aus Matrix42 dazulesen (bleibt beim Aktualisieren so)")
+        self.more_button.clicked.connect(self.load_more)
+        self.more_button.hide()
         foot = QHBoxLayout()
         foot.addWidget(self.status, 1)
+        foot.addWidget(self.more_button)
         for w in (self.prev_button, self.page_label, self.next_button, self.size_combo):
             foot.addWidget(w)
         layout.addLayout(foot)
@@ -247,6 +264,8 @@ class TicketsDialog(QDialog):
             reader.ticket_task_done.connect(self._task_done, Qt.QueuedConnection)
         if hasattr(reader, "tickets_loaded"):
             reader.tickets_loaded.connect(self._category_loaded, Qt.QueuedConnection)
+        if hasattr(reader, "ticket_list_found"):
+            reader.ticket_list_found.connect(self._search_found, Qt.QueuedConnection)
         if hasattr(reader, "ticket_filters_loaded"):
             reader.ticket_filters_loaded.connect(self.show_filters, Qt.QueuedConnection)
             if getattr(reader, "ticket_filters", None) is None:
@@ -265,6 +284,11 @@ class TicketsDialog(QDialog):
             self.table.setFocus()
             if self.current_row() is None:
                 self.table.select_first()
+            return True
+        # Enter im Suchfeld: nicht auf die Tipppause warten
+        if obj is self.filter_edit and event.type() == QEvent.KeyPress and \
+                event.key() in (Qt.Key_Return, Qt.Key_Enter):
+            self.search_matrix42()
             return True
         return super().eventFilter(obj, event)
 
@@ -535,6 +559,7 @@ class TicketsDialog(QDialog):
                     (view is None or time.time() - view.get("time", 0) > STALE_AFTER):
                 self.refresh()
             self.show_category()
+            self.search_matrix42()  # Suchtext steht noch: in der neuen Kategorie suchen
         if self.layout_no == 3:
             self._sync_sidebar()  # nicht neu bauen: kann aus dem Signal der Liste kommen
         else:
@@ -570,8 +595,53 @@ class TicketsDialog(QDialog):
             return self.reader.my_tickets
         return getattr(self.reader, "ticket_views", {}).get(self.category)
 
+    # ---- Suchfeld: sofort in der geladenen Liste, nach kurzer Pause auch in Matrix42
+
+    def _search_text(self):
+        """Suchtext, wenn er für eine Matrix42-Suche reicht, sonst ""."""
+        text = " ".join(self.filter_edit.text().split())
+        return text if len(text) >= mb.LIST_SEARCH_MIN and hasattr(self.reader, "search_ticket_list") else ""
+
+    def _typed(self, *_):
+        if self._search_text():
+            self._search_timer.start()
+        else:
+            self._search_timer.stop()
+            self._searching = None
+        if self._found() is not self._merged:  # Treffer einer anderen Suche in der Tabelle: weg damit
+            self.show_category()
+        else:
+            self._update_status()
+
+    def _found(self):
+        """Antwort der Matrix42-Suche zu Kategorie und Suchtext, die gerade gelten, oder None."""
+        view = getattr(self.reader, "ticket_search", None)
+        text = self._search_text()
+        if text and view and view.get("key") == self.category and view.get("text") == text:
+            return view
+        return None
+
+    def search_matrix42(self):
+        """Den Suchtext in Matrix42 suchen (gewählte Kategorie, ohne Datumsgrenze)."""
+        self._search_timer.stop()
+        text = self._search_text()
+        if not text or self._searching == (self.category, text) or self._found():
+            return
+        self._searching = (self.category, text)
+        self.reader.search_ticket_list(text, self.category, self.categories[self.category][1])
+        self._update_status()
+
+    def _search_found(self, result):
+        if self._searching == (result.get("key"), result.get("text")):
+            self._searching = None
+        if self._found() is result:  # sonst Antwort einer älteren Suche: verwerfen
+            self.show_category(keep_page=True)
+
     def refresh(self):
         self.refresh_button.setEnabled(False)
+        if getattr(self.reader, "ticket_search", None) is not None:
+            self.reader.ticket_search = None  # Treffer der Suche mit neu lesen
+            QTimer.singleShot(0, self.search_matrix42)
         self._loading.add(self.category)
         self._set_status(f"Lese {self.title()} aus Matrix42 …")
         self.table.set_loading(not self._rows)
@@ -579,6 +649,13 @@ class TicketsDialog(QDialog):
             self.reader.load_my_tickets()
         else:
             self.reader.load_tickets(self.category, self.categories[self.category][1])
+
+    def load_more(self):
+        """Ältere Tickets der gewählten Kategorie dazulesen (die Liste wird länger und bleibt es)."""
+        if not hasattr(self.reader, "more_pages") or self.category in self._loading:
+            return
+        self.reader.more_pages(self.category)
+        self.refresh()
 
     def _mine_loaded(self, _result):
         self._changed.clear()  # frisch gelesen: lokale Änderungen stecken drin
@@ -592,22 +669,31 @@ class TicketsDialog(QDialog):
         if key == self.category:
             self.show_category()
 
-    def show_category(self):
-        """Tabelle aus der gewählten Kategorie und dem Status (Geschlossene an/aus) füllen."""
+    def show_category(self, keep_page=False):
+        """Tabelle aus der gewählten Kategorie und dem Status (Geschlossene an/aus) füllen, dazu die
+        Treffer der Matrix42-Suche zum Suchtext."""
         self.refresh_button.setEnabled(self.category not in self._loading)
         view = self._view() or {}
         rows = view.get("rows")
         if self.category == MINE and self.closed():
             rows = view.get("all", rows)
+        found = self._merged = self._found()
+        if found:
+            ids = {r.get("id") for r in rows or []}
+            rows = list(rows or []) + [r for r in found.get("rows") or [] if r.get("id") not in ids]
         rows = [dict(r, **self._changed.get(r.get("id"), {})) for r in rows or []]
         if not self.closed():
             rows = [r for r in rows if not mb.is_closed(r)]
         self._rows = rows
+        page = self.table.page if keep_page else 0
         self.table.page = 0
         self.table.set_rows(rows)
         self.filter_edit.setPlaceholderText(
-            f"In „{self.title()}“ filtern nach Ticket, Betreff, Kunde, Melder, Art, Status oder Bearbeiter")
+            f"In „{self.title()}“ suchen nach Ticket, Betreff, Kunde, Melder, Art, Status oder Bearbeiter"
+            " (auch ältere Tickets in Matrix42)")
         self.apply_filter()
+        if keep_page and page < self.table.pages():
+            self.go_page(page)
 
     def current_row(self):
         return self.table.current_row()
@@ -628,10 +714,16 @@ class TicketsDialog(QDialog):
         self.prev_button.setEnabled(page > 0)
         self.next_button.setEnabled(page < pages - 1)
         self.table.set_loading(self.category in self._loading and not n)
+        self.more_button.setVisible(bool(view.get("limited")) and hasattr(self.reader, "more_pages")
+                                    and not self._found())  # gefunden: in Matrix42 ohne Grenze gesucht
+        self.more_button.setEnabled(self.category not in self._loading
+                                    and (view.get("read") or 0) < mb.MAX_TICKET_PAGES * mb.MY_TICKETS_PAGE_SIZE)
         closed = self.closed()
         text = ""
         if self.category in self._loading:
             text = f"Lese {self.title()} aus Matrix42 …"
+        elif self.filter_edit.text().strip() and (view.get("at") or n):
+            text = self._search_status(shown)
         elif view.get("at") or n:
             what = "Ticket" if n == 1 else "Tickets"
             if closed:
@@ -640,14 +732,39 @@ class TicketsDialog(QDialog):
             else:
                 text = f"{self.title()}: {n} offene{'s' if n == 1 else ''} {what}"
             text += f" (Stand {view.get('at', '')})."
-            if shown != n:
-                text += f" {shown} passen zum Filter."
             if view.get("limited"):
-                text += f" Nur die neuesten {mb.MY_TICKETS_PAGES * mb.MY_TICKETS_PAGE_SIZE} gelesen."
+                read = view.get("read") or mb.MY_TICKETS_PAGES * mb.MY_TICKETS_PAGE_SIZE
+                oldest = min((r.get("created") for r in view.get("all") or view.get("rows") or []
+                              if r.get("created")), default="")
+                since = mb.ticket_date({"created": oldest})
+                text += f" Nur die neuesten {read} gelesen" + (f" (ab {since})." if since else ".")
             text += " Enter öffnet das Ticket."
         if view.get("error"):
             text = (text + "\n" if text else "") + f"⚠ {view['error']}"
         self._set_status("\n".join(t for t in (self._note, text) if t))
+
+    def _search_status(self, shown):
+        """Statuszeile, solange etwas im Suchfeld steht: wie viel passt und wo gesucht wurde."""
+        words = " ".join(self.filter_edit.text().split())
+        text = f"{self.title()}: {shown} Treffer für „{words}“"
+        found = self._found()
+        if found:
+            text += f", geladene Liste und Matrix42 ohne Datumsgrenze (Stand {found.get('at', '')})."
+            if found.get("limited"):
+                text += (f" Mehr als {mb.LIST_SEARCH_PAGES * mb.MY_TICKETS_PAGE_SIZE} Treffer in einem Feld,"
+                         " nur die neuesten: Suchtext genauer machen.")
+            if not self.closed():
+                hidden = sum(1 for r in found.get("rows") or [] if mb.is_closed(r))
+                if hidden:
+                    text += f" {hidden} geschlossene ausgeblendet."
+            if found.get("error"):
+                text += f" ⚠ Matrix42-Suche: {found['error']}"
+            return text + " Enter öffnet das Ticket."
+        if not self._search_text():
+            if hasattr(self.reader, "search_ticket_list"):
+                return text + f" in der geladenen Liste. Ab {mb.LIST_SEARCH_MIN} Zeichen sucht es auch in Matrix42."
+            return text + "."
+        return text + " in der geladenen Liste, suche auch ältere in Matrix42 …"
 
     def _set_status(self, text):
         self.status.setText(text)
