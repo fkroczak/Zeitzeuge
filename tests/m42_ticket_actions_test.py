@@ -180,3 +180,43 @@ def test_leser_laedt_anhang(tmp_path, monkeypatch):
     assert data["name"] == "Alarm.eml" and not data["risky"]
     assert open(data["path"], "rb").read() == b"Hallo"
     assert f"/m42Services/api/fileStorage/{fid}" in seen[0]
+
+
+# ------------------------------------------------------------ Antworten auf eine E-Mail im Verlauf
+
+def _journal(header, text, minute=50):
+    import m42_tickets as mt
+    return mt.journal_entries([[{"Id": "j1", "CreatedDate": f"2026-11-17T09:{minute:02d}:00.000Z",
+                                 "Header": header, "Text": text, "Creator": "x"}]])[0]
+
+
+def test_antwort_auf_empfangene_mail():
+    mail = ("<html><head><style>p{}</style></head><body>Die folgende E-Mail wurde empfangen<br>"
+            "Drucker geht nicht<br>Von: Kunde, Karl &lt;karl@kunde.example&gt;<br>"
+            "An: support@itm-gruppe.com<br>Cc: chefin@kunde.example; f.kroczak@itm-gruppe.com<br>"
+            "<p>Hallo, der Drucker druckt nicht.</p></body></html>")
+    draft = ma.reply_draft(_journal("E-Mail empfangen von Kunde, Karl", mail), "TCK0000000002", "Drucker",
+                           fallback_to="melder@kunde.example", own=["F.Kroczak@itm-gruppe.com"])
+    assert draft["to"] == "karl@kunde.example"
+    assert draft["cc"] == "chefin@kunde.example"  # ohne Support-Postfach und ohne mich
+    assert draft["subject"] == "AW: #TCK0000000002 - Drucker geht nicht"
+    assert "schrieb Kunde, Karl:" in draft["quote"] and "<blockquote" in draft["quote"]
+    assert "<html" not in draft["quote"] and "<style" not in draft["quote"] and "druckt nicht" in draft["quote"]
+    body = ma.mail_body(T, draft["to"], draft["subject"], "Bitte neu starten", quote=draft["quote"])
+    assert body["Text"].startswith("<p>Bitte neu starten</p><br><p>Am ") and body["ReplyText"] == ""
+
+
+def test_antwort_ohne_adresse_und_auf_eigene_mail():
+    # Matrix42 zeigt oft nur Namen: dann an den Melder
+    draft = ma.reply_draft(_journal("E-Mail empfangen von Kunde, Karl", "<p>Hallo</p>"), "TCK1", "Drucker",
+                           fallback_to="melder@kunde.example")
+    assert draft["to"] == "melder@kunde.example" and draft["cc"] == ""
+    assert draft["subject"] == "AW: #TCK1 - Drucker"
+    sent = ("Die folgende E-Mail wurde versendet<br>An: a@kunde.example;<br>Cc:<br>Bcc:<br>"
+            "AW: #TCK1 - Drucker<br><p>Bitte neu starten.</p>")
+    draft = ma.reply_draft(_journal("E-Mail gesendet von Muster, Max - Systems", sent), "TCK1", "Drucker")
+    assert draft["to"] == "a@kunde.example" and draft["subject"] == "AW: #TCK1 - Drucker"  # kein „AW: AW:“
+    assert draft["who"] == "Muster, Max"
+    with pytest.raises(BookingError):
+        ma.reply_draft(_journal("Kommentiert von Muster, Max", "<p>x</p>"), "TCK1", "Drucker")
+    assert ma.reply_subject("TCK1", "Drucker", "RE: Anfrage") == "AW: #TCK1 - Anfrage"

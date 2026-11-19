@@ -260,9 +260,27 @@ def gui_test():
     assert view.expanded == {"j1"} and "zuklappen" in view.description_view.toPlainText()
     view.description_view.anchorClicked.emit(QUrl("zz:toggle:j1"))
     assert not view.expanded
+    # „↩ Antworten“ an der E-Mail: „E-Mail senden“ mit Melder, „AW:“ und Zitat
+    assert "Antworten" in text
+    seen = {}
+
+    def answer():
+        act = QApplication.activeModalWidget()
+        seen.update(title=act.windowTitle(), to=act.to_edit.text(), subject=act.subject_edit.text(),
+                    quote=act.quote_check.isChecked())
+        act.text_edit.setPlainText("Bitte neu starten")
+        act.ok_button.click()
+    QTimer.singleShot(200, answer)
+    view.description_view.anchorClicked.emit(QUrl("zz:reply:j1"))
+    assert seen == {"title": "Auf E-Mail antworten", "to": "info@example.com",
+                    "subject": f"AW: #{ROW['ticket']} - {ROW['subject']}", "quote": True}, seen
+    sent = [a for k, a in reader.tasks if k == "mail"][-1]["request"]
+    assert "Geht wieder nicht" in sent["quote"] and sent["text"] == "Bitte neu starten"
+    assert view.status.text() == "Antwort gesendet." and view.journal is None  # Verlauf neu laden
+    assert wait_for(lambda: view.journal is not None, 3000)
     view.view_chips["description"].click()
     assert view.description_view.toPlainText() == "Druckt nicht"
-    assert sum(k == "journal" for k, _ in reader.tasks) == 1  # nur einmal geladen
+    assert sum(k == "journal" for k, _ in reader.tasks) == 2  # einmal geladen, nach der Antwort neu
     view.ok_button.click()
     assert view.action == "edit"
 
