@@ -148,11 +148,13 @@ class MenusMixin:
         whole_day = self._action("Ganzer Tag", self.timeline_whole_day, "Ctrl+0",
                                  "Ganzen Tag zeigen (oder Doppelklick in die Timeline; "
                                  "zoomen mit Strg+Mausrad oder mit rechts ziehen)", "whole_day")
-        work_time = self._action("Arbeitszeit", self.timeline_work_time, "Ctrl+9",
-                                 "Arbeitszeit des Tages zeigen (feiner zoomen mit Strg+Mausrad)", "work_time")
+        work_time = self._action("Arbeitszeit", self.timeline_work_time, "Ctrl+9", None, "work_time")
         tb.addAction(whole_day)
         tb.addAction(work_time)
+        for action in (whole_day, work_time):  # hinterlegt = aktueller Zeitraum
+            action.setCheckable(True)
         self.whole_day_action, self.work_time_action = whole_day, work_time
+        self.update_range_buttons()
         self._adaptive_buttons = []  # Heute, Ganzer Tag, Arbeitszeit: nur Symbol, Text im Hinweis
 
         # ---- rechts: Einstellungen (immer sichtbar)
@@ -835,10 +837,15 @@ class MenusMixin:
     def timeline_whole_day(self):
         self._remember_range("day")
         self.timeline.show_whole_day()
+        self.update_range_buttons()
 
     def timeline_work_time(self):
-        self._remember_range("work")
-        self.timeline.show_work_time()
+        """Koffer in zwei Stufen: 1. Klick Arbeitszeit live (Personalzeit, heute bis jetzt),
+        2. Klick fest wie im Dialog Arbeitszeiten, danach wieder live."""
+        live = self.config.get("timeline_range", "work") != "work"
+        self._remember_range("work" if live else "work_fixed")
+        self.timeline.show_work_time(fixed=not live)
+        self.update_range_buttons()
 
     def _remember_range(self, value):
         """Zuletzt gewählter Zeitraum gilt beim Start und beim Blättern zum nächsten Tag."""
@@ -847,11 +854,44 @@ class MenusMixin:
             mt.save_config(self.config)
 
     def show_preferred_range(self):
-        """Timeline im bevorzugten Zeitraum zeichnen: Arbeitszeit (Standard) oder ganzer Tag."""
-        if self.config.get("timeline_range", "work") == "work":
-            self.timeline.show_work_time()
+        """Timeline im bevorzugten Zeitraum zeichnen: Arbeitszeit live (Standard), fest oder ganzer Tag."""
+        value = self.config.get("timeline_range", "work")
+        if value in ("work", "work_fixed"):
+            self.timeline.show_work_time(fixed=value == "work_fixed")
         else:
             self.timeline.show_whole_day()
+        self.update_range_buttons()
+
+    RANGE_TIPS = {
+        "work": ("Arbeitszeit live", "Arbeitszeit des Tages laut Personalzeit, heute bis jetzt (wandert mit). "
+                 "Nochmal klicken: feste Arbeitszeit aus den Einstellungen."),
+        "work_fixed": ("Arbeitszeit fest", "Arbeitszeit laut Einstellungen → Arbeitszeiten. "
+                       "Nochmal klicken: Arbeitszeit live."),
+        "day": ("Arbeitszeit", "1. Klick: Arbeitszeit live, 2. Klick: feste Arbeitszeit aus den Einstellungen "
+                "(feiner zoomen mit Strg+Mausrad)"),
+    }
+
+    def update_range_buttons(self):
+        """Ganzer Tag / Koffer hinterlegen; der Koffer zeigt, ob live oder fest."""
+        action = getattr(self, "work_time_action", None)
+        if action is None:
+            return
+        value = self.config.get("timeline_range", "work")
+        if value not in self.RANGE_TIPS:
+            value = "work"
+        self.whole_day_action.setChecked(value == "day")
+        action.setChecked(value != "day")
+        name = "work_fixed" if value == "work_fixed" else "work_time"
+        title, tip = self.RANGE_TIPS[value]
+        shortcut = QKeySequence("Ctrl+9").toString(QKeySequence.NativeText)
+        action.setText(title)
+        action.setToolTip(f"<b>{html.escape(title)}</b> ({shortcut})<br>{html.escape(tip)}")
+        for i, (a, _old) in enumerate(self._icon_actions):
+            if a is action:
+                self._icon_actions[i] = (action, name)
+        theme = getattr(self, "_range_icon_color", None)
+        if theme:
+            action.setIcon(icons.icon(name, theme))
 
     def toggle_autostart(self, on):
         import autostart
@@ -991,6 +1031,7 @@ class MenusMixin:
         self.setStyleSheet(sheet)
         self.update_title_bars()
         # Symbole im farbigen Band oben in dessen Schriftfarbe, in Menüs in der normalen
+        self._range_icon_color = theme["bandtext"]  # Koffer wechselt zwischen live und fest
         for action, name in self._icon_actions:
             in_menu = any(isinstance(o, QMenu) for o in action.associatedObjects())
             action.setIcon(icons.icon(name, theme["text" if in_menu else "bandtext"]))
@@ -1237,6 +1278,8 @@ class MenusMixin:
             mt.save_config(self.config)
             self.timeline._first_draw = True  # auf die neue Arbeitszeit springen
             self.timeline.draw_timeline(self.current_date)
+            if self.config.get("timeline_range") == "work_fixed":
+                self.show_preferred_range()  # feste Arbeitszeit neu einpassen
 
     def edit_billing(self):
         from billing_dialogs import BillingDialog
