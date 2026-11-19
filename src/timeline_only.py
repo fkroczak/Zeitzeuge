@@ -29,6 +29,7 @@ import sessionmgmt_reader
 from local_sources import BROWSER_TYPE, FILE_TYPE, NET_TYPE, PC_STATE_TYPES, WLAN_TYPE, LocalReader
 from theme import contrast, readable_on, theme_for, ui_font
 import skeleton
+from journal import edge_at_minute
 from vpn_reader import VpnReader, drop_unnamed_twins, vpn_sources
 
 TIME_FMT = "%Y-%m-%d %H:%M:%S"
@@ -841,6 +842,13 @@ class TimelineView(QGraphicsView):
         self._now_timer.timeout.connect(self._tick_now)
         self._schedule_now_tick()
         self.fit_day = True        # ganzen Tag ins Fenster einpassen
+        # Arbeitszeit-Ansicht heute: (Beginn, Ende) des gezeigten Bereichs; die Ansicht wächst
+        # mit der Zeit mit (jetzt + 30 min rechts). None, sobald selbst gezoomt oder geblättert wird.
+        self._edge_drag = None     # Rand eines Doku-Balkens wird gezogen: (Balken, Eintrag, alte Fläche, Seite, neue Zeit)
+        self._follow_range = None
+        self._work_view = False    # Ansicht "Arbeitszeit" gewählt (nicht "ganzer Tag")
+        self._resume_at = None     # time.monotonic(): ab dann wieder mitwandern
+        self.horizontalScrollBar().actionTriggered.connect(self._stop_follow)
         self._drag_start = None    # Mausposition beim Drücken (Bereich ziehen)
         self._drag_button = None   # links: Tätigkeit eintragen, rechts: Zoom
         self._drag_item = None     # markierter Bereich während des Ziehens
@@ -2081,7 +2089,18 @@ class TimelineView(QGraphicsView):
         width = self.maximumViewportSize().width() - self.LEFT - self.RIGHT - 4
         return max(0.2, width / (24 * 60))
 
+    RESUME_FOLLOW_S = 15 * 60  # nach eigenem Zoomen/Blättern so lange ohne Eingabe: wieder mitwandern
+
+    def _stop_follow(self, *_args):
+        """Selbst gezoomt oder geblättert: Ansicht stehen lassen, nach 15 min Ruhe wieder mitwandern."""
+        self._follow_range = None
+        if self._work_view:
+            self._resume_at = time.monotonic() + self.RESUME_FOLLOW_S
+
     def show_whole_day(self):
+        self._follow_range = None
+        self._work_view = False
+        self._resume_at = None
         self.fit_day = True
         self.relayout()
 
@@ -2098,17 +2117,40 @@ class TimelineView(QGraphicsView):
         self.relayout()
         self.horizontalScrollBar().setValue(int(self._x(start_min) - self.LEFT))
 
-    def show_work_time(self):
+    def _work_range(self):
+        """Arbeitszeit ± 30 min; heute noch eingestempelt endet sie jetzt, also jetzt + 30 min."""
         start, end = self._work_minutes(self.current_date)
-        if end > start:
-            self.show_range(start - 30, end + 30)
+        return (start - 30, end + 30) if end > start else None
+
+    def show_work_time(self):
+        target = self._work_range()
+        self._work_view, self._resume_at = True, None
+        if target:
+            self.show_range(*target)
+            self._follow_range = target if self.current_date == QDate.currentDate() else None
         else:
             self.show_whole_day()
 
+    def _follow_work_time(self):
+        """Arbeitszeit-Ansicht mitziehen, wenn das Ende 5 min weiter ist (nicht beim Ziehen)."""
+        if self._drag_start is not None:
+            return
+        if self._resume_at is not None and time.monotonic() >= self._resume_at:
+            self.show_work_time()
+            return
+        if not self._follow_range:
+            return
+        target = self._work_range()
+        if target and (target[0] != self._follow_range[0]
+                       or abs(target[1] - self._follow_range[1]) >= 5):
+            self.show_work_time()
+
     def set_zoom(self, level, anchor_viewport_x=None):
+        self._stop_follow()
         fit_level = self._fit_ppm() / self.BASE_PX_PER_MIN
         if level <= fit_level * 1.01:  # weiter raus als "ganzer Tag" geht nicht
-            self.show_whole_day()
+            self.fit_day = True
+            self.relayout()
             return
         level = min(level, 30.0)
         self.fit_day = False
@@ -2249,6 +2291,7 @@ class TimelineView(QGraphicsView):
             bar = self.verticalScrollBar()
             bar.setValue(bar.value() - delta)
         elif delta:
+            self._stop_follow()
             bar = self.horizontalScrollBar()
             bar.setValue(bar.value() - delta)
         else:
@@ -2327,6 +2370,57 @@ class TimelineView(QGraphicsView):
             rect.setGraphicsEffect(glow)
         self._focused = (rect, raised, pen)
 
+    EDGE_GRIP = 6  # Pixel am linken und rechten Rand eines Doku-Balkens: dort ziehen (↔)
+
+    def _edge_grip_at(self, pos):
+        """(Doku-Balken, "start" oder "end"), wenn sein linker oder rechter Rand unter der Maus
+        liegt (nur eigene Tätigkeiten), sonst None."""
+        point = self.mapToScene(pos)
+        for item in self.scene.items(point):
+            a = self.activity_rects.get(item) if isinstance(item, QGraphicsRectItem) else None
+            if a is None:
+                continue
+            if not (a.get("doc") and a.get("doc_item") and not a["doc_item"].get("von_pc")):
+                return None
+            box = item.sceneBoundingRect()
+            grip = min(self.EDGE_GRIP, box.width() / 3)
+            if box.right() - point.x() <= grip:
+                return item, "end"
+            if point.x() - box.left() <= grip:
+                return item, "start"
+            return None
+        return None
+
+    def _edge_drag_move(self, pos):
+        """Beginn/Ende beim Ziehen auf 5 min einrasten lassen, Balken und Hinweis mitführen."""
+        rect, a, old, side, _value = self._edge_drag
+        value = edge_at_minute(a["doc_item"], side, self._minute_at(pos.x()))
+        start, end = parse_time(a["start"]), parse_time(a["end"])
+        if side == "end":
+            end = parse_time(value)
+        else:
+            start = parse_time(value)
+        x1 = self._x(start.hour * 60 + start.minute) if side == "start" else old.x()
+        x2 = self._x(end.hour * 60 + end.minute) if side == "end" else old.right()
+        rect.setRect(QRectF(x1, old.y(), max(2, x2 - x1), old.height()))
+        self._edge_drag = (rect, a, old, side, value)
+        self.tooltip.setText(f"<b>{start:%H:%M} – {end:%H:%M}</b> "
+                             f"({format_duration((end - start).total_seconds())})"
+                             f"<br><i>Loslassen: {'Beginn' if side == 'start' else 'Ende'} speichern"
+                             " · Esc: abbrechen</i>")
+        self.tooltip.adjustSize()
+        self._move_tooltip(pos)
+        self.tooltip.show()
+
+    def _cancel_edge_drag(self):
+        if self._edge_drag:
+            rect, old = self._edge_drag[0], self._edge_drag[2]
+            if rect.scene() is self.scene:
+                rect.setRect(old)
+            self._edge_drag = None
+        self.viewport().unsetCursor()
+        self.tooltip.hide()
+
     def _activity_at(self, pos):
         for item in self.scene.items(self.mapToScene(pos)):
             if isinstance(item, QGraphicsRectItem) and item in self.activity_rects:
@@ -2357,10 +2451,15 @@ class TimelineView(QGraphicsView):
         return rows[-1][2], True
 
     def mouseMoveEvent(self, event):
+        if self._resume_at is not None:  # Maus über der Timeline: noch nicht zurückspringen
+            self._resume_at = max(self._resume_at, time.monotonic() + self.RESUME_FOLLOW_S)
         pos = event.position().toPoint()
         if self._row_drag is not None:
             self._row_drag[1] = pos.y()
             self.viewport().update()  # Linie reicht über die ganze Breite
+            return
+        if self._edge_drag is not None:
+            self._edge_drag_move(pos)
             return
         in_legend = bool(self._legend) and pos.x() < self.LEFT - 6 and self._drag_start is None
         if in_legend:  # Hand über verschiebbaren Zeilen, sonst Pfeil (auch über Balken darunter)
@@ -2399,6 +2498,18 @@ class TimelineView(QGraphicsView):
             return
 
         minute = self._minute_at(pos.x()) if self._ppm else -1
+        grip = None if in_legend or self._drag_start is not None else self._edge_grip_at(pos)
+        if grip is not None:  # Rand eines Doku-Balkens: Beginn oder Ende ziehen
+            self.viewport().setCursor(Qt.SizeHorCursor)
+            self._legend_cursor = True  # nächste Bewegung woanders setzt den Zeiger zurück
+            self._focus_block(grip[0])
+            self._hide_hover()
+            self.tooltip.setText(f"<b>{'Beginn' if grip[1] == 'start' else 'Ende'} ziehen</b>"
+                                 "<br><i>in 5-min-Schritten</i>")
+            self.tooltip.adjustSize()
+            self._move_tooltip(pos)
+            self.tooltip.show()
+            return
         self._focus_block(None if in_legend else self._rect_at(pos))
         if 0 <= minute < 24 * 60:
             self._show_hover_line(minute)
@@ -2435,7 +2546,10 @@ class TimelineView(QGraphicsView):
     def _tick_now(self):
         """Jetzt-Linie und Pille auf die aktuelle Minute setzen."""
         self._schedule_now_tick()
-        if not self._now_items or self.current_date != QDate.currentDate():
+        if self.current_date != QDate.currentDate():
+            return
+        self._follow_work_time()
+        if not self._now_items:
             return
         line, pill, label, width, height = self._now_items
         now = QDateTime.currentDateTime().time()
@@ -2632,6 +2746,9 @@ class TimelineView(QGraphicsView):
             if self._drag_start is not None:  # zweite Taste während des Ziehens: abbrechen
                 self._cancel_drag()
                 return
+            if self._edge_drag is not None:
+                self._cancel_edge_drag()
+                return
             pos = event.position().toPoint()
             if event.button() == Qt.RightButton and self._legend and pos.x() < self.LEFT - 6:
                 return  # Legende: Menü beim Loslassen, kein Bereich
@@ -2642,6 +2759,12 @@ class TimelineView(QGraphicsView):
                     self.viewport().setCursor(Qt.ClosedHandCursor)
                     self._legend_cursor = True
                 return
+            grip = self._edge_grip_at(pos) if event.button() == Qt.LeftButton else None
+            if grip is not None:  # Rand des Doku-Balkens ziehen statt Bereich markieren
+                rect, side = grip
+                self._edge_drag = (rect, self.activity_rects[rect], rect.rect(), side, None)
+                self.viewport().setCursor(Qt.SizeHorCursor)
+                return
             self._drag_start, self._drag_button = pos, event.button()
             return
         super().mousePressEvent(event)
@@ -2649,6 +2772,14 @@ class TimelineView(QGraphicsView):
     def mouseReleaseEvent(self, event):
         button = event.button()
         pos = event.position().toPoint()
+        if self._edge_drag is not None:
+            _rect, a, _old, side, value = self._edge_drag
+            self._cancel_edge_drag()
+            if button == Qt.LeftButton and value and value != a["doc_item"][side]:
+                self.doc_request.emit("set_span", {"doc_item": a["doc_item"], side: value})
+            elif button == Qt.LeftButton and value is None:  # nur geklickt, nicht gezogen
+                self.doc_request.emit("edit", a)
+            return
         if self._row_drag is not None and button == Qt.LeftButton:
             key = self._row_drag[0]
             self._row_drag = None
@@ -2672,6 +2803,7 @@ class TimelineView(QGraphicsView):
         if dragged:
             a, b = self._drag_minutes(start.x(), pos.x())
             if button == Qt.RightButton:  # rechts gezogen -> diesen Bereich zeigen
+                self._stop_follow()
                 self.show_range(a, b)
             elif b > a:  # links gezogen -> Tätigkeit für diesen Zeitraum eintragen
                 self.doc_request.emit("add_range", {"start_min": a, "end_min": b})
@@ -2697,6 +2829,9 @@ class TimelineView(QGraphicsView):
             return
         if event.key() == Qt.Key_Escape and self._drag_start is not None:
             self._cancel_drag()
+            return
+        if event.key() == Qt.Key_Escape and self._edge_drag is not None:
+            self._cancel_edge_drag()
             return
         super().keyPressEvent(event)
 
