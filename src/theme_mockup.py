@@ -166,6 +166,14 @@ class ThemeMockup(QWidget):
         text(14, 9, "Zeitzeuge", c["bandtext"], 9, True)
         for i, label in enumerate(("Heute", "Ansicht", "Einstellungen")):
             text(110 + i * 72, 10, label, c["bandtext"])
+        # Koffer „Arbeitszeit fest“: Knopf in der eigenen Farbe
+        fixed = QRectF(350, 9, 24, 17)
+        box(fixed, c["workfixed"], 4)
+        p.setPen(QPen(c["bandtext"], 1.2))
+        p.setBrush(Qt.NoBrush)
+        p.drawRoundedRect(QRectF(fixed.left() + 6, fixed.top() + 5.5, 12, 8), 1.5, 1.5)
+        p.drawRoundedRect(QRectF(fixed.left() + 9.5, fixed.top() + 3, 5, 2.5), 1, 1)
+        areas.append((fixed.adjusted(-2, -2, 2, 2), "workfixed"))
         box(QRectF(W - 160, 9, 146, 17), c["bg"], 8.5, c["border"])
         text(W - 150, 10, "Suchen …", c["muted"], 7)
         areas.append((band, "band"))

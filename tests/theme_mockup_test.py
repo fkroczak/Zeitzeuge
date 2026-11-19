@@ -29,10 +29,10 @@ mockup.picked.connect(lambda key, _pos: picked.append(key))
 # Kopfleiste, Hintergrund (Rand), Timeline-Fläche, Beschriftung, Schalter, Jetzt-Linie,
 # Balken Dokumentation, VPN, Anruf ausgehend
 left = 14 + 92
-for x, y in [(300, 15), (5, 370), (300, 105), (40, 99), (533, 53), (left + 380, 150),
+for x, y in [(300, 15), (362, 17), (5, 370), (300, 105), (40, 99), (533, 53), (left + 380, 150),
              (left + 30, 98 + 22 + 7), (left + 150, 98 + 3 * 22 + 7), (left + 210, 98 + 2 * 22 + 7)]:
     QTest.mouseClick(mockup, Qt.LeftButton, pos=QPoint(x, y))
-assert picked == ["band", "bg", "surface", "text", "accent", "now", "row:doc", "row:vpn",
+assert picked == ["band", "workfixed", "bg", "surface", "text", "accent", "now", "row:doc", "row:vpn",
                   "row:call:Ausgehend"], picked
 
 # Tastatur: Pfeiltaste wählt den ersten Bereich, Eingabe meldet ihn

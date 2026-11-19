@@ -847,6 +847,7 @@ class TimelineView(QGraphicsView):
         self._edge_drag = None     # Rand eines Doku-Balkens wird gezogen: (Balken, Eintrag, alte Fläche, Seite, neue Zeit)
         self._follow_range = None
         self._work_view = False    # Ansicht "Arbeitszeit" gewählt (nicht "ganzer Tag")
+        self._work_fixed = False   # Arbeitszeit fest aus den Einstellungen statt live (Personalzeit, jetzt)
         self._resume_at = None     # time.monotonic(): ab dann wieder mitwandern
         self.horizontalScrollBar().actionTriggered.connect(self._stop_follow)
         self._drag_start = None    # Mausposition beim Drücken (Bereich ziehen)
@@ -2099,7 +2100,7 @@ class TimelineView(QGraphicsView):
 
     def show_whole_day(self):
         self._follow_range = None
-        self._work_view = False
+        self._work_view = self._work_fixed = False
         self._resume_at = None
         self.fit_day = True
         self.relayout()
@@ -2118,25 +2119,34 @@ class TimelineView(QGraphicsView):
         self.horizontalScrollBar().setValue(int(self._x(start_min) - self.LEFT))
 
     def _work_range(self):
-        """Arbeitszeit ± 30 min; heute noch eingestempelt endet sie jetzt, also jetzt + 30 min."""
-        start, end = self._work_minutes(self.current_date)
+        """Arbeitszeit ± 30 min; heute noch eingestempelt endet sie jetzt, also jetzt + 30 min.
+        Fest: Beginn bis Ende laut Dialog Arbeitszeiten, ohne Personalzeit und ohne mitzuwandern."""
+        if self._work_fixed:
+            hours = work_hours(self.config, self.current_date.dayOfWeek() - 1)
+            start, end = hours if hours else (0, 0)
+        else:
+            start, end = self._work_minutes(self.current_date)
         return (start - 30, end + 30) if end > start else None
 
-    def show_work_time(self):
+    def show_work_time(self, fixed=False):
+        """Arbeitszeit zeigen: live (Personalzeit, heute bis jetzt) oder fest aus den Einstellungen."""
+        self._work_fixed = fixed
         target = self._work_range()
         self._work_view, self._resume_at = True, None
         if target:
             self.show_range(*target)
-            self._follow_range = target if self.current_date == QDate.currentDate() else None
+            live_today = not fixed and self.current_date == QDate.currentDate()
+            self._follow_range = target if live_today else None
         else:
             self.show_whole_day()
+            self._work_view, self._work_fixed = True, fixed  # Wahl bleibt für den nächsten Tag
 
     def _follow_work_time(self):
         """Arbeitszeit-Ansicht mitziehen, wenn das Ende 5 min weiter ist (nicht beim Ziehen)."""
         if self._drag_start is not None:
             return
         if self._resume_at is not None and time.monotonic() >= self._resume_at:
-            self.show_work_time()
+            self.show_work_time(self._work_fixed)
             return
         if not self._follow_range:
             return

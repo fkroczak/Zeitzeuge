@@ -22,6 +22,9 @@ PATHS = {
     "whole_day": '<path d="m18 8 4 4-4 4M6 8l-4 4 4 4M2 12h20"/>',
     "work_time": '<path d="M16 20V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>'
                  '<rect width="20" height="14" x="2" y="6" rx="2"/>',
+    # Arbeitszeit fest: Koffer mit Riegel (Lucide briefcase-business)
+    "work_fixed": '<path d="M12 12h.01"/><path d="M16 6V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/>'
+                  '<path d="M22 13a18.15 18.15 0 0 1-20 0"/><rect width="20" height="14" x="2" y="6" rx="2"/>',
     "monitor": '<rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8M12 17v4"/>',
     "menu": '<path d="M4 6h16M4 12h16M4 18h16"/>',
     "clock": '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',

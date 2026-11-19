@@ -104,6 +104,7 @@ GERMAN = QLocale(QLocale.German, QLocale.Germany)
 #   primary/onprimary                    Hauptknopf (Standardknopf, „Neuer Kunde“)
 #   line                                 feine Linie zwischen den Zeilen der Tagesliste
 #   now                                  Jetzt-Linie in der Timeline
+#   workfixed                            Koffer „Arbeitszeit fest“ in der Werkzeugleiste (leicht blau)
 #   control                              Rahmen von Feldern und Knöpfen (mind. 3 : 1 zum Grund)
 #   chip/chiptext                        Merkmal-Chips (Kundenerkennung), Filter-Chips
 #   good                                 „gilt“, „bleibt auf diesem Gerät“ (Grün)
@@ -117,7 +118,7 @@ THEMES = {
         "accent": "#4CC2FF", "onaccent": "#00243D", "hover": "#353535", "pressed": "#474747",
         "alt": "#282828", "handle": "#8E918F", "line": "#323232", "control": "#8E918F",
         "band": "#3C3C3C", "bandtext": "#E3E3E3", "bandhover": "#474747", "bandpressed": "#545454",
-        "sel": "#004A77", "seltext": "#C2E7FF", "now": "#F28B82",
+        "sel": "#004A77", "seltext": "#C2E7FF", "now": "#F28B82", "workfixed": "#0B3A5E",
         # Grund der Timeline: etwas dunkler als die Flächen, damit die farbigen Balken abheben
         "canvas": "#1A1A1A",
         "primary": "#4CC2FF", "onprimary": "#00243D", "primaryhover": "#99DBFF",
@@ -135,7 +136,7 @@ THEMES = {
         "accent": "#005FB8", "onaccent": "#FFFFFF", "hover": "#F1F1F3", "pressed": "#E6E6EA",
         "alt": "#FFFFFF", "handle": "#85858D", "line": "#F0F0F2", "control": "#85858D",
         "band": "#F7F7F8", "bandtext": "#18181B", "bandhover": "#ECECEF", "bandpressed": "#E2E2E6",
-        "sel": "#E0EEF9", "seltext": "#003A70", "now": "#E11D48",
+        "sel": "#E0EEF9", "seltext": "#003A70", "now": "#E11D48", "workfixed": "#D6E8FA",
         "canvas": "#FFFFFF",
         "primary": "#005FB8", "onprimary": "#FFFFFF", "primaryhover": "#004C93",
         "chip": "#F4F4F5", "chiptext": "#27272A", "good": "#15803D",
@@ -157,6 +158,7 @@ CUSTOM_KEYS = [
     ("text", "Schrift"),
     ("accent", "Akzent (Auswahl, Schalter, Häkchen)"),
     ("now", "Jetzt-Linie (Timeline)"),
+    ("workfixed", "Knopf „Arbeitszeit fest“ (Koffer)"),
 ]
 
 # Akzentfarben zum schnellen Wählen im Dialog „Eigene Farben“: (Name, hell, dunkel)
@@ -178,6 +180,7 @@ SWATCHES = {
         "text": ["#E3E3E3", "#FFFFFF", "#D4D4D4", "#CDD6F4", "#E2E8F0", "#F5F5F4", "#C2E7FF", "#D9F99D"],
         "accent": ["#4CC2FF", "#99C3FF", "#C4C7C5", "#A78BFA", "#6DD58C", "#FFB74D", "#F28B82", "#5EEAD4"],
         "now": ["#F28B82", "#FF5C5C", "#FFB74D", "#FACC15", "#6DD58C", "#4CC2FF", "#A78BFA", "#E3E3E3"],
+        "workfixed": ["#0B3A5E", "#004A77", "#1F4A6E", "#243447", "#173D27", "#463708", "#3B2A5C", "#545454"],
     },
     "light": {
         "bg": ["#F7F7F8", "#FFFFFF", "#F3F4F6", "#F5F3EF", "#EEF2F7", "#F4F1FA", "#EFF6F1", "#FDF6EC"],
@@ -186,6 +189,7 @@ SWATCHES = {
         "text": ["#18181B", "#0A0A0A", "#374151", "#1E293B", "#3F3F46", "#27272A", "#1E3A5F", "#14532D"],
         "accent": ["#005FB8", "#003E92", "#5F6368", "#6D28D9", "#15803D", "#C2410C", "#BE123C", "#0F766E"],
         "now": ["#E11D48", "#DC2626", "#C2410C", "#B45309", "#15803D", "#005FB8", "#6D28D9", "#18181B"],
+        "workfixed": ["#D6E8FA", "#C2DCF5", "#E0EEF9", "#DCE6F2", "#DDF3E4", "#FFF1BF", "#EDE7F6", "#E2E2E6"],
     },
 }
 
@@ -347,6 +351,7 @@ QToolBar#main_toolbar QToolButton { color: $bandtext; }
 QToolBar#main_toolbar QToolButton:hover { background-color: $bandhover; }
 QToolBar#main_toolbar QToolButton:pressed, QToolBar#main_toolbar QToolButton:checked {
     background-color: $bandpressed; border-color: $bandpressed; }
+QToolBar#main_toolbar QToolButton[fixed="true"] { background-color: $workfixed; border-color: $workfixed; }
 QToolBar#main_toolbar QToolButton:focus { border: 2px solid $accent; }
 QToolBar#main_toolbar::separator, QToolBar#main_toolbar QToolBar::separator {
     background: $border; width: 1px; margin: 6px 6px; }

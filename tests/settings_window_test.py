@@ -172,6 +172,19 @@ def gui_test():
     QTest.qWait(20)
     assert window.config["timeline_range"] == "day" and window.timeline.fit_day
     range_row.tiles["work"].click()
+    # Koffer in zwei Stufen: live -> fest (Dialog Arbeitszeiten) -> live; Ganzer Tag hebt ihn auf
+    assert window.work_time_action.isChecked() and not window.whole_day_action.isChecked()
+    window.work_time_action.trigger()
+    assert window.config["timeline_range"] == "work_fixed" and window.timeline._work_fixed
+    assert window.work_time_action.isChecked() and "fest" in window.work_time_action.text()
+    assert window.tools_bar.widgetForAction(window.work_time_action).property("fixed") is True
+    window.work_time_action.trigger()
+    assert window.config["timeline_range"] == "work" and not window.timeline._work_fixed
+    assert not window.tools_bar.widgetForAction(window.work_time_action).property("fixed")
+    window.whole_day_action.trigger()
+    assert window.whole_day_action.isChecked() and not window.work_time_action.isChecked()
+    window.work_time_action.trigger()
+    assert window.config["timeline_range"] == "work", "aus Ganzer Tag kommt zuerst live"
     # Hervorhebung unter der Maus: Kacheln, „Eigene“ zeigt Regler, Menü Ansicht wählt dasselbe
     hover_row = next(r for r in settings.rows if r.spec[5] == "hover_focus")
     assert hover_row.tiles["glow"].isChecked() and not hover_row.custom_panel.isVisible()
