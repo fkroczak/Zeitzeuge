@@ -885,7 +885,7 @@ class M42Reader(BrowserReader):
             self._me()
             body = ma.mail_body(request.get("id"), request.get("to", ""), request.get("subject", ""),
                                 request.get("text", ""), request.get("cc", ""), self._signature(),
-                                request.get("known_users"))
+                                request.get("known_users"), quote=request.get("quote", ""))
             self._set_status(f"Matrix42: sende E-Mail zu {name} …")
             state["sent"] = True
             self._fetch("POST", f"{api}/email/SendEmail", body)
