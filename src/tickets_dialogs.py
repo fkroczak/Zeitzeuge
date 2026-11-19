@@ -892,7 +892,7 @@ class TicketsDialog(QDialog):
         menu.setDefaultAction(view)  # fett: wie Doppelklick
         menu.addAction("&Bearbeiten …", self.edit_ticket)
         if self.can_take_over(row):
-            menu.addAction("Über&nehmen", self.take_over)
+            menu.addAction(mb.take_over_text(row), self.take_over)
         if not mb.is_closed(row):
             menu.addAction("&Pausieren …", self.pause_ticket)
             menu.addAction("&Weiterleiten …", self.forward_ticket)
@@ -904,18 +904,22 @@ class TicketsDialog(QDialog):
         menu.exec(self.table.viewport().mapToGlobal(pos))
 
     def can_take_over(self, row):
-        """Übernehmen bei offenen Tickets, die noch nicht meine oder nur zugewiesen sind (wie im Fenster
-        „Ticket ansehen“)."""
+        """Übernehmen bei Tickets, die noch nicht meine, nur zugewiesen oder geschlossen sind (wie im Fenster
+        „Ticket ansehen“); geschlossene eröffnet es wieder."""
         return hasattr(self.reader, "ticket_task") and mb.can_take_over(row, getattr(self.reader, "user_id", "") or "")
 
     def take_over(self, row=None):
-        """Markiertes Ticket in Matrix42 übernehmen (du wirst Bearbeiter), ohne Fenster."""
+        """Markiertes Ticket in Matrix42 übernehmen (du wirst Bearbeiter), ohne Fenster. Ein geschlossenes
+        Ticket ist danach wieder offen."""
         row = row or self.current_row()
         if not row or not self.can_take_over(row):
             return
-        if self.reader.ticket_task("take_over", owner=id(self), id=row["id"], type=row.get("type", ""),
-                                   ticket=row["ticket"]):
-            self._note = f"Übernehme {row['ticket']} …"
+        reopen = mb.is_closed(row)
+        args = dict(id=row["id"], type=row.get("type", ""), ticket=row["ticket"])
+        if reopen:
+            args["reopen"] = True
+        if self.reader.ticket_task("take_over", owner=id(self), **args):
+            self._note = f"{'Eröffne' if reopen else 'Übernehme'} {row['ticket']} {'wieder ' if reopen else ''}…"
         else:
             self._note = "⚠ Matrix42-Anmeldefenster ist offen. Bitte erst anmelden."
         self._update_status()
@@ -926,10 +930,12 @@ class TicketsDialog(QDialog):
             return
         ticket = args.get("ticket", "")
         if not result.get("ok"):
-            self._note = f"⚠ {ticket} übernehmen fehlgeschlagen: {result.get('error', '')}"
+            what = "wiedereröffnen" if args.get("reopen") else "übernehmen"
+            self._note = f"⚠ {ticket} {what} fehlgeschlagen: {result.get('error', '')}"
             self._update_status()
             return
-        self._note = f"{ticket} übernommen, Status {mb.WORKING_STATE}."
+        self._note = (f"{ticket} wieder eröffnet und übernommen, Status {mb.WORKING_STATE}." if args.get("reopen")
+                      else f"{ticket} übernommen, Status {mb.WORKING_STATE}.")
         changed = self._changed.setdefault(args.get("id"), {})
         changed["recipient"] = ((result.get("data") or {}).get("user") or getattr(self.reader, "user_name", "")
                                 or "ich")

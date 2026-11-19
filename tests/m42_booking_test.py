@@ -294,7 +294,11 @@ def test_uebernehmen_anbieten():
     assert mb.can_take_over(dict(mine, state="Zugewiesen"), "me")  # mir zugewiesen, noch nicht übernommen
     assert mb.can_take_over(dict(mine, recipient_id="jemand"), "me")
     assert mb.can_take_over(dict(mine, recipient_id=""), "me")  # nur der Gruppe zugewiesen
-    assert not mb.can_take_over(dict(mine, state="Geschlossen", recipient_id="jemand"), "me")
+    # geschlossen: Übernehmen eröffnet es wieder, auch wenn es meins war
+    assert mb.can_take_over(dict(mine, state="Geschlossen", recipient_id="jemand"), "me")
+    assert mb.can_take_over(dict(mine, state="Gelöst"), "me")
+    assert mb.take_over_text(dict(mine, state="Geschlossen")) == "Über&nehmen und wiedereröffnen"
+    assert mb.take_over_text(dict(mine, state="Zugewiesen")) == "Über&nehmen"
     assert mb.is_assigned({"state": " zugewiesen "}) and not mb.is_assigned({"state": "Neu"})
 
 
