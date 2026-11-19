@@ -422,7 +422,7 @@ def gui_test():
     order = lambda: [r["ticket"][-1] for r in table_dialog.visible_rows()]  # noqa: E731
     assert order() == ["3", "2", "1"], order()  # Angelegt absteigend
     table_dialog.filter_edit.setText("drucker weber")
-    assert order() == ["2"] and "1 passen zum Filter" in table_dialog.status.text(), table_dialog.status.text()
+    assert order() == ["2"] and "1 Treffer für „drucker weber“" in table_dialog.status.text(), table_dialog.status.text()
     table_dialog.filter_edit.setText("störung")  # Spalte Art
     assert len(order()) == 3 and table_dialog.table.item(0, 5).text() == "Störung"
     table_dialog.filter_edit.setText("serviceanfrage")
@@ -638,7 +638,7 @@ def gui_test():
     paged.next_button.click()
     paged.filter_edit.setText("vpn")  # 60 Treffer, wieder Seite 1
     assert paged.page_label.text() == "Seite 1 von 1" and len(paged.visible_rows()) == 60
-    assert "60 passen zum Filter" in paged.status.text(), paged.status.text()
+    assert "60 Treffer für „vpn“" in paged.status.text(), paged.status.text()
     paged.close()
     assert TicketsDialog(creader).size_combo.currentData() == 100  # Wahl gilt fürs nächste Fenster
     # ---- Aktionen: Kommentieren, E-Mail senden, Pausieren, Weiterleiten

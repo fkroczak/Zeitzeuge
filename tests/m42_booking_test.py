@@ -393,13 +393,26 @@ def test_suche_in_der_ticketliste(tmp_path):
                 for i in range(mb.MY_TICKETS_PAGE_SIZE if page < 2 else 7)]
     reader._fetch = fetch
     reader.ticket_list_found.connect(got.append)
-    reader._search_ticket_list("weber drucker")
+    reader._search_ticket_list("weber drucker", "all", "")
     assert {f for f, _ in calls} == {"Subject", "Customer", "Initiator", "Recipient"}  # keine Ziffern: keine Nummer
     assert "filters=" not in calls[0][1] and "pageSize=100" in calls[0][1]
     r = got[-1]
-    assert r["text"] == "weber drucker" and len(r["rows"]) == 207 and not r["limited"] and not r["error"]
-    assert reader.ticket_search is r
+    assert r["key"] == "all" and r["text"] == "weber drucker" and len(r["rows"]) == 207
+    assert not r["limited"] and not r["error"] and reader.ticket_search is r
+
+    calls.clear()
+    reader._search_ticket_list("weber", "tk", mb.TK_FILTER)  # in der Kategorie: ihr Filter gilt mit
+    assert all(p.endswith(f"&filters={mb.TK_FILTER}") for _, p in calls)
+
+    reader.own_name = "Kroczak, Filip"
+    reader._search_ticket_list("weber", "mine")  # Meine Tickets: nur, wo ich Bearbeiter bin
+    assert got[-1]["key"] == "mine" and got[-1]["rows"] == []
+
+    reader._search_gen = 2
+    n = len(got)
+    reader._search_ticket_list("weber", "all", "", gen=1)  # inzwischen neuer getippt: nichts melden
+    assert len(got) == n
 
     reader._fetch = lambda *a, **k: (_ for _ in ()).throw(mb.BookingError("Bitte in Matrix42 anmelden"))
-    reader._search_ticket_list("weber")
+    reader._search_ticket_list("weber", "all", "")
     assert got[-1]["rows"] == [] and "anmelden" in got[-1]["error"]

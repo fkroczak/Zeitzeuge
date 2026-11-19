@@ -364,7 +364,7 @@ class M42Reader(BrowserReader):
     tickets_found = Signal(object)  # Ergebnis von search_tickets(): {text, rows, error}
     my_tickets_loaded = Signal(object)  # Meine Tickets: {rows (None = unbekannt), all, error, at}
     tickets_loaded = Signal(object)  # Kategorie im Fenster „Tickets“: {key, rows, error, at, limited}
-    ticket_list_found = Signal(object)  # Suche im Fenster „Tickets“: {text, rows, error, at, limited}
+    ticket_list_found = Signal(object)  # Suchfeld im Fenster „Tickets“: {key, text, rows, error, at, limited}
     ticket_filters_loaded = Signal(object)  # [{id, title}] gespeicherte Filter der Ticketliste
     ticket_task_done = Signal(object)  # Ergebnis von ticket_task(): {kind, ok, data | error, unclear}
     managers_loaded = Signal(object)  # load_managers(): {OU-Id: {"company", "people": [{role, id, name}]}}
@@ -408,6 +408,7 @@ class M42Reader(BrowserReader):
         self.my_tickets = None  # letzte Antwort von my_tickets_loaded
         self.ticket_views = {}  # Kategorie -> letzte Antwort von tickets_loaded
         self.ticket_search = None  # letzte Antwort von ticket_list_found
+        self._search_gen = 0  # zählt search_ticket_list hoch: ältere Suchen brechen ab
         self.ticket_pages = {}  # Kategorie ("mine" = Meine Tickets) -> Seiten, die gelesen werden
         self.managers_cache = {}  # OU-Id -> (Zeit, {"company", "people"}): Verwalter des Kunden
         self.ticket_filters = None  # letzte Antwort von ticket_filters_loaded
@@ -707,12 +708,15 @@ class M42Reader(BrowserReader):
             self.my_tickets = dict(self.my_tickets, error=result["error"])
         self.my_tickets_loaded.emit(self.my_tickets)
 
-    def _ticket_pages(self, params, body, pages=None):
+    def _ticket_pages(self, params, body, pages=None, stop=None):
         """Ticketliste seitenweise lesen (neueste zuerst, höchstens pages Seiten, sonst MY_TICKETS_PAGES).
+        stop(): True = abbrechen (vor jeder weiteren Seite gefragt).
         -> (Einträge, True wenn es mehr gäbe). Nur mit gehaltenem _browser_lock."""
         import m42_booking as mb
         items = []
         for page in range(pages or mb.MY_TICKETS_PAGES):
+            if page and stop and stop():
+                return items, False
             data = self._fetch("POST", f"{mb.API}/WidgetList/GetData/"
                                f"{self.ticket_list or mb.DEFAULT_IDS['ticket_list']}"
                                f"?orderBy=CreatedDate+desc&pageSize={mb.MY_TICKETS_PAGE_SIZE}&page={page}"
@@ -751,33 +755,50 @@ class M42Reader(BrowserReader):
         self.ticket_views[key] = result
         self.tickets_loaded.emit(result)
 
-    def search_ticket_list(self, text):
-        """Suche im Fenster „Tickets“ (im Hintergrund): alle Tickets in Matrix42, deren Nummer, Betreff,
-        Kunde, Melder oder Bearbeiter den Suchtext enthält, ohne Datumsgrenze (je Feld höchstens
-        LIST_SEARCH_PAGES Seiten). Ergebnis über ticket_list_found."""
+    def search_ticket_list(self, text, key, filter_id=None):
+        """Suchfeld im Fenster „Tickets“ (im Hintergrund): Tickets der Kategorie key in Matrix42, deren
+        Nummer, Betreff, Kunde, Melder oder Bearbeiter den Suchtext enthält, ohne Datumsgrenze (je Feld
+        höchstens LIST_SEARCH_PAGES Seiten). filter_id: gespeicherter Filter der Kategorie, None/"" =
+        alle Tickets; key "mine" grenzt danach auf meine ein. Eine neuere Suche bricht ältere ab.
+        Ergebnis über ticket_list_found."""
+        self._search_gen += 1
+        gen = self._search_gen
+
         def run():
             with self._browser_lock:
-                self._search_ticket_list(text)
+                if gen == self._search_gen:  # sonst wartet schon eine neuere
+                    self._search_ticket_list(text, key, filter_id, gen)
         threading.Thread(target=run, daemon=True, name="Matrix42 Ticketliste suchen").start()
 
-    def _search_ticket_list(self, text):
+    def _search_ticket_list(self, text, key, filter_id=None, gen=None):
         import m42_booking as mb
         text = (text or "").strip()
         word, fields = mb.search_plan(text)
-        result = {"text": text, "rows": [], "error": "", "at": datetime.now().strftime("%H:%M"),
+        result = {"key": key, "text": text, "rows": [], "error": "", "at": datetime.now().strftime("%H:%M"),
                   "limited": False, "time": time.time()}
+        stale = (lambda: False) if gen is None else (lambda: gen != self._search_gen)
+        params = f"&filters={filter_id}" if filter_id else ""
         found, errors = [], []
         try:
             for field in fields:
+                if stale():
+                    return  # inzwischen anders getippt: nicht weiter abfragen, nichts melden
                 try:
-                    items, limited = self._ticket_pages("", mb.search_query(field, word), mb.LIST_SEARCH_PAGES)
+                    items, limited = self._ticket_pages(params, mb.search_query(field, word),
+                                                        mb.LIST_SEARCH_PAGES, stale)
                     found.append(items)
                     result["limited"] = result["limited"] or limited
                 except mb.BookingError as e:
                     errors.append(f"{field}: {e}")
                     if "anmelden" in str(e):
                         raise
-            result["rows"] = mb.merge_tickets(*found, text=text, limit=None)
+            if stale():
+                return
+            rows = mb.merge_tickets(*found, text=text, limit=None)
+            if key == "mine":
+                name = self.own_name or self.user_name
+                rows = [r for r in rows if mb.is_mine(r, name, "" if self.own_name else self.user_id)]
+            result["rows"] = rows
             if not found:
                 result["error"] = errors[0] if errors else "keine Antwort"
             if errors:

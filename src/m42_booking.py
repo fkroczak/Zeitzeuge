@@ -134,9 +134,11 @@ def ticket_query(number):
 # Verweise. Geht ein Feld nicht, zählen die übrigen.
 SEARCH_FIELDS = ("TicketNumber", "Subject", "Customer", "Initiator", "Recipient")
 SEARCH_LIMIT = 50
-# Suche im Fenster „Tickets“ (für Nachforschungen): je Feld so viele Seiten zu MY_TICKETS_PAGE_SIZE,
-# neueste zuerst, ohne Datumsgrenze. Mehr Treffer je Feld: Suchtext genauer machen.
-LIST_SEARCH_PAGES = 10
+# Suchfeld im Fenster „Tickets“ (für Nachforschungen): je Feld so viele Seiten zu MY_TICKETS_PAGE_SIZE,
+# neueste zuerst, ohne Datumsgrenze. Mehr Treffer je Feld: Suchtext genauer machen. Gesucht wird
+# beim Tippen (ab LIST_SEARCH_MIN Zeichen, nach einer kurzen Pause), daher eher wenige Seiten.
+LIST_SEARCH_PAGES = 5
+LIST_SEARCH_MIN = 3
 
 
 def search_query(field, text):
