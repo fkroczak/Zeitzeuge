@@ -50,4 +50,22 @@ level = view.zoom_level
 now[0] += 60
 view._follow_work_time()
 assert view.zoom_level == level and view._follow_range is None
+
+# 15 min später ohne Eingabe: wieder Arbeitszeit, rechts jetzt + 30 min
+clock = [timeline_only.time.monotonic()]
+timeline_only.time.monotonic = lambda: clock[0]
+view._stop_follow()
+clock[0] += 14 * 60
+view._follow_work_time()
+assert view.zoom_level == level
+clock[0] += 61
+view._follow_work_time()
+assert view._follow_range is not None
+assert abs(right_edge() - (now[0] + 30)) < 3, right_edge()
+
+# "Ganzer Tag" gewählt: bleibt ganzer Tag
+view.show_whole_day()
+clock[0] += 60 * 60
+view._follow_work_time()
+assert view.fit_day and view._follow_range is None
 print("ok")

@@ -844,6 +844,8 @@ class TimelineView(QGraphicsView):
         # Arbeitszeit-Ansicht heute: (Beginn, Ende) des gezeigten Bereichs; die Ansicht wächst
         # mit der Zeit mit (jetzt + 30 min rechts). None, sobald selbst gezoomt oder geblättert wird.
         self._follow_range = None
+        self._work_view = False    # Ansicht "Arbeitszeit" gewählt (nicht "ganzer Tag")
+        self._resume_at = None     # time.monotonic(): ab dann wieder mitwandern
         self.horizontalScrollBar().actionTriggered.connect(self._stop_follow)
         self._drag_start = None    # Mausposition beim Drücken (Bereich ziehen)
         self._drag_button = None   # links: Tätigkeit eintragen, rechts: Zoom
@@ -2085,11 +2087,18 @@ class TimelineView(QGraphicsView):
         width = self.maximumViewportSize().width() - self.LEFT - self.RIGHT - 4
         return max(0.2, width / (24 * 60))
 
+    RESUME_FOLLOW_S = 15 * 60  # nach eigenem Zoomen/Blättern so lange ohne Eingabe: wieder mitwandern
+
     def _stop_follow(self, *_args):
+        """Selbst gezoomt oder geblättert: Ansicht stehen lassen, nach 15 min Ruhe wieder mitwandern."""
         self._follow_range = None
+        if self._work_view:
+            self._resume_at = time.monotonic() + self.RESUME_FOLLOW_S
 
     def show_whole_day(self):
         self._follow_range = None
+        self._work_view = False
+        self._resume_at = None
         self.fit_day = True
         self.relayout()
 
@@ -2113,6 +2122,7 @@ class TimelineView(QGraphicsView):
 
     def show_work_time(self):
         target = self._work_range()
+        self._work_view, self._resume_at = True, None
         if target:
             self.show_range(*target)
             self._follow_range = target if self.current_date == QDate.currentDate() else None
@@ -2121,7 +2131,12 @@ class TimelineView(QGraphicsView):
 
     def _follow_work_time(self):
         """Arbeitszeit-Ansicht mitziehen, wenn das Ende 5 min weiter ist (nicht beim Ziehen)."""
-        if not self._follow_range or self._drag_start is not None:
+        if self._drag_start is not None:
+            return
+        if self._resume_at is not None and time.monotonic() >= self._resume_at:
+            self.show_work_time()
+            return
+        if not self._follow_range:
             return
         target = self._work_range()
         if target and (target[0] != self._follow_range[0]
@@ -2129,10 +2144,11 @@ class TimelineView(QGraphicsView):
             self.show_work_time()
 
     def set_zoom(self, level, anchor_viewport_x=None):
-        self._follow_range = None
+        self._stop_follow()
         fit_level = self._fit_ppm() / self.BASE_PX_PER_MIN
         if level <= fit_level * 1.01:  # weiter raus als "ganzer Tag" geht nicht
-            self.show_whole_day()
+            self.fit_day = True
+            self.relayout()
             return
         level = min(level, 30.0)
         self.fit_day = False
@@ -2273,7 +2289,7 @@ class TimelineView(QGraphicsView):
             bar = self.verticalScrollBar()
             bar.setValue(bar.value() - delta)
         elif delta:
-            self._follow_range = None
+            self._stop_follow()
             bar = self.horizontalScrollBar()
             bar.setValue(bar.value() - delta)
         else:
@@ -2382,6 +2398,8 @@ class TimelineView(QGraphicsView):
         return rows[-1][2], True
 
     def mouseMoveEvent(self, event):
+        if self._resume_at is not None:  # Maus über der Timeline: noch nicht zurückspringen
+            self._resume_at = max(self._resume_at, time.monotonic() + self.RESUME_FOLLOW_S)
         pos = event.position().toPoint()
         if self._row_drag is not None:
             self._row_drag[1] = pos.y()
@@ -2700,7 +2718,7 @@ class TimelineView(QGraphicsView):
         if dragged:
             a, b = self._drag_minutes(start.x(), pos.x())
             if button == Qt.RightButton:  # rechts gezogen -> diesen Bereich zeigen
-                self._follow_range = None
+                self._stop_follow()
                 self.show_range(a, b)
             elif b > a:  # links gezogen -> Tätigkeit für diesen Zeitraum eintragen
                 self.doc_request.emit("add_range", {"start_min": a, "end_min": b})
