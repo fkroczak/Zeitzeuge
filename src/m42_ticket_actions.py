@@ -12,6 +12,11 @@ E-Mail: POST /email/SendEmail (Antwort 204). Empfänger je Feld als Benutzer-Ids
   Absender: support@itm-gruppe.com (DefaultSenderTickets der Systemeinstellungen).
   Betreff wie vom Dialog vorbelegt: „#TCK… - Betreff“.
 
+Antworten auf eine E-Mail aus dem Verlauf (reply_draft): An = Absender (bei eigener Mail die
+  Empfänger), CC = die übrigen Adressen aus Cc, Betreff „AW: …“ mit Ticketnummer, die alte Mail
+  zitiert unter dem Text. Das Zitat steht im Feld Text (nicht ReplyText: wie Matrix42 das Feld beim
+  Antworten füllt, fehlt noch im Mitschnitt; Text kommt sicher beim Empfänger an).
+
 Pausieren: POST /activity/Pause {ObjectIds, ReminderDate (UTC), Comments, Reason,
   NotEscalateWhilePaused} (204). Gründe: GET /entity/enumeration/SPSCommonPickupObjectStateReason,
   die mit State 203 (angehalten), z. B. 421 „Warten auf Kunde“, 20000 „Termin“.
@@ -20,9 +25,11 @@ Weiterleiten: POST /activity/Forward {Tickets [{Item1: Art, Item2: Id}], RoleID,
   Comments} (204). Personen: POST /entity/fragments/forControl (Dialog „Forward“, object-picker2),
   Teams (Rollen): POST /dataQuery/relationItems (SPSScRoleClassBase, object-picker1).
 """
+import html
 import re
 from datetime import datetime, timezone
 
+import m42_tickets as mt
 from m42_booking import API, BookingError
 from m42_tickets import description_html
 
@@ -80,9 +87,11 @@ def mail_subject(ticket, subject):
     return " - ".join(t for t in (f"#{ticket}" if ticket else "", (subject or "").strip()) if t)
 
 
-def mail_body(ticket_id, to, subject, text, cc="", signature=None, known_users=None, sender=MAIL_SENDER):
+def mail_body(ticket_id, to, subject, text, cc="", signature=None, known_users=None, sender=MAIL_SENDER,
+              quote=""):
     """to/cc: Adressen als Text. known_users: {Adresse (klein): Benutzer-Id}, z. B. der Melder;
-    die gehen wie im Dialog zusätzlich als Benutzer mit."""
+    die gehen wie im Dialog zusätzlich als Benutzer mit. quote: zitierte E-Mail (HTML, reply_draft),
+    kommt unter den Text."""
     _need(ticket_id)
     to_list, cc_list = mail_addresses(to), mail_addresses(cc)
     if not to_list:
@@ -98,7 +107,82 @@ def mail_body(ticket_id, to, subject, text, cc="", signature=None, known_users=N
             "To": _recipients(to_list, users(to_list)), "CC": _recipients(cc_list, users(cc_list)),
             "IsActiveCC": bool(cc_list), "BCC": _recipients([]), "IsActiveBCC": False,
             "Signature": signature or None, "Subject": subject.strip(), "SendersEmailAddress": sender,
-            "Text": _text(text, "einen Text"), "ReplyText": "", "Attachments": None}
+            "Text": _text(text, "einen Text") + (quote or ""), "ReplyText": "", "Attachments": None}
+
+
+# ------------------------------------------------------------ Antworten auf eine E-Mail im Verlauf
+
+_META = re.compile(r"(?i)^(an|to|cc|von|from|bcc|betreff|subject)\s*:\s*(.*)$")
+_REPLY_PREFIX = re.compile(r"(?i)^((aw|re|wg|fw|fwd|antw)\s*:\s*)+")
+_TICKET_NO = re.compile(r"(?i)#?\b(TCK|INC|SR|REQ)\d{4,}\b")
+
+
+def _mail_meta(lines):
+    """Kopf der Mail im Verlauf -> ({"von": [...], "an": [...], "cc": [...]}, Betreff oder "")."""
+    meta, subject, first, last = {"von": [], "an": [], "cc": []}, "", None, None
+    for i, line in enumerate(lines[:10]):
+        m = _META.match(line)
+        if not m:
+            continue
+        first = i if first is None else first
+        last = i
+        key = {"from": "von", "to": "an", "subject": "betreff"}.get(m.group(1).casefold(), m.group(1).casefold())
+        if key == "betreff":
+            subject = subject or m.group(2).strip()
+        elif key in meta:
+            meta[key] += mail_addresses(m.group(2))
+    return meta, subject, first, last
+
+
+def reply_subject(ticket, ticket_subject, original=""):
+    """„AW: #TCK… - Betreff“: Betreff der alten Mail (ohne AW:/RE:), die Ticketnummer muss drin sein,
+    damit die Antwort des Kunden wieder am Ticket landet."""
+    base = _REPLY_PREFIX.sub("", (original or "").strip()).strip()
+    if not base or (ticket and ticket.casefold() not in base.casefold() and not _TICKET_NO.search(base)):
+        base = mail_subject(ticket, base or ticket_subject)
+    return f"AW: {base}"
+
+
+def reply_draft(entry, ticket, ticket_subject="", fallback_to="", own=()):
+    """Verlaufseintrag (m42_tickets.journal_entries) -> Vorbelegung fürs Fenster „E-Mail senden“:
+    {"to", "cc", "subject", "quote", "who", "time", "kind"}. fallback_to: Adresse des Melders, wenn in
+    der Mail keine steht (Matrix42 zeigt oft nur Namen). own: eigene Adressen, die nicht ins CC sollen."""
+    kind = mt.journal_kind(entry)
+    if kind not in ("mail_in", "mail_out"):
+        raise BookingError("Antworten geht nur auf E-Mails.")
+    lines = [line.strip() for line in mt.html_text(entry.get("html", "")).split("\n") if line.strip()]
+    if lines and re.match(r"(?i)^die folgende (nachricht|e-mail) wurde", lines[0]):
+        lines = lines[1:]
+    meta, subject, first, last = _mail_meta(lines)
+    if not subject and first is not None:
+        if kind == "mail_out" and last + 1 < len(lines):
+            subject = lines[last + 1]  # gesendet: Betreff nach Bcc
+        elif kind == "mail_in" and first > 0:
+            subject = lines[first - 1]  # empfangen: Betreff vor dem Kopf
+    if kind == "mail_in":
+        to = meta["von"] or ([fallback_to] if fallback_to else [])
+        cc = meta["an"] + meta["cc"]
+    else:  # eigene Mail: noch einmal an dieselben
+        to = meta["an"] or ([fallback_to] if fallback_to else [])
+        cc = meta["cc"]
+    skip = {a.casefold() for a in (*own, MAIL_SENDER, *to)}
+    cc = [a for a in dict.fromkeys(cc) if a.casefold() not in skip]
+    who = mt._title_who(entry.get("header", ""))[1]
+    when = entry.get("time")
+    return {"kind": kind, "to": "; ".join(dict.fromkeys(to)), "cc": "; ".join(cc),
+            "subject": reply_subject(ticket, ticket_subject, subject), "who": who, "time": when,
+            "quote": reply_quote(entry.get("html", ""), who, when)}
+
+
+def reply_quote(raw, who="", when=None):
+    """Alte Mail als Zitat (HTML) unter der Antwort: „Am 17.11.2026 um 09:50 schrieb Kunde, Karl:“."""
+    body = mt._DOCUMENT_TAGS.sub("", raw or "").strip()
+    if not body:
+        return ""
+    head = "Am " + when.strftime("%d.%m.%Y um %H:%M") if when else "Ursprüngliche Nachricht"
+    head += f" schrieb {who}:" if who else ":"
+    return (f'<br><p>{html.escape(head)}</p>'
+            f'<blockquote style="margin:0 0 0 6px; padding-left:8px; border-left:2px solid #ccc;">{body}</blockquote>')
 
 
 def signature_path():

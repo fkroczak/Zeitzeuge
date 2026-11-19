@@ -740,6 +740,9 @@ def _kind(entry):
     return "alert" if "eskaliert" in head else "change"
 
 
+journal_kind = _kind  # öffentlich: Art eines Verlaufseintrags (z. B. für „Antworten“)
+
+
 def _title_who(header):
     """„Angehalten von Kroczak, Filip - Systems“ -> („Angehalten“, „Kroczak, Filip“)."""
     title, sep, who = header.partition(" von ")
@@ -889,7 +892,11 @@ def _row_html(row, open_, origin):
     files = len(_ATTACHMENT.findall(row["html"]))
     extra = "".join(f" · {n} {w}" for n, w in ((images, "Bild" if images == 1 else "Bilder"),
                                                    (files, "Anhang" if files == 1 else "Anhänge")) if n)
+    reply = ""
+    if row["kind"] in ("mail_in", "mail_out"):
+        reply = f' &nbsp; <a href="zz:reply:{html.escape(row["id"], quote=True)}" style="{LINK}">↩ Antworten</a>'
     if open_:
-        return out + f'<div>{_body_html(row["html"], origin)}</div><a href="{toggle}" style="{LINK}">▴ zuklappen</a>'
+        return out + (f'<div>{_body_html(row["html"], origin)}</div>'
+                      f'<a href="{toggle}" style="{LINK}">▴ zuklappen</a>{reply}')
     out += f'<br><span style="color:{GREY};">{html.escape(row["preview"])}</span>'
-    return out + f'<br><a href="{toggle}" style="{LINK}">▸ aufklappen{extra}</a>'
+    return out + f'<br><a href="{toggle}" style="{LINK}">▸ aufklappen{extra}</a>{reply}'

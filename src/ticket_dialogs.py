@@ -1056,14 +1056,14 @@ class ViewTicketDialog(_CardDialog):
         self.cancel_button.parentWidget().layout().insertWidget(1, self.actions_button)
         self.actions_button.setVisible(not mb.is_closed(row))
 
-    def _ticket_action(self, kind):
+    def _ticket_action(self, kind, reply=None):
         from ticket_action_dialog import TicketActionDialog
         contact = {"email": self.melder_mail, "initiator_id": (self.loaded or {}).get("initiator") or "",
                    "rows": getattr(self, "contact", None) or [],
                    "managers": [{"role": p.get("role"), "id": p.get("id"), "name": p.get("name"),
                                  "email": ((p.get("details") or {}).get("Email") or "").strip()}
                                 for p in (self.managers or {}).get("people") or []]}
-        dialog = TicketActionDialog(self.reader, self.row, kind, self, contact)
+        dialog = TicketActionDialog(self.reader, self.row, kind, self, contact, reply=reply)
         if dialog.exec() != QDialog.Accepted:
             return
         self.status.setText(dialog.done_text)
@@ -1112,6 +1112,9 @@ class ViewTicketDialog(_CardDialog):
             if not self._run("attachment", file=file_id):
                 self.status.setText("⚠ Matrix42-Anmeldefenster ist offen. Bitte erst anmelden.")
             return
+        if url.scheme() == "zz" and url.path().startswith("reply:") and self.journal is not None:
+            self._reply(url.path().partition(":")[2])
+            return
         if url.scheme() != "zz" or not url.path().startswith("toggle:") or self.journal is None:
             return
         self.expanded ^= {url.path().partition(":")[2]}
@@ -1119,6 +1122,19 @@ class ViewTicketDialog(_CardDialog):
         top = bar.value()
         self._render_journal()
         bar.setValue(top)
+
+    def _reply(self, entry_id):
+        """„↩ Antworten“ an einer E-Mail im Verlauf: „E-Mail senden“ mit An, CC, Betreff und Zitat."""
+        import m42_ticket_actions as ma
+        entry = next((e for e in self.journal["entries"] if e["id"] == entry_id), None)
+        if entry is None:
+            return
+        try:
+            draft = ma.reply_draft(entry, self.row["ticket"], self.row.get("subject", ""), self.melder_mail)
+        except mb.BookingError as exc:
+            self.status.setText(f"⚠ {exc}")
+            return
+        self._ticket_action("mail", reply=draft)
 
     def _on_attachment(self, result):
         """Anhang geladen: öffnen (Programme nicht, dann nur den Ordner zeigen)."""

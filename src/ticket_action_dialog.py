@@ -54,14 +54,19 @@ class TicketActionDialog(_CardDialog):
     """kind: "comment", "mail", "pause" oder "forward". row: Zeile der Ticketliste.
     contact: {"email", "initiator_id", "rows"} des Melders (für „E-Mail senden“; rows: Kontaktzeilen wie in
     „Ticket ansehen“, fehlen sie, sucht das Fenster den Melder per Name), dazu "managers": Verwalter des
-    Kunden [{role, id, name, email}], die sich per Schalter ins CC nehmen lassen. Danach self.done_text."""
+    Kunden [{role, id, name, email}], die sich per Schalter ins CC nehmen lassen. Danach self.done_text.
+    reply: Antwort auf eine E-Mail aus dem Verlauf (m42_ticket_actions.reply_draft): An, CC und Betreff
+    vorbelegt, die alte Mail kommt zitiert unter den Text (abschaltbar)."""
 
-    def __init__(self, reader, row, kind, parent=None, contact=None):
+    def __init__(self, reader, row, kind, parent=None, contact=None, reply=None):
         super().__init__(parent)
         self.row, self.kind = row, kind
         self.contact = contact or {}
+        self.reply = reply if kind == "mail" else None
         self.done_text = ""
         title, icon, main, placeholder = KINDS[kind]
+        if self.reply:
+            title, placeholder = "Auf E-Mail antworten", "Text der Antwort"
         self._frame(reader, title, row.get("subject") or row["ticket"], icon, main)
         self._ticket_line(row)
         box = self.body_box
@@ -81,6 +86,14 @@ class TicketActionDialog(_CardDialog):
             self._chips(self.public)
         if kind == "pause":
             self._chips(self.no_escalation)
+        if self.reply and self.reply.get("quote"):
+            when = self.reply.get("time")
+            self.quote_check = QCheckBox("Ursprüngliche E-Mail &zitieren")
+            self.quote_check.setChecked(True)
+            self.quote_check.setToolTip("Die E-Mail" + (f" von {self.reply['who']}" if self.reply.get("who") else "")
+                                        + (f" vom {when:%d.%m.%Y %H:%M}" if when else "")
+                                        + " steht unter deinem Text")
+            self._chips(self.quote_check)
 
         self.ok_button.clicked.connect(self.send)
         self.validate()
@@ -110,9 +123,11 @@ class TicketActionDialog(_CardDialog):
         self.body_box.addWidget(card)
         if not (rows and self.contact.get("email")) and self.row.get("initiator"):
             self._run("melder", name=self.row["initiator"])
-        self.to_edit = QLineEdit(self.contact.get("email", ""))
-        self.cc_edit = QLineEdit()
-        self.subject_edit = QLineEdit(ma.mail_subject(self.row["ticket"], self.row.get("subject", "")))
+        reply = self.reply or {}
+        self.to_edit = QLineEdit(reply.get("to") if self.reply else self.contact.get("email", ""))
+        self.cc_edit = QLineEdit(reply.get("cc", ""))
+        self.subject_edit = QLineEdit(reply.get("subject") or
+                                      ma.mail_subject(self.row["ticket"], self.row.get("subject", "")))
         for edit, label, tip in ((self.to_edit, "&An", "E-Mail-Adressen, mehrere mit ; trennen"),
                                  (self.cc_edit, "&CC", "optional, mehrere mit ; trennen"),
                                  (self.subject_edit, "&Betreff", "")):
@@ -336,6 +351,8 @@ class TicketActionDialog(_CardDialog):
                     known[p["email"]] = p["id"]
             req.update(to=self.to_edit.text(), cc=self.cc_edit.text(), subject=self.subject_edit.text(),
                        known_users=known)
+            if self.reply and getattr(self, "quote_check", None) and self.quote_check.isChecked():
+                req["quote"] = self.reply.get("quote", "")
         elif self.kind == "pause":
             req.update(until=self.until().isoformat(), reason=self.reason_combo.currentData(),
                        no_escalation=self.no_escalation.isChecked())
@@ -355,7 +372,8 @@ class TicketActionDialog(_CardDialog):
         if not result.get("ok"):
             self._failed(result, what)
             return
-        self.done_text = {"comment": "Kommentar gespeichert.", "mail": "E-Mail gesendet.",
+        self.done_text = {"comment": "Kommentar gespeichert.",
+                          "mail": "Antwort gesendet." if self.reply else "E-Mail gesendet.",
                           "pause": f"Pausiert bis {self.until():%d.%m. %H:%M}." if self.kind == "pause" else "",
                           "forward": "Weitergeleitet."}[self.kind]
         self.accept()
