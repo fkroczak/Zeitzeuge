@@ -15,7 +15,7 @@ Skelett-Bild), gespeichert in der Einstellung ticket_layout:
 Das Filterfeld sucht nur in dem, was Kategorie und Status zeigen; jedes Wort muss irgendwo
 vorkommen, wie bei der Ticketsuche. Enter im Filterfeld oder „In Matrix42 suchen“ fragt dagegen
 Matrix42 selbst (alle Tickets, ohne Datumsgrenze, M42Reader.search_ticket_list); die Treffer
-stehen in der Tabelle, bis „Suche beenden“ oder eine Kategorie gewählt wird. Tabelle (Ticket, Betreff, Kunde, Melder, Art, Status,
+stehen in der Tabelle, bis das Suchfeld leer ist oder eine Kategorie gewählt wird. Tabelle (Ticket, Betreff, Kunde, Melder, Art, Status,
 Bearbeiter, Angelegt), nach jeder Spalte sortierbar, in Seiten zu 50 oder 100 Tickets.
 
 Meine Tickets liest M42Reader alle 10 Minuten (my_tickets_loaded), die übrigen Kategorien beim
@@ -167,13 +167,7 @@ class TicketsDialog(QDialog):
                                       "Kunde, Melder, Bearbeiter), ohne Datumsgrenze (Enter im Suchfeld)")
         self.search_button.clicked.connect(self.search_matrix42)
         self.search_button.setEnabled(False)
-        self.end_search_button = QPushButton("Suche &beenden", self)
-        self.end_search_button.setAutoDefault(False)
-        self.end_search_button.setToolTip("Zurück zur gewählten Kategorie")
-        self.end_search_button.clicked.connect(self.end_search)
-        self.end_search_button.hide()
         search.addWidget(self.search_button)
-        search.addWidget(self.end_search_button)
         search.addWidget(self.closed_switch)
         search.addWidget(self.closed_chip)
         layout.addWidget(self.search_row)
@@ -623,19 +617,16 @@ class TicketsDialog(QDialog):
         if not text or not hasattr(self.reader, "search_ticket_list"):
             return
         self.search = text
-        self.end_search_button.show()
         self.table.clearSelection()
         self.refresh()
 
     def end_search(self):
-        """Zurück zur gewählten Kategorie."""
+        """Zurück zur gewählten Kategorie (Suchfeld geleert)."""
         if self.search is None:
             return
         self.search = None
         self._loading.discard(SEARCH)
-        self.filter_edit.clear()
         self.show_category()
-        self.filter_edit.setFocus()
 
     def _search_found(self, result):
         if result.get("text") == self.search:  # Antwort einer älteren Suche: verwerfen
@@ -692,7 +683,6 @@ class TicketsDialog(QDialog):
         self._rows = rows
         self.table.page = 0
         self.table.set_rows(rows)
-        self.end_search_button.setVisible(self.search is not None)
         for key, pill in list(self.category_buttons.items()):  # bei der Suche gilt keine Kategorie
             try:
                 pill.setChecked(self.search is None and key == self.category)
@@ -710,6 +700,9 @@ class TicketsDialog(QDialog):
         return self.table.visible_rows()
 
     def apply_filter(self, *_):
+        if self.search is not None and not self.filter_edit.text().strip():
+            self.end_search()  # ruft apply_filter selbst wieder auf
+            return
         self.search_button.setEnabled(bool(self.filter_edit.text().strip()))
         self.table.apply_filter(self.filter_edit.text())
         self._update_status()
