@@ -350,3 +350,69 @@ def test_neue_nachricht_aus_der_ticketliste():
     assert not mb.new_message({})
     row = mb.ticket_row({"TicketNumber": "TCK0000000001", "Id": "1", "NewInformationReceived_Value": 1})
     assert row["new_message"] is True
+
+
+def test_aeltere_tickets_dazulesen(tmp_path):
+    from m42_reader import M42Reader
+    reader = M42Reader("https://m42.example/wm/", str(tmp_path / "m42.json"), str(tmp_path / "p"))
+    pages, got = [], []
+
+    def fetch(method, path, body=None, content_type=None):
+        page = int(path.split("&page=")[1].split("&")[0])
+        pages.append(page)
+        return [{"TicketNumber": f"TCK{page:03d}{i:07d}", "Id": f"{page}-{i}", "State": "Offen",
+                 "CreatedDate": f"2026-11-{19 - page:02d}T08:00:00Z"} for i in range(mb.MY_TICKETS_PAGE_SIZE)]
+    reader._fetch = fetch
+    reader.tickets_loaded.connect(got.append)
+    reader._read_tickets("all", "")
+    assert pages == list(range(mb.MY_TICKETS_PAGES)) and got[-1]["limited"] and got[-1]["read"] == 500
+    assert reader.more_pages("all") == 2 * mb.MY_TICKETS_PAGES
+    pages.clear()
+    reader._read_tickets("all", "")  # gilt auch für jedes spätere Aktualisieren
+    assert pages == list(range(2 * mb.MY_TICKETS_PAGES)) and len(got[-1]["rows"]) == 1000 and got[-1]["read"] == 1000
+    for _ in range(100):
+        reader.more_pages("all")
+    assert reader.ticket_pages["all"] == mb.MAX_TICKET_PAGES and "tk" not in reader.ticket_pages
+
+
+def test_suche_in_der_ticketliste(tmp_path):
+    from m42_reader import M42Reader
+    reader = M42Reader("https://m42.example/wm/", str(tmp_path / "m42.json"), str(tmp_path / "p"))
+    calls, got = [], []
+
+    def fetch(method, path, body=None, content_type=None):
+        field = body["Groups"][0]["Conditions"][0]["Property"]
+        calls.append((field, path))
+        if field == "Customer":
+            raise mb.BookingError("Feld geht nicht")
+        if field != "Subject":
+            return []
+        page = int(path.split("&page=")[1].split("&")[0])
+        return [{"TicketNumber": f"TCK{page:03d}{i:07d}", "Id": f"{page}-{i}", "Subject": "Drucker Weber",
+                 "State": "Geschlossen" if i % 2 else "Offen", "CreatedDate": "2025-01-02T08:00:00Z"}
+                for i in range(mb.MY_TICKETS_PAGE_SIZE if page < 2 else 7)]
+    reader._fetch = fetch
+    reader.ticket_list_found.connect(got.append)
+    reader._search_ticket_list("weber drucker", "all", "")
+    assert {f for f, _ in calls} == {"Subject", "Customer", "Initiator", "Recipient"}  # keine Ziffern: keine Nummer
+    assert "filters=" not in calls[0][1] and "pageSize=100" in calls[0][1]
+    r = got[-1]
+    assert r["key"] == "all" and r["text"] == "weber drucker" and len(r["rows"]) == 207
+    assert not r["limited"] and not r["error"] and reader.ticket_search is r
+
+    calls.clear()
+    reader._search_ticket_list("weber", "tk", mb.TK_FILTER)  # in der Kategorie: ihr Filter gilt mit
+    assert all(p.endswith(f"&filters={mb.TK_FILTER}") for _, p in calls)
+
+    reader.own_name = "Kroczak, Filip"
+    reader._search_ticket_list("weber", "mine")  # Meine Tickets: nur, wo ich Bearbeiter bin
+    assert got[-1]["key"] == "mine" and got[-1]["rows"] == []
+
+    reader._search_gen = 2
+    n = len(got)
+    reader._search_ticket_list("weber", "all", "", gen=1)  # inzwischen neuer getippt: nichts melden
+    assert len(got) == n
+
+    reader._fetch = lambda *a, **k: (_ for _ in ()).throw(mb.BookingError("Bitte in Matrix42 anmelden"))
+    reader._search_ticket_list("weber", "all", "")
+    assert got[-1]["rows"] == [] and "anmelden" in got[-1]["error"]

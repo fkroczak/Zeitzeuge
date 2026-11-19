@@ -134,6 +134,11 @@ def ticket_query(number):
 # Verweise. Geht ein Feld nicht, zählen die übrigen.
 SEARCH_FIELDS = ("TicketNumber", "Subject", "Customer", "Initiator", "Recipient")
 SEARCH_LIMIT = 50
+# Suchfeld im Fenster „Tickets“ (für Nachforschungen): je Feld so viele Seiten zu MY_TICKETS_PAGE_SIZE,
+# neueste zuerst, ohne Datumsgrenze. Mehr Treffer je Feld: Suchtext genauer machen. Gesucht wird
+# beim Tippen (ab LIST_SEARCH_MIN Zeichen, nach einer kurzen Pause), daher eher wenige Seiten.
+LIST_SEARCH_PAGES = 5
+LIST_SEARCH_MIN = 3
 
 
 def search_query(field, text):
@@ -264,9 +269,9 @@ def matches(row, text):
     return all(w.casefold() in hay for w in (text or "").split())
 
 
-def merge_tickets(*lists, text=""):
+def merge_tickets(*lists, text="", limit=SEARCH_LIMIT):
     """Treffer mehrerer Abfragen zusammenführen: jedes Ticket einmal, nur die zum ganzen
-    Suchtext passenden, offene vor erledigten, darin neueste zuerst."""
+    Suchtext passenden, offene vor erledigten, darin neueste zuerst; höchstens limit (None = alle)."""
     seen = {}
     for items in lists:
         for row in filter(None, map(ticket_row, items or [])):
@@ -274,7 +279,7 @@ def merge_tickets(*lists, text=""):
                 seen.setdefault(row["id"], row)
     rows = sorted(seen.values(), key=lambda r: r["created"], reverse=True)
     rows.sort(key=is_closed)  # stabil: innerhalb offen/erledigt bleibt neueste zuerst
-    return rows[:SEARCH_LIMIT]
+    return rows[:limit]
 
 
 # ------------------------------------------------------------ Meine Tickets
@@ -284,6 +289,9 @@ def merge_tickets(*lists, text=""):
 # prüft Zeitzeuge selbst. So viele Seiten liest es höchstens (neueste zuerst).
 MY_TICKETS_PAGE_SIZE = 100
 MY_TICKETS_PAGES = 5
+# „Ältere laden“ im Fenster „Tickets“: je Klick so viele Seiten mehr, höchstens MAX_TICKET_PAGES
+# (bei 100 je Seite also 500 mehr, insgesamt bis 10 000 Tickets).
+MAX_TICKET_PAGES = 100
 
 
 def own_name(text):
