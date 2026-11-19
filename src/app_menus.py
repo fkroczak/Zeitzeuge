@@ -881,6 +881,11 @@ class MenusMixin:
             value = "work"
         self.whole_day_action.setChecked(value == "day")
         action.setChecked(value != "day")
+        button = self.tools_bar.widgetForAction(action)
+        if button is not None and button.property("fixed") != (value == "work_fixed"):
+            button.setProperty("fixed", value == "work_fixed")  # leicht blau (Design: workfixed)
+            button.style().unpolish(button)
+            button.style().polish(button)
         name = "work_fixed" if value == "work_fixed" else "work_time"
         title, tip = self.RANGE_TIPS[value]
         shortcut = QKeySequence("Ctrl+9").toString(QKeySequence.NativeText)

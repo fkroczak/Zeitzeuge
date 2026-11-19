@@ -177,8 +177,10 @@ def gui_test():
     window.work_time_action.trigger()
     assert window.config["timeline_range"] == "work_fixed" and window.timeline._work_fixed
     assert window.work_time_action.isChecked() and "fest" in window.work_time_action.text()
+    assert window.tools_bar.widgetForAction(window.work_time_action).property("fixed") is True
     window.work_time_action.trigger()
     assert window.config["timeline_range"] == "work" and not window.timeline._work_fixed
+    assert not window.tools_bar.widgetForAction(window.work_time_action).property("fixed")
     window.whole_day_action.trigger()
     assert window.whole_day_action.isChecked() and not window.work_time_action.isChecked()
     window.work_time_action.trigger()
