@@ -364,6 +364,7 @@ class M42Reader(BrowserReader):
     tickets_found = Signal(object)  # Ergebnis von search_tickets(): {text, rows, error}
     my_tickets_loaded = Signal(object)  # Meine Tickets: {rows (None = unbekannt), all, error, at}
     tickets_loaded = Signal(object)  # Kategorie im Fenster „Tickets“: {key, rows, error, at, limited}
+    ticket_list_found = Signal(object)  # Suche im Fenster „Tickets“: {text, rows, error, at, limited}
     ticket_filters_loaded = Signal(object)  # [{id, title}] gespeicherte Filter der Ticketliste
     ticket_task_done = Signal(object)  # Ergebnis von ticket_task(): {kind, ok, data | error, unclear}
     managers_loaded = Signal(object)  # load_managers(): {OU-Id: {"company", "people": [{role, id, name}]}}
@@ -406,6 +407,7 @@ class M42Reader(BrowserReader):
         self.user_name = ""
         self.my_tickets = None  # letzte Antwort von my_tickets_loaded
         self.ticket_views = {}  # Kategorie -> letzte Antwort von tickets_loaded
+        self.ticket_search = None  # letzte Antwort von ticket_list_found
         self.ticket_pages = {}  # Kategorie ("mine" = Meine Tickets) -> Seiten, die gelesen werden
         self.managers_cache = {}  # OU-Id -> (Zeit, {"company", "people"}): Verwalter des Kunden
         self.ticket_filters = None  # letzte Antwort von ticket_filters_loaded
@@ -748,6 +750,43 @@ class M42Reader(BrowserReader):
             result = dict(old, error=result["error"])  # Fehler: alte Liste behalten
         self.ticket_views[key] = result
         self.tickets_loaded.emit(result)
+
+    def search_ticket_list(self, text):
+        """Suche im Fenster „Tickets“ (im Hintergrund): alle Tickets in Matrix42, deren Nummer, Betreff,
+        Kunde, Melder oder Bearbeiter den Suchtext enthält, ohne Datumsgrenze (je Feld höchstens
+        LIST_SEARCH_PAGES Seiten). Ergebnis über ticket_list_found."""
+        def run():
+            with self._browser_lock:
+                self._search_ticket_list(text)
+        threading.Thread(target=run, daemon=True, name="Matrix42 Ticketliste suchen").start()
+
+    def _search_ticket_list(self, text):
+        import m42_booking as mb
+        text = (text or "").strip()
+        word, fields = mb.search_plan(text)
+        result = {"text": text, "rows": [], "error": "", "at": datetime.now().strftime("%H:%M"),
+                  "limited": False, "time": time.time()}
+        found, errors = [], []
+        try:
+            for field in fields:
+                try:
+                    items, limited = self._ticket_pages("", mb.search_query(field, word), mb.LIST_SEARCH_PAGES)
+                    found.append(items)
+                    result["limited"] = result["limited"] or limited
+                except mb.BookingError as e:
+                    errors.append(f"{field}: {e}")
+                    if "anmelden" in str(e):
+                        raise
+            result["rows"] = mb.merge_tickets(*found, text=text, limit=None)
+            if not found:
+                result["error"] = errors[0] if errors else "keine Antwort"
+            if errors:
+                safe_io.log(f"Matrix42: Suche in der Ticketliste, nicht jedes Feld ging ({'; '.join(errors)})")
+        except Exception as e:
+            result["error"] = str(e)
+            safe_io.log(f"Matrix42: Suche in der Ticketliste ging nicht ({e})")
+        self.ticket_search = result
+        self.ticket_list_found.emit(result)
 
     def load_ticket_filters(self):
         """Gespeicherte Filter der Ticketliste (Kategorien) im Hintergrund lesen,

@@ -134,6 +134,9 @@ def ticket_query(number):
 # Verweise. Geht ein Feld nicht, zählen die übrigen.
 SEARCH_FIELDS = ("TicketNumber", "Subject", "Customer", "Initiator", "Recipient")
 SEARCH_LIMIT = 50
+# Suche im Fenster „Tickets“ (für Nachforschungen): je Feld so viele Seiten zu MY_TICKETS_PAGE_SIZE,
+# neueste zuerst, ohne Datumsgrenze. Mehr Treffer je Feld: Suchtext genauer machen.
+LIST_SEARCH_PAGES = 10
 
 
 def search_query(field, text):
@@ -264,9 +267,9 @@ def matches(row, text):
     return all(w.casefold() in hay for w in (text or "").split())
 
 
-def merge_tickets(*lists, text=""):
+def merge_tickets(*lists, text="", limit=SEARCH_LIMIT):
     """Treffer mehrerer Abfragen zusammenführen: jedes Ticket einmal, nur die zum ganzen
-    Suchtext passenden, offene vor erledigten, darin neueste zuerst."""
+    Suchtext passenden, offene vor erledigten, darin neueste zuerst; höchstens limit (None = alle)."""
     seen = {}
     for items in lists:
         for row in filter(None, map(ticket_row, items or [])):
@@ -274,7 +277,7 @@ def merge_tickets(*lists, text=""):
                 seen.setdefault(row["id"], row)
     rows = sorted(seen.values(), key=lambda r: r["created"], reverse=True)
     rows.sort(key=is_closed)  # stabil: innerhalb offen/erledigt bleibt neueste zuerst
-    return rows[:SEARCH_LIMIT]
+    return rows[:limit]
 
 
 # ------------------------------------------------------------ Meine Tickets

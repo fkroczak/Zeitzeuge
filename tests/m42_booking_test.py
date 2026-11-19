@@ -373,3 +373,33 @@ def test_aeltere_tickets_dazulesen(tmp_path):
     for _ in range(100):
         reader.more_pages("all")
     assert reader.ticket_pages["all"] == mb.MAX_TICKET_PAGES and "tk" not in reader.ticket_pages
+
+
+def test_suche_in_der_ticketliste(tmp_path):
+    from m42_reader import M42Reader
+    reader = M42Reader("https://m42.example/wm/", str(tmp_path / "m42.json"), str(tmp_path / "p"))
+    calls, got = [], []
+
+    def fetch(method, path, body=None, content_type=None):
+        field = body["Groups"][0]["Conditions"][0]["Property"]
+        calls.append((field, path))
+        if field == "Customer":
+            raise mb.BookingError("Feld geht nicht")
+        if field != "Subject":
+            return []
+        page = int(path.split("&page=")[1].split("&")[0])
+        return [{"TicketNumber": f"TCK{page:03d}{i:07d}", "Id": f"{page}-{i}", "Subject": "Drucker Weber",
+                 "State": "Geschlossen" if i % 2 else "Offen", "CreatedDate": "2025-01-02T08:00:00Z"}
+                for i in range(mb.MY_TICKETS_PAGE_SIZE if page < 2 else 7)]
+    reader._fetch = fetch
+    reader.ticket_list_found.connect(got.append)
+    reader._search_ticket_list("weber drucker")
+    assert {f for f, _ in calls} == {"Subject", "Customer", "Initiator", "Recipient"}  # keine Ziffern: keine Nummer
+    assert "filters=" not in calls[0][1] and "pageSize=100" in calls[0][1]
+    r = got[-1]
+    assert r["text"] == "weber drucker" and len(r["rows"]) == 207 and not r["limited"] and not r["error"]
+    assert reader.ticket_search is r
+
+    reader._fetch = lambda *a, **k: (_ for _ in ()).throw(mb.BookingError("Bitte in Matrix42 anmelden"))
+    reader._search_ticket_list("weber")
+    assert got[-1]["rows"] == [] and "anmelden" in got[-1]["error"]
