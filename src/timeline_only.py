@@ -841,6 +841,10 @@ class TimelineView(QGraphicsView):
         self._now_timer.timeout.connect(self._tick_now)
         self._schedule_now_tick()
         self.fit_day = True        # ganzen Tag ins Fenster einpassen
+        # Arbeitszeit-Ansicht heute: (Beginn, Ende) des gezeigten Bereichs; die Ansicht wächst
+        # mit der Zeit mit (jetzt + 30 min rechts). None, sobald selbst gezoomt oder geblättert wird.
+        self._follow_range = None
+        self.horizontalScrollBar().actionTriggered.connect(self._stop_follow)
         self._drag_start = None    # Mausposition beim Drücken (Bereich ziehen)
         self._drag_button = None   # links: Tätigkeit eintragen, rechts: Zoom
         self._drag_item = None     # markierter Bereich während des Ziehens
@@ -2081,7 +2085,11 @@ class TimelineView(QGraphicsView):
         width = self.maximumViewportSize().width() - self.LEFT - self.RIGHT - 4
         return max(0.2, width / (24 * 60))
 
+    def _stop_follow(self, *_args):
+        self._follow_range = None
+
     def show_whole_day(self):
+        self._follow_range = None
         self.fit_day = True
         self.relayout()
 
@@ -2098,14 +2106,30 @@ class TimelineView(QGraphicsView):
         self.relayout()
         self.horizontalScrollBar().setValue(int(self._x(start_min) - self.LEFT))
 
-    def show_work_time(self):
+    def _work_range(self):
+        """Arbeitszeit ± 30 min; heute noch eingestempelt endet sie jetzt, also jetzt + 30 min."""
         start, end = self._work_minutes(self.current_date)
-        if end > start:
-            self.show_range(start - 30, end + 30)
+        return (start - 30, end + 30) if end > start else None
+
+    def show_work_time(self):
+        target = self._work_range()
+        if target:
+            self.show_range(*target)
+            self._follow_range = target if self.current_date == QDate.currentDate() else None
         else:
             self.show_whole_day()
 
+    def _follow_work_time(self):
+        """Arbeitszeit-Ansicht mitziehen, wenn das Ende 5 min weiter ist (nicht beim Ziehen)."""
+        if not self._follow_range or self._drag_start is not None:
+            return
+        target = self._work_range()
+        if target and (target[0] != self._follow_range[0]
+                       or abs(target[1] - self._follow_range[1]) >= 5):
+            self.show_work_time()
+
     def set_zoom(self, level, anchor_viewport_x=None):
+        self._follow_range = None
         fit_level = self._fit_ppm() / self.BASE_PX_PER_MIN
         if level <= fit_level * 1.01:  # weiter raus als "ganzer Tag" geht nicht
             self.show_whole_day()
@@ -2249,6 +2273,7 @@ class TimelineView(QGraphicsView):
             bar = self.verticalScrollBar()
             bar.setValue(bar.value() - delta)
         elif delta:
+            self._follow_range = None
             bar = self.horizontalScrollBar()
             bar.setValue(bar.value() - delta)
         else:
@@ -2435,7 +2460,10 @@ class TimelineView(QGraphicsView):
     def _tick_now(self):
         """Jetzt-Linie und Pille auf die aktuelle Minute setzen."""
         self._schedule_now_tick()
-        if not self._now_items or self.current_date != QDate.currentDate():
+        if self.current_date != QDate.currentDate():
+            return
+        self._follow_work_time()
+        if not self._now_items:
             return
         line, pill, label, width, height = self._now_items
         now = QDateTime.currentDateTime().time()
@@ -2672,6 +2700,7 @@ class TimelineView(QGraphicsView):
         if dragged:
             a, b = self._drag_minutes(start.x(), pos.x())
             if button == Qt.RightButton:  # rechts gezogen -> diesen Bereich zeigen
+                self._follow_range = None
                 self.show_range(a, b)
             elif b > a:  # links gezogen -> Tätigkeit für diesen Zeitraum eintragen
                 self.doc_request.emit("add_range", {"start_min": a, "end_min": b})
