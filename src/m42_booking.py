@@ -239,11 +239,17 @@ def is_assigned(row):
 
 
 def can_take_over(row, user_id=""):
-    """Übernehmen anbieten: offen und noch nicht meins, oder nur zugewiesen (noch nicht in Bearbeitung)."""
+    """Übernehmen anbieten: noch nicht meins, nur zugewiesen (noch nicht in Bearbeitung) oder geschlossen
+    (Übernehmen eröffnet es wieder: Status „In Bearbeitung“, du bist Bearbeiter)."""
     if is_closed(row):
-        return False
+        return True
     mine = bool(user_id) and (row.get("recipient_id") or "").lower() == user_id.lower()
     return not mine or is_assigned(row)
+
+
+def take_over_text(row):
+    """Beschriftung für „Übernehmen“: bei geschlossenen Tickets heißt es „wiedereröffnen“."""
+    return "Über&nehmen und wiedereröffnen" if is_closed(row) else "Über&nehmen"
 
 
 def search_plan(text):

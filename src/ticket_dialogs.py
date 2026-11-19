@@ -227,12 +227,16 @@ class _CardDialog(QDialog):
 
     def _add_take_over(self, row):
         """Knopf „Übernehmen“ (Bearbeiter = ich, Status „In Bearbeitung“) links in der Fußleiste; fehlt,
-        wenn das Ticket geschlossen oder schon meins und in Bearbeitung ist (nur zugewiesen: Knopf da).
+        wenn das Ticket schon meins und in Bearbeitung ist (nur zugewiesen: Knopf da). Bei einem
+        geschlossenen Ticket heißt er „Übernehmen und wiedereröffnen“.
         Danach: self.taken_over = Anzeigename (oder "")."""
         self.taken_over = None
-        self.take_over_button = QPushButton("Über&nehmen")
+        self.reopening = mb.is_closed(row)
+        self.take_over_button = QPushButton(mb.take_over_text(row))
         self.take_over_button.setAutoDefault(False)
-        self.take_over_button.setToolTip("Ticket in Matrix42 übernehmen: du wirst Bearbeiter")
+        self.take_over_button.setToolTip(
+            "Geschlossenes Ticket in Matrix42 übernehmen: es ist wieder offen, du wirst Bearbeiter"
+            if self.reopening else "Ticket in Matrix42 übernehmen: du wirst Bearbeiter")
         self.take_over_button.clicked.connect(self._take_over)
         # erst einfügen, dann zeigen: ein Knopf ohne Eltern würde sonst kurz als eigenes Fenster aufblitzen
         self.cancel_button.parentWidget().layout().insertWidget(1, self.take_over_button)
@@ -240,15 +244,20 @@ class _CardDialog(QDialog):
 
     def _take_over(self):
         self.take_over_button.setEnabled(False)
-        self.status.setText(f"Übernehme {self.row['ticket']} …")
-        if not self._run("take_over", id=self.row["id"], type=self.row.get("type", ""), ticket=self.row["ticket"]):
+        args = dict(id=self.row["id"], type=self.row.get("type", ""), ticket=self.row["ticket"])
+        if self.reopening:
+            args["reopen"] = True
+        self.status.setText(f"{'Eröffne' if self.reopening else 'Übernehme'} {self.row['ticket']}"
+                            f"{' wieder' if self.reopening else ''} …")
+        if not self._run("take_over", **args):
             self.take_over_button.setEnabled(True)
             self.status.setText("⚠ Matrix42-Anmeldefenster ist offen. Bitte erst anmelden.")
 
     def _on_take_over(self, result):
         if not result.get("ok"):
             self.take_over_button.setEnabled(not result.get("unclear"))
-            self.status.setText(f"⚠ Übernehmen fehlgeschlagen: {result.get('error', '')}")
+            what = "Wiedereröffnen" if self.reopening else "Übernehmen"
+            self.status.setText(f"⚠ {what} fehlgeschlagen: {result.get('error', '')}")
             return
         self.taken_over = (result.get("data") or {}).get("user") or ""
         self.take_over_button.hide()
@@ -256,7 +265,13 @@ class _CardDialog(QDialog):
                         recipient_id=getattr(self.reader, "user_id", "") or self.row.get("recipient_id", ""))
         if getattr(self, "state_label", None) is not None:
             self.state_label.setText(mb.WORKING_STATE)
-        self.status.setText(f"{self.row['ticket']} übernommen, du bist jetzt Bearbeiter ({mb.WORKING_STATE}).")
+        done = "wieder eröffnet und übernommen" if self.reopening else "übernommen"
+        self.status.setText(f"{self.row['ticket']} {done}, du bist jetzt Bearbeiter ({mb.WORKING_STATE}).")
+        self.reopening = False
+        # wieder offen: Schließen und Aktionen wie bei jedem offenen Ticket
+        for name in ("close_ticket_button", "actions_button"):
+            if getattr(self, name, None) is not None:
+                getattr(self, name).show()
         self._took_over()
 
     def _took_over(self):
