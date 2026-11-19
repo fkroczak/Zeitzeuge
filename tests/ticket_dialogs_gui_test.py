@@ -327,6 +327,21 @@ def gui_test():
     assert view.take_over_button.isVisibleTo(view) and view.close_ticket_button.isVisibleTo(view)
     view.reject()
 
+    # geschlossenes Ticket: „Übernehmen und wiedereröffnen“, danach offen mit Schließen und Aktionen
+    closed = dict(ROW, state="Geschlossen", recipient="Kollege", recipient_id="other")
+    view = ViewTicketDialog(reader, closed)
+    assert view.take_over_button.text() == "Über&nehmen und wiedereröffnen"
+    assert view.take_over_button.isVisibleTo(view)
+    assert not view.close_ticket_button.isVisibleTo(view) and not view.actions_button.isVisibleTo(view)
+    assert wait_for(lambda: view.loaded and not view.status.text(), 3000)
+    view.take_over_button.click()
+    assert reader.tasks[-1] == ("take_over", {"owner": id(view), "id": closed["id"], "type": closed["type"],
+                                              "ticket": closed["ticket"], "reopen": True}), reader.tasks[-1]
+    assert wait_for(lambda: "wieder eröffnet" in view.status.text(), 3000), view.status.text()
+    assert view.row["state"] == "In Bearbeitung" and not view.take_over_button.isVisibleTo(view)
+    assert view.close_ticket_button.isVisibleTo(view) and view.actions_button.isVisibleTo(view)
+    view.reject()
+
     # Ticket nicht ladbar (z. B. gelöscht): Telefon trotzdem
     reader.fail.add("load")
     view = ViewTicketDialog(reader, ROW)
