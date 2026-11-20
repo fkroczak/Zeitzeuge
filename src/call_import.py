@@ -7,7 +7,7 @@ Timeline holt sich die Anrufe eines Tages mit load_call_suggestions.
 
 import os
 import threading
-from datetime import timedelta
+from datetime import date, timedelta
 
 import colleagues
 import datastore
@@ -66,6 +66,44 @@ def _load_day(store, name, day):
     return [c for c in data if isinstance(c, dict) and _valid(c)]
 
 
+SHIFT_DAYS = 7  # so weit nach vorn kann 3CX einen Anruf mit veraltetem "Heute" verschoben haben
+
+
+def _same_call(call):
+    """Anruf ohne Datum (Uhrzeit, Nummer/Name, Dauer). None für Anrufe ohne Gespräch: Ein
+    verpasster Anruf derselben Nummer zur selben Uhrzeit kann an zwei Tagen echt sein."""
+    try:
+        seconds = int(call.get("duration_s") or 0)
+    except (TypeError, ValueError):
+        return None
+    return f"{_key(call)[11:]}" if seconds > 0 else None
+
+
+def _shifted_copies(store, name, by_day, changed):
+    """Falsch einsortierte Kopien entfernen. Hing "Heute" in 3CX hinterher, landeten gestrige
+    Anrufe am heutigen Tag (bis 4.1.x). Liest Zeitzeuge denselben Anruf jetzt mit dem richtigen,
+    früheren Tag, fliegt die Kopie an den Folgetagen raus, sofern 3CX sie dort nicht auch zeigt."""
+    removed = 0
+    later_days = {}
+    for day, items in by_day.items():
+        keys = {k for k in map(_same_call, items) if k}
+        if not keys:
+            continue
+        first = date.fromisoformat(day)
+        for i in range(1, SHIFT_DAYS + 1):
+            later_days.setdefault((first + timedelta(days=i)).isoformat(), set()).update(keys)
+    for day, keys in later_days.items():
+        confirmed = {k for k in map(_same_call, by_day.get(day, [])) if k}
+        current = changed.get(day)
+        if current is None:
+            current = _load_day(store, name, day)
+        kept = [c for c in current if _same_call(c) not in keys or _same_call(c) in confirmed]
+        if len(kept) != len(current):
+            removed += len(current) - len(kept)
+            changed[day] = kept
+    return removed
+
+
 def merge_calls(path, new_calls):
     """Neue Anrufe übernehmen. Gibt Anzahl neuer Einträge zurück."""
     with _lock:
@@ -92,6 +130,9 @@ def merge_calls(path, new_calls):
                     calls[k] = c  # neuere Daten (z. B. Name aus CRM) gewinnen
                 if dirty:
                     changed[day] = sorted(calls.values(), key=lambda c: c["start"])
+            removed = _shifted_copies(store, name, by_day, changed)
+            if removed:
+                safe_io.log(f"Anrufe: {removed} am falschen Tag einsortierte Kopien entfernt")
             if changed:
                 store.put_many(name, changed)
                 _version[0] += 1
