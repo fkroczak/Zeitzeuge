@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Zeitzeuge – Anrufliste übertragen
 // @namespace    zeitzeuge
-// @version      1.5
+// @version      1.6
 // @description  Liest die Anrufliste im 3CX-Webclient aus und schickt sie an Zeitzeuge (127.0.0.1:8765)
 // @include      https://voice.visaas.de:5001/*
 // @grant        GM_xmlhttpRequest
@@ -18,10 +18,17 @@
   const fmt = (d) =>
     `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:00`;
 
-  // "Heute", "Gestern", "Montag"/"Mo", "21.10.2026", "21.10." -> Date (nur Tag)
-  function parseTag(text) {
+  // Tag, den 3CX mit "Heute" meint: heute minus verzug Tage (siehe sammeln)
+  function bezugsTag(verzug) {
     const heute = new Date();
     heute.setHours(0, 0, 0, 0);
+    heute.setDate(heute.getDate() - (verzug || 0));
+    return heute;
+  }
+
+  // "Heute", "Gestern", "Montag"/"Mo", "21.10.2026", "21.10." -> Date (nur Tag)
+  function parseTag(text, verzug) {
+    const heute = bezugsTag(verzug);
     const t = text.trim().toLowerCase().replace(/\.$/, "");
     if (t === "heute") return heute;
     if (t === "gestern") return new Date(heute.getTime() - 864e5);
@@ -32,7 +39,7 @@
     }
     const m = text.trim().match(/^(\d{1,2})\.(\d{1,2})\.(\d{2,4})?$/);
     if (m) {
-      let jahr = m[3] ? Number(m[3]) : heute.getFullYear();
+      let jahr = m[3] ? Number(m[3]) : bezugsTag(0).getFullYear();
       if (jahr < 100) jahr += 2000;
       return new Date(jahr, Number(m[2]) - 1, Number(m[1]));
     }
@@ -85,11 +92,14 @@
   const META = new RegExp(
     `(?:^|\\s)(${TAG})\\s+(\\d{1,2}:\\d{2})(?:${SEP}(\\d+:\\d{2}(?::\\d{2})?))?(?:${SEP}via\\s+([^•·|]+?))?\\s*(?:\\.{3}|…)?\\s*$`, "i");
 
-  function leseEintrag(item) {
+  // Ein Eintrag -> {anruf, relativ}. relativ: 3CX schreibt "Heute", "Gestern" oder einen
+  // Wochentag statt eines festen Datums.
+  function leseEintrag(item, verzug) {
     const voll = texte(item).join(" ").trim();
     const m = voll.match(META);
     if (!m) return null;
-    const tag = parseTag(m[1]);
+    const relativ = !/\d/.test(m[1]);
+    const tag = parseTag(m[1], relativ ? verzug : 0);
     if (!tag) return null;
     const [hh, mm] = m[2].split(":").map(Number);
     tag.setHours(hh, mm, 0, 0);
@@ -109,26 +119,63 @@
     const name = (nr ? kopf.slice(0, nr.index) : kopf).trim() || nummer;
 
     return {
-      start: fmt(tag),
-      duration_s: parseDauer(m[3]),
-      name,
-      number: nummer,
-      direction: m[3] ? richtung(item) : "Verpasst",
-      via: m[4] ? m[4].trim() : "",
+      relativ,
+      anruf: {
+        start: fmt(tag),
+        duration_s: parseDauer(m[3]),
+        name,
+        number: nummer,
+        direction: m[3] ? richtung(item) : "Verpasst",
+        via: m[4] ? m[4].trim() : "",
+      },
     };
   }
 
+  // Passen die Tage zusammen? 3CX hängt mit "Heute" manchmal einen Tag hinterher: Die
+  // heutigen Anrufe tragen dann ein festes Datum ("20.11.2026"), die gestrigen noch "Heute".
+  // Das verrät sich so: ein "Heute"-Anruf liegt in der Zukunft, oder ein Anruf mit Wort-Tag
+  // steht unter einem Anruf mit festem Datum, liegt aber nicht vor diesem Tag (die Liste
+  // ist nach Zeit sortiert, neueste oben).
+  function stimmig(eintraege) {
+    const spaeter = fmt(new Date(Date.now() + 5 * 60e3));
+    let grenze = null; // ältester Tag mit festem Datum weiter oben in der Liste
+    for (const e of eintraege) {
+      if (!e) continue;
+      const tag = e.anruf.start.slice(0, 10);
+      if (!e.relativ) {
+        if (!grenze || tag < grenze) grenze = tag;
+      } else if (e.anruf.start > spaeter || (grenze && tag >= grenze)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  let verzug = 0; // so viele Tage hängt "Heute" in 3CX hinterher (gilt für diese Abfrage)
+
   function sammeln() {
-    const items = document.querySelectorAll("app-call-history-item, [data-qa='call-history-item']");
-    const anrufe = [];
-    items.forEach((it) => {
+    const items = [...document.querySelectorAll("app-call-history-item, [data-qa='call-history-item']")];
+    const lesen = (v) => items.map((it) => {
       try {
-        const a = leseEintrag(it);
-        if (a) anrufe.push(a);
-        else console.debug("[Zeitzeuge] Eintrag nicht erkannt:", texte(it).join(" | "));
+        return leseEintrag(it, v);
       } catch (e) {
         console.debug("[Zeitzeuge] Fehler:", e);
+        return null;
       }
+    });
+    let eintraege = lesen(verzug);
+    for (let v = verzug + 1; v <= 7 && !stimmig(eintraege); v++) {
+      const versuch = lesen(v);
+      if (stimmig(versuch)) {
+        console.debug(`[Zeitzeuge] 3CX-„Heute“ hängt ${v} Tag(e) hinterher`);
+        verzug = v;
+        eintraege = versuch;
+      }
+    }
+    const anrufe = [];
+    eintraege.forEach((e, i) => {
+      if (e) anrufe.push(e.anruf);
+      else console.debug("[Zeitzeuge] Eintrag nicht erkannt:", texte(items[i]).join(" | "));
     });
     return anrufe;
   }
